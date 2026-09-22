@@ -7,7 +7,11 @@
 
 ## 环境要求
 
-- Node.js ≥ 20
+- Node.js **20.x**
+  > ⚠️ `server` 依赖 `better-sqlite3`（原生模块），其二进制与**安装时**的 Node ABI 绑定。
+  > 本仓库依赖是在 Node 20 下安装的，换用其它 Node 版本启动会报
+  > `ERR_DLOPEN_FAILED / NODE_MODULE_VERSION`。真要用别的版本，得
+  > `npm --prefix server install` 重装原生模块。
 - npm
 
 ## 启动（开发）
@@ -24,6 +28,15 @@ npm run dev:web      # 终端 2 → http://localhost:5173（/api 已代理到 se
 npm run typecheck    # 两端 TypeScript 严格类型检查
 npm run build        # 前端生产构建
 ```
+
+`server` 侧另有两个**开发用 mock 上游**（不需要真实密钥 / 真实服务）：
+
+```bash
+npm --prefix server run dev:mock-mcp      # :3333  mock MCP server（验证 MCP 客户端链路）
+npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游（验证 LLM Adapter）
+```
+
+服务端环境变量见 `server/.env.example`；把 `server/.env` 建起来即可（该文件已被 gitignore）。
 
 ## 文档
 

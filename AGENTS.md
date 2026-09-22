@@ -30,7 +30,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar                                 |
-| 当前阶段 | **Phase 0 已完成**：可启动、可类型检查、五 Tab 页面可见、MCP 链路连通；业务功能为零，下一步 Phase 1 Chat MVP |
+| 当前阶段 | **Phase 1 进行中**：Chat MVP 切片一（通用 OpenAI 兼容层）已落地并验收，下一步打通 SSE 聊天链路       |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -98,7 +98,7 @@ habitat/
 | ---------------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
 | Chat 页面 / 消息模型 / 流式    | 技术方案 §7.2① / §8 / §6.3                                    | chatnest、the-house、Pando、CC Companion App                           |
 | 聊天消息建表（版本 / 多候选）       | 技术方案 §6.3 ⚠️ **Phase 1 就必须做**                             | —                                                                   |
-| 多 Provider / API 方案管理  | 技术方案 §11.1 / §11.2 / §7.1                                 | OmniRouter、VCPToolBox                                               |
+| 多 Provider / API 方案管理  | 技术方案 §7.1 / §7.2① / §6.2（ApiProfile）                    | OmniRouter、VCPToolBox                                               |
 | MCP Gateway / 诊断日志     | 技术方案 §7.2② / §9 风险1                                       | amap-mcp-server、VCPToolBox                                          |
 | 长期记忆接入                 | 技术方案 §7.1 / §9 风险1·5                                      | nocturne_memory(已定)、Paramecium、Ombre-Brain、kiwi-mem                 |
 | 世界书 / 角色设定             | 技术方案 §6.2                                                 | character-card-spec-v2/v3、KI-CO                                     |
@@ -142,17 +142,28 @@ habitat/
   - MCP Gateway 最小可用：官方 SDK Streamable HTTP + 每 server 状态机 + `mcp_diagnostic_log` 全量留痕；`GET /api/health`、`GET /api/health/mcp`；开发用 mock MCP server（`npm run dev:mock-mcp`）
   - 本地数据层 Dexie `version(1)`（`sessions` / `messages`）+ 启动水合失败拦截
 
-**下一步（Phase 1 · Chat MVP，最优先）**
+- **Phase 1 · 切片一：通用 OpenAI 兼容层**（2026-09-22）
+  - `shared`：`LLMProvider` 接口族落地（`streamChat` 流式事件 / `listModels`）、`ApiProfile` + 脱敏视图 `ApiProfilePublic`、Provider 四个错误码
+  - `server`：`OpenAICompatProvider`（fetch + 自写 SSE 解析，含思维链、usage、tool_calls 透传、空闲超时、AbortSignal 取消）；`LlmRegistry` 方案注册表 + Adapter 工厂；`GET /api/providers`、`GET /api/providers/:id/models`、`POST /api/providers/:id/test`
+  - 密钥模型：方案只存 `keyRef`（环境变量名），真值只在服务端进程环境里，**永不下发前端**
+  - `server/.env` 现在真的会被读取（此前 `.env.example` 是摆设）
+  - 开发用 mock OpenAI 上游（`:3334`）+ 验收脚本 `scripts/probe-llm.ts`（20 项断言全过）
 
-- 后端：Provider 抽象 + 多 API 方案管理（§11.1 / §11.2）、SSE 流式、消息落库
-- 前端：消息渲染（按 `MessageBlock.kind` 分发）、流式输出、虚拟滚动（§9 风险 8，Phase 1 就引入）
+**下一步（Phase 1 · Chat MVP 剩余）**
+
+- 后端：`POST /api/chat`（SSE，§7.2①）+ 消息 / 会话落库，把切片一的 Adapter 接上去
+- 前端：消息渲染（按 `MessageBlock.kind` 分发）、流式输出、**虚拟滚动**（§9 风险 8，Phase 1 就引入）
 - 聊天消息建表：版本 / 多候选（§6.3，Phase 1 必须做）
-- 设置页：API 方案管理 UI + 诊断日志查看
+- 设置页：API 方案管理 UI（用切片一的三条接口）+ 诊断日志查看
+- 待优化清单见 `docs/TASKS.md`（动手前先扫一遍）
 
 **本地验收方式**
 
-- `npm run dev:mock-mcp`（:3333）+ `npm run dev:server`（:3000）+ `npm run dev:web`（:5173）
-- 服务端可用 `npx tsx scripts/probe-mock.ts` 单独验证 MCP 客户端链路
+- 三件套：`npm run dev:mock-mcp`（:3333）+ `npm run dev:server`（:3000）+ `npm run dev:web`（:5173）
+- 验证 MCP 客户端链路：`npx tsx scripts/probe-mock.ts`（在 `server/` 下执行）
+- 验证 LLM Adapter：`npm run dev:mock-openai`（:3334）+ `npx tsx scripts/probe-llm.ts`
+- ⚠️ **跑 `server` 必须用 Node 20**：`better-sqlite3` 原生模块的 ABI 与安装时的 Node 绑定，
+  用其它版本会 `ERR_DLOPEN_FAILED`（详见 `README.md` 环境要求）
 
 **维护约定**
 

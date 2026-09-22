@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "dev:mock-mcp": "tsx src/mcp/mock-server.ts",
+    "dev:mock-openai": "tsx src/providers/mock-openai.ts",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js"
   },
