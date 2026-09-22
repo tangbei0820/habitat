@@ -30,7 +30,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar                                 |
-| 当前阶段 | **Phase 1 进行中**：Chat MVP 切片一（OpenAI 兼容层）、切片二（SSE 聊天链路端到端）已落地并验收；下一步设置页 API 方案管理 UI |
+| 当前阶段 | **Phase 1 进行中**：Chat MVP 三切片（OpenAI 兼容层 / SSE 聊天链路 / API 方案管理）已落地并验收；下一步消息块分发与分页 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -62,7 +62,7 @@ habitat/
 | `docs/UI_DESIGN.md`       | 视觉语言（色彩 / 字体 / 圆角 / 间距 / 动效 / Safe Area）                                        | 做任何 UI 前。⚠️ **内容待北北补充，补充前一律只做简单 UI** |
 | `docs/栖息地_UI参考资料_v1.0.md` | ChatGPT Mobile UI 参考 + 栖息地 UI 原则 / 首页方向 / 欢迎语料库 / **给 Coding Agent 的 10 条实现要求** | 做任何 UI 前，与 `UI_DESIGN.md` 一起读        |
 | `docs/REFERENCES.md`      | 外部参考项目库（本项目之外的 GitHub 项目）                                                       | §4 命中任务时按需查                          |
-| `docs/API.md`             | 接口约定                                                                            | 加 / 改接口时同步（现：`/api/health`、`/api/health/mcp`）          |
+| `docs/API.md`             | 接口约定                                                                            | 加 / 改接口时同步（现：健康 2 + 聊天 1 + 方案 9）          |
 | `docs/DATA_MODEL.md`      | 数据模型                                                                            | 建模时（占位中，以技术方案 §6 为准）                 |
 | `docs/MCP.md`             | 工具层与 Gateway                                                                    | 动 MCP 时                              |
 | `docs/MEMORY.md`          | 记忆系统接入                                                                          | Phase 3A 时                           |
@@ -159,11 +159,20 @@ habitat/
   - 会话窗口改为**沉浸式**：隐藏底部导航、自持滚动容器（否则 fixed 底栏会盖住输入区）；避让底栏改用 `--bottom-nav-height` token，去掉魔法数字 `pb-16`
   - 前端端到端验收脚本 `web/scripts/verify-chat.mjs`（无头 Edge + CDP，13 项断言全过）
 
-**下一步（Phase 1 · Chat MVP 剩余）**
+- **Phase 1 · 切片三：API 方案管理 UI**（2026-09-23）
+  - **方案权威源从环境变量换成服务端 SQLite**（`api_profile` / `api_secret` 两表；凭据独立成表，使「读方案」的路径不可能顺带读出密钥）。`HABITAT_LLM_PROFILES` 降级为**首次种子**（仅表为空时导入一次）
+  - `LlmRegistry` 换成读 DB，**对外接口一字未改**；凭据优先级 **`stored` > `env`**（UI 可为环境变量方案补填密钥）
+  - `db/profiles.ts` 仓储层：CRUD + 凭据 + `activate` 互斥 + 种子导入；删掉默认方案会自动顶上下一条
+  - 五个新端点：`POST /api/providers`、`PATCH /:id`、`DELETE /:id`、`POST /:id/activate`、`PUT|DELETE /:id/secret`。**密钥只进不出**（没有任何端点回读它）
+  - `shared`：`ApiProfilePublic` 加 `keySource`（`stored` / `env` / `missing` / `not-required`），消除 `hasKey` 的语义歧义
+  - `web`：设置页「API 方案」区块（`features/providers/`）—— 列表 + 行内表单 + 测试连接 + 设为默认 + 两步删除；表单主路径只暴露四项，`keyRef` 收进「高级」
+  - 验收：`server/scripts/probe-providers.ts`（46 项）+ `web/scripts/verify-providers.mjs`（22 项，连跑两次通过）
 
-- 设置页：API 方案管理 UI（用切片一的三条接口 + 切片二的用量数据）
+**下一步（Phase 1 收尾）**
+
 - 消息块扩展：渲染器按 `MessageBlock.kind` 分发（当前只有 `text`）
 - 按时间分页加载更早的消息（仓储层 `listMessagesPage` 已就绪，UI 未接）
+- 消息「重发 / 换一个」出口（`candidates` 字段已建未用）
 - 诊断日志查看（设置页时间线）
 - 待优化清单见 `docs/TASKS.md`（动手前先扫一遍）
 
@@ -172,7 +181,8 @@ habitat/
 - 三件套：`npm run dev:mock-mcp`（:3333）+ `npm run dev:server`（:3000）+ `npm run dev:web`（:5173）
 - 验证 MCP 客户端链路：`npx tsx scripts/probe-mock.ts`（在 `server/` 下执行）
 - 验证 LLM Adapter：`npm run dev:mock-openai`（:3334）+ `npx tsx scripts/probe-llm.ts`
-- 验证聊天链路端到端：`node web/scripts/verify-chat.mjs`（前置条件见该文件头部注释）
+- 验证方案路由：起 mock 上游 + server 后 `npx tsx scripts/probe-providers.ts`（46 项断言）
+- 端到端（前端）：`node web/scripts/verify-chat.mjs` / `node web/scripts/verify-providers.mjs`（前置条件见各自文件头注释）
 - ⚠️ **跑 `server` 必须用 Node 20**：`better-sqlite3` 原生模块的 ABI 与安装时的 Node 绑定，
   用其它版本会 `ERR_DLOPEN_FAILED`（详见 `README.md` 环境要求）
 - ⚠️ **后台进程在同一终端命令结束后会被回收**：起 mock / server 与执行验收脚本要写在同一条命令里

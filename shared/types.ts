@@ -102,6 +102,22 @@ export interface ApiProfile {
   isActive: boolean
 }
 
+/**
+ * 凭据就绪情况（脱敏视图用）。
+ *
+ * 为什么单列它而不只看 `hasKey`：`keyRef` 为空串表示「该上游不需要鉴权」（本地 vLLM / Ollama），
+ * 这种方案 `hasKey` 也恒为 true，于是「不需要密钥」与「密钥已配好」在 UI 上无法区分，文案容易写错。
+ */
+export type ApiKeySource =
+  /** 密钥存在服务端（用户在此页填的），可直接用 */
+  | 'stored'
+  /** 密钥来自 `keyRef` 指向的环境变量，可直接用 */
+  | 'env'
+  /** 声明了 keyRef 但环境变量没设 —— 不可用，要提示用户去填 */
+  | 'missing'
+  /** `keyRef` 为空串：该上游不需要鉴权，直接可用 */
+  | 'not-required'
+
 /** 下发给前端的方案视图（脱敏）：只暴露 header 的**名字**，不暴露值 */
 export interface ApiProfilePublic {
   id: string
@@ -109,11 +125,37 @@ export interface ApiProfilePublic {
   provider: LlmProviderKind
   baseUrl: string
   keyRef: string
-  /** `keyRef` 指向的环境变量在服务端是否已就绪 */
+  /** 凭据是否已就绪、可直接发起调用（`keySource !== 'missing'`） */
   hasKey: boolean
+  /** 凭据来自哪里 —— UI 文案据此区分「已保存」/「来自环境变量」/「缺密钥」/「无需密钥」 */
+  keySource: ApiKeySource
   modelMap: ApiProfileModelMap
   headerNames: string[]
   isActive: boolean
+}
+
+/**
+ * 新建方案的入参。
+ * ⚠️ **密钥不在这里** —— 配置与凭据分两个端点（`PUT /api/providers/:id/secret`）。
+ * 好处：改 baseUrl 不会误清密钥，密钥也永远不会被任何 GET 回读。
+ */
+export interface ApiProfileCreateInput {
+  name: string
+  baseUrl: string
+  modelMap: ApiProfileModelMap
+  /** 留空表示该上游不需要鉴权 */
+  keyRef?: string
+  /** 附加请求头。其值可能含凭证，故只在写入时单向传递，不回读 */
+  headers?: Record<string, string>
+  isActive?: boolean
+}
+
+/** 更新方案的入参：全字段可选，只改送来的那些 */
+export type ApiProfileUpdateInput = Partial<ApiProfileCreateInput>
+
+/** 写入密钥的请求体（只进不出，任何接口都不会把它读回来） */
+export interface ApiProfileSecretInput {
+  secret: string
 }
 
 /** 方案连通性探测结果（`POST /api/providers/:id/test`；探测失败也是「结果」，不抛错） */

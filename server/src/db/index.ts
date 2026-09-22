@@ -46,6 +46,31 @@ CREATE TABLE IF NOT EXISTS usage_record (
 sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_usage_record_day ON usage_record (day_key)`)
 sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_usage_record_profile ON usage_record (profile_id, at)`)
 
+// LLM 方案（Phase 1 切片三）。密钥独立成表，见 schema.ts 的说明
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS api_profile (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  key_ref TEXT NOT NULL DEFAULT '',
+  model_map TEXT NOT NULL,
+  headers TEXT,
+  is_active INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+)
+`)
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_api_profile_order ON api_profile (sort_order, created_at)`)
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS api_secret (
+  profile_id TEXT PRIMARY KEY,
+  secret TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+)
+`)
+
 export const db = drizzle(sqlite, { schema })
 
 export function closeDb(): void {

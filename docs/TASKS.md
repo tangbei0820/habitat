@@ -3,7 +3,7 @@
 > **用途**：每完成一次任务，**先按顺序追加一条记录**，写清「已完成什么 + 还剩什么待优化」，然后再进入下一进程。
 > **与 `docs/CHANGELOG.md` 的分工**：CHANGELOG 记「改了什么」（面向版本，按 Phase 组织）；本文件记「做到哪、还欠什么」（面向推进与排期）。
 > **两条硬规矩**：① 已完成只写要点，正文链到 CHANGELOG，**不复制**；② **所有待优化一律收敛到本文件**，不许散落在对话、代码注释或临时文件里。
-> 最后更新：2026-09-22
+> 最后更新：2026-09-23
 
 ---
 
@@ -28,20 +28,29 @@
 - [ ] **Home 子模块标题显示原始 key** —— `/home/board` 的标题渲染成 `Board`（对英文 key 做 `capitalize`），而入口列表里是「留言板」。→ 用同一份模块表反查中文名。
 - [ ] **原生模块 ABI 与 Node 版本绑定** —— `better-sqlite3` 的二进制绑定**安装时**的 Node 版本；本仓库是在 Node 20 下装的，用 Node 22 启动会 `ERR_DLOPEN_FAILED`。已在 `README.md` 环境要求里写明，但还没做机器可读的约束。→ 加 `.nvmrc`（或 `package.json` 的 `engines`）+ 启动时校验版本并给一句人话提示。
 - [ ] **`stream_options` 可能被上游拒绝** —— 兼容层无条件发 `stream_options: { include_usage: true }` 以换取末包 usage（账本要用）。极少数自建上游（老版 vLLM、部分代理）会回 400。→ 按方案加开关，默认开。
-- [ ] **`.env` 里的 JSON 必须写成单行** —— 极简解析器逐行读，把 `HABITAT_LLM_PROFILES` 的 JSON 换行美化会被截断成非法 JSON。不会静默：启动日志与 `/api/providers` 都会暴露。→ 或支持续行，或在报错文案里点明「请写成一行」。
+- [ ] **`.env` 里的 JSON 必须写成单行** —— 极简解析器逐行读，把 `HABITAT_LLM_PROFILES` 的 JSON 换行美化会被截断成非法 JSON。报错文案里已点明「请写成一行」。（T-005 起该变量只在**种子导入**时相关，影响面已缩小。）
 - [ ] **`favicon.ico` 404** —— 每个页面控制台一条红字。→ 放个 favicon，或声明空 data URI 的 `<link rel="icon">`。
 - [ ] **React Router v7 future flag 警告** —— 控制台噪音。→ 显式开 `v7_startTransition` / `v7_relativeSplatPath`。
 - [ ] **服务端 CORS 全开** —— `origin: true` 会反射任意来源。本地开发可接受，**上线前必须收紧到具体域名**。
+- [ ] **密钥在 SQLite 里是明文** —— `api_secret.secret` 直接存原文（个人自用单机，不做加密）。真正的风险点是**备份**：直接打包 `server/data/` 会把密钥一起带走。→ 做「导出 / 备份」功能时必须提供「**不含凭据**」选项（拆表就是为这个留的口子：只导 `api_profile` 即可）。
+- [ ] **删光所有方案后重启，`.env` 里的种子会复活** —— `importProfiles` 的判据是「表为空」，于是用户清空方案 → 重启 → 环境变量里的旧方案又冒出来，违背他的意图。→ 改为持久标记「已导入过」（在库里记一条 kv），而不是看表是否为空。
+- [ ] **方案表单没接「选模型」下拉** —— `GET /api/providers/:id/models` 早已就绪，但表单里模型名只能手打，很容易打错。→ 表单里加「从上游拉取模型列表」并给候选。
+- [ ] **`headers` 自定义请求头没有 UI 入口** —— 后端支持写入（`POST` / `PATCH` 都收），但前端表单没暴露。部分中转把凭证塞在自定义头里，这类用户目前只能走环境变量方案。→ 表单「高级」区补一个键值对编辑器。
 
 ### 低 —— 开发工具与体验毛刺
 
 - [ ] **`--bottom-nav-height` 是估的 4rem** —— 不是实测的底栏高度，改图标 / 字号后要手动同步。→ 用一次 `ResizeObserver` 实测后写回 CSS 变量。
 - [ ] **思维链整段存进 `metadata.reasoning`，无长度上限** —— 长思维链（尤其 R1 类模型）会让单条消息记录明显膨胀。→ 落库前截断，或改为单独的块（`MessageBlock.kind` 已有扩展位）。
 - [ ] **验收脚本的断言绑定了 mock 的固定回复文案** —— 改 `mock-openai.ts` 的回复就要同步改 `web/scripts/verify-chat.mjs` 的断言。→ 让 mock 回显请求内容，断言改成检查回显。
-- [ ] **`ApiProfilePublic.hasKey` 语义有歧义** —— `keyRef` 为空串（上游不需要鉴权）时它也恒为 `true`，含义其实是「凭证已就绪、可直接用」。→ 方案管理 UI 的文案别写成「密钥已配置」。
+- [x] ~~**`ApiProfilePublic.hasKey` 语义有歧义**~~ —— 已修（T-005）：新增 `keySource`（`stored` / `env` / `missing` / `not-required`），UI 文案据此分别渲染「密钥已保存」/「密钥来自环境变量」/「缺密钥，现在调不通」/「无需密钥」。`hasKey` 保留（= `keySource !== 'missing'`），不破坏既有契约。
 - [ ] **`modelMap` 的 tts / vision / embedding 槽位暂时无人消费** —— 已按 §6.2 预留，等 Phase 5 接语音 / 视觉时用。
 - [ ] **mock MCP 的 GET / DELETE 分支取错 session id** —— `mock-server.ts` 的 POST 分支正确地读 `req.headers['mcp-session-id']`，但 GET / DELETE 分支读的是 `url.searchParams.get('sessionId')`；官方 SDK 明确是**发 header**（见 `node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js:427`）。后果：SSE 流与显式关会话两条路径必然 400（目前 Gateway 没用到，所以没暴露）。→ 统一改读 header。
-- [ ] **`ApiProfile` 的权威存储还在环境变量** —— 按 §6.2 它应「本地（前端 Dexie）+ 服务端同步副本」。切片一先用 `HABITAT_LLM_PROFILES` 把链路跑通是刻意的临时方案；等「API 方案管理 UI」落地后换数据源（`LlmRegistry` 对外接口不变）。
+- [x] ~~**`ApiProfile` 的权威存储还在环境变量**~~ —— 已改（T-005）：权威源换成**服务端 SQLite**（`api_profile` / `api_secret` 两表），`HABITAT_LLM_PROFILES` 降级为**首次种子**（仅在表为空时导入一次）。`LlmRegistry` 对外接口一字未改，调用方无感。
+  > ⚠️ **这是对 §6.2 的有意偏离**：§6.2 写 `ApiProfile` 应「本地（前端 Dexie）+ 服务端同步副本」。理由：只有服务端能真正发起调用，双写只会引入一致性问题（两份数据谁赢、离线改了怎么办），而方案管理是低频操作、离线时也无法「测试连接」。→ 若日后真需要离线查看方案，再补本地只读副本。
+- [ ] **删除方案会让历史 `usage_record` 的 `profile_id` 变成孤儿** —— 账本按方案聚合时会出现「已删除方案」这类条目。→ Phase 4 做账本时定：保留显示（钱确实花了）还是改用软删除。
+- [ ] **方案列表没有排序入口** —— `sort_order` 字段已建（且删除时故意不重排，避免全表 UPDATE），但只能按创建顺序追加。方案不多时无感。
+- [ ] **`ApiProfilePublic.hasKey` 现在是冗余字段** —— 可由 `keySource !== 'missing'` 完全推导。保留是为了不破坏既有契约（切片一的脚本与文档都在用）。
+- [ ] **`LlmRegistry` 每次调用都读 DB** —— 本地 SQLite 是微秒级、方案改动低频，暂无影响。若日后出现「每次请求都枚举方案」的路径（如多方案自动路由），再评估加一层缓存。
 
 ---
 
@@ -151,5 +160,48 @@
 - 端到端：`node web/scripts/verify-chat.mjs`（四件前置见文件头注释）
 
 **下一步（Phase 1 剩余）**：设置页 API 方案管理 UI → 消息块按 `kind` 分发 → 分页加载更早消息 → 诊断日志查看。
+
+---
+
+### T-005 · 2026-09-23 · Phase 1 切片三：API 方案管理 UI
+
+**范围**：Phase 1 最后一块 —— 让方案能在界面上管，不必手写 `.env` 里那行 JSON。依据 §6.2（ApiProfile 实体）、§7.1（多方案管理）。
+
+**已完成**
+
+1. **方案权威源从环境变量换成服务端 SQLite**
+   - 新增 `api_profile` / `api_secret` 两表。**凭据独立成表**：任何「读方案」的代码路径都不可能顺带读出密钥，日后做备份导出也能只导配置不导凭据
+   - `HABITAT_LLM_PROFILES` 降级为**首次种子**（仅在表为空时导入一次）。这样切片一/二里北北已配好的方案不会凭空消失，而之后以数据库为准（启动日志明说，避免「改了 `.env` 没反应」的困惑）
+   - `LlmRegistry` 换成读 DB，**对外接口一字未改** —— 路由与聊天链路零改动
+2. **`db/profiles.ts` 仓储层**：CRUD + 凭据读写 + `activate` 互斥 + 种子导入
+   - 删掉默认方案 → 自动把剩下第一条顶为默认（不出现「有方案但没有默认」的空窗）
+   - `id` 由名称派生：**中文字符原样保留**（`ui-方案`、`本地测试上游`），冲突加 `-2`。第一版用时间戳兜底得到 `p-muda8ngu` 这种不可读的 id，意识到它会出现在 `usage_record.profile_id` 与日志里，改掉了
+3. **凭据模型**：优先级 **`stored` > `env`**，于是 UI 能为已按环境变量配好的方案补填密钥（覆盖生效），而不必把密钥搬进库里
+4. **五个新端点**（`server/src/routes/providers.ts`）：`POST /api/providers`、`PATCH /:id`、`DELETE /:id`、`POST /:id/activate`、`PUT|DELETE /:id/secret`。**密钥只进不出** —— 没有任何端点会把它读回来，前端永远只能拿到 `hasKey` / `keySource`
+5. **`keySource` 字段**（`shared`）：`stored` / `env` / `missing` / `not-required`，解决清单里「`hasKey` 把『不需要密钥』和『已配好』混为一谈」那条
+6. **设置页 UI**（`web/src/features/providers/`）：列表（含凭据来源文案与探测结果）+ 行内表单 + 测试连接 + 设为默认 + 两步删除
+   - 表单主路径只暴露「名称 / Base URL / 模型 / API Key」，`keyRef` 收进折叠的「高级」—— 「环境变量名」摆在主路径上只会让人犹豫该往哪填
+   - DeepSeek / OpenAI / 本地 Ollama 三个**快捷填充**，省得手打 baseUrl
+   - 删除用**两步确认**而不用 `window.confirm`：原生弹窗会阻塞页面、在无头浏览器里还要额外处理，两步确认同样拦得住误触
+7. **验收**
+   - `server/scripts/probe-providers.ts`：**46/46**（含「写进去的密钥绝不出现在任何响应里」的 4 处断言、凭据完整生命周期、删除后 active 自动转移、5 类字段校验）
+   - `web/scripts/verify-providers.mjs`：**22/22 且连跑两次均通过**（可重复性）
+   - `scripts/probe-llm.ts` 扩到 **27/27**，改为走真实 DB 路径
+   - 两端 `typecheck` + `build` 通过，控制台零异常
+
+**排查中发现的真问题**
+
+- **验收脚本的竞态**：只等「API 方案」标题出现就开始读 `innerText`，会读到列表还在「读取中…」的空壳 —— 第一次跑抢赢了、第二次就 FAIL。改成等列表真正渲染完。这是同一个坑的第二次（切片二是「reload 后旧 DOM 骗过轮询」），已把通则补进 `headless-cdp-verify` 技能：**等数据渲染完，而不是等容器出现**。
+- **`probe-llm.ts` 因换数据源而失效**：它原先把 profiles 注入构造函数，而 registry 现在读 DB。改成「设临时 `HABITAT_DB_PATH` → 顶层 await 动态 import → 走真实种子导入路径」。顺带让「表为空 → 种子导入」这条路径每次都被真实覆盖。
+
+**本任务新增待优化**：中 4 条（密钥明文存储的备份风险 / 删光方案后重启种子复活 / 表单未接「选模型」下拉 / `headers` 没有 UI 入口）、低 4 条（账本 profile_id 孤儿 / 无排序 UI / `hasKey` 冗余 / registry 无缓存），已录入上方汇总清单。
+
+**验证命令**
+
+- 两端：`npm run typecheck` + `npm run build`
+- 方案路由：起 `dev:mock-openai`（:3334）+ server，`cd server && npx tsx scripts/probe-providers.ts`
+- 方案 UI：四件套后 `node web/scripts/verify-providers.mjs`
+
+**下一步（Phase 1 收尾）**：消息块按 `kind` 分发 → 分页加载更早消息 → 消息「重发 / 换一个」→ 诊断日志查看页。
 
 ---

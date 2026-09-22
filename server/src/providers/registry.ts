@@ -3,13 +3,17 @@
  *
  * 职责：装载方案 → 按 id 取方案 → 按方案装配 LLMProvider Adapter → 产出脱敏视图。
  *
- * Phase 1 的方案来源是环境变量 `HABITAT_LLM_PROFILES`（JSON 数组），目的是先把链路跑通。
- * 按 §6.2，ApiProfile 的权威存储在**本地**（前端 Dexie）、服务端只是同步副本；
- * 那套同步随「API 方案管理 UI」落地，届时本注册表换数据源即可，对上层接口不变。
+ * 数据源演进：切片一是环境变量 `HABITAT_LLM_PROFILES`（先把链路跑通），
+ * 切片三换成**服务端 SQLite**（`db/profiles.ts`）。对外接口一字未改，调用方无感。
+ * 环境变量降级为**首次种子**（见 `importProfiles`）。
+ *
+ * 为什么每次都读库而不是缓存在内存：方案改动是低频操作，而 better-sqlite3 是同步的、
+ * 本地读在微秒级；省掉缓存失效逻辑换来的确定性远比这点开销值。
  */
 import { ErrorCodes } from '@shared/errors.js'
 import type { LLMProvider } from '@shared/providers.js'
-import type { ApiProfile, ApiProfileModelMap, ApiProfilePublic } from '@shared/types.js'
+import type { ApiKeySource, ApiProfile, ApiProfileModelMap, ApiProfilePublic } from '@shared/types.js'
+import { getProfile, getSecret, listProfiles } from '../db/profiles.js'
 import { ProviderError } from './errors.js'
 import { OpenAICompatProvider } from './openai-compat.js'
 
@@ -83,8 +87,10 @@ function parseProfile(value: unknown, index: number): { profile: ApiProfile } | 
 }
 
 /**
- * 从环境变量装载方案。**永不抛错**：坏配置只被跳过并记入 problems，
+ * 从环境变量装载方案（**仅用于首次种子导入**）。**永不抛错**：坏配置只被跳过并记入 problems，
  * 由启动流程打印出来（服务照常起，问题可见——与 MCP Gateway 的处理一致）。
+ *
+ * 注意：`.env` 里这一行必须是**单行 JSON**（`server/src/lib/env.ts` 是逐行解析的）。
  */
 export function loadProfiles(env: NodeJS.ProcessEnv = process.env): {
   profiles: ApiProfile[]
@@ -99,7 +105,10 @@ export function loadProfiles(env: NodeJS.ProcessEnv = process.env): {
   } catch (err) {
     return {
       profiles: [],
-      problems: [`${PROFILES_ENV_KEY} 不是合法 JSON：${err instanceof Error ? err.message : String(err)}`],
+      problems: [
+        `${PROFILES_ENV_KEY} 不是合法 JSON：${err instanceof Error ? err.message : String(err)}` +
+          '（提示：本变量必须写成**单行** JSON，换行会被 .env 解析器截断）',
+      ],
     }
   }
   if (!Array.isArray(parsed)) {
@@ -125,30 +134,29 @@ export function loadProfiles(env: NodeJS.ProcessEnv = process.env): {
   return { profiles, problems }
 }
 
-export class LlmRegistry {
-  private readonly byId = new Map<string, ApiProfile>()
+/** 凭据解析结果：密钥值 + 来源。来源要下发给前端，值只留在服务端 */
+interface ResolvedKey {
+  key: string | null
+  source: ApiKeySource
+}
 
-  constructor(
-    profiles: ApiProfile[],
-    private readonly env: NodeJS.ProcessEnv = process.env,
-  ) {
-    for (const profile of profiles) this.byId.set(profile.id, profile)
-  }
+export class LlmRegistry {
+  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
 
   list(): ApiProfilePublic[] {
-    return [...this.byId.values()].map((profile) => this.toPublic(profile))
+    return listProfiles().map((profile) => this.toPublic(profile))
   }
 
-  /** 未显式标记 isActive 时退化为第一个方案，省得单方案场景还要写这个字段 */
+  /** DB 里正常只会有 0~1 条 isActive（`activateProfile` 保证互斥），兜底退化为第一条 */
   active(): ApiProfilePublic | null {
-    const found = [...this.byId.values()].find((profile) => profile.isActive)
-    const profile = found ?? [...this.byId.values()][0]
+    const profiles = listProfiles()
+    const profile = profiles.find((p) => p.isActive) ?? profiles[0]
     return profile === undefined ? null : this.toPublic(profile)
   }
 
   require(id: string): ApiProfile {
-    const profile = this.byId.get(id)
-    if (profile === undefined) {
+    const profile = getProfile(id)
+    if (profile === null) {
       throw new ProviderError(ErrorCodes.ProviderNotFound, `未知的 LLM 方案 '${id}'`)
     }
     return profile
@@ -157,28 +165,38 @@ export class LlmRegistry {
   /** Adapter 工厂：业务代码只拿 LLMProvider，不碰具体服务商 */
   provider(id: string): LLMProvider {
     const profile = this.require(id)
-    return new OpenAICompatProvider(profile, this.resolveKey(profile))
+    return new OpenAICompatProvider(profile, this.resolveKey(profile).key)
   }
 
   /** 脱敏视图：密钥永不下发；header 只给**名字**，因为值里可能藏着凭证 */
   toPublic(profile: ApiProfile): ApiProfilePublic {
+    const resolved = this.resolveKey(profile)
     return {
       id: profile.id,
       name: profile.name,
       provider: profile.provider,
       baseUrl: profile.baseUrl,
       keyRef: profile.keyRef,
-      hasKey: this.resolveKey(profile) !== null,
+      hasKey: resolved.key !== null,
+      keySource: resolved.source,
       modelMap: { ...profile.modelMap },
       headerNames: Object.keys(profile.headers ?? {}),
       isActive: profile.isActive,
     }
   }
 
-  /** keyRef 留空 = 明确表示「不需要鉴权」，与「配了但没设」区分开 */
-  private resolveKey(profile: ApiProfile): string | null {
-    if (profile.keyRef === '') return ''
+  /**
+   * 凭据来源优先级：**表内密钥 > keyRef 环境变量**。
+   *
+   * 这个顺序让 UI 可以为已有的 env 方案补填密钥（覆盖生效），同时不退化为「必须把密钥搬进库里」。
+   * `keyRef` 留空 = 明确表示「不需要鉴权」，与「配了但没设」区分开 —— 前者可用，后者不可用。
+   */
+  private resolveKey(profile: ApiProfile): ResolvedKey {
+    const stored = getSecret(profile.id)
+    if (stored !== null && stored !== '') return { key: stored, source: 'stored' }
+    if (profile.keyRef === '') return { key: '', source: 'not-required' }
     const value = this.env[profile.keyRef]
-    return value === undefined || value === '' ? null : value
+    if (value === undefined || value === '') return { key: null, source: 'missing' }
+    return { key: value, source: 'env' }
   }
 }

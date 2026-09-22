@@ -109,7 +109,7 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry):
     if (profile === null) {
       throw new ProviderError(
         ErrorCodes.ProviderNotConfigured,
-        '没有可用的 LLM 方案：请在 server/.env 配置 HABITAT_LLM_PROFILES',
+        '没有可用的 LLM 方案：请到「设置 → API 方案」添加（或在 server/.env 里配置 HABITAT_LLM_PROFILES）',
       )
     }
     const provider = registry.provider(profile.id)

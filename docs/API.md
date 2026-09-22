@@ -41,6 +41,7 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 方案（ApiProfile）以「baseUrl + 鉴权 + 模型映射」描述，任何 OpenAI Chat Completions 兼容的服务（DeepSeek 官方、各类中转、本地 vLLM / Ollama 的 `/v1`）都能直接接。
 
 > ⚠️ **密钥永不下发**：响应里的 `keyRef` 只是「持有密钥的环境变量名」，不是密钥本身。`headerNames` 同理只给名字，因为部分中转把凭证放在自定义头里。
+> 切片三起，密钥还可以直接存在服务端（见下），但**任何端点都不会把它读回来** —— 前端只能拿到 `hasKey` / `keySource`。
 
 ### `GET /api/providers`
 
@@ -51,15 +52,24 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
   "active": {
     "id": "deepseek", "name": "DeepSeek 官方", "provider": "openai-compat",
     "baseUrl": "https://api.deepseek.com/v1", "keyRef": "DEEPSEEK_API_KEY",
-    "hasKey": true, "modelMap": { "chat": "deepseek-chat" },
-    "headerNames": [], "isActive": true
+    "hasKey": true, "keySource": "env",
+    "modelMap": { "chat": "deepseek-chat" }, "headerNames": [], "isActive": true
   },
   "profiles": [ /* 同上结构 */ ]
 }
 ```
 
-- `hasKey`：`keyRef` 指向的环境变量在服务端是否就绪（`keyRef` 为空串表示该上游不需要鉴权，恒为 `true`）
-- 单个方案配置有误不会拖垮启动：该条被跳过，启动日志里打 `LLM 方案配置被跳过` 并附原因
+- `hasKey`：凭据**是否已就绪、可直接发起调用**（即 `keySource !== 'missing'`）
+- `keySource`：凭据从哪来，UI 文案据此区分四种情况（`hasKey` 单独看会把「不需要密钥」和「已配好」混为一谈）
+
+| `keySource` | 含义 | 能否直接用 |
+| --- | --- | --- |
+| `stored` | 密钥存在服务端（在此页填的） | ✅ |
+| `env` | 来自 `keyRef` 指向的环境变量 | ✅ |
+| `missing` | 声明了 `keyRef` 但环境变量没设 | ❌ |
+| `not-required` | `keyRef` 为空串：该上游不需要鉴权 | ✅ |
+
+**凭据来源优先级：`stored` > `env`**。这样可以为已按环境变量配好的方案补填密钥（覆盖生效），而不必把密钥搬进库里。
 
 ### `GET /api/providers/:id/models`
 
@@ -96,6 +106,84 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 ```
 
 （方案 id 不存在仍返回 404 —— 那是调用方错误，不是探测结果。）
+
+## Phase 1 已实现（切片三 · 方案管理）
+
+让方案能在设置页里增删改，不必手写 `.env`。
+
+> **权威源 = 服务端 SQLite**（表 `api_profile` / `api_secret`）。
+> `HABITAT_LLM_PROFILES` 降级为**首次种子**：仅在表为空时导入一次，之后改 `.env` 不再生效（启动日志会说明）。
+> 这偏离了 §6.2 的「本地 Dexie + 服务端副本」，理由见 `docs/TASKS.md`。
+
+### `POST /api/providers`
+
+新建。**密钥不在这里** —— 配置与凭据分两个端点，好处是改 baseUrl 不会误清密钥。
+
+```json
+{
+  "name": "DeepSeek 官方",
+  "baseUrl": "https://api.deepseek.com/v1",
+  "modelMap": { "chat": "deepseek-chat" },
+  "keyRef": "DEEPSEEK_API_KEY",
+  "headers": { "X-Custom": "…" },
+  "isActive": false
+}
+```
+
+返回 `201` + 脱敏视图。`id` 由 `name` 派生：小写、**中文字符原样保留**（它会出现在账本与日志里，可读比好看重要）、其余字符压成 `-`；冲突自动加 `-2`、`-3`。
+
+- 忽略 `isActive`，**库里一条方案都没有时自动设为默认**（单方案场景不该还要多点一次）
+- 除 `name` / `baseUrl` / `modelMap.chat` 外均可省略；`keyRef` 留空 = 该上游不需要鉴权
+
+### `PATCH /api/providers/:id`
+
+局部更新，字段**不出现 = 不改**（显式传 `keyRef: ""` 才是清空）。请求体形状同 `POST`，全字段可选；空对象返回 `400`。
+
+### `DELETE /api/providers/:id`
+
+删除方案，连带清掉它的密钥（不留孤儿凭据）。返回：
+
+```json
+{ "deleted": true, "id": "deepseek", "active": { /* 删除后的默认方案 */ } }
+```
+
+- 删掉的是默认方案时，**自动把剩下第一条顶为默认** —— 不会出现「有方案但没有默认」的空窗
+- 顺带把新的 `active` 一并返回，省一次往返
+
+### `POST /api/providers/:id/activate`
+
+设为默认。默认方案**互斥**，任何时刻至多一条 `isActive`。
+
+```json
+{ "active": { "id": "deepseek", "isActive": true, "…": "…" } }
+```
+
+### `PUT /api/providers/:id/secret` · `DELETE /api/providers/:id/secret`
+
+写入 / 清除该方案的密钥。请求体 `{ "secret": "sk-…" }`（不能为空串）。
+
+两者都只返回**凭据状态**，**绝不回显密钥**：
+
+```json
+{ "id": "deepseek", "hasKey": true, "keySource": "stored" }
+```
+
+- `DELETE` 后 `keySource` 会重新解析 —— 若该方案还配着 `keyRef`，会**回落到环境变量**（`env`），而不是变成 `missing`
+- `DELETE` 对没有密钥的方案是**幂等成功**（返回当前状态），不算错误
+
+### 字段校验
+
+| 情况 | 状态码 | code |
+| --- | --- | --- |
+| `name` 缺失 / 超 60 字 | 400 | `BAD_REQUEST` |
+| `baseUrl` 非法 URL 或非 http(s) | 400 | `BAD_REQUEST` |
+| `modelMap.chat` 缺失 | 400 | `BAD_REQUEST` |
+| `keyRef` 不是合法环境变量名 | 400 | `BAD_REQUEST` |
+| `PATCH` 请求体为空对象 | 400 | `BAD_REQUEST` |
+| `POST /:id/secret` 的 `secret` 为空 | 400 | `BAD_REQUEST` |
+| 方案 id 不存在（PATCH / DELETE / activate / secret） | 404 | `PROVIDER_NOT_FOUND` |
+
+`baseUrl` 结尾的斜杠会被**自动去掉**（否则会拼出 `//chat/completions`）。
 
 ## Phase 1 已实现（切片二 · 聊天流）
 
@@ -136,7 +224,7 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 | `messages` 非数组 / 为空 / `role` 非法 / 超 200 条 | 400 | `BAD_REQUEST` |
 | 方案 id 不存在 | 404 | `PROVIDER_NOT_FOUND` |
 | 未配置任何方案 | 400 | `PROVIDER_NOT_CONFIGURED` |
-| `keyRef` 环境变量未设置 | 400 | `PROVIDER_NOT_CONFIGURED` |
+| 方案没有可用凭据（未存密钥且 `keyRef` 环境变量未设） | 400 | `PROVIDER_NOT_CONFIGURED` |
 | 上游 401 / 403 | 401 | `PROVIDER_UNAUTHORIZED` |
 | 连接失败 / 其它非 2xx | 502 | `PROVIDER_UPSTREAM_ERROR` |
 
@@ -161,6 +249,6 @@ profile_id / service / model / prompt_tokens / completion_tokens / total_tokens 
 
 ## 待实现（按阶段）
 
-- Phase 1 其余：设置页 API 方案管理 UI、诊断日志查询、消息块扩展（`MessageBlock.kind`）
+- Phase 1 其余：诊断日志查询、消息块按 `kind` 分发、向上加载更早消息、消息「重发 / 换一个」
 - Phase 3A：记忆检索与写入（经 MCP）
 - Phase 4：Life 统计 / 账本 / 通知

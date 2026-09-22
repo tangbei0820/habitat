@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { McpHealth, ServerHealth } from '@shared/types'
 import { useTheme } from '../../theme/useTheme'
+import { ProviderSettings } from '../../features/providers/ProviderSettings'
 import { ApiRequestError } from '../../lib/api'
 import { getMcpHealth, getServerHealth } from '../../lib/health'
 import { log } from '../../lib/log'
@@ -66,6 +67,8 @@ export function SettingPage() {
         </div>
       </section>
 
+      <ProviderSettings />
+
       <section
         className="mb-4 rounded-lg border p-4"
         style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
@@ -113,7 +116,7 @@ export function SettingPage() {
         className="rounded-lg border p-4 text-sm"
         style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-dim)' }}
       >
-        API 方案 · Provider · 诊断日志 —— Phase 1 起逐步接入
+        诊断日志查看 —— 待接入（MCP 诊断表已在服务端全量留痕）
       </section>
     </div>
   )
