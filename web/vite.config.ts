@@ -1,13 +1,14 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 
 const apiTarget = process.env.HABITAT_API_TARGET ?? 'http://localhost:3000'
 const sharedDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../shared')
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@shared': sharedDir,

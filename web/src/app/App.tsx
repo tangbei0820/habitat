@@ -1,3 +1,76 @@
+import { useEffect, useState, type ReactNode } from 'react'
+import {
+  createBrowserRouter,
+  Navigate,
+  RouterProvider,
+} from 'react-router-dom'
+import { AppShell } from './AppShell'
+import { hydrateDb } from '../db/db'
+import { log } from '../lib/log'
+import { ChatListPage } from '../pages/chat/ChatListPage'
+import { ChatWindowPage } from '../pages/chat/ChatWindowPage'
+import { HomePage } from '../pages/home/HomePage'
+import { HomeModulePage } from '../pages/home/HomeModulePage'
+import { LifePage } from '../pages/life/LifePage'
+import { LlmPage } from '../pages/llm/LlmPage'
+import { SettingPage } from '../pages/setting/SettingPage'
+
+function HydrationGate({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const [error, setError] = useState<unknown>(null)
+
+  useEffect(() => {
+    hydrateDb()
+      .then(() => setState('ready'))
+      .catch((err: unknown) => {
+        log.error('本地数据水合失败', err)
+        setError(err)
+        setState('failed')
+      })
+  }, [])
+
+  if (state === 'loading') {
+    return <div className="p-6 text-center" style={{ color: 'var(--color-text-dim)' }}>正在唤醒栖息地…</div>
+  }
+  if (state === 'failed') {
+    return (
+      <div className="p-6">
+        <h1 className="mb-2 text-lg font-semibold" style={{ color: 'var(--color-danger)' }}>
+          本地数据加载失败
+        </h1>
+        <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>
+          请刷新页面重试。若反复出现，请备份后清理站点数据。
+        </p>
+        <pre className="mt-4 overflow-auto rounded p-3 text-xs" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
+          {error instanceof Error ? error.message : String(error)}
+        </pre>
+      </div>
+    )
+  }
+  return <>{children}</>
+}
+
+const router = createBrowserRouter([
+  {
+    element: (
+      <HydrationGate>
+        <AppShell />
+      </HydrationGate>
+    ),
+    children: [
+      { path: '/', element: <Navigate to="/chat" replace /> },
+      { path: '/chat', element: <ChatListPage /> },
+      { path: '/chat/:sessionId', element: <ChatWindowPage /> },
+      { path: '/home', element: <HomePage /> },
+      { path: '/home/:module', element: <HomeModulePage /> },
+      { path: '/llm', element: <LlmPage /> },
+      { path: '/life', element: <LifePage /> },
+      { path: '/setting', element: <SettingPage /> },
+      { path: '*', element: <Navigate to="/chat" replace /> },
+    ],
+  },
+])
+
 export function App() {
-  return <div>栖息地 · 骨架已就位</div>
+  return <RouterProvider router={router} />
 }

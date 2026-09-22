@@ -5,17 +5,23 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:mock-mcp": "tsx src/mcp/mock-server.ts",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "better-sqlite3": "^11.10.0",
+    "drizzle-orm": "^0.45.3",
     "fastify": "^5.2.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.10.0",
     "pino-pretty": "^11.3.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "zod": "^4.6.5"
   }
 }
