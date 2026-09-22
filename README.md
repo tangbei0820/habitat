@@ -1,19 +1,9 @@
 # 栖息地（habitat）
 
-北北与小栖的个人 AI Companion 数字空间。
+北北与小栖的个人 AI Companion 数字空间。个人自用、非商业。
 
-> 当前状态：**Phase 0 空项目骨架**——可启动、可类型检查，尚无业务功能。
-
-## 目录结构
-
-```
-habitat/
-├── web/      React SPA（Vite + TypeScript strict）
-├── server/   Fastify 常驻服务（TypeScript strict）
-├── shared/   前后端共享类型与 Provider 接口（待填充）
-├── docs/     项目文档（九件套 + UI_DESIGN.md）
-└── 栖息地初版技术方案分析.md   技术方案（v1.1）
-```
+> 🤖 **AI 动工请先读 [`AGENTS.md`](AGENTS.md)** —— 工作总入口（目录结构、文档地图、按任务速查表、工作铁律）。
+> 当前进度以 `AGENTS.md` §6 为准。
 
 ## 环境要求
 
@@ -37,8 +27,11 @@ npm run build        # 前端生产构建
 
 ## 文档
 
-- 技术方案分析：`栖息地初版技术方案分析.md`（仓库根，施工依据）
-- 视觉语言：`docs/UI_DESIGN.md`（待北北补充；**补充前一律只做简单 UI**）
+全部文档的用途与阅读时机，见 **`AGENTS.md` §2 权威文档地图**。
+
+- **施工依据（唯一权威）**：`栖息地初版技术方案分析.md`（v1.1）
+- **外部参考项目库**：`docs/REFERENCES.md`
+- **视觉语言**：`docs/UI_DESIGN.md`（待北北补充；**补充前一律只做简单 UI**）
 
 ## 备注
 
