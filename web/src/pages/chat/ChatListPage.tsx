@@ -1,24 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { ChatSession } from '@shared/types'
-import { db } from '../../db/db'
+import { createSession, deleteSession, listSessions } from '../../db/chat'
 import { log } from '../../lib/log'
-
-function newSession(title: string): ChatSession {
-  const now = Date.now()
-  return {
-    id: crypto.randomUUID(),
-    type: 'chat-session',
-    title,
-    pinnedAt: null,
-    remark: null,
-    background: null,
-    bubbleMode: 'chat',
-    archivedAt: null,
-    createdAt: now,
-    updatedAt: now,
-  }
-}
 
 export function ChatListPage() {
   const navigate = useNavigate()
@@ -26,30 +10,21 @@ export function ChatListPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    db.sessions
-      .orderBy('updatedAt')
-      .reverse()
-      .toArray()
-      .then((list) =>
-        setSessions([...list].sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0))),
-      )
+    listSessions()
+      .then(setSessions)
       .catch((err: unknown) => {
         log.error('读取会话列表失败', err)
         setError(err instanceof Error ? err.message : String(err))
       })
   }, [])
 
-  async function createSession(): Promise<void> {
-    const session = newSession('新的对话')
-    await db.sessions.add(session)
+  async function startSession(): Promise<void> {
+    const session = await createSession('新的对话')
     navigate(`/chat/${session.id}`)
   }
 
   async function removeSession(id: string): Promise<void> {
-    await db.transaction('rw', db.sessions, db.messages, async () => {
-      await db.messages.where('sessionId').equals(id).delete()
-      await db.sessions.delete(id)
-    })
+    await deleteSession(id)
     setSessions((prev) => prev?.filter((s) => s.id !== id) ?? null)
   }
 
@@ -59,7 +34,7 @@ export function ChatListPage() {
         <h1 className="text-lg font-semibold">聊天</h1>
         <button
           type="button"
-          onClick={() => void createSession()}
+          onClick={() => void startSession()}
           className="rounded-full px-3 py-1 text-sm"
           style={{
             backgroundColor: 'var(--color-primary)',

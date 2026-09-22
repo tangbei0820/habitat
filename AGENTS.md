@@ -30,7 +30,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar                                 |
-| 当前阶段 | **Phase 1 进行中**：Chat MVP 切片一（通用 OpenAI 兼容层）已落地并验收，下一步打通 SSE 聊天链路       |
+| 当前阶段 | **Phase 1 进行中**：Chat MVP 切片一（OpenAI 兼容层）、切片二（SSE 聊天链路端到端）已落地并验收；下一步设置页 API 方案管理 UI |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -96,8 +96,8 @@ habitat/
 
 | 我要做…                   | 必读                                                        | 参考项目（详见 `docs/REFERENCES.md`）                                       |
 | ---------------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
-| Chat 页面 / 消息模型 / 流式    | 技术方案 §7.2① / §8 / §6.3                                    | chatnest、the-house、Pando、CC Companion App                           |
-| 聊天消息建表（版本 / 多候选）       | 技术方案 §6.3 ⚠️ **Phase 1 就必须做**                             | —                                                                   |
+| Chat 页面 / 消息模型 / 流式    | 技术方案 §7.2① / §8 / §6.3；接口契约见 `docs/API.md`                | chatnest、the-house、Pando、CC Companion App                           |
+| 聊天消息建表（版本 / 多候选）       | 技术方案 §6.3 ✅ 已随 Dexie `version(2)` 建好（字段齐备，UI 未接）                | —                                                                   |
 | 多 Provider / API 方案管理  | 技术方案 §7.1 / §7.2① / §6.2（ApiProfile）                    | OmniRouter、VCPToolBox                                               |
 | MCP Gateway / 诊断日志     | 技术方案 §7.2② / §9 风险1                                       | amap-mcp-server、VCPToolBox                                          |
 | 长期记忆接入                 | 技术方案 §7.1 / §9 风险1·5                                      | nocturne_memory(已定)、Paramecium、Ombre-Brain、kiwi-mem                 |
@@ -149,12 +149,22 @@ habitat/
   - `server/.env` 现在真的会被读取（此前 `.env.example` 是摆设）
   - 开发用 mock OpenAI 上游（`:3334`）+ 验收脚本 `scripts/probe-llm.ts`（20 项断言全过）
 
+- **Phase 1 · 切片二：本地存储的聊天链路（SSE 端到端）**（2026-09-22）
+  - 契约：`shared/events.ts` 定义聊天流协议（`ChatStreamRequest` + `chat-delta` / `chat-usage` / `chat-done` / `chat-error`）
+  - `server`：`POST /api/chat`（SSE）—— 校验 → 转发 → 记账；**先取上游首个 chunk 再写响应头**，于是配置/鉴权/连通性错误走结构化 4xx/5xx，只有流中途故障才走 `chat-error` 事件；客户端断开即 abort 上游
+  - `server`：`usage_record` 表 + `db/usage.ts`（§6.2「每次调用强制落一条」，`day_key` 用本地时区）
+  - `web`：自写 SSE 客户端 `lib/chatStream.ts`（`EventSource` 不支持 POST，故用 fetch + ReadableStream）、本地仓储层 `db/chat.ts`、Dexie `version(2)`（补 `[sessionId+createdAt]` 复合索引，支撑按时间分页）
+  - `web`：聊天窗口真实发送 / 流式累加渲染 / 中止保留已收内容 / 错误提示 / 首条消息自动命名会话；流式中不写库，收尾才落一条
+  - `web`：自写不定高虚拟列表 `components/VirtualList.tsx`（实测高度缓存 + 二分定位 + 贴底跟随，§9 风险8）
+  - 会话窗口改为**沉浸式**：隐藏底部导航、自持滚动容器（否则 fixed 底栏会盖住输入区）；避让底栏改用 `--bottom-nav-height` token，去掉魔法数字 `pb-16`
+  - 前端端到端验收脚本 `web/scripts/verify-chat.mjs`（无头 Edge + CDP，13 项断言全过）
+
 **下一步（Phase 1 · Chat MVP 剩余）**
 
-- 后端：`POST /api/chat`（SSE，§7.2①）+ 消息 / 会话落库，把切片一的 Adapter 接上去
-- 前端：消息渲染（按 `MessageBlock.kind` 分发）、流式输出、**虚拟滚动**（§9 风险 8，Phase 1 就引入）
-- 聊天消息建表：版本 / 多候选（§6.3，Phase 1 必须做）
-- 设置页：API 方案管理 UI（用切片一的三条接口）+ 诊断日志查看
+- 设置页：API 方案管理 UI（用切片一的三条接口 + 切片二的用量数据）
+- 消息块扩展：渲染器按 `MessageBlock.kind` 分发（当前只有 `text`）
+- 按时间分页加载更早的消息（仓储层 `listMessagesPage` 已就绪，UI 未接）
+- 诊断日志查看（设置页时间线）
 - 待优化清单见 `docs/TASKS.md`（动手前先扫一遍）
 
 **本地验收方式**
@@ -162,8 +172,10 @@ habitat/
 - 三件套：`npm run dev:mock-mcp`（:3333）+ `npm run dev:server`（:3000）+ `npm run dev:web`（:5173）
 - 验证 MCP 客户端链路：`npx tsx scripts/probe-mock.ts`（在 `server/` 下执行）
 - 验证 LLM Adapter：`npm run dev:mock-openai`（:3334）+ `npx tsx scripts/probe-llm.ts`
+- 验证聊天链路端到端：`node web/scripts/verify-chat.mjs`（前置条件见该文件头部注释）
 - ⚠️ **跑 `server` 必须用 Node 20**：`better-sqlite3` 原生模块的 ABI 与安装时的 Node 绑定，
   用其它版本会 `ERR_DLOPEN_FAILED`（详见 `README.md` 环境要求）
+- ⚠️ **后台进程在同一终端命令结束后会被回收**：起 mock / server 与执行验收脚本要写在同一条命令里
 
 **维护约定**
 

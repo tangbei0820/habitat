@@ -29,6 +29,23 @@ CREATE TABLE IF NOT EXISTS mcp_diagnostic_log (
 )
 `)
 
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS usage_record (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id TEXT NOT NULL,
+  service TEXT NOT NULL,
+  model TEXT NOT NULL,
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  cost INTEGER,
+  day_key TEXT NOT NULL,
+  at INTEGER NOT NULL
+)
+`)
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_usage_record_day ON usage_record (day_key)`)
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_usage_record_profile ON usage_record (profile_id, at)`)
+
 export const db = drizzle(sqlite, { schema })
 
 export function closeDb(): void {

@@ -14,11 +14,17 @@
 ### 高 —— 影响正确性，容易踩
 
 - [x] ~~**服务端不读 `.env`**~~ —— 已修（T-003）：新增 `server/src/lib/env.ts`，作为 `src/index.ts` 的**第一个 import** 把 `server/.env` 灌进 `process.env`。刻意不引 dotenv（它可用的 `process.loadEnvFile` 会覆盖既有变量），手写极简解析保证优先级为「**真实环境变量 > .env**」，路径按模块位置解析所以从哪启动都能找到。
-- [ ] **`web` 缺备份导出** —— 铁律 5 要求「版本化迁移 **+ 备份导出**」。现在 Dexie `version(1)` 迁移有了，但导出 / 导入入口为零；水合失败只能引导用户「清理站点数据」= 数据直接丢。→ Phase 1 在设置页补导出 / 导入。
-- [ ] **聊天窗口避让底栏用的是魔法数字** —— `AppShell` 用 `pb-16` 给底部导航让位，导航高度或 Safe Area 一变就错位。→ 把导航高度提成 CSS 变量统一引用。
+- [ ] **`web` 缺备份导出** —— 铁律 5 要求「版本化迁移 **+ 备份导出**」。现在 Dexie 迁移有了（`version(1)` → `version(2)`），但导出 / 导入入口为零；水合失败只能引导用户「清理站点数据」= 数据直接丢。→ 在设置页补导出 / 导入。
+- [ ] **流式中的回复只活在内存，刷新即丢** —— 流式增量刻意不写库（避免每 token 一次 IndexedDB 写），收尾才落一条。代价：用户在生成过程中刷新 / 关页，这一轮的正文全丢（用户消息已落库，所以会看到「问了没答」）。→ 按 ~500ms 节流落一次草稿，或复用已建好的 `candidates`。
 
 ### 中 —— 体验与一致性
 
+- [x] ~~**聊天窗口避让底栏用的是魔法数字**~~ —— 已修（T-004）：底栏高度提为 token `--bottom-nav-height`，且会话窗口改为沉浸式（不渲染底栏，见 T-004）。
+- [ ] **虚拟列表接「向上加载更早消息」后会跳位** —— 高度缓存的键已经是 item key 而非下标（这点做对了），但 `prepend` 之后 `scrollTop` 的绝对位置仍会错位，用户会被弹走。→ 插入前记 `scrollHeight`，插入后按差值补偿 `scrollTop`。
+- [ ] **`ChatMessage.blocks` 只渲染 `text`** —— 另外 7 种 kind（`html` / `image` / `audio` / `file` / `tool-result` / `widget` / `tab-group`）渲染器未分发（§5.5 可扩展块）。→ 按 kind 建分发入口。
+- [ ] **`listMessagesPage` 的分页游标没接 UI** —— 仓储层的 `before` 参数已就绪，聊天页目前固定只拉最近 60 条，再往前的看不到。
+- [ ] **发送失败 / 想换一个回答时没有出口** —— 失败后系统气泡只显示原因，用户消息已落库但没有重发入口；§5.3 的「重roll」字段（`candidates`）已建好未用。
+- [ ] **会话删除无确认** —— 列表页点 ✕ 直接连同该会话全部消息一起删（`deleteSession` 是事务删除）。
 - [ ] **Home 子模块标题显示原始 key** —— `/home/board` 的标题渲染成 `Board`（对英文 key 做 `capitalize`），而入口列表里是「留言板」。→ 用同一份模块表反查中文名。
 - [ ] **原生模块 ABI 与 Node 版本绑定** —— `better-sqlite3` 的二进制绑定**安装时**的 Node 版本；本仓库是在 Node 20 下装的，用 Node 22 启动会 `ERR_DLOPEN_FAILED`。已在 `README.md` 环境要求里写明，但还没做机器可读的约束。→ 加 `.nvmrc`（或 `package.json` 的 `engines`）+ 启动时校验版本并给一句人话提示。
 - [ ] **`stream_options` 可能被上游拒绝** —— 兼容层无条件发 `stream_options: { include_usage: true }` 以换取末包 usage（账本要用）。极少数自建上游（老版 vLLM、部分代理）会回 400。→ 按方案加开关，默认开。
@@ -29,6 +35,9 @@
 
 ### 低 —— 开发工具与体验毛刺
 
+- [ ] **`--bottom-nav-height` 是估的 4rem** —— 不是实测的底栏高度，改图标 / 字号后要手动同步。→ 用一次 `ResizeObserver` 实测后写回 CSS 变量。
+- [ ] **思维链整段存进 `metadata.reasoning`，无长度上限** —— 长思维链（尤其 R1 类模型）会让单条消息记录明显膨胀。→ 落库前截断，或改为单独的块（`MessageBlock.kind` 已有扩展位）。
+- [ ] **验收脚本的断言绑定了 mock 的固定回复文案** —— 改 `mock-openai.ts` 的回复就要同步改 `web/scripts/verify-chat.mjs` 的断言。→ 让 mock 回显请求内容，断言改成检查回显。
 - [ ] **`ApiProfilePublic.hasKey` 语义有歧义** —— `keyRef` 为空串（上游不需要鉴权）时它也恒为 `true`，含义其实是「凭证已就绪、可直接用」。→ 方案管理 UI 的文案别写成「密钥已配置」。
 - [ ] **`modelMap` 的 tts / vision / embedding 槽位暂时无人消费** —— 已按 §6.2 预留，等 Phase 5 接语音 / 视觉时用。
 - [ ] **mock MCP 的 GET / DELETE 分支取错 session id** —— `mock-server.ts` 的 POST 分支正确地读 `req.headers['mcp-session-id']`，但 GET / DELETE 分支读的是 `url.searchParams.get('sessionId')`；官方 SDK 明确是**发 header**（见 `node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js:427`）。后果：SSE 流与显式关会话两条路径必然 400（目前 Gateway 没用到，所以没暴露）。→ 统一改读 header。
@@ -104,5 +113,43 @@
 **验证命令**：`npm run typecheck`（两端）、`npm run build`；`npm --prefix server run dev:mock-openai` + `cd server && npx tsx scripts/probe-llm.ts`。
 
 **下一步**：`POST /api/chat`（SSE，§7.2①）把 Adapter 接上 + 消息落库；前端消息渲染 / 流式 / 虚拟滚动；§6.3 版本与多候选建表。
+
+---
+
+### T-004 · 2026-09-22 · Phase 1 切片二：本地存储的聊天链路（SSE 端到端）
+
+**范围**：北北拍板「按 §6.2 本地存」—— 服务端纯中转、不落聊天记录。依据 §7.2①（聊天链路）、§6.2 / §6.3（数据模型与两次提前量）、§9 风险2（反代缓冲）与风险8（长会话性能）。
+
+**已完成**
+
+1. **`shared` 聊天流契约**（`events.ts`）：`ChatStreamRequest`（历史由前端组装送来）+ 四种事件载荷 `chat-delta` / `chat-usage` / `chat-done` / `chat-error`
+2. **`POST /api/chat`（SSE）**（`server/src/routes/chat.ts`）
+   - 三件事：**校验 → 转发 → 记账**；完整上下文组装（世界书 + Eventide 状态卡 + Nocturne 召回）留给 Phase 3，届时在服务端侧插入，接口形态不变
+   - **关键设计：先取到上游第一个 chunk 才写响应头。** `streamChat` 是 async generator，函数体到第一次 `next()` 才跑，于是「密钥没配 / 上游不可达 / 鉴权被拒」这些都暴露在写头之前 → 走统一 `ApiError` + 4xx/5xx；**只有流开始之后**的故障（空闲超时、传输中断）才走 `chat-error` 事件。前端因此不必为「HTTP 200 但流里带错误」另备判错分支
+   - 响应头带 `x-accel-buffering: no` + `cache-control: no-transform`（对策 §9 风险2）；客户端断开 → `res.on('close')` 里 abort 上游，不白烧 token
+   - `reply.hijack()` 自己写响应（Fastify 要等 handler 返回才发头，流式必须立刻发）
+3. **用量落表**（`db/schema.ts` + `db/index.ts` + `db/usage.ts`）：新增 `usage_record` 表（§6.2「每次调用强制落一条」）。上游没回 usage 时**按 0 落一条**（保证「这轮发生过」有据可查）；**没跑成则不记**（记的是消耗，不是尝试）；`day_key` 用**本地时区**（按天聚合不能跟用户看到的「今天」错开）
+4. **前端 SSE 客户端**（`web/src/lib/chatStream.ts`）：`EventSource` 只支持 GET 而聊天要 POST，所以用 `fetch` + `ReadableStream` 自写 SSE 解析（空行分帧、`event:`/`data:` 取值、兼容 `\r\n`、末尾 flush）
+5. **本地仓储层**（`web/src/db/chat.ts`）+ **Dexie `version(2)`**：补 `[sessionId+createdAt]` 复合索引，让「按时间取最近一页」不必先取回全部再内存排序（§9 风险8 的前提）。页面不再直接碰 Dexie
+6. **聊天窗口端到端**（`ChatWindowPage.tsx`）：真实发送 → 流式累加渲染 → 中止（保留已收内容并标记「（已停止）」）→ 错误提示 → 首条消息自动命名会话 → 回车发送（**处理了中文输入法的 `isComposing`**，否则选词回车会把一句话切两半）
+7. **自写虚拟列表**（`web/src/components/VirtualList.tsx`）：不定高（实测高度缓存 + 二分定位 + overscan + 贴底自动跟随）。高度缓存键用 **item key 而非下标**，为日后向上加载更早一页留了余量
+8. **顺带修清单「高」#3**：底栏高度提为 token `--bottom-nav-height`；会话窗口改为**沉浸式**（不渲染底部导航）
+9. **验收**：接口层 7/7（正常流 9 个事件顺序正确 + 5 类错误分支 + `usage_record` 落表实测）；前端 13/13（无头 Edge + CDP，含虚拟列表「渲染 13 条 / 已加载 60 条」）；两端 `typecheck` + `build` 通过；控制台零异常
+
+**排查中发现的真 bug（截图才暴露）**
+
+- **fixed 底栏盖住聊天输入区**：会话页原先只改了滚动容器，没考虑 `BottomNav` 是 `position: fixed` —— 输入框被压在导航栏底下。修法即上面第 8 条（沉浸式 + 移除底栏）。
+
+**本任务新增待优化**：高 1 条（流式回复只在内存，刷新即丢）、中 6 条（虚拟列表 prepend 跳位 / 块渲染只支持 text / 分页游标未接 UI / 重roll 无出口 / 删会话无确认 / Home 标题）、低 3 条（底栏高度是估值 / 思维链无长度上限 / 验收断言绑定 mock 文案），已录入上方汇总清单。
+
+**沉淀**：验收脚本收进 `web/scripts/verify-chat.mjs`（含前置条件说明），下次改聊天链路可直接复用。
+
+**验证命令**
+
+- 两端：`npm run typecheck` + `npm run build`
+- 接口：`npm --prefix server run dev:mock-openai`（:3334）+ 起 server（.env 指向 mock 上游），`curl -N -X POST /api/chat`
+- 端到端：`node web/scripts/verify-chat.mjs`（四件前置见文件头注释）
+
+**下一步（Phase 1 剩余）**：设置页 API 方案管理 UI → 消息块按 `kind` 分发 → 分页加载更早消息 → 诊断日志查看。
 
 ---

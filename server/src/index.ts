@@ -8,6 +8,7 @@ import { GatewayError, McpGateway } from './mcp/gateway.js'
 import { loadMcpRegistry } from './mcp/registry.js'
 import { ProviderError } from './providers/errors.js'
 import { LlmRegistry, loadProfiles } from './providers/registry.js'
+import { registerChatRoutes } from './routes/chat.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerProviderRoutes } from './routes/providers.js'
 
@@ -58,6 +59,7 @@ registerHealthRoutes(app, gateway)
 const { profiles, problems } = loadProfiles()
 const llmRegistry = new LlmRegistry(profiles)
 registerProviderRoutes(app, llmRegistry)
+registerChatRoutes(app, llmRegistry)
 if (!envFileLoaded) app.log.info('未发现 server/.env，按进程环境变量运行')
 for (const problem of problems) app.log.warn({ problem }, 'LLM 方案配置被跳过')
 app.log.info(
