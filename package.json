@@ -1,0 +1,13 @@
+{
+  "name": "habitat",
+  "version": "0.1.0",
+  "private": true,
+  "description": "栖息地 · AI Companion 数字空间（单仓：web/ + server/ + shared/）",
+  "scripts": {
+    "setup": "npm --prefix web install && npm --prefix server install",
+    "dev:web": "npm --prefix web run dev",
+    "dev:server": "npm --prefix server run dev",
+    "typecheck": "npm --prefix web run typecheck && npm --prefix server run typecheck",
+    "build": "npm --prefix web run build"
+  }
+}
