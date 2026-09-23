@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { McpHealth, ServerHealth } from '@shared/types'
 import { useTheme } from '../../theme/useTheme'
+import { DiagnosticPanel } from '../../features/diagnostics/DiagnosticPanel'
 import { ProviderSettings } from '../../features/providers/ProviderSettings'
 import { ApiRequestError } from '../../lib/api'
 import { getMcpHealth, getServerHealth } from '../../lib/health'
@@ -112,11 +113,13 @@ export function SettingPage() {
         )}
       </section>
 
+      <DiagnosticPanel serverIds={mcp.data?.servers.map((s) => s.serverId) ?? []} />
+
       <section
         className="rounded-lg border p-4 text-sm"
         style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-dim)' }}
       >
-        诊断日志查看 —— 待接入（MCP 诊断表已在服务端全量留痕）
+        记忆与状态模块（Nocturne / Eventide）将在 Phase 3 接入
       </section>
     </div>
   )

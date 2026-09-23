@@ -247,8 +247,57 @@ profile_id / service / model / prompt_tokens / completion_tokens / total_tokens 
 - `cost` 需配合 PriceSnapshot（价格版本化）才能算，Phase 4 账本落地时回填
 - `day_key` 是**本地时区**的 `YYYY-MM-DD`（按天聚合必须与用户看到的「今天」一致，不能用 UTC）
 
+## Phase 1 已实现（切片五 · 诊断日志查询）
+
+设置页「诊断日志」时间线的数据源。**只读**，把 `mcp_diagnostic_log` 里的原始字段**原样**下发 —— 诊断日志是排障证据，在服务端做二次解释只会让「页面看到的」与「库里存的」对不上。
+
+### `GET /api/diagnostics/mcp`
+
+| 查询参数 | 说明 | 取值 |
+| --- | --- | --- |
+| `serverId` | 只看某个 MCP server | 字符串；省略 / 空串 = 全部 |
+| `handshake` | 按阶段筛（**三态**） | `1`/`true` = 仅握手；`0`/`false` = 仅工具调用；省略 = 全部 |
+| `errorsOnly` | 只看有 `error` 的记录 | `1`/`true`；省略 / `0`/`false` = 不筛 |
+| `limit` | 每页条数 | 正整数，1–200，默认 50 |
+| `before` | 游标：只取 `id` **小于**它的（即更早的记录） | 正整数 |
+
+```json
+{
+  "entries": [
+    {
+      "id": 42,
+      "serverId": "nocturne",
+      "direction": "out",
+      "method": "tools/call",
+      "httpStatus": null,
+      "handshake": false,
+      "latencyMs": 45,
+      "error": "connect ECONNREFUSED 127.0.0.1:3333",
+      "at": 1790126460730
+    }
+  ],
+  "total": 137,
+  "errorCount": 9,
+  "hasMore": true
+}
+```
+
+- `entries` 按 `id` **倒序**（最新在前）；`direction`：`out` = Gateway→Server 请求，`in` = Server→Gateway 响应 / 通知
+- `at` 是毫秒时间戳；`httpStatus` / `latencyMs` 无值时是 `null`（官方 SDK 的 transport 不暴露 HTTP 状态码，故多数为空）
+- **`total` / `errorCount` 不含游标** —— 说的是「符合筛选条件的记录有多少」，所以翻页时不会越翻越小
+- 翻页：把上一页最后一条的 `id` 当 `before` 再请求一次；`hasMore=false` 表示到底了
+
+| 非法输入 | 状态码 | code |
+| --- | --- | --- |
+| `limit` 非数字 / < 1 / > 200 | 400 | `BAD_REQUEST` |
+| `before` 非正整数 | 400 | `BAD_REQUEST` |
+| `handshake` / `errorsOnly` 不是布尔字面量 | 400 | `BAD_REQUEST` |
+| 同名参数重复传（会被解析成数组） | 400 | `BAD_REQUEST` |
+
+> `serverId` 传一个不存在的服务**不是错误** —— 返回空页（`total: 0`），因为它是个筛选条件而不是资源标识。
+
 ## 待实现（按阶段）
 
-- Phase 1 其余：诊断日志查询、消息块按 `kind` 分发、向上加载更早消息、消息「重发 / 换一个」
 - Phase 3A：记忆检索与写入（经 MCP）
 - Phase 4：Life 统计 / 账本 / 通知
+- 诊断日志的留存策略（表只增不减，目前没有清空 / 归档入口）

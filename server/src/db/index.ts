@@ -28,6 +28,14 @@ CREATE TABLE IF NOT EXISTS mcp_diagnostic_log (
   at INTEGER NOT NULL
 )
 `)
+// 诊断日志只增不改：查询一律「按 id 倒序取一页」，故索引都带 id 收尾，
+// 让筛选 + 排序走同一条索引，不必回表排序（日志会越长越多，这里不能指望数据量小）
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_mcp_diag_server ON mcp_diagnostic_log (server_id, id)`)
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_mcp_diag_handshake ON mcp_diagnostic_log (handshake, id)`)
+// 部分索引：绝大多数记录 error 为 NULL，只给「有错」的那少量行建索引才划算
+sqlite.exec(
+  `CREATE INDEX IF NOT EXISTS idx_mcp_diag_error ON mcp_diagnostic_log (id) WHERE error IS NOT NULL`,
+)
 
 sqlite.exec(`
 CREATE TABLE IF NOT EXISTS usage_record (

@@ -161,3 +161,40 @@
 - `web/scripts/verify-providers.mjs` 回归 **22 项全过**；`npm run typecheck`（两端）与 `npm run build` 通过，控制台零异常。
 - 用量取证：一轮聊天 + 中止 + 换一个 + 重发共落 `usage_record` **4 条**（证明后两者确实各发起了一次上游调用）。
 - 修验收脚本自身的 fixture 耦合：`verify-providers.mjs` 原先把种子方案的显示名写死成 `Mock 上游`，换个 `.env` 就跑不过；改为从 `GET /api/providers` 现取，并在没有方案时给出明确提示。
+
+### Phase 1 · 切片五（收尾）：诊断日志查询 + 设置页时间线
+
+**shared**
+
+- `types.ts`：新增 `McpDiagnosticDirection` / `McpDiagnosticEntry` / `McpDiagnosticQuery` / `McpDiagnosticPage`。查询条件全可选，`handshake` 是**三态**（`undefined` 全部 / `true` 仅握手 / `false` 仅工具调用）。
+
+**server**
+
+- `db/diagnostics.ts`：读写收口于此。新增 `listMcpDiagnostics` —— 按 `id` 倒序、`limit+1` 多取一条判断 `hasMore`、`total` 与 `errorCount` 合并成**一次**聚合查询。
+  - **游标（`before`）不参与计数**：`total` 说的是「符合筛选的记录有多少」，算上游标会让用户每翻一页就看到数字变小，像是日志在被删。
+- `db/index.ts`：补 `(server_id, id)` / `(handshake, id)` 复合索引 + `error IS NOT NULL` 的**部分索引**（绝大多数记录无错，只给有错的那少量行建索引才划算）。
+- `routes/diagnostics.ts`：新增只读端点 `GET /api/diagnostics/mcp`（`serverId` / `handshake` / `errorsOnly` / `limit` / `before`）。
+  - 字段**原样下发**：诊断日志是排障证据，在服务端做二次解释会让「页面看到的」和「库里存的」对不上。
+  - 校验从严：`limit` 1–200、`before` 正整数、布尔字面量、**同名参数重复传直接拒**（会被解析成数组，静默取第一个只会埋雷）。`serverId` 传不存在的服务返回空页而非报错（它是筛选条件，不是资源标识）。
+- 新增 `lib/errors.ts` 的 `RequestError`：参数校验类错误原先既不属于 `ProviderError` 也不属于 `GatewayError`，只能落到「未识别异常 → 500」。现接进统一错误处理器，按错误码映射状态码。
+
+**web**
+
+- 新增 `lib/diagnostics.ts`（查询客户端）与 `features/diagnostics/DiagnosticPanel.tsx`（设置页「诊断日志」时间线）：
+  - 统计行（共 N 条 / 其中 M 条有错 / 已载入 K 条）+ 三个筛选（服务 / 阶段 / 只看错误）+「加载更早的记录」。
+  - 每行：毫秒时间戳、方向（→ 请求 / ← 响应）、方法（中文 label + 原始 `tools/xxx`）、握手徽标、server、耗时、HTTP 状态；错误原文**逐字显示**。
+  - 筛选与翻页**全交服务端**（日志只增不减，前端不许先全量拉回再过滤）；翻页游标 = 上一页最后一条的 `id`；筛选变化时清空旧数据，避免「上一份数据 + 新条件」被误读。
+- `pages/setting/SettingPage.tsx`：替换掉原先的「诊断日志查看 —— 待接入」占位段。
+
+**验收**
+
+- `server/scripts/probe-diagnostics.ts`：**48 项断言全过，连跑两次通过**（排序 / 字段原样回传 / 三类筛选与组合 / 三段游标分页不重不漏且跨页仍倒序 / 7 种非法参数 / 未知 serverId 空页 / 真实启动记录可见）。fixture 直连 SQLite 写入（WAL 下多进程可读写），按唯一 `server_id` 标记清理，真实记录一条不动。
+- `web/scripts/verify-diagnostics.mjs`：**36 项断言全过**（首屏只拉一页且有「加载更早」/ 翻页补齐并到底收按钮 / 只看错误后无错行确实消失 / 仅握手与仅工具调用互补 / 组合筛选出空态 / 服务筛选 / 刷新 / 错误原文逐字 / 控制台零异常）。
+- 两端 `typecheck` + `build` 通过。
+
+**验收过程中踩到的坑（已写进技能）**
+
+- vite 默认绑 `localhost`，Windows 上解析到 `::1`，脚本用 `127.0.0.1` 打不开（`curl` 返回 `000`，而 vite 日志明明写着 listening）→ 起 dev server 一律加 `--host 127.0.0.1`。
+- 断言把「渲染行数」当成了「总数」：仅工具调用时渲染 30 行（一页）而总数 41 → 比数字就比统计行里的 `total`。
+- 长流水线挤在单条命令里会超时被杀（`SIGTERM`，且管道缓冲导致输出全丢，看起来像「什么都没跑」）→ 后台任务 + 输出落日志，再另开命令 tail。
+- `better-sqlite3` 的 ABI 绑定 Node 20，而 CDP 验收要 Node ≥22 的内置 `WebSocket` → 验收脚本改用 Node 22 内置的 `node:sqlite`，两头都不欠。

@@ -176,10 +176,16 @@ habitat/
   - `web`：`db/chat.ts` 补 `addVersion` / `selectCandidateVersion`（版本历史 + `blocks` 投影同步，超 `MAX_CANDIDATES` 淘汰最旧非展示项）；`ChatWindowPage` 抽出 `runGeneration` 供 发送 / 重发 / 换一个 复用，气泡下方给 `‹ n/N ›` 候选导航 + 「换一个」（末条 AI 回复）+「重发」（末条用户消息无回复时）
   - 验收：`verify-chat.mjs` 扩到 **35 项全过**（含块分发 8 种、分页 `3408 → 6934 → 7334` 且锚定后 `scrollTop=3840`、换一个记两个版本并可切回、重发新增一条回复）；`verify-providers.mjs` 回归 22 项通过
 
-**下一步（Phase 1 收尾）**
+- **Phase 1 · 切片五（收尾）：诊断日志查询 + 设置页时间线**（2026-09-23）
+  - `shared`：`McpDiagnosticEntry` / `McpDiagnosticQuery` / `McpDiagnosticPage`；`handshake` 筛选是**三态**（不传 / 仅握手 / 仅工具调用）
+  - `server`：`GET /api/diagnostics/mcp`（`serverId` / `handshake` / `errorsOnly` / `limit` / `before`）—— 只读、字段**原样下发**；按 `id` 倒序、`limit+1` 判断 `hasMore`、`total` + `errorCount` 一次聚合；**游标不参与计数**，翻页时 `total` 不会越翻越小
+  - `server`：补 `(server_id, id)` / `(handshake, id)` 索引 + `error IS NOT NULL` 部分索引；新增 `lib/errors.ts` 的 `RequestError`，让参数校验错误不再落成 500
+  - `web`：设置页「诊断日志」时间线（`features/diagnostics/DiagnosticPanel.tsx`）—— 统计行 + 服务 / 阶段 / 只看错误三个筛选 + 「加载更早的记录」；筛选与翻页全交服务端
+  - 验收：`server/scripts/probe-diagnostics.ts`（**48 项**，连跑两次通过）+ `web/scripts/verify-diagnostics.mjs`（**36 项**）
 
-- 诊断日志查看（设置页时间线；`mcp_diagnostic_log` 已有数据，缺查询端点与 UI）
-- 待优化清单见 `docs/TASKS.md`（动手前先扫一遍）
+**Phase 1（Chat MVP）已完成**
+
+**下一步**：Phase 2 · Home 生活模块（依据技术方案 §8）。动手前先扫一遍 `docs/TASKS.md` 的待优化清单。
 
 **本地验收方式**
 
@@ -187,10 +193,16 @@ habitat/
 - 验证 MCP 客户端链路：`npx tsx scripts/probe-mock.ts`（在 `server/` 下执行）
 - 验证 LLM Adapter：`npm run dev:mock-openai`（:3334）+ `npx tsx scripts/probe-llm.ts`
 - 验证方案路由：起 mock 上游 + server 后 `npx tsx scripts/probe-providers.ts`（46 项断言）
-- 端到端（前端）：`node web/scripts/verify-chat.mjs`（35 项）/ `node web/scripts/verify-providers.mjs`（22 项）（前置条件见各自文件头注释）
+- 验证诊断端点：起 server（自己指定 `HABITAT_DB_PATH`）后 `npx tsx scripts/probe-diagnostics.ts`（48 项断言）
+- 端到端（前端）：`node web/scripts/verify-chat.mjs`（35 项）/ `node web/scripts/verify-providers.mjs`（22 项）/ `node web/scripts/verify-diagnostics.mjs`（36 项）（前置条件见各自文件头注释）
+- ⚠️ **`verify-diagnostics.mjs` 要用 Node ≥ 22 跑**：它用内置 `WebSocket` 驱动 CDP、用内置 `node:sqlite` 写 fixture（刻意避开 `better-sqlite3` —— 那是 Node 20 的 ABI）
 - ⚠️ **跑 `server` 必须用 Node 20**：`better-sqlite3` 原生模块的 ABI 与安装时的 Node 绑定，
   用其它版本会 `ERR_DLOPEN_FAILED`（详见 `README.md` 环境要求）
-- ⚠️ **后台进程在同一终端命令结束后会被回收**：起 mock / server 与执行验收脚本要写在同一条命令里
+- ⚠️ **端到端验收务必换端口**（例如 server 3200 / vite 5274 / CDP 9333），别复用你正在跑的实例 ——
+  验收会重建数据库文件，在跑的那个进程会握着一个「幽灵文件」，读写全对不上
+- ⚠️ **起 vite 加 `--host 127.0.0.1`**：默认 `localhost` 在 Windows 上解析到 `::1`，脚本用 `127.0.0.1` 会连不上（症状：`curl` 返回 `000`，而 vite 日志写着 listening）
+- ⚠️ **后台进程在同一终端命令结束后会被回收**：起 mock / server 与执行验收脚本要写在同一条命令里；
+  整条流水线较长时用「后台任务 + 输出落日志文件」，再另开命令 tail，别硬塞进一条前台命令（会被超时杀掉且输出全丢）
 
 **维护约定**
 

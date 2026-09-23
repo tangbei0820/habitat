@@ -268,3 +268,52 @@ export interface McpHealth {
   ok: boolean
   servers: McpServerHealth[]
 }
+
+/* ---------- MCP 诊断日志（§7.2②「逐请求可回放」的查询侧） ---------- */
+
+/** 'out' = Gateway→Server 请求；'in' = Server→Gateway 响应 / 通知 */
+export type McpDiagnosticDirection = 'in' | 'out'
+
+/**
+ * 一条诊断记录（`mcp_diagnostic_log` 的下发视图）。
+ * 表里的原始字段原样下发：这是**排障用的证据**，不该在这里做二次解释，
+ * 否则「页面上看到的原因」和「库里存的原因」可能对不上。
+ */
+export interface McpDiagnosticEntry {
+  id: number
+  serverId: string
+  direction: McpDiagnosticDirection
+  /** 协议方法或阶段标记：initialize / tools/list / tools/call … */
+  method: string
+  httpStatus: number | null
+  /** 是否属于握手阶段（initialize 及其响应） */
+  handshake: boolean
+  latencyMs: number | null
+  error: string | null
+  at: number
+}
+
+/**
+ * 诊断查询条件 —— 全部可选，语义是「不提就不筛」。
+ * `handshake` 用三态表达：`undefined` = 全部，`true` = 只看握手，`false` = 只看工具调用。
+ */
+export interface McpDiagnosticQuery {
+  serverId?: string
+  handshake?: boolean
+  errorsOnly?: boolean
+  /** 每页条数，默认 50，上限 200 */
+  limit?: number
+  /** 游标：只取 id 小于它的（即更早的记录） */
+  before?: number
+}
+
+export interface McpDiagnosticPage {
+  /** 按 id 倒序（最新在前） */
+  entries: McpDiagnosticEntry[]
+  /** 满足筛选条件的**总条数**（不含游标，所以翻页时不会越翻越小） */
+  total: number
+  /** 其中带 error 的条数 */
+  errorCount: number
+  /** 还有更早的记录：把最后一条的 `id` 当下一轮的 `before` */
+  hasMore: boolean
+}

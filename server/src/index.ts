@@ -5,11 +5,13 @@ import Fastify from 'fastify'
 import type { ApiError, ErrorCode } from '@shared/errors'
 import { closeDb } from './db/index.js'
 import { importProfiles } from './db/profiles.js'
+import { RequestError } from './lib/errors.js'
 import { GatewayError, McpGateway } from './mcp/gateway.js'
 import { loadMcpRegistry } from './mcp/registry.js'
 import { ProviderError } from './providers/errors.js'
 import { LlmRegistry, loadProfiles } from './providers/registry.js'
 import { registerChatRoutes } from './routes/chat.js'
+import { registerDiagnosticRoutes } from './routes/diagnostics.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerProviderRoutes } from './routes/providers.js'
 
@@ -42,7 +44,7 @@ function statusForCode(code: ErrorCode): number {
 
 // 统一错误映射：业务错误一律 ApiError 形状，错误不静默
 app.setErrorHandler((err: unknown, _req, reply) => {
-  if (err instanceof GatewayError || err instanceof ProviderError) {
+  if (err instanceof GatewayError || err instanceof ProviderError || err instanceof RequestError) {
     const body: ApiError = { error: { code: err.code, message: err.message, detail: err.detail } }
     return reply.status(statusForCode(err.code)).send(body)
   }
@@ -55,6 +57,7 @@ app.setErrorHandler((err: unknown, _req, reply) => {
 
 const gateway = new McpGateway(loadMcpRegistry(), app.log)
 registerHealthRoutes(app, gateway)
+registerDiagnosticRoutes(app)
 
 // LLM 方案：**服务端 SQLite 是权威源**（见 db/profiles.ts）。
 // 环境变量 HABITAT_LLM_PROFILES 仅作**首次种子**：表为空时导入一次，之后改 .env 不再生效（以设置页为准）
