@@ -22,7 +22,7 @@ export function BackupPanel() {
       const backup = await exportAll()
       downloadBackup(backup)
       setIsError(false)
-      const homeCount = backup.moments.length + backup.wishlist.length + backup.countdowns.length + backup.diaries.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length
+      const homeCount = backup.moments.length + backup.wishlist.length + backup.countdowns.length + backup.diaries.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.musicTracks.length + backup.studyRecords.length
       setMessage(`已导出 ${backup.sessions.length} 个会话、${backup.messages.length} 条消息、${homeCount} 条生活记录`)
     } catch (err: unknown) {
       log.error('导出备份失败', err)
@@ -55,7 +55,7 @@ export function BackupPanel() {
       }
       const counts = await importAll(raw)
       setIsError(false)
-      const homeCount = counts.moments + counts.wishlist + counts.countdowns + counts.diaries + counts.bookmarks + counts.artworks + counts.photos
+      const homeCount = counts.moments + counts.wishlist + counts.countdowns + counts.diaries + counts.bookmarks + counts.artworks + counts.photos + counts.readingNotes + counts.musicTracks + counts.studyRecords
       setMessage(`导入完成：${counts.sessions} 个会话、${counts.messages} 条消息、${homeCount} 条生活记录。刷新页面后生效。`)
       setPendingFile(null)
       if (input !== null) input.value = ''

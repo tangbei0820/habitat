@@ -7,6 +7,9 @@ import { DiaryModule } from '../../features/home/DiaryModule'
 import { BookmarksModule } from '../../features/home/BookmarksModule'
 import { WorksModule } from '../../features/home/WorksModule'
 import { AlbumModule } from '../../features/home/AlbumModule'
+import { ReadingModule } from '../../features/home/ReadingModule'
+import { MusicModule } from '../../features/home/MusicModule'
+import { StudyModule } from '../../features/home/StudyModule'
 
 function moduleContent(module: string | undefined, name: string) {
   if (module === 'board') return <BoardModule />
@@ -16,6 +19,9 @@ function moduleContent(module: string | undefined, name: string) {
   if (module === 'bookmarks') return <BookmarksModule />
   if (module === 'works') return <WorksModule />
   if (module === 'album') return <AlbumModule />
+  if (module === 'reading') return <ReadingModule />
+  if (module === 'music') return <MusicModule />
+  if (module === 'study') return <StudyModule />
   return (
     <div
       className="rounded-lg border p-6 text-center text-sm"

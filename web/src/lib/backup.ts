@@ -13,14 +13,17 @@ import type {
   CountdownDay,
   Diary,
   Moment,
+  MusicTrack,
   Photo,
+  ReadingNote,
+  StudyRecord,
   WishlistItem,
 } from '@shared/types'
 import { MAX_PHOTO_BYTES } from '@shared/types'
 import { db } from '../db/db'
 
 export const BACKUP_FORMAT = 'habitat-backup'
-export const BACKUP_VERSION = 4
+export const BACKUP_VERSION = 5
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -35,6 +38,9 @@ export interface HabitatBackup {
   bookmarks: Bookmark[]
   artworks: Artwork[]
   photos: Photo[]
+  readingNotes: ReadingNote[]
+  musicTracks: MusicTrack[]
+  studyRecords: StudyRecord[]
 }
 
 export interface BackupCounts {
@@ -47,10 +53,13 @@ export interface BackupCounts {
   bookmarks: number
   artworks: number
   photos: number
+  readingNotes: number
+  musicTracks: number
+  studyRecords: number
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, messages, moments, wishlist, countdowns, diaries, bookmarks, artworks, photos] = await Promise.all([
+  const [sessions, messages, moments, wishlist, countdowns, diaries, bookmarks, artworks, photos, readingNotes, musicTracks, studyRecords] = await Promise.all([
     db.sessions.toArray(),
     db.messages.toArray(),
     db.moments.toArray(),
@@ -60,6 +69,9 @@ export async function exportAll(): Promise<HabitatBackup> {
     db.bookmarks.toArray(),
     db.artworks.toArray(),
     db.photos.toArray(),
+    db.readingNotes.toArray(),
+    db.musicTracks.toArray(),
+    db.studyRecords.toArray(),
   ])
   return {
     format: BACKUP_FORMAT,
@@ -74,6 +86,9 @@ export async function exportAll(): Promise<HabitatBackup> {
     bookmarks,
     artworks,
     photos,
+    readingNotes,
+    musicTracks,
+    studyRecords,
   }
 }
 
@@ -137,7 +152,7 @@ function looksLikeBookmark(value: unknown): value is Bookmark {
     typeof value.title !== 'string' ||
     (value.note !== null && typeof value.note !== 'string')
   ) return false
-  const targetTypes = ['external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note']
+  const targetTypes = ['external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'music-track', 'study-record']
   if (!targetTypes.includes(value.targetType)) return false
   if (value.targetType !== 'external-link') return true
   try {
@@ -194,6 +209,36 @@ function looksLikePhoto(value: unknown): value is Photo {
   return Math.floor(payload.length * 3 / 4) - padding === value.sizeBytes
 }
 
+function looksLikeReadingNote(value: unknown): value is ReadingNote {
+  return (
+    isRecord(value) && typeof value.id === 'string' && value.type === 'reading-note' &&
+    typeof value.bookTitle === 'string' && (value.author === null || typeof value.author === 'string') &&
+    ['want', 'reading', 'finished'].includes(String(value.status)) && typeof value.note === 'string'
+  )
+}
+
+function looksLikeMusicTrack(value: unknown): value is MusicTrack {
+  if (
+    !isRecord(value) || typeof value.id !== 'string' || value.type !== 'music-track' || typeof value.title !== 'string' ||
+    (value.artist !== null && typeof value.artist !== 'string') || (value.note !== null && typeof value.note !== 'string') ||
+    (value.externalUrl !== null && typeof value.externalUrl !== 'string')
+  ) return false
+  if (value.externalUrl === null) return true
+  try {
+    const url = new URL(value.externalUrl)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch { return false }
+}
+
+function looksLikeStudyRecord(value: unknown): value is StudyRecord {
+  return (
+    isRecord(value) && typeof value.id === 'string' && value.type === 'study-record' &&
+    typeof value.subject === 'string' && typeof value.note === 'string' && typeof value.studiedOn === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value.studiedOn) && Number.isInteger(value.durationMinutes) &&
+    (value.durationMinutes as number) >= 1 && (value.durationMinutes as number) <= 1440
+  )
+}
+
 /**
  * 恢复备份：**整体替换**现有数据（导入语义是「回到备份那一刻」，不是合并）。
  * 先完整校验再动库 —— 校验不过一行都不写，避免半导入状态。
@@ -202,7 +247,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   if (!isRecord(raw) || raw.format !== BACKUP_FORMAT) {
     throw new Error('不是栖息地备份文件（缺少 format 标识）')
   }
-  if (raw.version !== 1 && raw.version !== 2 && raw.version !== 3 && raw.version !== BACKUP_VERSION) {
+  if (![1, 2, 3, 4, BACKUP_VERSION].includes(raw.version as number)) {
     throw new Error(`备份版本不匹配：文件是 v${String(raw.version)}，当前支持 v1–v${BACKUP_VERSION}`)
   }
   if (!Array.isArray(raw.sessions) || !Array.isArray(raw.messages)) {
@@ -229,8 +274,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   }
 
   // v3 新增日记与收藏；v1/v2 导入时这两张表为空，继续遵守“整体替换”语义。
-  const diariesRaw = raw.version === 3 || raw.version === 4 ? raw.diaries : []
-  const bookmarksRaw = raw.version === 3 || raw.version === 4 ? raw.bookmarks : []
+  const diariesRaw = raw.version === 3 || raw.version === 4 || raw.version === 5 ? raw.diaries : []
+  const bookmarksRaw = raw.version === 3 || raw.version === 4 || raw.version === 5 ? raw.bookmarks : []
   if (!Array.isArray(diariesRaw) || !Array.isArray(bookmarksRaw)) {
     throw new Error('备份内容损坏：diaries / bookmarks 必须是数组')
   }
@@ -241,8 +286,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   }
 
   // v4 新增作品与相册；旧版导入时清空新表，保持整体替换的确定性。
-  const artworksRaw = raw.version === 4 ? raw.artworks : []
-  const photosRaw = raw.version === 4 ? raw.photos : []
+  const artworksRaw = raw.version === 4 || raw.version === 5 ? raw.artworks : []
+  const photosRaw = raw.version === 4 || raw.version === 5 ? raw.photos : []
   if (!Array.isArray(artworksRaw) || !Array.isArray(photosRaw)) {
     throw new Error('备份内容损坏：artworks / photos 必须是数组')
   }
@@ -252,7 +297,21 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：存在无法识别的作品或照片')
   }
 
-  await db.transaction('rw', [db.sessions, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks, db.artworks, db.photos], async () => {
+  // v5 新增读书、音乐与学习；旧版导入时清空新表。
+  const readingNotesRaw = raw.version === 5 ? raw.readingNotes : []
+  const musicTracksRaw = raw.version === 5 ? raw.musicTracks : []
+  const studyRecordsRaw = raw.version === 5 ? raw.studyRecords : []
+  if (!Array.isArray(readingNotesRaw) || !Array.isArray(musicTracksRaw) || !Array.isArray(studyRecordsRaw)) {
+    throw new Error('备份内容损坏：readingNotes / musicTracks / studyRecords 必须是数组')
+  }
+  const readingNotes = readingNotesRaw.filter(looksLikeReadingNote)
+  const musicTracks = musicTracksRaw.filter(looksLikeMusicTrack)
+  const studyRecords = studyRecordsRaw.filter(looksLikeStudyRecord)
+  if (readingNotes.length !== readingNotesRaw.length || musicTracks.length !== musicTracksRaw.length || studyRecords.length !== studyRecordsRaw.length) {
+    throw new Error('备份内容损坏：存在无法识别的读书、音乐或学习记录')
+  }
+
+  await db.transaction('rw', [db.sessions, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks, db.artworks, db.photos, db.readingNotes, db.musicTracks, db.studyRecords], async () => {
     await db.sessions.clear()
     await db.messages.clear()
     await db.moments.clear()
@@ -262,6 +321,9 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.bookmarks.clear()
     await db.artworks.clear()
     await db.photos.clear()
+    await db.readingNotes.clear()
+    await db.musicTracks.clear()
+    await db.studyRecords.clear()
     await db.sessions.bulkAdd(sessions)
     await db.messages.bulkAdd(messages)
     await db.moments.bulkAdd(moments)
@@ -271,6 +333,9 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.bookmarks.bulkAdd(bookmarks)
     await db.artworks.bulkAdd(artworks)
     await db.photos.bulkAdd(photos)
+    await db.readingNotes.bulkAdd(readingNotes)
+    await db.musicTracks.bulkAdd(musicTracks)
+    await db.studyRecords.bulkAdd(studyRecords)
   })
   return {
     sessions: sessions.length,
@@ -282,5 +347,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     bookmarks: bookmarks.length,
     artworks: artworks.length,
     photos: photos.length,
+    readingNotes: readingNotes.length,
+    musicTracks: musicTracks.length,
+    studyRecords: studyRecords.length,
   }
 }

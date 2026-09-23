@@ -8,6 +8,10 @@ import {
   type Moment,
   type Photo,
   type PhotoMime,
+  type ReadingNote,
+  type ReadingStatus,
+  type MusicTrack,
+  type StudyRecord,
   type WishlistItem,
 } from '@shared/types'
 import { db } from './db'
@@ -294,4 +298,92 @@ export async function createPhoto(input: {
 
 export async function deletePhoto(id: string): Promise<void> {
   await db.photos.delete(id)
+}
+
+const READING_STATUSES: readonly ReadingStatus[] = ['want', 'reading', 'finished']
+
+export async function listReadingNotes(): Promise<ReadingNote[]> {
+  return db.readingNotes.orderBy('updatedAt').reverse().toArray()
+}
+
+export async function createReadingNote(bookTitle: string, author: string, status: ReadingStatus, note: string): Promise<ReadingNote> {
+  if (!READING_STATUSES.includes(status)) throw new Error('阅读状态无效')
+  const at = Date.now()
+  const item: ReadingNote = {
+    id: nowId('reading'), type: 'reading-note', bookTitle: requiredText(bookTitle, '书名'),
+    author: author.trim() === '' ? null : author.trim(), status, note: requiredText(note, '读书笔记'), createdAt: at, updatedAt: at,
+  }
+  await db.readingNotes.add(item)
+  return item
+}
+
+export async function updateReadingNote(id: string, bookTitle: string, author: string, status: ReadingStatus, note: string): Promise<void> {
+  if (!READING_STATUSES.includes(status)) throw new Error('阅读状态无效')
+  const changed = await db.readingNotes.update(id, {
+    bookTitle: requiredText(bookTitle, '书名'), author: author.trim() === '' ? null : author.trim(),
+    status, note: requiredText(note, '读书笔记'), updatedAt: Date.now(),
+  })
+  if (changed === 0) throw new Error('这条读书笔记已经不存在')
+}
+
+export async function deleteReadingNote(id: string): Promise<void> {
+  await db.readingNotes.delete(id)
+}
+
+export async function listMusicTracks(): Promise<MusicTrack[]> {
+  return db.musicTracks.orderBy('updatedAt').reverse().toArray()
+}
+
+export async function createMusicTrack(title: string, artist: string, note: string, externalUrl: string): Promise<MusicTrack> {
+  const at = Date.now()
+  const item: MusicTrack = {
+    id: nowId('music'), type: 'music-track', title: requiredText(title, '歌曲名称'),
+    artist: artist.trim() === '' ? null : artist.trim(), note: note.trim() === '' ? null : note.trim(),
+    externalUrl: optionalHttpUrl(externalUrl), createdAt: at, updatedAt: at,
+  }
+  await db.musicTracks.add(item)
+  return item
+}
+
+export async function updateMusicTrack(id: string, title: string, artist: string, note: string, externalUrl: string): Promise<void> {
+  const changed = await db.musicTracks.update(id, {
+    title: requiredText(title, '歌曲名称'), artist: artist.trim() === '' ? null : artist.trim(),
+    note: note.trim() === '' ? null : note.trim(), externalUrl: optionalHttpUrl(externalUrl), updatedAt: Date.now(),
+  })
+  if (changed === 0) throw new Error('这条音乐记录已经不存在')
+}
+
+export async function deleteMusicTrack(id: string): Promise<void> {
+  await db.musicTracks.delete(id)
+}
+
+function requiredDuration(value: number): number {
+  if (!Number.isInteger(value) || value < 1 || value > 1440) throw new Error('学习时长需为 1–1440 分钟的整数')
+  return value
+}
+
+export async function listStudyRecords(): Promise<StudyRecord[]> {
+  return db.studyRecords.orderBy('studiedOn').reverse().toArray()
+}
+
+export async function createStudyRecord(subject: string, note: string, studiedOn: string, durationMinutes: number): Promise<StudyRecord> {
+  const at = Date.now()
+  const item: StudyRecord = {
+    id: nowId('study'), type: 'study-record', subject: requiredText(subject, '学习主题'), note: requiredText(note, '学习记录'),
+    studiedOn: requiredDate(studiedOn), durationMinutes: requiredDuration(durationMinutes), createdAt: at, updatedAt: at,
+  }
+  await db.studyRecords.add(item)
+  return item
+}
+
+export async function updateStudyRecord(id: string, subject: string, note: string, studiedOn: string, durationMinutes: number): Promise<void> {
+  const changed = await db.studyRecords.update(id, {
+    subject: requiredText(subject, '学习主题'), note: requiredText(note, '学习记录'), studiedOn: requiredDate(studiedOn),
+    durationMinutes: requiredDuration(durationMinutes), updatedAt: Date.now(),
+  })
+  if (changed === 0) throw new Error('这条学习记录已经不存在')
+}
+
+export async function deleteStudyRecord(id: string): Promise<void> {
+  await db.studyRecords.delete(id)
 }

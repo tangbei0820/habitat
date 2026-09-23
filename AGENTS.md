@@ -30,7 +30,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar                                 |
-| 当前阶段 | **Phase 2 进行中**：留言板 / 愿望清单 / 倒数日 / 日记 / 收藏 / 作品 / 相册已落地并验收；下一切片读书 + 音乐 + 学习 |
+| 当前阶段 | **Phase 2 已完成**：十个 Home 生活模块、Dexie v7、备份 v5 与完整浏览器验收已收口；下一阶段 Phase 3A 长期记忆（Nocturne） |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -213,7 +213,15 @@ habitat/
   - 备份升 v4，保持 v1–v3 导入兼容；危险协议、非白名单 / 超限 / 体积不符图片在写库前拒绝
   - 验收：`verify-home.mjs` 18/18，`verify-chat.mjs` 36/36
 
-**下一步**：Phase 2 第四切片（读书 + 音乐 + 学习）。
+- **Phase 2 · 第四批（收尾）：读书 + 音乐 + 学习**（2026-09-23）
+  - `shared`：`ReadingNote` / `MusicTrack` / `StudyRecord`；`web`：Dexie v7 三表与仓储层
+  - 三模块均支持新增 / 编辑 / 二次确认删除；音乐外链限 HTTP(S)，学习时长限 1–1440 分钟整数
+  - 备份升 v5，十类 Home 数据原子恢复并保持 v1–v4 导入兼容
+  - 验收：`verify-home.mjs` 23/23，`verify-chat.mjs` 36/36
+
+**Phase 2（Home 生活模块）已完成**
+
+**下一步**：Phase 3A 长期记忆接入（Nocturne，经 MCP Gateway 单通道）。
 
 **本地验收方式**
 
@@ -223,7 +231,7 @@ habitat/
 - 验证方案路由：起 mock 上游 + server 后 `npx tsx scripts/probe-providers.ts`（52 项断言）
 - 验证诊断端点：起 server（自己指定 `HABITAT_DB_PATH`）后 `npx tsx scripts/probe-diagnostics.ts`（48 项断言）
 - 验证诊断保留策略：`npx tsx scripts/probe-diag-retention.ts`（15 项断言，**自带一次性临时库，不需要 server**，也不碰真实记录）
-- 端到端（前端）：`node web/scripts/verify-chat.mjs`（36 项）/ `node web/scripts/verify-providers.mjs`（22 项）/ `node web/scripts/verify-diagnostics.mjs`（36 项）/ `node web/scripts/verify-home.mjs`（18 项）（前置条件见各自文件头注释）
+- 端到端（前端）：`node web/scripts/verify-chat.mjs`（36 项）/ `node web/scripts/verify-providers.mjs`（22 项）/ `node web/scripts/verify-diagnostics.mjs`（36 项）/ `node web/scripts/verify-home.mjs`（23 项）（前置条件见各自文件头注释）
 - ⚠️ **`verify-diagnostics.mjs` 要用 Node ≥ 22 跑**：它用内置 `WebSocket` 驱动 CDP、用内置 `node:sqlite` 写 fixture（刻意避开 `better-sqlite3` —— 那是 Node 20 的 ABI）
 - ⚠️ **跑 `server` 必须用 Node 20**：`better-sqlite3` 原生模块的 ABI 与安装时的 Node 绑定，
   用其它版本会 `ERR_DLOPEN_FAILED`（详见 `README.md` 环境要求）

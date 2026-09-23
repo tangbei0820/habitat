@@ -188,6 +188,8 @@ export type BookmarkTargetType =
   | 'artwork'
   | 'photo'
   | 'reading-note'
+  | 'music-track'
+  | 'study-record'
 
 export interface Bookmark extends BaseObject {
   type: 'bookmark'
@@ -219,6 +221,33 @@ export interface Photo extends BaseObject {
   mimeType: PhotoMime
   sizeBytes: number
   takenAt: string
+}
+
+export type ReadingStatus = 'want' | 'reading' | 'finished'
+
+export interface ReadingNote extends BaseObject {
+  type: 'reading-note'
+  bookTitle: string
+  author: string | null
+  status: ReadingStatus
+  note: string
+}
+
+export interface MusicTrack extends BaseObject {
+  type: 'music-track'
+  title: string
+  artist: string | null
+  note: string | null
+  externalUrl: string | null
+}
+
+/** `studiedOn` 是本地日期；时长统一存分钟，避免展示层反复换算。 */
+export interface StudyRecord extends BaseObject {
+  type: 'study-record'
+  subject: string
+  note: string
+  studiedOn: string
+  durationMinutes: number
 }
 
 /* ---------- LLM 方案（§6.2 ApiProfile / §7.1 多方案管理） ---------- */

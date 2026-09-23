@@ -1,5 +1,5 @@
 /**
- * Phase 2 Home 前三批验收：留言板 / 愿望清单 / 倒数日 / 日记 / 收藏 / 作品 / 相册 + Dexie v6 持久化。
+ * Phase 2 Home 完整验收：十个生活模块 + Dexie v7 持久化。
  * 前置：vite + 无头 Edge CDP；用 Node >= 22 运行（需全局 WebSocket）。
  * 请使用隔离的浏览器 profile：验收最后会导入一份空 v1 备份来验兼容性。
  */
@@ -76,6 +76,17 @@ async function setValue(selector, value) {
   })()`)
 }
 
+async function setSelect(selector, value) {
+  await evaluate(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)})
+    if (!(element instanceof HTMLSelectElement)) return false
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set
+    setter.call(element, ${JSON.stringify(value)})
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+    return true
+  })()`)
+}
+
 async function clickButton(label) {
   return evaluate(`(() => {
     const button = [...document.querySelectorAll('button')].find((item) => item.textContent.trim() === ${JSON.stringify(label)})
@@ -96,7 +107,7 @@ await send('Page.enable')
 
 await navigate('/home', '留言板')
 const homeText = await evaluate('document.body.innerText')
-check('首页七个已接入入口可见', ['留言板', '愿望清单', '倒数日', '日记', '收藏', '作品', '相册'].every((text) => homeText.includes(text)))
+check('首页十个生活入口全部可见', ['留言板', '愿望清单', '倒数日', '日记', '收藏', '作品', '相册', '读书', '音乐', '学习'].every((text) => homeText.includes(text)))
 
 await navigate('/home/board', '留下一句话')
 await setValue('#board-draft', '第一条生活留言')
@@ -201,12 +212,60 @@ await sleep(500)
 await waitFor(`document.body.innerText.includes('一像素的纪念') && document.querySelector('img[alt="一像素的纪念"]') !== null`, '照片刷新保留')
 check('相册保存实际图片数据并跨刷新显示', true)
 
+await navigate('/home/reading', '记一页阅读')
+await setValue('#reading-title', '人类群星闪耀时')
+await setValue('#reading-author', '斯蒂芬·茨威格')
+await setValue('#reading-note', '先记下一段初读感受。')
+await clickButton('保存笔记')
+await waitFor(`document.body.innerText.includes('人类群星闪耀时') && document.body.innerText.includes('先记下一段初读感受。')`, '读书笔记落地')
+await clickButton('编辑')
+await waitFor(`document.body.innerText.includes('编辑读书笔记')`, '进入读书笔记编辑')
+await setSelect('#reading-status', 'finished')
+await setValue('#reading-note', '读完后留下完整感受。')
+await clickButton('保存修改')
+await send('Page.reload'); await sleep(500)
+await waitFor(`document.body.innerText.includes('读完') && document.body.innerText.includes('读完后留下完整感受。')`, '读书笔记刷新保留')
+check('读书笔记新增、状态编辑并跨刷新保留', true)
+
+await navigate('/home/music', '收下一首歌')
+await setValue('#music-title', '共同生活的歌')
+await setValue('#music-artist', '小栖')
+await setValue('#music-note', '适合在傍晚一起听。')
+await setValue('#music-url', 'https://example.com/music')
+await clickButton('保存音乐')
+await waitFor(`document.body.innerText.includes('共同生活的歌')`, '音乐记录落地')
+await clickButton('编辑')
+await waitFor(`document.body.innerText.includes('编辑音乐记录')`, '进入音乐编辑')
+await setValue('#music-note', '适合在每个傍晚一起听。')
+await clickButton('保存修改')
+await send('Page.reload'); await sleep(500)
+await waitFor(`document.body.innerText.includes('每个傍晚') && document.querySelector('a[href="https://example.com/music"]') !== null`, '音乐记录刷新保留')
+const musicLink = await evaluate(`(() => { const link = document.querySelector('a[href="https://example.com/music"]'); return link ? { target: link.target, rel: link.rel } : null })()`)
+check('音乐记录新增、编辑并安全打开外链', musicLink?.target === '_blank' && musicLink?.rel.includes('noreferrer'), JSON.stringify(musicLink))
+
+await navigate('/home/study', '记一次学习')
+await setValue('#study-subject', 'TypeScript strict')
+await setValue('#study-date', '2026-09-23')
+await setValue('#study-duration', '45')
+await setValue('#study-note', '把类型边界收紧。')
+await clickButton('保存记录')
+await waitFor(`document.body.innerText.includes('TypeScript strict') && document.body.innerText.includes('45 分钟')`, '学习记录落地')
+await clickButton('编辑')
+await waitFor(`document.body.innerText.includes('编辑学习记录')`, '进入学习编辑')
+await setValue('#study-duration', '60')
+await setValue('#study-note', '把类型与备份边界一起收紧。')
+await clickButton('保存修改')
+await send('Page.reload'); await sleep(500)
+await waitFor(`document.body.innerText.includes('共 60 分钟') && document.body.innerText.includes('备份边界')`, '学习记录刷新保留')
+check('学习记录新增、编辑、汇总并跨刷新保留', true)
+
 const backupCheck = await evaluate(`(async () => {
   const backupModule = await import('/src/lib/backup.ts')
   const backup = await backupModule.exportAll()
   const restored = await backupModule.importAll(backup)
   let unsafeBookmarkRejected = false
   let unsafePhotoRejected = false
+  let unsafeMusicRejected = false
   try {
     await backupModule.importAll({
       ...backup,
@@ -230,6 +289,21 @@ const backupCheck = await evaluate(`(async () => {
   } catch {
     unsafePhotoRejected = true
   }
+  try {
+    await backupModule.importAll({
+      ...backup,
+      musicTracks: [{
+        id: 'unsafe-music', type: 'music-track', title: 'unsafe', artist: null, note: null,
+        externalUrl: 'javascript:alert(1)', createdAt: Date.now(), updatedAt: Date.now(),
+      }],
+    })
+  } catch {
+    unsafeMusicRejected = true
+  }
+  const legacyV4 = await backupModule.importAll({
+    format: 'habitat-backup', version: 4, exportedAt: Date.now(), sessions: [], messages: [],
+    moments: [], wishlist: [], countdowns: [], diaries: [], bookmarks: [], artworks: [], photos: [],
+  })
   const legacyV3 = await backupModule.importAll({
     format: 'habitat-backup',
     version: 3,
@@ -255,18 +329,22 @@ const backupCheck = await evaluate(`(async () => {
   })
   return {
     version: backup.version,
-    exportedHome: backup.moments.length + backup.wishlist.length + backup.countdowns.length + backup.diaries.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length,
-    restoredHome: restored.moments + restored.wishlist + restored.countdowns + restored.diaries + restored.bookmarks + restored.artworks + restored.photos,
+    exportedHome: backup.moments.length + backup.wishlist.length + backup.countdowns.length + backup.diaries.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.musicTracks.length + backup.studyRecords.length,
+    restoredHome: restored.moments + restored.wishlist + restored.countdowns + restored.diaries + restored.bookmarks + restored.artworks + restored.photos + restored.readingNotes + restored.musicTracks + restored.studyRecords,
     unsafeBookmarkRejected,
     unsafePhotoRejected,
+    unsafeMusicRejected,
+    legacyV4NewTables: legacyV4.readingNotes + legacyV4.musicTracks + legacyV4.studyRecords,
     legacyV3NewTables: legacyV3.artworks + legacyV3.photos,
     legacyV2NewTables: legacyV2.diaries + legacyV2.bookmarks,
-    legacyV1Home: legacyV1.moments + legacyV1.wishlist + legacyV1.countdowns + legacyV1.diaries + legacyV1.bookmarks + legacyV1.artworks + legacyV1.photos,
+    legacyV1Home: legacyV1.moments + legacyV1.wishlist + legacyV1.countdowns + legacyV1.diaries + legacyV1.bookmarks + legacyV1.artworks + legacyV1.photos + legacyV1.readingNotes + legacyV1.musicTracks + legacyV1.studyRecords,
   }
 })()`)
-check('备份 v4 覆盖七类 Home 数据并可整体恢复', backupCheck.version === 4 && backupCheck.exportedHome >= 6 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
+check('备份 v5 覆盖十类 Home 数据并可整体恢复', backupCheck.version === 5 && backupCheck.exportedHome >= 9 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
 check('备份导入拒绝非 HTTP(S) 的外部收藏', backupCheck.unsafeBookmarkRejected === true)
 check('备份导入拒绝 SVG 等非白名单图片', backupCheck.unsafePhotoRejected === true)
+check('备份导入拒绝音乐记录中的危险协议', backupCheck.unsafeMusicRejected === true)
+check('旧 v4 备份仍可导入，末批三表按空处理', backupCheck.legacyV4NewTables === 0)
 check('旧 v3 备份仍可导入，作品与相册按空处理', backupCheck.legacyV3NewTables === 0)
 check('旧 v2 备份仍可导入，新增两表按空处理', backupCheck.legacyV2NewTables === 0)
 check('旧 v1 聊天备份仍可导入', backupCheck.legacyV1Home === 0)
@@ -278,7 +356,7 @@ const dbShape = await evaluate(`(async () => {
   db.close()
   return value
 })()`)
-check('Dexie 已升到 v6 且七张 Home 表齐全', dbShape.version === 60 && ['moments', 'wishlist', 'countdowns', 'diaries', 'bookmarks', 'artworks', 'photos'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
+check('Dexie 已升到 v7 且十张 Home 表齐全', dbShape.version === 70 && ['moments', 'wishlist', 'countdowns', 'diaries', 'bookmarks', 'artworks', 'photos', 'readingNotes', 'musicTracks', 'studyRecords'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
 check('控制台无异常', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '))
 
 const passed = results.filter(Boolean).length

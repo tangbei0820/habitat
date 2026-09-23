@@ -8,6 +8,9 @@ import type {
   Diary,
   Moment,
   Photo,
+  ReadingNote,
+  MusicTrack,
+  StudyRecord,
   WishlistItem,
 } from '@shared/types'
 
@@ -32,6 +35,9 @@ export class HabitatDb extends Dexie {
   bookmarks!: Table<Bookmark, string>
   artworks!: Table<Artwork, string>
   photos!: Table<Photo, string>
+  readingNotes!: Table<ReadingNote, string>
+  musicTracks!: Table<MusicTrack, string>
+  studyRecords!: Table<StudyRecord, string>
 
   constructor() {
     super('habitat-db')
@@ -77,6 +83,21 @@ export class HabitatDb extends Dexie {
       bookmarks: 'id, targetType, targetId, createdAt, &[targetType+targetId]',
       artworks: 'id, category, createdAt, updatedAt',
       photos: 'id, takenAt, createdAt',
+    })
+    // Phase 2 第四批：读书 + 音乐 + 学习。
+    this.version(7).stores({
+      sessions: 'id, updatedAt, pinnedAt, archivedAt',
+      messages: 'id, sessionId, createdAt, [sessionId+createdAt+id]',
+      moments: 'id, createdAt, author',
+      wishlist: 'id, status, createdAt, updatedAt',
+      countdowns: 'id, targetDate, createdAt',
+      diaries: 'id, entryDate, createdAt, updatedAt',
+      bookmarks: 'id, targetType, targetId, createdAt, &[targetType+targetId]',
+      artworks: 'id, category, createdAt, updatedAt',
+      photos: 'id, takenAt, createdAt',
+      readingNotes: 'id, status, createdAt, updatedAt',
+      musicTracks: 'id, createdAt, updatedAt',
+      studyRecords: 'id, studiedOn, createdAt, updatedAt',
     })
   }
 }
