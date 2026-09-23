@@ -46,6 +46,8 @@
 - [x] ~~**备份下载时 `URL.revokeObjectURL` 紧跟 `click()`**~~ —— 已修（T-009）：改为下一个事件循环再释放，避免 Firefox / 大文件被提前截断。
 - [ ] **验收脚本对环境前提有隐含依赖** —— 已抓到的两类：`probe-providers.ts` 原先断言「新建方案不抢默认」，隐含假设库里已有默认方案，在**空库**上必然假失败（已改成显式造出前提）；`verify-providers.mjs` 则明确要求库里已有一个带密钥的种子方案（靠 `.env`）。→ 新脚本一律把前提**写进断言或自建**，别依赖环境碰巧的样子。
 - [ ] **相册用 data URL 存原图，容量增长较快** —— 现阶段单张已限 3 MB、格式白名单并校验真实 base64 体积，但 base64 本身约有 33% 膨胀，导出的 JSON 也会把原图一起带上。→ 真实照片量上来后改 Blob / OPFS + 缩略图，并补总容量提示；切换存储前必须先做无损迁移与备份兼容。
+- [ ] **公网 Demo 只验到「客户端代码」，自部署实例仍未验** —— T-013 用 Nocturne 官方只读 Demo（`https://misaligned.top/mcp`）跑通了真实 Streamable HTTP 握手、工具清单与 `system://boot`，但它**不是** `beiyan.cc` 上那个实例：Bearer Token、`X-Namespace`、Caddy 反代与内网回源这几段都还没走过。→ 部署链路验证仍属风险 1 的未结部分，接阿里云时按 §4 拓扑逐段验。
+- [ ] **`gateway.connectAll()` 会阻塞服务启动** —— `main.ts` 在 `app.listen()` **之前** `await gateway.connectAll()`，而 SDK 的默认请求超时是 60s。MCP server 挂着时启动会被拖住（公网 Demo 实测握手 2.2–4.6s，单机同机部署可忽略）。→ 给 `connect()` 加显式超时，或把 `connectAll()` 从启动路径摘出去改成后台重试（`diagnostics()` 已经有重连能力，接上定时器即可）。
 
 ### 低 —— 开发工具与体验毛刺
 

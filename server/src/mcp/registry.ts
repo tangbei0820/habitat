@@ -9,6 +9,8 @@ export interface McpServerConfig {
   url: string | null
   /** 可选 Bearer token */
   token: string | null
+  /** 不含凭据的附加头；Nocturne 用 X-Namespace 隔离人格。 */
+  headers?: Record<string, string>
 }
 
 export function loadMcpRegistry(env: NodeJS.ProcessEnv = process.env): McpServerConfig[] {
@@ -17,6 +19,9 @@ export function loadMcpRegistry(env: NodeJS.ProcessEnv = process.env): McpServer
       id: 'nocturne',
       url: env.MCP_NOCTURNE_URL ?? null,
       token: env.MCP_NOCTURNE_TOKEN ?? null,
+      headers: env.MCP_NOCTURNE_NAMESPACE?.trim()
+        ? { 'X-Namespace': env.MCP_NOCTURNE_NAMESPACE.trim() }
+        : undefined,
     },
   ]
 }

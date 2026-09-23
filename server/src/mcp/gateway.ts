@@ -218,7 +218,7 @@ export class McpGateway implements ToolGateway {
     rt.state = 'connecting'
     const started = Date.now()
     try {
-      const headers: Record<string, string> = {}
+      const headers: Record<string, string> = { ...rt.config.headers }
       if (rt.config.token) headers.Authorization = `Bearer ${rt.config.token}`
       const transport = new StreamableHTTPClientTransport(new URL(rt.config.url), {
         requestInit: { headers },

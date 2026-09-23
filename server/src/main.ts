@@ -11,10 +11,12 @@ import { GatewayError, McpGateway } from './mcp/gateway.js'
 import { loadMcpRegistry } from './mcp/registry.js'
 import { ProviderError } from './providers/errors.js'
 import { LlmRegistry, loadProfiles } from './providers/registry.js'
+import { NocturneMemoryProvider } from './providers/nocturne-memory.js'
 import { registerChatRoutes } from './routes/chat.js'
 import { registerDiagnosticRoutes } from './routes/diagnostics.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerProviderRoutes } from './routes/providers.js'
+import { registerMemoryRoutes } from './routes/memory.js'
 
 const app = Fastify({
   logger: {
@@ -60,8 +62,10 @@ app.setErrorHandler((err: unknown, _req, reply) => {
 })
 
 const gateway = new McpGateway(loadMcpRegistry(), app.log)
+const memoryProvider = new NocturneMemoryProvider(gateway)
 registerHealthRoutes(app, gateway)
 registerDiagnosticRoutes(app)
+registerMemoryRoutes(app, memoryProvider)
 
 // LLM 方案：**服务端 SQLite 是权威源**（见 db/profiles.ts）。
 // 环境变量 HABITAT_LLM_PROFILES 仅作**首次种子**：从未导入过时一次性导入，之后改 .env 不再生效

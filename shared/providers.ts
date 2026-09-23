@@ -80,13 +80,44 @@ export interface LLMProvider {
   listModels(opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<string[]>
 }
 
+/* ---------- Memory（§7.1）：Nocturne 文本型 URI 图谱契约 ---------- */
+
+export interface MemoryTextResult {
+  /** Nocturne 工具返回的是给模型阅读的文本，不依赖其内部数据库 schema。 */
+  text: string
+}
+
+export interface MemorySearchOptions {
+  domain?: string
+  limit?: number
+}
+
+export interface MemoryCreateInput {
+  parentUri: string
+  content: string
+  priority: number
+  disclosure: string
+  title?: string
+}
+
+export interface MemoryUpdateInput {
+  uri: string
+  /** 精确 / `...` 块匹配；必须和 newString 同时出现。 */
+  oldString?: string
+  newString?: string
+  /** 与替换模式互斥。Nocturne 刻意不提供全文覆盖。 */
+  append?: string
+  priority?: number
+  disclosure?: string
+}
+
 export interface MemoryProvider {
-  search(query: string): Promise<unknown[]>
-  recall(boot?: boolean): Promise<unknown[]>
-  read(id: string): Promise<unknown>
-  create(entry: unknown): Promise<unknown>
-  update(id: string, entry: unknown): Promise<unknown>
-  delete(id: string): Promise<void>
+  search(query: string, options?: MemorySearchOptions): Promise<MemoryTextResult>
+  recall(): Promise<MemoryTextResult>
+  read(uri: string): Promise<MemoryTextResult>
+  create(input: MemoryCreateInput): Promise<MemoryTextResult>
+  update(input: MemoryUpdateInput): Promise<MemoryTextResult>
+  delete(uri: string): Promise<MemoryTextResult>
 }
 
 export interface StateProvider {
