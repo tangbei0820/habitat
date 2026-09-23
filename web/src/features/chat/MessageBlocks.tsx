@@ -60,7 +60,14 @@ function AudioBlockView({ payload }: { payload: AudioBlock['payload'] }) {
   return (
     <span className="flex flex-col gap-1">
       <span className="flex items-center gap-2">
-        <audio controls src={payload.url} className="w-full max-w-xs" />
+        {/*
+          ⚠️ 播放器给**固定宽度**，别写 `w-full`。
+          气泡是 `max-w-[82%]` 的收缩宽度块，而外层 `MessageBlocks` 与这里都是 `items-start` 的伸缩列 ——
+          这种上下文里父宽由内容决定，`width: 100%` 解出来是个极小值，
+          播放器会被压成一条窄条（截图上看就是气泡里一个 40px 的小方块）。
+          百分比在「尺寸待定」的容器里本来就不可靠，这里用固定值最省事。
+        */}
+        <audio controls src={payload.url} style={{ width: '14rem' }} />
         {payload.durationMs !== undefined && (
           <span
             data-testid="audio-duration"

@@ -1780,6 +1780,24 @@ check(
   await evaluate(`document.querySelector('[data-testid="audio-duration"]') !== null`),
   '',
 )
+/**
+ * ⚠️ 光断言「播放器在」是不够的 —— 它可能被**压成一条**：
+ * 气泡是收缩宽度块，播放器若写 `w-full`，父宽由内容决定 → `width:100%` 解成极小值。
+ * 这个 bug 第一版就真的出现了（截图上是气泡里一个约 40px 的小方块），而「元素存在」的断言照样全绿。
+ * 所以这里量真实渲染宽度 —— **元素在不在**和**它长没长出来**是两条独立的断言。
+ */
+const audioBox = await evaluate(`(() => {
+  const el = document.querySelector('[data-testid="chat-message-area"] audio')
+  if (el === null) return { found: false }
+  const r = el.getBoundingClientRect()
+  const bubble = el.closest('[data-message-id]')?.getBoundingClientRect() ?? null
+  return { found: true, width: Math.round(r.width), height: Math.round(r.height), bubbleWidth: bubble ? Math.round(bubble.width) : null }
+})()`)
+check(
+  '语音条播放器有正常宽度（没有被收缩容器压扁）',
+  audioBox.found === true && audioBox.width >= 180 && audioBox.height >= 20,
+  JSON.stringify(audioBox),
+)
 await shot('shot-chat-voice.png')
 
 /* --- 取消录音：什么也不该留下 --- */
