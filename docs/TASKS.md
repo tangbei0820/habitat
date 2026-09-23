@@ -20,10 +20,11 @@
 ### 中 —— 体验与一致性
 
 - [x] ~~**聊天窗口避让底栏用的是魔法数字**~~ —— 已修（T-004）：底栏高度提为 token `--bottom-nav-height`，且会话窗口改为沉浸式（不渲染底栏，见 T-004）。
-- [ ] **虚拟列表接「向上加载更早消息」后会跳位** —— 高度缓存的键已经是 item key 而非下标（这点做对了），但 `prepend` 之后 `scrollTop` 的绝对位置仍会错位，用户会被弹走。→ 插入前记 `scrollHeight`，插入后按差值补偿 `scrollTop`。
-- [ ] **`ChatMessage.blocks` 只渲染 `text`** —— 另外 7 种 kind（`html` / `image` / `audio` / `file` / `tool-result` / `widget` / `tab-group`）渲染器未分发（§5.5 可扩展块）。→ 按 kind 建分发入口。
-- [ ] **`listMessagesPage` 的分页游标没接 UI** —— 仓储层的 `before` 参数已就绪，聊天页目前固定只拉最近 60 条，再往前的看不到。
-- [ ] **发送失败 / 想换一个回答时没有出口** —— 失败后系统气泡只显示原因，用户消息已落库但没有重发入口；§5.3 的「重roll」字段（`candidates`）已建好未用。
+- [x] ~~**虚拟列表接「向上加载更早消息」后会跳位**~~ —— 已修（T-006）：改成**锚点补偿** —— 记上一帧的 `offsets`/`keys`，首项换人且用户未贴底时，用「盖住视口顶部的那一项」当锚点，按它在新几何里的位置重设 `scrollTop`。锚点用 item key 而不是下标。实测向上插入一页后 `scrollTop=3840`（若补偿失效会停在 0）。
+- [x] ~~**`ChatMessage.blocks` 只渲染 `text`**~~ —— 已修（T-006）：`MessageBlock` 改成可辨识联合并补齐 8 种 kind 的载荷契约，新增 `features/chat/MessageBlocks.tsx` 按 kind 分发（5 种真渲染 / 3 种明确占位 / 未知 kind 降级占位）。
+- [x] ~~**`listMessagesPage` 的分页游标没接 UI**~~ —— 已修（T-006）：聊天页滚到顶自动加载更早一页（`onReachTop` + 同步守卫防重复请求）。
+- [x] ~~**发送失败 / 想换一个回答时没有出口**~~ —— 已修（T-006）：抽出 `runGeneration` 供 发送 / 重发 / 换一个 复用；气泡下方给 `‹ n/N ›` 候选导航、「换一个」、「重发」，版本历史落在 `candidates` 上并跨刷新保持。
+- [ ] **分页游标的 `createdAt` 撞毫秒会漏条** —— `listMessagesPage` 的上界是 `[sessionId, before]` 且**不含**该点，若两条消息 `createdAt` 完全相同（同毫秒写入，批量导入时可能），较早那条会被跳过 —— 表现为「刷新后莫名少一条」。→ 换 `[sessionId+createdAt+id]` 三元复合索引，或游标改成「时间戳 + id」并显式跳过已取过的那条。（本次验收的数据是 `+1ms` 递增注入，所以没暴露。）
 - [ ] **会话删除无确认** —— 列表页点 ✕ 直接连同该会话全部消息一起删（`deleteSession` 是事务删除）。
 - [ ] **Home 子模块标题显示原始 key** —— `/home/board` 的标题渲染成 `Board`（对英文 key 做 `capitalize`），而入口列表里是「留言板」。→ 用同一份模块表反查中文名。
 - [ ] **原生模块 ABI 与 Node 版本绑定** —— `better-sqlite3` 的二进制绑定**安装时**的 Node 版本；本仓库是在 Node 20 下装的，用 Node 22 启动会 `ERR_DLOPEN_FAILED`。已在 `README.md` 环境要求里写明，但还没做机器可读的约束。→ 加 `.nvmrc`（或 `package.json` 的 `engines`）+ 启动时校验版本并给一句人话提示。
@@ -51,6 +52,11 @@
 - [ ] **方案列表没有排序入口** —— `sort_order` 字段已建（且删除时故意不重排，避免全表 UPDATE），但只能按创建顺序追加。方案不多时无感。
 - [ ] **`ApiProfilePublic.hasKey` 现在是冗余字段** —— 可由 `keySource !== 'missing'` 完全推导。保留是为了不破坏既有契约（切片一的脚本与文档都在用）。
 - [ ] **`LlmRegistry` 每次调用都读 DB** —— 本地 SQLite 是微秒级、方案改动低频，暂无影响。若日后出现「每次请求都枚举方案」的路径（如多方案自动路由），再评估加一层缓存。
+- [ ] **`html` / `widget` / `tab-group` 三种块目前只有占位** —— 渲染器已按 kind 留好分支，内容是「未启用」提示。接「小部件」（Phase 5）时落地：**必须**用 `sandbox=""` 的 iframe 或净化器，**绝不能** `dangerouslySetInnerHTML`（内容来自 LLM）。验收脚本里已埋一条断言盯着这点（渲染 html 块后页面上不应出现注入的 `<b>`）。
+- [ ] **`tab-group` 里不能再嵌块组** —— 块里套块组会形成递归类型，Dexie 的键路径推导（`KeyPaths`）展开递归会报 `TS2615`，故 tab 内只允许叶子块（`LeafMessageBlock`）。真要支持任意嵌套，得连同存储层一起重新设计。
+- [ ] **首屏不足一屏时无法触发向上加载** —— 「加载更早」挂在滚动事件上，若内容比视口还短就永远没有滚动事件。实践中一页 60 条必然超过一屏，故未处理。→ 真要处理：首屏渲染后量一次 `scrollHeight`，不足则直接续拉。
+- [ ] **「换一个」只给最后一条 AI 回复** —— 改中间那条会让后续对话与它脱节（要么连带截断后续消息，要么放任不一致）。若日后要支持，得先定「之后的消息怎么办」。
+- [ ] **候选版本没有删除入口，`origin: 'edit'` 也没有生产者** —— 版本只能靠 8 条上限自动淘汰；「手动编辑消息」功能未做，所以 `edit` 这个来源目前是空跑。
 
 ---
 
@@ -203,5 +209,46 @@
 - 方案 UI：四件套后 `node web/scripts/verify-providers.mjs`
 
 **下一步（Phase 1 收尾）**：消息块按 `kind` 分发 → 分页加载更早消息 → 消息「重发 / 换一个」→ 诊断日志查看页。
+
+---
+
+### T-006 · 2026-09-23 · Phase 1 切片四：消息块分发 + 分页加载 + 重发 / 换一个
+
+**范围**：把聊天窗口补成「能长久用」的形态。依据 §6.2（`MessageBlock` 可扩展块 / `MessageCandidate` 多候选）、§6.3（两次提前量）、§9 风险8（长会话性能）。
+
+**已完成**
+
+1. **块渲染从「只有 text」变成「按 kind 分发」**
+   - `shared/types.ts`：`MessageBlock` 从 `{ kind, payload: unknown }` 改成**可辨识联合**，8 种 kind 各定载荷契约。这一步的价值不只是类型好看 —— switch 一下 payload 就自动收窄，渲染器里那层 `as { text: unknown }` 的运行时校验可以整段删掉
+   - 新增 `web/src/features/chat/MessageBlocks.tsx`：`text` / `image` / `audio` / `file` / `tool-result` 真渲染；`html` / `widget` / `tab-group` 给**明确占位**（写清「未接入」而不是留空白，免得下一个人以为是漏写）
+   - `html` 刻意不渲染：内容来自 LLM，直接 `dangerouslySetInnerHTML` 等于开门；等 Phase 5 做沙箱时再说
+   - 运行时兜底：遇到不在联合里的 kind（旧版本读到新版本写的数据）降级成占位块 —— IndexedDB 不校验结构，未知数据不该让整页崩掉
+2. **分页加载更早消息 + 虚拟列表向上插入的锚点补偿**
+   - 虚拟列表新增 `onReachTop`；**补偿逻辑放在组件内部**（它自己就能识别「首项换人」＝向上插入），用「盖住视口顶部的那一项」当锚点还原 `scrollTop`，锚点用 item key 不用下标
+   - 聊天页接 `listMessagesPage` 的 `before` 游标；`loadingEarlierRef` 做同步守卫（贴顶时回调会连着触发，state 更新是异步的，只靠 state 拦不住重复请求）
+3. **「换一个」与「重发」出口**
+   - `db/chat.ts` 新增 `addVersion` / `selectCandidateVersion`，把 `candidates` 真正用起来；首次换一个会把「当前正文」也登记成版本，否则无从切回上一版
+   - `ChatWindowPage` 抽出 `runGeneration(history, targetId)`：发送 / 重发 / 换一个共用同一条生命周期，差别只在「结果写到哪」
+   - 新增 `historyUpTo(messages, upToIndex)` 把「同一轮」钉住 —— 换一个时若不截断历史，等于让模型接着自己刚写的那段往下续
+   - 气泡下方：`‹ n/N ›` 候选导航、「换一个」（仅末条 AI 回复）、「重发」（末条是用户消息 = 这一轮压根没拿到回复）
+4. **验收**：`verify-chat.mjs` 从 13 项扩到 **35 项全过**；`verify-providers.mjs` 回归 22 项全过；两端 `typecheck` + `build` 通过，控制台零异常
+   - 分页实测 `scrollHeight 3408 → 6934 → 7334`，且向上插入后 `scrollTop=3840`（补偿生效的直接证据）
+   - 用量取证：一轮聊天 + 中止 + 换一个 + 重发共落 `usage_record` **4 条** —— 证明后两者确实各发起了一次上游调用，而不是只改了 UI
+
+**排查中发现的真问题**
+
+- **`TabGroupBlock` 的递归类型击穿 Dexie 的键路径推导**：`tabs[].blocks` 声明成 `MessageBlock[]` 会形成递归，Dexie 的 `KeyPaths`（`web/src/db/db.ts` 的 `Table<ChatMessage>`）展开时报 `TS2615`。改成 tab 内只放叶子块（`LeafMessageBlock`）解决，并把这条约束记进待优化。
+- **验收脚本的 fixture 耦合**：`verify-providers.mjs` 把种子方案的显示名写死成 `Mock 上游`（切片三那次 `.env` 里的名字），这回换了个 `.env` 就整条挂掉。改为从 `GET /api/providers` 现取，没有方案时明确提示。**通则：脚本别写死 fixture 的显示名，从接口取。**
+- **虚拟列表的 `block` 只在「首项换人」时才补偿**：会话切换（整段替换）也会命中这个条件，靠「锚点项在新 keys 里找不到就跳过」兜住。已写进代码注释，避免后人误改。
+
+**本任务新增待优化**：中 1 条（分页游标撞毫秒会漏条）、低 5 条（三种块仍是占位 / `tab-group` 不能嵌套 / 首屏不足一屏无法触发加载 / 「换一个」只限末条 / 候选无删除入口且 `edit` 空跑），已录入上方汇总清单。同时勾掉中 4 条。
+
+**验证命令**
+
+- 两端：`npm run typecheck` + `npm run build`
+- 端到端：四件套后 `node web/scripts/verify-chat.mjs`（35 项）、`node web/scripts/verify-providers.mjs`（22 项）
+- ⚠️ 两个脚本共用同一后端与同一浏览器，串行跑；分页段落用 `Emulation.setDeviceMetricsOverride` 拉高视口，否则虚拟列表不会渲染全部块消息，断言会假失败
+
+**下一步（Phase 1 最后一块）**：诊断日志查看页（`mcp_diagnostic_log` 已有数据，缺查询端点 + 设置页时间线）。
 
 ---

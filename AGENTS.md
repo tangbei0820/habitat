@@ -30,7 +30,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar                                 |
-| 当前阶段 | **Phase 1 进行中**：Chat MVP 三切片（OpenAI 兼容层 / SSE 聊天链路 / API 方案管理）已落地并验收；下一步消息块分发与分页 |
+| 当前阶段 | **Phase 1 进行中**：Chat MVP 四切片（OpenAI 兼容层 / SSE 聊天链路 / API 方案管理 / 消息块分发·分页·重发换一个）已落地并验收；下一步诊断日志查看页 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -97,7 +97,8 @@ habitat/
 | 我要做…                   | 必读                                                        | 参考项目（详见 `docs/REFERENCES.md`）                                       |
 | ---------------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
 | Chat 页面 / 消息模型 / 流式    | 技术方案 §7.2① / §8 / §6.3；接口契约见 `docs/API.md`                | chatnest、the-house、Pando、CC Companion App                           |
-| 聊天消息建表（版本 / 多候选）       | 技术方案 §6.3 ✅ 已随 Dexie `version(2)` 建好（字段齐备，UI 未接）                | —                                                                   |
+| 聊天消息建表（版本 / 多候选）       | 技术方案 §6.3 ✅ 已建好；「换一个 / 切回上一版」已接（`db/chat.ts` 的 `addVersion` / `selectCandidateVersion`） | —                                                                   |
+| 消息块渲染（`MessageBlock.kind`） | 技术方案 §6.2；载荷契约见 `shared/types.ts`，渲染分发见 `web/src/features/chat/MessageBlocks.tsx` | —                                                                   |
 | 多 Provider / API 方案管理  | 技术方案 §7.1 / §7.2① / §6.2（ApiProfile）                    | OmniRouter、VCPToolBox                                               |
 | MCP Gateway / 诊断日志     | 技术方案 §7.2② / §9 风险1                                       | amap-mcp-server、VCPToolBox                                          |
 | 长期记忆接入                 | 技术方案 §7.1 / §9 风险1·5                                      | nocturne_memory(已定)、Paramecium、Ombre-Brain、kiwi-mem                 |
@@ -168,12 +169,16 @@ habitat/
   - `web`：设置页「API 方案」区块（`features/providers/`）—— 列表 + 行内表单 + 测试连接 + 设为默认 + 两步删除；表单主路径只暴露四项，`keyRef` 收进「高级」
   - 验收：`server/scripts/probe-providers.ts`（46 项）+ `web/scripts/verify-providers.mjs`（22 项，连跑两次通过）
 
+- **Phase 1 · 切片四：消息块分发 + 分页加载 + 重发 / 换一个**（2026-09-23）
+  - `shared`：`MessageBlock` 从 `{ kind, payload: unknown }` 改成**可辨识联合**，8 种 kind 各定载荷契约（`text` / `html` / `image` / `audio` / `file` / `tool-result` / `widget` / `tab-group`），渲染器 switch 即收窄 payload
+  - `web`：新增 `features/chat/MessageBlocks.tsx` —— 按 kind 分发；`text` / `image` / `audio` / `file` / `tool-result` 真渲染，`html` / `widget` / `tab-group` 明确占位（**html 不直接注入**，等沙箱方案），运行时未知 kind 降级占位不崩页
+  - `web`：`VirtualList` 补 `onReachTop` 回调 + **向上插入的锚点补偿**（按 item key 定位锚点项还原 `scrollTop`，解决「prepend 后跳位」）；聊天页接 `listMessagesPage` 的 `before` 游标，滚到顶自动加载更早一页
+  - `web`：`db/chat.ts` 补 `addVersion` / `selectCandidateVersion`（版本历史 + `blocks` 投影同步，超 `MAX_CANDIDATES` 淘汰最旧非展示项）；`ChatWindowPage` 抽出 `runGeneration` 供 发送 / 重发 / 换一个 复用，气泡下方给 `‹ n/N ›` 候选导航 + 「换一个」（末条 AI 回复）+「重发」（末条用户消息无回复时）
+  - 验收：`verify-chat.mjs` 扩到 **35 项全过**（含块分发 8 种、分页 `3408 → 6934 → 7334` 且锚定后 `scrollTop=3840`、换一个记两个版本并可切回、重发新增一条回复）；`verify-providers.mjs` 回归 22 项通过
+
 **下一步（Phase 1 收尾）**
 
-- 消息块扩展：渲染器按 `MessageBlock.kind` 分发（当前只有 `text`）
-- 按时间分页加载更早的消息（仓储层 `listMessagesPage` 已就绪，UI 未接）
-- 消息「重发 / 换一个」出口（`candidates` 字段已建未用）
-- 诊断日志查看（设置页时间线）
+- 诊断日志查看（设置页时间线；`mcp_diagnostic_log` 已有数据，缺查询端点与 UI）
 - 待优化清单见 `docs/TASKS.md`（动手前先扫一遍）
 
 **本地验收方式**
@@ -182,7 +187,7 @@ habitat/
 - 验证 MCP 客户端链路：`npx tsx scripts/probe-mock.ts`（在 `server/` 下执行）
 - 验证 LLM Adapter：`npm run dev:mock-openai`（:3334）+ `npx tsx scripts/probe-llm.ts`
 - 验证方案路由：起 mock 上游 + server 后 `npx tsx scripts/probe-providers.ts`（46 项断言）
-- 端到端（前端）：`node web/scripts/verify-chat.mjs` / `node web/scripts/verify-providers.mjs`（前置条件见各自文件头注释）
+- 端到端（前端）：`node web/scripts/verify-chat.mjs`（35 项）/ `node web/scripts/verify-providers.mjs`（22 项）（前置条件见各自文件头注释）
 - ⚠️ **跑 `server` 必须用 Node 20**：`better-sqlite3` 原生模块的 ABI 与安装时的 Node 绑定，
   用其它版本会 `ERR_DLOPEN_FAILED`（详见 `README.md` 环境要求）
 - ⚠️ **后台进程在同一终端命令结束后会被回收**：起 mock / server 与执行验收脚本要写在同一条命令里

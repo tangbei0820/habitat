@@ -30,22 +30,97 @@ export interface ChatSession extends BaseObject {
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 export type MessageStatus = 'pending' | 'streaming' | 'done' | 'error' | 'aborted'
 
-/** 可扩展消息块（§6.2）：渲染器按 kind 分发，Phase 1 只用 text */
-export type MessageBlockKind =
-  | 'text'
-  | 'html'
-  | 'image'
-  | 'audio'
-  | 'file'
-  | 'tool-result'
-  | 'widget'
-  | 'tab-group'
+/**
+ * 可扩展消息块（§6.2）：渲染器**按 kind 分发**。
+ *
+ * v1 里 `payload` 是 `unknown`、`kind` 是枚举串，渲染器只能靠 `as` 断言取字段。
+ * 现在补上每种块的载荷契约并改成**可辨识联合**：switch 一下 payload 就自动收窄，
+ * 少写一层运行时校验；日后新增块类型时先在这里加一条，渲染器会因穷尽检查报错提醒补分支。
+ *
+ * 载荷设计原则：**只放「怎么显示」，不放「这是什么」** —— url / 文案 / 尺寸足矣；
+ * 语义（这是相册里的哪张、这是哪次工具调用）留在 `ChatMessage.metadata` 或对应实体上。
+ */
 
-export interface MessageBlock {
-  kind: MessageBlockKind
-  payload: unknown
+export interface TextBlock {
+  kind: 'text'
+  payload: { text: string }
   order: number
 }
+
+/**
+ * 富文本 / 小部件。
+ * ⚠️ 内容可能来自 LLM，**不可直接 `dangerouslySetInnerHTML`**（详见 `docs/TASKS.md`：
+ * 渲染前需经沙箱化，Phase 5 接入时再落地）。
+ */
+export interface HtmlBlock {
+  kind: 'html'
+  payload: { html: string }
+  order: number
+}
+
+export interface ImageBlock {
+  kind: 'image'
+  payload: { url: string; alt?: string; width?: number; height?: number }
+  order: number
+}
+
+export interface AudioBlock {
+  kind: 'audio'
+  payload: { url: string; durationMs?: number; transcript?: string }
+  order: number
+}
+
+export interface FileBlock {
+  kind: 'file'
+  payload: { url: string; name: string; mime?: string; size?: number }
+  order: number
+}
+
+/** 工具调用结果（Phase 3 起由 MCP Gateway 产出） */
+export interface ToolResultBlock {
+  kind: 'tool-result'
+  payload: { toolName: string; ok: boolean; summary?: string; result?: unknown }
+  order: number
+}
+
+export interface WidgetBlock {
+  kind: 'widget'
+  payload: { title?: string; source?: string }
+  order: number
+}
+
+/**
+ * 能塞进 tab 里的**叶子块**集合。
+ * ⚠️ 刻意排除 `tab-group` 自身：块里再套块组会形成递归类型，而 Dexie 的键路径推导
+ * （`KeyPaths`，见 `web/src/db/db.ts` 的 `Table<ChatMessage>`）展开递归类型会直接报 TS2615。
+ * 真要支持任意嵌套，得连同存储层一起重新设计（Phase 5 再评估）。
+ */
+export type LeafMessageBlock =
+  | TextBlock
+  | HtmlBlock
+  | ImageBlock
+  | AudioBlock
+  | FileBlock
+  | ToolResultBlock
+  | WidgetBlock
+
+export interface TabGroupBlock {
+  kind: 'tab-group'
+  payload: { tabs: Array<{ label: string; blocks: LeafMessageBlock[] }> }
+  order: number
+}
+
+export type MessageBlock =
+  | TextBlock
+  | HtmlBlock
+  | ImageBlock
+  | AudioBlock
+  | FileBlock
+  | ToolResultBlock
+  | WidgetBlock
+  | TabGroupBlock
+
+export type MessageBlockKind = MessageBlock['kind']
 
 /** 消息版本 / 多候选（§6.3 提前量：Phase 1 建表即预留，一次建表同时满足编辑与重roll） */
 export interface MessageCandidate {

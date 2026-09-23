@@ -13,6 +13,9 @@
  * ⚠️ 后台进程在同一命令结束后会被回收，所以启动与执行要写在同一条命令里。
  * ⚠️ 脚本会在结束时删掉自己建的方案（保持可重复运行）；为验证「刷新后仍在」，
  *    删除放在刷新之后。
+ * ⚠️ 要求工作区**已有一个种子方案**（`server/.env` 里的 `HABITAT_LLM_PROFILES`，且其
+ *    `keyRef` 指向一个已设值的环境变量）：本脚本要借它验证「设为默认互斥」「删除后默认转移」。
+ *    它的显示名从 `GET /api/providers` 现取，**不写死在脚本里**（写死会随 `.env` 变动而失效）。
  * 用法：node web/scripts/verify-providers.mjs
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -20,11 +23,24 @@ import { fileURLToPath } from 'node:url'
 
 const CDP = process.env.VERIFY_CDP ?? 'http://127.0.0.1:9222'
 const APP = process.env.VERIFY_APP ?? 'http://127.0.0.1:5174'
+/** 后端直连地址：只用于「取种子方案名」这种准备动作，断言仍全部走浏览器 */
+const API = process.env.VERIFY_API ?? 'http://127.0.0.1:3100'
 const MOCK_BASE_URL = process.env.VERIFY_MOCK_BASE ?? 'http://127.0.0.1:3334/v1'
 /** 验收用方案名与密钥（密钥纯假，只用来验证「存进去、读不出来、能生效」） */
 const PROFILE_NAME = '验收方案'
 const RENAMED = '验收方案（改名）'
 const SECRET = 'sk-ui-secret-9f3a'
+
+/* ---------- 准备：认出现有的种子方案 ---------- */
+const seedList = await (await fetch(`${API}/api/providers`)).json()
+const seedProfile = Array.isArray(seedList.profiles) ? seedList.profiles[0] : undefined
+if (seedProfile === undefined) {
+  console.error(
+    `工作区没有任何方案：请先在 server/.env 里配 HABITAT_LLM_PROFILES（可参考 .env.example 的 mock 上游示例）再重跑。`,
+  )
+  process.exit(1)
+}
+const seedName = seedProfile.name
 
 const OUT = fileURLToPath(new URL('../../.workbuddy', import.meta.url))
 mkdirSync(OUT, { recursive: true })
@@ -172,7 +188,7 @@ await send('Page.navigate', { url: `${APP}/setting` })
 await waitFor(`document.body.innerText.includes('API 方案')`, '设置页就绪', 30000)
 // ⚠️ 方案列表是异步拉的：只等标题会出现，会读到「读取中…」的空壳（第一次跑抢赢了、第二次就露馅）
 await waitFor(
-  `document.body.innerText.includes('Mock 上游') || document.body.innerText.includes('还没有任何方案')`,
+  `document.body.innerText.includes(${JSON.stringify(seedName)})`,
   '方案列表加载完成',
   30000,
 )
@@ -182,8 +198,8 @@ const initialText = await evaluate('document.body.innerText')
 check('设置页出现「API 方案」区块', initialText.includes('API 方案'))
 check(
   '已有方案显示它来自环境变量',
-  initialText.includes('Mock 上游') && initialText.includes('密钥来自环境变量'),
-  '',
+  initialText.includes(seedName) && initialText.includes('密钥来自环境变量'),
+  `种子方案=${seedName}`,
 )
 check('行内操作按钮齐全', ['测试连接', '编辑', '删除'].every((t) => initialText.includes(t)))
 
@@ -256,9 +272,9 @@ await waitFor(
   15000,
 )
 const activeRow = await rowInfo(RENAMED)
-const mockRow = await rowInfo('Mock 上游')
+const seedRow = await rowInfo(seedName)
 check('该行显示默认标记', activeRow !== null && activeRow.text.includes('默认'))
-check('原默认方案已让位', mockRow !== null && mockRow.buttons.includes('设为默认'), JSON.stringify(mockRow?.buttons ?? []))
+check('原默认方案已让位', seedRow !== null && seedRow.buttons.includes('设为默认'), JSON.stringify(seedRow?.buttons ?? []))
 // 注意：行内第一个 span 是方案名，徽标要按文本找，别按位置找
 const activeCount = await evaluate(
   `[...document.querySelectorAll('li')]
@@ -273,13 +289,13 @@ check('删除需要二次确认', confirming !== null && confirming.buttons.incl
 await clickRowButton(RENAMED, '确认删除？')
 await waitFor(`!document.body.innerText.includes(${JSON.stringify(RENAMED)})`, '方案已从列表移除', 15000)
 check('删除后从列表消失', !(await evaluate('document.body.innerText')).includes(RENAMED))
-const mockAfterDelete = await rowInfo('Mock 上游')
+const seedAfterDelete = await rowInfo(seedName)
 check(
-  '默认标记回到 Mock 上游',
-  mockAfterDelete !== null &&
-    mockAfterDelete.text.includes('默认') &&
-    !mockAfterDelete.buttons.includes('设为默认'),
-  JSON.stringify(mockAfterDelete?.buttons ?? []),
+  '默认标记回到种子方案',
+  seedAfterDelete !== null &&
+    seedAfterDelete.text.includes('默认') &&
+    !seedAfterDelete.buttons.includes('设为默认'),
+  JSON.stringify(seedAfterDelete?.buttons ?? []),
 )
 
 /* ---------- 9. 控制台 ---------- */

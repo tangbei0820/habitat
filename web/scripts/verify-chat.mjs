@@ -293,7 +293,301 @@ check(
 check('贴底可见最新一条', stress.hasLast, `scrollHeight=${stress.scrollHeight}`)
 await shot('shot-chat-stress.png')
 
-/* ---------- 9. 控制台 ---------- */
+/** 造一条与 `ChatMessage` 字段对齐的消息（直接写库用） */
+let seedSeq = 0
+function seedMessage(id, role, blocks, extra = {}) {
+  seedSeq += 1
+  const base = Date.now() + seedSeq
+  return {
+    id,
+    role,
+    status: 'done',
+    replyToId: null,
+    blocks,
+    versionOf: null,
+    candidates: [],
+    recalledAt: null,
+    editedAt: null,
+    createdAt: base,
+    updatedAt: base,
+    ...extra,
+  }
+}
+
+/** 直接往某个会话写消息（绕过 UI 构造边界数据；会话 id 由调用方先取好） */
+async function seedMessages(sessionId, items) {
+  return evaluate(`(async () => {
+    const open = () => new Promise((res, rej) => {
+      const r = indexedDB.open('habitat-db')
+      r.onsuccess = () => res(r.result)
+      r.onerror = () => rej(r.error)
+    })
+    const db = await open()
+    const tx = db.transaction('messages', 'readwrite')
+    const store = tx.objectStore('messages')
+    for (const m of ${JSON.stringify(items)}) {
+      store.put(Object.assign({ type: 'chat-message' }, m, { sessionId: ${JSON.stringify(sessionId)} }))
+    }
+    await new Promise((res, rej) => { tx.oncomplete = () => res('ok'); tx.onerror = () => rej(tx.error) })
+    db.close()
+    return 'ok'
+  })()`)
+}
+
+/** 回聊天列表再新建一个干净会话，返回新会话 id */
+async function newSession(label) {
+  const previous = await evaluate('location.pathname')
+  await evaluate(
+    `(() => { window.history.pushState({}, '', '/chat'); window.dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`,
+  )
+  await waitFor(`document.body.innerText.includes('新建')`, `${label}：回到列表`, 20000)
+  await evaluate(
+    `(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.includes('新建')).click(); return 'ok' })()`,
+  )
+  await waitFor(`location.pathname !== ${JSON.stringify(previous)}`, `${label}：新建会话`, 20000)
+  return evaluate(`location.pathname.split('/').pop()`)
+}
+
+/** 找到消息滚动容器（虚拟列表那一层） */
+const SCROLLER = `[...document.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 100)`
+
+/* ---------- 9. 消息块按 kind 分发 ---------- */
+// 拉高视口让十来条块消息一次全渲染出来（虚拟列表只渲染可视区，默认 600px 高会漏断言）
+await send('Emulation.setDeviceMetricsOverride', {
+  width: 420,
+  height: 2400,
+  deviceScaleFactor: 1,
+  mobile: false,
+})
+const sessionBlocks = await newSession('块分发')
+await seedMessages(sessionBlocks, [
+  seedMessage('blk-order', 'assistant', [
+    { kind: 'text', order: 1, payload: { text: '区块顺序-后半段' } },
+    { kind: 'text', order: 0, payload: { text: '区块顺序-前半段' } },
+  ]),
+  seedMessage('blk-image', 'assistant', [
+    {
+      kind: 'image',
+      order: 0,
+      payload: {
+        // 1×1 透明 gif，只为验证 <img> 被真渲染出来
+        url: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+        alt: '示例图',
+      },
+    },
+  ]),
+  seedMessage('blk-audio', 'assistant', [
+    {
+      kind: 'audio',
+      order: 0,
+      // 空头 WAV（合法但没数据），只为验证 <audio> 被真渲染出来
+      payload: {
+        url: 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=',
+        transcript: '语音转写示例',
+      },
+    },
+  ]),
+  seedMessage('blk-file', 'assistant', [
+    { kind: 'file', order: 0, payload: { url: 'blob:demo', name: '报告.pdf', size: 2048 } },
+  ]),
+  seedMessage('blk-tool', 'assistant', [
+    {
+      kind: 'tool-result',
+      order: 0,
+      payload: { toolName: 'mcp__demo__echo', ok: true, summary: '12ms', result: { echo: 'hi' } },
+    },
+  ]),
+  seedMessage('blk-html', 'assistant', [
+    { kind: 'html', order: 0, payload: { html: '<b>不该被直接注入</b><script>1</script>' } },
+  ]),
+  seedMessage('blk-widget', 'assistant', [
+    { kind: 'widget', order: 0, payload: { title: '天气' } },
+  ]),
+  seedMessage('blk-tabgroup', 'assistant', [
+    { kind: 'tab-group', order: 0, payload: { tabs: [{ label: '甲', blocks: [] }] } },
+  ]),
+  seedMessage('blk-unknown', 'assistant', [{ kind: 'hologram', order: 0, payload: { x: 1 } }]),
+])
+await reloadAndWait(`document.body.innerText.includes('区块顺序-前半段')`, '块消息回填')
+await sleep(600)
+
+const blocksText = await evaluate('document.body.innerText')
+const blockDom = await evaluate(`JSON.stringify({
+  image: document.querySelectorAll('img[alt="示例图"]').length,
+  audio: document.querySelectorAll('audio').length,
+  tool: document.querySelectorAll('details').length,
+  rawBold: document.querySelectorAll('b').length,
+  pre: [...document.querySelectorAll('pre')].map((p) => p.textContent).join('|'),
+})`)
+const dom = JSON.parse(blockDom)
+
+check(
+  'text 块按 order 升序渲染',
+  blocksText.indexOf('区块顺序-前半段') >= 0 &&
+    blocksText.indexOf('区块顺序-前半段') < blocksText.indexOf('区块顺序-后半段'),
+  '',
+)
+check('image 块渲染成 <img>', dom.image === 1, `img=${String(dom.image)}`)
+check('audio 块渲染成 <audio> + 转写', dom.audio === 1 && blocksText.includes('语音转写示例'), '')
+check(
+  'file 块给出文件名与体积',
+  blocksText.includes('报告.pdf') && blocksText.includes('2.0 KB'),
+  '',
+)
+check(
+  'tool-result 块折叠展示工具名与结果',
+  dom.tool === 1 && blocksText.includes('工具 mcp__demo__echo') && dom.pre.includes('"echo": "hi"'),
+  '',
+)
+check(
+  'html 块只给占位、不注入原文（防 XSS）',
+  blocksText.includes('[html] 沙箱渲染未接入') && dom.rawBold === 0,
+  `rawBold=${String(dom.rawBold)}`,
+)
+check(
+  'widget / tab-group 明确标注未启用',
+  blocksText.includes('[widget] Phase 5 接入') && blocksText.includes('[tab-group] Phase 5 接入'),
+  '',
+)
+check(
+  '未知 kind 降级占位而不是崩页',
+  blocksText.includes('[hologram] 暂不支持渲染') && blocksText.includes('区块顺序-前半段'),
+  '',
+)
+await shot('shot-chat-blocks.png')
+await send('Emulation.clearDeviceMetricsOverride')
+
+/* ---------- 10. 分页加载更早一页 ---------- */
+const sessionPage = await newSession('分页')
+const history = []
+for (let i = 0; i < 130; i += 1) {
+  history.push(
+    seedMessage(`hist-${String(i).padStart(3, '0')}`, i % 2 === 0 ? 'user' : 'assistant', [
+      { kind: 'text', order: 0, payload: { text: `历史 #${String(i).padStart(3, '0')}` } },
+    ]),
+  )
+}
+await seedMessages(sessionPage, history)
+await reloadAndWait(`document.body.innerText.includes('历史 #129')`, '分页数据回填')
+await sleep(800)
+
+const top = () => evaluate(`${SCROLLER}.scrollTop = 0; 'ok'`)
+const geom = () =>
+  evaluate(`(() => {
+    const el = ${SCROLLER}
+    return { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop, text: document.body.innerText }
+  })()`)
+
+const page0 = await geom()
+check(
+  '首屏只加载一页（最旧的 #069 未进来）',
+  page0.scrollHeight > 3000 && page0.scrollHeight < 5200 && !page0.text.includes('历史 #069'),
+  `scrollHeight=${page0.scrollHeight}`,
+)
+
+// 滚到顶 → 自动加载更早一页；加载完位置应被锚点补偿顶下去（否则用户被弹走）
+await top()
+await sleep(1200)
+const page1 = await geom()
+check(
+  '滚到顶自动加载更早一页',
+  page1.scrollHeight > page0.scrollHeight * 1.5,
+  `${page0.scrollHeight} → ${page1.scrollHeight}`,
+)
+check(
+  '向上插入后滚动位置被锚定（没被弹到顶）',
+  page1.scrollTop > 1000,
+  `scrollTop=${page1.scrollTop}`,
+)
+
+await top()
+await sleep(1200)
+const page2 = await geom()
+check('再滚到顶加载完剩余一页', page2.scrollHeight > page1.scrollHeight, `${page1.scrollHeight} → ${page2.scrollHeight}`)
+
+await top()
+await sleep(1200)
+const page3 = await geom()
+// 高度别拿等号比：先前按估值占位的项被实测后会微调总高，容差留给这个漂移；
+// 但真要又插进一页（60 条 ≈ +3000px）就远超容差，断言依然有效
+check(
+  '到底后不再重复加载（已到最早）',
+  page3.scrollHeight < page2.scrollHeight * 1.15 &&
+    page3.text.includes('历史 #000') &&
+    page3.text.includes('历史 #009'),
+  `${page2.scrollHeight} → ${page3.scrollHeight}`,
+)
+check('加载提示已收起', !page3.text.includes('正在加载更早的消息'))
+await shot('shot-chat-paging.png')
+
+/* ---------- 11. 换一个 / 重发 ---------- */
+const sessionReroll = await newSession('换一个')
+await type('换一个测试')
+await evaluate(`(() => {
+  const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '发送')
+  if (btn) btn.click()
+  return 'ok'
+})()`)
+await waitFor(`document.body.innerText.includes('流式回复')`, '首轮回复落地', 25000)
+await waitIdle('首轮收尾')
+const firstReply = await evaluate('document.body.innerText')
+check('首轮回复没有版本导航（只有一版）', !firstReply.includes('1/1'), '')
+
+await evaluate(`(() => {
+  const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '换一个')
+  if (!btn) return 'missing'
+  btn.click()
+  return 'ok'
+})()`)
+await waitFor(`document.body.innerText.includes('2/2')`, '版本导航出现', 25000)
+await waitIdle('换一个收尾')
+const rerolled = await evaluate('document.body.innerText')
+check('换一个后记下两个版本（2/2）', rerolled.includes('2/2'), '')
+check('换一个后的正文是完整回复', rerolled.includes('收到，这是来自 mock 上游的 流式回复。'), '')
+await shot('shot-chat-reroll.png')
+
+await evaluate(`(() => {
+  const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '‹')
+  if (!btn) return 'missing'
+  btn.click()
+  return 'ok'
+})()`)
+await waitFor(`document.body.innerText.includes('1/2')`, '切回上一版', 10000)
+check('可以切回上一版（1/2）', true, '')
+await reloadAndWait(`document.body.innerText.includes('1/2')`, '版本选择刷新后保持')
+check('版本历史刷新后仍在', true, '')
+
+// 重发：注入一条「问了但没得到回复」的用户消息（末条）
+await seedMessages(sessionReroll, [
+  seedMessage('resend-case', 'user', [
+    { kind: 'text', order: 0, payload: { text: '这条没得到回复' } },
+  ]),
+])
+await reloadAndWait(`document.body.innerText.includes('这条没得到回复')`, '未回复消息回填')
+const hasResend = await evaluate(
+  `[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '重发')`,
+)
+check('末条用户消息无回复时给出「重发」出口', hasResend, '')
+// 「流式回复」这几个字在上一轮就已存在，所以不能只等它出现 —— 数条数才能证明真的又跑了一轮
+const REPLY_COUNT = `(document.body.innerText.match(/流式回复/g) ?? []).length`
+const repliesBefore = await evaluate(REPLY_COUNT)
+await evaluate(`(() => {
+  const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '重发')
+  if (btn) btn.click()
+  return 'ok'
+})()`)
+await waitFor(`${REPLY_COUNT} > ${repliesBefore}`, '重发拿到新回复', 25000)
+await waitIdle('重发收尾')
+const resent = await evaluate('document.body.innerText')
+const repliesAfter = await evaluate(REPLY_COUNT)
+check('重发后新增一条回复', repliesAfter === repliesBefore + 1, `${repliesBefore} → ${repliesAfter}`)
+check(
+  '重发完成后「重发」让位给「换一个」',
+  !resent.includes('重发') && resent.includes('换一个'),
+  '',
+)
+
+/* ---------- 12. 控制台 ---------- */
 const errors = consoleLogs.filter((l) => l.startsWith('[error]') || l.startsWith('[exception]'))
 check('控制台无异常', errors.length === 0, errors.slice(0, 3).join(' | '))
 

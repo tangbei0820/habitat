@@ -129,3 +129,35 @@
 - `server/scripts/probe-providers.ts`：**46 项断言全过**（列表 / 新建 / 5 类字段校验 / 更新 / 凭据完整生命周期「写入 → 生效 → 清除 → 回落」/ 设为默认互斥 / 删除后 active 自动转移 / id 生成 / 视图脱敏 / 端到端聊天）。
 - `web/scripts/verify-providers.mjs`：**22 项断言全过，且连跑两次均通过**（新建 → 无密钥探测失败 → 编辑并填密钥 → 探测成功 → 刷新后仍在 → 设为默认 → 两步删除），控制台零异常。
 - `scripts/probe-llm.ts` 扩到 27 项（新增凭据来源与「表内密钥优先于环境变量」两组断言）。脚本改为走**真实 DB 路径**（临时库 + 顶层 await 动态 import，因为 `HABITAT_DB_PATH` 必须在 `db/index.js` 求值前设好）。
+
+### Phase 1 · 切片四：消息块分发 + 分页加载 + 重发 / 换一个
+
+**shared**
+
+- `types.ts`：`MessageBlock` 从 `{ kind, payload: unknown }` 改成**可辨识联合**，8 种 kind 各定载荷契约（`TextBlock` / `HtmlBlock` / `ImageBlock` / `AudioBlock` / `FileBlock` / `ToolResultBlock` / `WidgetBlock` / `TabGroupBlock`）。渲染器 `switch (block.kind)` 即可收窄 payload，不必再 `as` 断言。
+  - `TabGroupBlock` 的 tab 内只允许**叶子块**（`LeafMessageBlock`）：块里嵌套块组会形成递归类型，Dexie 的键路径推导（`KeyPaths`）展开递归类型会直接报 `TS2615`。
+
+**web**
+
+- 新增 `features/chat/MessageBlocks.tsx`：**渲染器按 kind 分发**（§6.2 的「可扩展块模型」落到实现）
+  - 真渲染：`text`（多块按 `order` 升序拼接）/ `image` / `audio`（带转写）/ `file`（名字 + 体积）/ `tool-result`（`<details>` 折叠，默认收起细节）
+  - 明确占位：`html`（**不直接注入原文** —— LLM 产出的 HTML 需沙箱，等 Phase 5 落地）/ `widget` / `tab-group`
+  - 运行时兜底：遇到**不在联合里的 kind**（旧版本读到新版本写入的数据）降级成占位块 —— IndexedDB 不校验结构，未知数据不该崩整页
+- `components/VirtualList.tsx`：补 `onReachTop` 回调（贴顶时触发，供向上翻页）+ **向上插入的锚点补偿**
+  - 做法：记上一帧的 `offsets` / `keys`，首项换人且用户未贴底时，用「盖住视口顶部的那一项」当锚点，按它在新几何里的位置重设 `scrollTop`
+  - 锚点用 **item key 而非下标**：插入会让整段下标位移，只有 key 是不动的参照物
+- `db/chat.ts`：`messageText` 在联合类型下简化为「过滤 text 块取 payload.text」；新增 `textBlock` / `addVersion` / `selectCandidateVersion`
+  - `addVersion` 首次调用会把「当前正文」也登记成一条版本，否则「换一个」之后无从切回；超 `MAX_CANDIDATES(8)` 时淘汰**最旧的未展示项**，绝不淘汰当前展示的那个
+  - `blocks` 与展示版本**同步更新**：前者是渲染与历史组装的投影，后者是版本历史，分家就会出现「看到的」和「下一轮送出去的」不是同一段话
+- `pages/chat/ChatWindowPage.tsx`
+  - 抽出 `runGeneration(history, targetId)`：发送 / 重发 / 换一个三条路共用，差别只在结果写到哪（追加新消息 vs 加一个版本）
+  - 新增 `historyUpTo(messages, upToIndex)`：把「同一轮」钉住 —— 换一个时若不截断历史，等于让模型接着自己刚写的那段往下续，必然跑偏
+  - 气泡下方操作区：`‹ n/N ›` 候选导航、「换一个」（仅末条 AI 回复）、「重发」（末条是用户消息 = 这一轮压根没拿到回复）
+  - 分页：滚到顶自动加载更早一页；`loadingEarlierRef` 做**同步守卫**（贴顶时 `onReachTop` 会连着触发，而 state 更新是异步的，只靠 state 拦不住）；顶部有「正在加载更早的消息…」提示
+
+**验收**
+
+- `web/scripts/verify-chat.mjs` 扩到 **35 项断言全过**：块分发 8 种（含「html 块只给占位、页面上不存在 `<b>`」的防注入断言）、分页三页 `3408 → 6934 → 7334`（并在向上插入后 `scrollTop=3840`，证明锚点补偿生效）、换一个记下两个版本且可切回并跨刷新保持、重发新增一条回复。
+- `web/scripts/verify-providers.mjs` 回归 **22 项全过**；`npm run typecheck`（两端）与 `npm run build` 通过，控制台零异常。
+- 用量取证：一轮聊天 + 中止 + 换一个 + 重发共落 `usage_record` **4 条**（证明后两者确实各发起了一次上游调用）。
+- 修验收脚本自身的 fixture 耦合：`verify-providers.mjs` 原先把种子方案的显示名写死成 `Mock 上游`，换个 `.env` 就跑不过；改为从 `GET /api/providers` 现取，并在没有方案时给出明确提示。

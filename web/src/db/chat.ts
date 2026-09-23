@@ -8,12 +8,14 @@ import type {
   ChatMessage,
   ChatSession,
   MessageBlock,
+  MessageCandidate,
   MessageRole,
   MessageStatus,
+  TextBlock,
 } from '@shared/types'
 import { db } from './db'
 
-/** 单条消息最多保留多少候选 —— §6.3 的「多候选 / 重roll」提前量，Phase 1 只建表不用 */
+/** 单条消息最多保留多少候选版本 —— §6.3 的「多候选 / 重roll」提前量 */
 export const MAX_CANDIDATES = 8
 
 /** 时间键的两端哨兵：比 Date.now() 的取值域更宽，避免边界漏条 */
@@ -46,10 +48,14 @@ export interface NewMessageInput {
   replyToId?: string | null
 }
 
+/** 造一个纯文本块（消息体里最常见的形状） */
+export function textBlock(text: string, order = 0): TextBlock {
+  return { kind: 'text', payload: { text }, order }
+}
+
 export function newMessage(input: NewMessageInput): ChatMessage {
   const now = Date.now()
-  const blocks: MessageBlock[] =
-    input.blocks ?? [{ kind: 'text', payload: { text: input.text ?? '' }, order: 0 }]
+  const blocks: MessageBlock[] = input.blocks ?? [textBlock(input.text ?? '')]
   return {
     id: crypto.randomUUID(),
     type: 'chat-message',
@@ -67,18 +73,14 @@ export function newMessage(input: NewMessageInput): ChatMessage {
   }
 }
 
-/** 取消息的纯文本（Phase 1 只有 text 块；别的块类型接入后在此补渲染分支） */
+/**
+ * 取消息的**纯文本投影**：历史组装、列表预览、版本历史都只看 text 块。
+ * 别的块（图片 / 文件 / 工具结果）没有可入 prompt 的文字，刻意跳过而不是硬塞占位符。
+ */
 export function messageText(message: ChatMessage): string {
   return message.blocks
     .filter((block) => block.kind === 'text')
-    .map((block) => {
-      const payload = block.payload
-      if (typeof payload === 'object' && payload !== null && 'text' in payload) {
-        const text = (payload as { text: unknown }).text
-        return typeof text === 'string' ? text : ''
-      }
-      return ''
-    })
+    .map((block) => block.payload.text)
     .join('')
 }
 
@@ -153,4 +155,76 @@ export async function touchSession(id: string, title?: string): Promise<void> {
     updatedAt: Date.now(),
     ...(title === undefined ? {} : { title }),
   })
+}
+
+/* ---------- 消息版本 / 多候选（§6.3）：「换一个」与「切回上一版」都走这里 ---------- */
+
+export interface AddVersionInput {
+  content: string
+  /** 这条新版本怎么来的：重roll（模型重出）还是编辑（用户改） */
+  origin?: MessageCandidate['origin']
+  status?: MessageStatus
+  reasoning?: string
+}
+
+/**
+ * 记入一个新版本并**设为展示版本**。
+ *
+ * 首次调用会把「当前正文」也登记成一条版本 —— 否则「换一个」之后无从切回上一版，
+ * 而用户点「换一个」时最常见的念头恰恰是「还是刚才那个好」。
+ *
+ * ⚠️ `blocks` 与展示版本必须同步：前者是渲染与历史组装的投影，后者是版本历史。
+ * 两者一旦分家，就会出现「屏幕上看到的」和「下一轮送出去的」不是同一段话。
+ */
+export async function addVersion(id: string, input: AddVersionInput): Promise<ChatMessage | null> {
+  const message = await db.messages.get(id)
+  if (message === undefined) return null
+
+  const origin = input.origin ?? 'reroll'
+  const versions: MessageCandidate[] =
+    message.candidates.length > 0
+      ? message.candidates.map((candidate) => ({ ...candidate, selected: false }))
+      : [{ content: messageText(message), origin, selected: false }]
+  versions.push({ content: input.content, origin, selected: true })
+
+  // 超限时淘汰**最旧的未展示项**，绝不淘汰刚选中的那个 ——
+  // 否则「n/N」里会出现一个屏幕上正显示、却找不到对应条目的版本
+  while (versions.length > MAX_CANDIDATES) {
+    const victim = versions.findIndex((candidate) => !candidate.selected)
+    if (victim < 0) break
+    versions.splice(victim, 1)
+  }
+
+  const next: ChatMessage = {
+    ...message,
+    blocks: [textBlock(input.content)],
+    candidates: versions,
+    ...(input.status === undefined ? {} : { status: input.status }),
+    ...(input.reasoning === undefined || input.reasoning === ''
+      ? {}
+      : { metadata: { ...message.metadata, reasoning: input.reasoning } }),
+    updatedAt: Date.now(),
+  }
+  await db.messages.put(next)
+  return next
+}
+
+/** 切到第 `index` 个版本（气泡下方的 ‹ n/N ›）；`blocks` 同步跟上 */
+export async function selectCandidateVersion(
+  id: string,
+  index: number,
+): Promise<ChatMessage | null> {
+  const message = await db.messages.get(id)
+  if (message === undefined) return null
+  const target = message.candidates[index]
+  if (target === undefined) return null
+
+  const next: ChatMessage = {
+    ...message,
+    blocks: [textBlock(target.content)],
+    candidates: message.candidates.map((candidate, i) => ({ ...candidate, selected: i === index })),
+    updatedAt: Date.now(),
+  }
+  await db.messages.put(next)
+  return next
 }
