@@ -1,5 +1,5 @@
 /**
- * Phase 2 Home 第一批验收：留言板 / 愿望清单 / 倒数日 + Dexie v4 持久化。
+ * Phase 2 Home 前两批验收：留言板 / 愿望清单 / 倒数日 / 日记 / 收藏 + Dexie v5 持久化。
  * 前置：vite + 无头 Edge CDP；用 Node >= 22 运行（需全局 WebSocket）。
  * 请使用隔离的浏览器 profile：验收最后会导入一份空 v1 备份来验兼容性。
  */
@@ -96,7 +96,7 @@ await send('Page.enable')
 
 await navigate('/home', '留言板')
 const homeText = await evaluate('document.body.innerText')
-check('首页三个第一批入口可见', ['留言板', '愿望清单', '倒数日'].every((text) => homeText.includes(text)))
+check('首页五个已接入入口可见', ['留言板', '愿望清单', '倒数日', '日记', '收藏'].every((text) => homeText.includes(text)))
 
 await navigate('/home/board', '留下一句话')
 await setValue('#board-draft', '第一条生活留言')
@@ -132,11 +132,68 @@ await sleep(500)
 await waitFor(`document.body.innerText.includes('未来的约定')`, '倒数日刷新保留')
 check('倒数日新增并跨刷新保留', true)
 
+await navigate('/home/diary', '写一篇日记')
+await setValue('#diary-title', '施工日记')
+await setValue('#diary-content', '今天把共同生活又往前推进了一点。')
+await clickButton('保存日记')
+await waitFor(`document.body.innerText.includes('施工日记') && document.body.innerText.includes('今天把共同生活又往前推进了一点。')`, '日记落地')
+await clickButton('编辑')
+await waitFor(`document.body.innerText.includes('编辑日记')`, '进入日记编辑')
+await setValue('#diary-content', '今天把共同生活又往前推进了一大步。')
+await clickButton('保存修改')
+await waitFor(`document.body.innerText.includes('一大步')`, '日记修改落地')
+await send('Page.reload')
+await sleep(500)
+await waitFor(`document.body.innerText.includes('一大步')`, '日记修改刷新保留')
+check('日记新增、编辑并跨刷新保留', true)
+
+await navigate('/home/bookmarks', '收藏一个链接')
+await setValue('#bookmark-title', '栖息地参考页')
+await setValue('#bookmark-url', 'https://example.com/habitat')
+await setValue('#bookmark-note', '以后还想回来看看。')
+await clickButton('加入收藏')
+await waitFor(`document.body.innerText.includes('栖息地参考页') && document.body.innerText.includes('以后还想回来看看。')`, '收藏落地')
+await send('Page.reload')
+await sleep(500)
+await waitFor(`document.querySelector('a[href="https://example.com/habitat"]') !== null`, '收藏刷新保留')
+const bookmarkLink = await evaluate(`(() => {
+  const link = document.querySelector('a[href="https://example.com/habitat"]')
+  return link ? { target: link.target, rel: link.rel } : null
+})()`)
+check('外部收藏跨刷新保留并安全地新窗打开', bookmarkLink?.target === '_blank' && bookmarkLink?.rel.includes('noreferrer'), JSON.stringify(bookmarkLink))
+await setValue('#bookmark-title', '重复收藏')
+await setValue('#bookmark-url', 'https://example.com/habitat')
+await clickButton('加入收藏')
+await waitFor(`document.body.innerText.includes('这个链接已经收藏过了')`, '重复收藏拦截')
+check('同一个 targetType + targetId 不会重复收藏', true)
+
 const backupCheck = await evaluate(`(async () => {
   const backupModule = await import('/src/lib/backup.ts')
   const backup = await backupModule.exportAll()
   const restored = await backupModule.importAll(backup)
-  const legacy = await backupModule.importAll({
+  let unsafeBookmarkRejected = false
+  try {
+    await backupModule.importAll({
+      ...backup,
+      bookmarks: [{
+        id: 'unsafe', type: 'bookmark', targetType: 'external-link', targetId: 'javascript:alert(1)',
+        title: 'unsafe', note: null, createdAt: Date.now(), updatedAt: Date.now(),
+      }],
+    })
+  } catch {
+    unsafeBookmarkRejected = true
+  }
+  const legacyV2 = await backupModule.importAll({
+    format: 'habitat-backup',
+    version: 2,
+    exportedAt: Date.now(),
+    sessions: [],
+    messages: [],
+    moments: [],
+    wishlist: [],
+    countdowns: [],
+  })
+  const legacyV1 = await backupModule.importAll({
     format: 'habitat-backup',
     version: 1,
     exportedAt: Date.now(),
@@ -145,13 +202,17 @@ const backupCheck = await evaluate(`(async () => {
   })
   return {
     version: backup.version,
-    exportedHome: backup.moments.length + backup.wishlist.length + backup.countdowns.length,
-    restoredHome: restored.moments + restored.wishlist + restored.countdowns,
-    legacyHome: legacy.moments + legacy.wishlist + legacy.countdowns,
+    exportedHome: backup.moments.length + backup.wishlist.length + backup.countdowns.length + backup.diaries.length + backup.bookmarks.length,
+    restoredHome: restored.moments + restored.wishlist + restored.countdowns + restored.diaries + restored.bookmarks,
+    unsafeBookmarkRejected,
+    legacyV2NewTables: legacyV2.diaries + legacyV2.bookmarks,
+    legacyV1Home: legacyV1.moments + legacyV1.wishlist + legacyV1.countdowns + legacyV1.diaries + legacyV1.bookmarks,
   }
 })()`)
-check('备份 v2 覆盖三类 Home 数据并可整体恢复', backupCheck.version === 2 && backupCheck.exportedHome >= 2 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
-check('旧 v1 聊天备份仍可导入', backupCheck.legacyHome === 0)
+check('备份 v3 覆盖五类 Home 数据并可整体恢复', backupCheck.version === 3 && backupCheck.exportedHome >= 4 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
+check('备份导入拒绝非 HTTP(S) 的外部收藏', backupCheck.unsafeBookmarkRejected === true)
+check('旧 v2 备份仍可导入，新增两表按空处理', backupCheck.legacyV2NewTables === 0)
+check('旧 v1 聊天备份仍可导入', backupCheck.legacyV1Home === 0)
 
 const dbShape = await evaluate(`(async () => {
   const request = indexedDB.open('habitat-db')
@@ -160,7 +221,7 @@ const dbShape = await evaluate(`(async () => {
   db.close()
   return value
 })()`)
-check('Dexie 已升到 v4 且三张 Home 表齐全', dbShape.version === 40 && ['moments', 'wishlist', 'countdowns'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
+check('Dexie 已升到 v5 且五张 Home 表齐全', dbShape.version === 50 && ['moments', 'wishlist', 'countdowns', 'diaries', 'bookmarks'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
 check('控制台无异常', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '))
 
 const passed = results.filter(Boolean).length

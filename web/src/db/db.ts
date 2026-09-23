@@ -1,5 +1,13 @@
 import Dexie, { type Table } from 'dexie'
-import type { ChatMessage, ChatSession, CountdownDay, Moment, WishlistItem } from '@shared/types'
+import type {
+  Bookmark,
+  ChatMessage,
+  ChatSession,
+  CountdownDay,
+  Diary,
+  Moment,
+  WishlistItem,
+} from '@shared/types'
 
 /**
  * 本地数据层（铁律5）：第一天就版本化迁移。
@@ -18,6 +26,8 @@ export class HabitatDb extends Dexie {
   moments!: Table<Moment, string>
   wishlist!: Table<WishlistItem, string>
   countdowns!: Table<CountdownDay, string>
+  diaries!: Table<Diary, string>
+  bookmarks!: Table<Bookmark, string>
 
   constructor() {
     super('habitat-db')
@@ -41,6 +51,16 @@ export class HabitatDb extends Dexie {
       moments: 'id, createdAt, author',
       wishlist: 'id, status, createdAt, updatedAt',
       countdowns: 'id, targetDate, createdAt',
+    })
+    // Phase 2 第二批：日记 + 统一收藏。旧表声明必须完整重复，Dexie 才会保留它们。
+    this.version(5).stores({
+      sessions: 'id, updatedAt, pinnedAt, archivedAt',
+      messages: 'id, sessionId, createdAt, [sessionId+createdAt+id]',
+      moments: 'id, createdAt, author',
+      wishlist: 'id, status, createdAt, updatedAt',
+      countdowns: 'id, targetDate, createdAt',
+      diaries: 'id, entryDate, createdAt, updatedAt',
+      bookmarks: 'id, targetType, targetId, createdAt, &[targetType+targetId]',
     })
   }
 }

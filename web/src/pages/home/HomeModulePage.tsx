@@ -3,11 +3,15 @@ import { homeModuleName } from '../../features/home/modules'
 import { BoardModule } from '../../features/home/BoardModule'
 import { CountdownModule } from '../../features/home/CountdownModule'
 import { WishlistModule } from '../../features/home/WishlistModule'
+import { DiaryModule } from '../../features/home/DiaryModule'
+import { BookmarksModule } from '../../features/home/BookmarksModule'
 
 function moduleContent(module: string | undefined, name: string) {
   if (module === 'board') return <BoardModule />
   if (module === 'countdown') return <CountdownModule />
   if (module === 'wishlist') return <WishlistModule />
+  if (module === 'diary') return <DiaryModule />
+  if (module === 'bookmarks') return <BookmarksModule />
   return (
     <div
       className="rounded-lg border p-6 text-center text-sm"

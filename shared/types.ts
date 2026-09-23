@@ -168,6 +168,35 @@ export interface CountdownDay extends BaseObject {
   targetDate: string
 }
 
+/** 日记按本地日期归档；正文先存纯文本，避免在没有富文本沙箱前引入 HTML。 */
+export interface Diary extends BaseObject {
+  type: 'diary'
+  title: string
+  content: string
+  entryDate: string
+}
+
+/**
+ * 收藏用 `targetType + targetId` 统一指向一切（技术方案 §6.2）。
+ * 当前 UI 只生产 external-link；其余取值给后续各模块的“收藏”按钮共用。
+ */
+export type BookmarkTargetType =
+  | 'external-link'
+  | 'chat-message'
+  | 'diary'
+  | 'moment'
+  | 'artwork'
+  | 'photo'
+  | 'reading-note'
+
+export interface Bookmark extends BaseObject {
+  type: 'bookmark'
+  targetType: BookmarkTargetType
+  targetId: string
+  title: string
+  note: string | null
+}
+
 /* ---------- LLM 方案（§6.2 ApiProfile / §7.1 多方案管理） ---------- */
 
 /** 适配器类型。§7.1：以 OpenAI Chat Completions 兼容协议为最小公分母，后续可加原生适配器 */

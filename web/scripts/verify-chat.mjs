@@ -267,7 +267,7 @@ const dbInfo = await evaluate(`(async () => {
   return JSON.stringify({ version: target.version ?? null, indexes })
 })()`)
 const dbState = JSON.parse(dbInfo)
-check('Dexie 已升到 v3（IndexedDB 版本 30）', dbState.version === 30, dbInfo)
+check('Dexie 当前为 v5（IndexedDB 版本 50）', dbState.version === 50, dbInfo)
 check(
   'v3 的三元复合索引已建出',
   Array.isArray(dbState.indexes) && dbState.indexes.includes('[sessionId+createdAt+id]'),

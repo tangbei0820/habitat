@@ -30,7 +30,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar                                 |
-| 当前阶段 | **Phase 2 进行中**：Home 第一批（留言板 / 愿望清单 / 倒数日）已落地并验收；下一切片日记 + 收藏 |
+| 当前阶段 | **Phase 2 进行中**：留言板 / 愿望清单 / 倒数日 / 日记 / 收藏已落地并验收；下一切片作品 + 相册 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -201,7 +201,13 @@ habitat/
   - 备份升 v2 并保留 v1 导入兼容；`verify-home.mjs` 9/9
   - 交接复核同时修掉 `verify-chat.mjs` “新建会话路径”竞态，复验 36/36
 
-**下一步**：Phase 2 第二切片（日记 + 收藏）。
+- **Phase 2 · 第二批：日记 + 收藏**（2026-09-23）
+  - `shared`：`Diary` + 统一 `Bookmark(targetType + targetId)` 契约；`web`：Dexie v5 两表与仓储层
+  - 日记支持新增 / 编辑 / 二次确认删除；收藏先落外部链接入口，HTTP(S) 校验 + 复合唯一索引去重
+  - 备份升 v3，保持 v1/v2 导入兼容并拒绝备份里的危险链接协议
+  - 验收：`verify-home.mjs` 14/14，`verify-chat.mjs` 36/36
+
+**下一步**：Phase 2 第三切片（作品 + 相册）。
 
 **本地验收方式**
 
@@ -211,7 +217,7 @@ habitat/
 - 验证方案路由：起 mock 上游 + server 后 `npx tsx scripts/probe-providers.ts`（52 项断言）
 - 验证诊断端点：起 server（自己指定 `HABITAT_DB_PATH`）后 `npx tsx scripts/probe-diagnostics.ts`（48 项断言）
 - 验证诊断保留策略：`npx tsx scripts/probe-diag-retention.ts`（15 项断言，**自带一次性临时库，不需要 server**，也不碰真实记录）
-- 端到端（前端）：`node web/scripts/verify-chat.mjs`（36 项）/ `node web/scripts/verify-providers.mjs`（22 项）/ `node web/scripts/verify-diagnostics.mjs`（36 项）/ `node web/scripts/verify-home.mjs`（9 项）（前置条件见各自文件头注释）
+- 端到端（前端）：`node web/scripts/verify-chat.mjs`（36 项）/ `node web/scripts/verify-providers.mjs`（22 项）/ `node web/scripts/verify-diagnostics.mjs`（36 项）/ `node web/scripts/verify-home.mjs`（14 项）（前置条件见各自文件头注释）
 - ⚠️ **`verify-diagnostics.mjs` 要用 Node ≥ 22 跑**：它用内置 `WebSocket` 驱动 CDP、用内置 `node:sqlite` 写 fixture（刻意避开 `better-sqlite3` —— 那是 Node 20 的 ABI）
 - ⚠️ **跑 `server` 必须用 Node 20**：`better-sqlite3` 原生模块的 ABI 与安装时的 Node 绑定，
   用其它版本会 `ERR_DLOPEN_FAILED`（详见 `README.md` 环境要求）

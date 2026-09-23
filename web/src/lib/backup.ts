@@ -3,13 +3,21 @@
  *
  * 导出物是一个自描述的 JSON 文件：带上格式标识与版本号，日后改结构时导入方能给出
  * 「这份备份太旧 / 太新」的明确提示，而不是默默导出一堆对不上的数据。
- * 导出**全量**（sessions + messages）：个人数据量的场景，部分备份的取舍逻辑比全量更危险。
+ * 导出**全量本地表**：个人数据量的场景，部分备份的取舍逻辑比全量更危险。
  */
-import type { ChatMessage, ChatSession, CountdownDay, Moment, WishlistItem } from '@shared/types'
+import type {
+  Bookmark,
+  ChatMessage,
+  ChatSession,
+  CountdownDay,
+  Diary,
+  Moment,
+  WishlistItem,
+} from '@shared/types'
 import { db } from '../db/db'
 
 export const BACKUP_FORMAT = 'habitat-backup'
-export const BACKUP_VERSION = 2
+export const BACKUP_VERSION = 3
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -20,6 +28,8 @@ export interface HabitatBackup {
   moments: Moment[]
   wishlist: WishlistItem[]
   countdowns: CountdownDay[]
+  diaries: Diary[]
+  bookmarks: Bookmark[]
 }
 
 export interface BackupCounts {
@@ -28,15 +38,19 @@ export interface BackupCounts {
   moments: number
   wishlist: number
   countdowns: number
+  diaries: number
+  bookmarks: number
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, messages, moments, wishlist, countdowns] = await Promise.all([
+  const [sessions, messages, moments, wishlist, countdowns, diaries, bookmarks] = await Promise.all([
     db.sessions.toArray(),
     db.messages.toArray(),
     db.moments.toArray(),
     db.wishlist.toArray(),
     db.countdowns.toArray(),
+    db.diaries.toArray(),
+    db.bookmarks.toArray(),
   ])
   return {
     format: BACKUP_FORMAT,
@@ -47,6 +61,8 @@ export async function exportAll(): Promise<HabitatBackup> {
     moments,
     wishlist,
     countdowns,
+    diaries,
+    bookmarks,
   }
 }
 
@@ -88,6 +104,39 @@ function looksLikeCountdown(value: unknown): value is CountdownDay {
   return isRecord(value) && typeof value.id === 'string' && value.type === 'countdown-day' && typeof value.targetDate === 'string'
 }
 
+function looksLikeDiary(value: unknown): value is Diary {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    value.type === 'diary' &&
+    typeof value.title === 'string' &&
+    typeof value.content === 'string' &&
+    typeof value.entryDate === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value.entryDate)
+  )
+}
+
+function looksLikeBookmark(value: unknown): value is Bookmark {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    value.type !== 'bookmark' ||
+    typeof value.targetType !== 'string' ||
+    typeof value.targetId !== 'string' ||
+    typeof value.title !== 'string' ||
+    (value.note !== null && typeof value.note !== 'string')
+  ) return false
+  const targetTypes = ['external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note']
+  if (!targetTypes.includes(value.targetType)) return false
+  if (value.targetType !== 'external-link') return true
+  try {
+    const url = new URL(value.targetId)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 /**
  * 恢复备份：**整体替换**现有数据（导入语义是「回到备份那一刻」，不是合并）。
  * 先完整校验再动库 —— 校验不过一行都不写，避免半导入状态。
@@ -96,7 +145,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   if (!isRecord(raw) || raw.format !== BACKUP_FORMAT) {
     throw new Error('不是栖息地备份文件（缺少 format 标识）')
   }
-  if (raw.version !== 1 && raw.version !== BACKUP_VERSION) {
+  if (raw.version !== 1 && raw.version !== 2 && raw.version !== BACKUP_VERSION) {
     throw new Error(`备份版本不匹配：文件是 v${String(raw.version)}，当前支持 v1–v${BACKUP_VERSION}`)
   }
   if (!Array.isArray(raw.sessions) || !Array.isArray(raw.messages)) {
@@ -122,17 +171,33 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：存在无法识别的 Home 记录')
   }
 
-  await db.transaction('rw', db.sessions, db.messages, db.moments, db.wishlist, db.countdowns, async () => {
+  // v3 新增日记与收藏；v1/v2 导入时这两张表为空，继续遵守“整体替换”语义。
+  const diariesRaw = raw.version === 3 ? raw.diaries : []
+  const bookmarksRaw = raw.version === 3 ? raw.bookmarks : []
+  if (!Array.isArray(diariesRaw) || !Array.isArray(bookmarksRaw)) {
+    throw new Error('备份内容损坏：diaries / bookmarks 必须是数组')
+  }
+  const diaries = diariesRaw.filter(looksLikeDiary)
+  const bookmarks = bookmarksRaw.filter(looksLikeBookmark)
+  if (diaries.length !== diariesRaw.length || bookmarks.length !== bookmarksRaw.length) {
+    throw new Error('备份内容损坏：存在无法识别的日记或收藏')
+  }
+
+  await db.transaction('rw', [db.sessions, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks], async () => {
     await db.sessions.clear()
     await db.messages.clear()
     await db.moments.clear()
     await db.wishlist.clear()
     await db.countdowns.clear()
+    await db.diaries.clear()
+    await db.bookmarks.clear()
     await db.sessions.bulkAdd(sessions)
     await db.messages.bulkAdd(messages)
     await db.moments.bulkAdd(moments)
     await db.wishlist.bulkAdd(wishlist)
     await db.countdowns.bulkAdd(countdowns)
+    await db.diaries.bulkAdd(diaries)
+    await db.bookmarks.bulkAdd(bookmarks)
   })
   return {
     sessions: sessions.length,
@@ -140,5 +205,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     moments: moments.length,
     wishlist: wishlist.length,
     countdowns: countdowns.length,
+    diaries: diaries.length,
+    bookmarks: bookmarks.length,
   }
 }
