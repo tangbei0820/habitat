@@ -4,7 +4,7 @@
 
 - sidecar **不落用户数据**：每次由 habitat-server 传入旧状态并接回新状态。
 - habitat-server 的 SQLite 是唯一持久化源；sidecar 重启不会丢进度。
-- 当前只开放 `/health` 与 `/v1/tick`。事件、梦境、互动结算和主动调度留给后续切片。
+- 开放 `/health`、`/v1/tick`、互动结算、事件检查与梦境检查 / 后效端点；主动调度与预算仍由 Node 宿主掌握。
 - Eventide 固定在 `requirements.txt` 的 commit，避免上游内部结构静默变化。
 
 本地启动：

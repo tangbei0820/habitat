@@ -1,8 +1,8 @@
 /**
  * Drizzle schema —— 服务端 SQLite（技术方案 §6.2）
- * Phase 0 只有 MCP 诊断表；Phase 1 补 UsageRecord 与 ApiProfile / ApiSecret。账本其余表随 Phase 4 增补。
+ * 覆盖基础诊断、API/用量、Phase 3B 主动行为与钱包账本表。
  */
-import type { ApiProfileModelMap } from '@shared/types'
+import type { ApiProfileModelMap, AutomationPolicy } from '@shared/types'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 /** McpDiagnosticLog（§6.2 / §7.2②）：MCP 握手与每次请求响应全量落此表，逐请求可回放 */
@@ -125,3 +125,81 @@ export const bodyStateSnapshot = sqliteTable('body_state_snapshot', {
 })
 
 export type BodyStateSnapshotRow = typeof bodyStateSnapshot.$inferSelect
+
+/** 主动行为策略。单用户阶段固定 `id='primary'`，JSON 便于策略字段继续演进。 */
+export const automationPolicy = sqliteTable('automation_policy', {
+  id: text('id').primaryKey(),
+  policyJson: text('policy_json', { mode: 'json' }).$type<AutomationPolicy>().notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+/** 只保存调度必需的时间戳与计数，不复制聊天正文。 */
+export const automationState = sqliteTable('automation_state', {
+  id: text('id').primaryKey(),
+  lastCounterpartAt: integer('last_counterpart_at'),
+  lastWakeAt: integer('last_wake_at'),
+  unansweredWakes: integer('unanswered_wakes').notNull().default(0),
+  lastSolitudeDayKey: text('last_solitude_day_key'),
+  lastDreamDayKey: text('last_dream_day_key'),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+/** BudgetGuard 的预约 / 完成记录；预约先落库，防止并发检查同时放行。 */
+export const automationRun = sqliteTable('automation_run', {
+  id: text('id').primaryKey(),
+  kind: text('kind').notNull(),
+  status: text('status').notNull(),
+  reason: text('reason'),
+  usageRecordId: integer('usage_record_id'),
+  reservedTokens: integer('reserved_tokens').notNull().default(0),
+  dayKey: text('day_key').notNull(),
+  at: integer('at').notNull(),
+  finishedAt: integer('finished_at'),
+})
+
+/** Phase 4 统计的唯一事实源；Phase 3B 起先记录状态与主动行为。 */
+export const eventLog = sqliteTable('event_log', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  eventType: text('event_type').notNull(),
+  dayKey: text('day_key').notNull(),
+  hourKey: text('hour_key').notNull(),
+  metricsJson: text('metrics_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  refId: text('ref_id'),
+  at: integer('at').notNull(),
+})
+
+/** 主动消息先落服务端收件箱；Phase 4 再负责 UI 与 Web Push。 */
+export const notification = sqliteTable('notification', {
+  id: text('id').primaryKey(),
+  kind: text('kind').notNull(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  metadataJson: text('metadata_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  readAt: integer('read_at'),
+  createdAt: integer('created_at').notNull(),
+})
+
+/** 独处内容是 AI 私有产出，不混进用户聊天或通知。 */
+export const solitudeEntry = sqliteTable('solitude_entry', {
+  id: text('id').primaryKey(),
+  body: text('body').notNull(),
+  metadataJson: text('metadata_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  createdAt: integer('created_at').notNull(),
+})
+
+/** 钱包余额是缓存值；每次变更必须与不可变流水同事务写入。 */
+export const wallet = sqliteTable('wallet', {
+  id: text('id').primaryKey(),
+  balance: integer('balance').notNull().default(0),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+export const walletTransaction = sqliteTable('wallet_transaction', {
+  id: text('id').primaryKey(),
+  delta: integer('delta').notNull(),
+  balanceAfter: integer('balance_after').notNull(),
+  reason: text('reason').notNull(),
+  refType: text('ref_type'),
+  refId: text('ref_id'),
+  createdAt: integer('created_at').notNull(),
+})

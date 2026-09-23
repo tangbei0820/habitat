@@ -392,7 +392,7 @@ interface MemoryTextResult { text: string }
 > （`{"error":{"code":"MCP_HANDSHAKE_FAILED","message":"MCP server 'nocturne' is not ready (state=error, lastError=not configured)"}}`）
 > —— 这是**设计行为而非故障**；真实状态看 `GET /api/health/mcp`。
 
-## Phase 3B 已实现（切片一 · Eventide 状态底座）
+## Phase 3B 已实现（Eventide 状态 + 主动行为）
 
 Eventide 作为**无状态 Python sidecar**运行；habitat-server 持有并持久化唯一的当前状态。
 上游依赖锁在 commit `5d8bef965137427e41d97f5b60e5a14c24dd812c`。
@@ -440,9 +440,45 @@ Eventide 作为**无状态 Python sidecar**运行；habitat-server 持有并持�
 | `EVENTIDE_URL` 未配置 | 400 | `PROVIDER_NOT_CONFIGURED` |
 | sidecar 不可达 / 非 2xx / 响应形状损坏 | 502 | `PROVIDER_UPSTREAM_ERROR` |
 
+聊天成功收口后，服务端会在**不阻塞已送达回复**的后台任务里生成结构化互动结算，再交给 Eventide
+归一化、限幅并写回。结算调用同样落 `UsageRecord`；失败只写 `EventLog` 与服务端 warning。
+
+### 主动行为与 BudgetGuard
+
+| 接口 | 说明 |
+|---|---|
+| `GET /api/automation` | 当前策略 + 运行态（最后用户互动、最后唤醒、连续未回复、每日独处 / 梦境标记） |
+| `PATCH /api/automation` | 部分更新策略；主动行为默认关闭，时间为 `HH:mm`，时区为 IANA 名称 |
+| `POST /api/automation/check` | 立即执行一轮与定时器相同的检查；请求体 `{}`，不接受客户端自报时间 |
+| `GET /api/automation/runs?limit=` | BudgetGuard 预约 / 完成 / 失败 / 跳过记录 |
+| `GET /api/events?limit=` | EventLog，供 Phase 4 Life 统计使用 |
+
+BudgetGuard 在调用 LLM **之前**以 SQLite 事务预约预算，检查总开关、功能开关、免打扰、静默、冷却、
+连续未回复、每日主动次数、API 次数、Token 与费用。普通聊天不受免打扰 / 主动总开关影响，但仍过
+API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上限开启后，只要当天存在未定价
+调用，后续调用会被安全拒绝为“费用不可计算”，不会拿 `0` 假装真实费用。
+
+### 主动产出
+
+| 接口 | 说明 |
+|---|---|
+| `GET /api/notifications?limit=` | 主动唤醒先进入服务端通知收件箱，不伪造前端 Dexie 聊天消息 |
+| `PATCH /api/notifications/:id/read` | 标记通知已读 |
+| `GET /api/solitude?limit=` | AI 私有的独处记录；梦卡以 `metadata.kind="dream"` 区分 |
+
+调度器默认每分钟检查。Eventide 状态即使主动总开关关闭也可推进；真正的 wake / solitude / dream
+只有分别开启且通过 BudgetGuard 才会调用 LLM。用户真实发言会清零连续未回复计数。
+
+### 钱包
+
+| 接口 | 说明 |
+|---|---|
+| `GET /api/wallet` | 当前余额 |
+| `GET /api/wallet/transactions?limit=` | 不可变流水，最新在前 |
+| `POST /api/wallet/transactions` | `{ delta, reason, refType?, refId? }`；余额不足时拒绝，不允许无流水改余额 |
+
 ## 待实现（按阶段）
 
 - Phase 3A 剩余：**自部署 Nocturne 实例**的 Token / Namespace / 反代链路验证（客户端代码已用官方只读 Demo 验通，见 `docs/TASKS.md` T-013）
-- Phase 3B 剩余：互动结算、事件抽取、主动唤醒 / 独处时光与 BudgetGuard
-- Phase 4：Life 统计 / 账本 / 通知
+- Phase 4：Life 页面把现有 EventLog / UsageRecord / 通知 / 钱包权威数据可视化，并补价格快照与 Web Push
 - 诊断日志的留存策略（表只增不减，目前没有清空 / 归档入口）

@@ -22,9 +22,12 @@ import type {
 } from '@shared/events'
 import type { LlmChatMessage, LlmRole, LlmStreamChunk, LlmUsage, StateProvider } from '@shared/providers'
 import { assembleChatContext } from '../context/chat-context.js'
+import { finishAutomationRun, getAutomationPolicy, noteCounterpartActivity } from '../db/automation.js'
 import { recordUsage } from '../db/usage.js'
+import { BudgetGuard } from '../lib/budget-guard.js'
 import { ProviderError } from '../providers/errors.js'
 import type { LlmRegistry } from '../providers/registry.js'
+import { settleChatInteraction } from '../services/settlement.js'
 
 const ROLES: readonly LlmRole[] = ['system', 'user', 'assistant', 'tool']
 
@@ -116,10 +119,24 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, 
     const provider = registry.provider(profile.id)
     const model = body.model ?? provider.defaultModel
 
-    const context = await assembleChatContext(body.messages, state)
+    const counterpartAt = new Date()
+    noteCounterpartActivity(counterpartAt.getTime())
+    const latestUserText = [...body.messages].reverse().find((message) => message.role === 'user')?.content ?? ''
+    const policy = getAutomationPolicy()
+    const context = await assembleChatContext(body.messages, state, counterpartAt, {
+      lastCounterpartMessageAt: counterpartAt,
+      counterpartText: latestUserText,
+      triggerWords: policy.triggerWords,
+      timeZone: policy.timeZone,
+    })
     if (context.eventide === 'unavailable') {
       request.log.warn({ error: context.error }, 'Eventide 状态卡不可用，本轮按原始聊天上下文降级')
     }
+    const budget = new BudgetGuard().reserve('chat', body.maxTokens ?? 4_096, counterpartAt)
+    if (!budget.allowed || budget.reservationId === null) {
+      throw new ProviderError(ErrorCodes.BudgetExceeded, budget.reason ?? '本轮聊天超出预算')
+    }
+    const chatRunId = budget.reservationId
 
     // —— 关键一步：**先取第一个 chunk 再写响应头** ——
     // streamChat 是 async generator，函数体要到第一次 next 才执行；
@@ -138,6 +155,7 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, 
     try {
       step = await iterator.next()
     } catch (err) {
+      finishAutomationRun(chatRunId, 'failed', err instanceof Error ? err.message : String(err), null)
       if (err instanceof ProviderError) throw err
       throw new ProviderError(ErrorCodes.Internal, err instanceof Error ? err.message : String(err))
     }
@@ -165,6 +183,7 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, 
 
     let usage: LlmUsage | null = null
     let finishReason: string | null = null
+    let assistantText = ''
 
     try {
       while (step.done !== true) {
@@ -178,6 +197,7 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, 
           if (payload.content !== undefined || payload.reasoning !== undefined) {
             writeFrame(res, 'chat-delta', payload)
           }
+          if (chunk.delta.content !== undefined) assistantText += chunk.delta.content
         } else if (chunk.type === 'usage') {
           usage = chunk.usage
         } else {
@@ -192,6 +212,7 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, 
           ? { code: err.code, message: err.message }
           : { code: ErrorCodes.Internal, message: err instanceof Error ? err.message : String(err) }
       request.log.error({ err, profileId: profile.id, model }, '聊天流中断')
+      finishAutomationRun(chatRunId, 'failed', payload.message, null)
       // 这一轮没跑成，**不记用量**：UsageRecord 记的是消耗，不是尝试
       if (!clientGone) {
         writeFrame(res, 'chat-error', payload)
@@ -218,10 +239,25 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, 
         promptTokens: usagePayload.promptTokens,
         completionTokens: usagePayload.completionTokens,
         totalTokens: usagePayload.totalTokens,
+        timeZone: policy.timeZone,
       })
     } catch (err) {
       // 账没记上不该把这一轮回复作废，但必须留痕（错误不静默）
       request.log.error({ err, profileId: profile.id }, 'UsageRecord 写入失败')
+    }
+    finishAutomationRun(chatRunId, 'completed', null, usageRecordId)
+
+    // 上游已完整结束就结算本轮；即使客户端中途断开，也不能丢掉已经发生的互动后效。
+    // 任何失败只写日志，不能把成功聊天改判成失败。
+    if (state !== null) {
+      void settleChatInteraction({
+        state,
+        provider,
+        model,
+        messages: body.messages,
+        assistantText,
+        logger: request.log,
+      })
     }
 
     // 客户端已断开：事件没人收，但 token 是真花了，账照记

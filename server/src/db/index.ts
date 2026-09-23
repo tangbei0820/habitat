@@ -1,7 +1,7 @@
 /**
  * 服务端 SQLite 连接 + 启动时幂等 bootstrap 迁移。
- * Phase 0 只此一张表，用 CREATE TABLE IF NOT EXISTS 即可；
- * drizzle-kit 正式迁移随 Phase 2 账本落地时引入（届时有多表演进需求）。
+ * 当前仍以 CREATE TABLE IF NOT EXISTS 做本地幂等 bootstrap；
+ * 表结构已覆盖基础诊断、API/用量及 Phase 3B 主动行为链路。
  */
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -102,6 +102,78 @@ CREATE TABLE IF NOT EXISTS body_state_snapshot (
   settled_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 )
+`)
+
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS automation_policy (
+  id TEXT PRIMARY KEY,
+  policy_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS automation_state (
+  id TEXT PRIMARY KEY,
+  last_counterpart_at INTEGER,
+  last_wake_at INTEGER,
+  unanswered_wakes INTEGER NOT NULL DEFAULT 0,
+  last_solitude_day_key TEXT,
+  last_dream_day_key TEXT,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS automation_run (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  reason TEXT,
+  usage_record_id INTEGER,
+  reserved_tokens INTEGER NOT NULL DEFAULT 0,
+  day_key TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  finished_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_automation_run_day ON automation_run (day_key, status, kind);
+CREATE TABLE IF NOT EXISTS event_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type TEXT NOT NULL,
+  day_key TEXT NOT NULL,
+  hour_key TEXT NOT NULL,
+  metrics_json TEXT NOT NULL,
+  ref_id TEXT,
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_event_log_day ON event_log (day_key, id);
+CREATE INDEX IF NOT EXISTS idx_event_log_type ON event_log (event_type, id);
+CREATE TABLE IF NOT EXISTS notification (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  read_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notification_created ON notification (created_at DESC);
+CREATE TABLE IF NOT EXISTS solitude_entry (
+  id TEXT PRIMARY KEY,
+  body TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_solitude_created ON solitude_entry (created_at DESC);
+CREATE TABLE IF NOT EXISTS wallet (
+  id TEXT PRIMARY KEY,
+  balance INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS wallet_transaction (
+  id TEXT PRIMARY KEY,
+  delta INTEGER NOT NULL,
+  balance_after INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  ref_type TEXT,
+  ref_id TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wallet_tx_created ON wallet_transaction (created_at DESC);
 `)
 
 export const db = drizzle(sqlite, { schema })

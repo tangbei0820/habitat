@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar ⚠️ **实测线上跑的是 nginx/1.18.0，不是 Caddy**（T-022），选型待北北确认                      |
-| 当前阶段 | **Phase 3B Eventide 施工中**：切片一状态底座（T-023）+ 切片二聊天前 tick / 状态卡注入（T-024）已完成｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022），不阻塞后续功能施工｜UX P0 与 P1 均已收口 |
+| 当前阶段 | **Phase 3B Eventide 已完成**（T-023~T-025）：状态、结算、事件、梦境、BudgetGuard、主动唤醒、独处、通知底座与钱包｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022）｜下一阶段 Phase 4 Life |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -169,7 +169,7 @@ habitat/
 - Phase 1 Chat MVP：✅ 完成
 - Phase 2 Home 基础数据链：✅ 完成
 - Phase 3A 长期记忆：🚧 一半（客户端链路已验，自部署实例未接）｜**暂停中**，不阻塞 UX 收口
-- Phase 3B Eventide：🚧 切片一、二完成（状态底座 + 聊天上下文注入），互动结算与主动行为未开始
+- Phase 3B Eventide：✅ 完成（状态 + 互动结算 + 事件 / 梦境 + BudgetGuard + 唤醒 / 独处 + 钱包）
 - Phase 4 Life：未开始
 - Phase 5 高级能力：未开始
 - Phase 6 打磨：未开始
@@ -179,7 +179,7 @@ habitat/
 
 ### 当前施工点
 
-**Phase 3B Eventide 正式施工中**；T-022 的 Nocturne 生产验真已降级为部署前关卡，不阻塞当前开发。
+**Phase 3B Eventide 已收口**；T-022 的 Nocturne 生产验真仍是部署前关卡，不阻塞进入 Phase 4。
 
 - ✅ **第一批「消息对象操作」**：编辑（保留原版本，与「换一个」共用一套版本导航）/ 撤回（留痕、不进模型上下文、可恢复）/ 删除 / 多选批量删 / 复制，统一进「长按 + 右键 + `⋯`」同一个菜单
 - ✅ **第二批「跨模块内容流转」**：消息 → 收藏、消息 / 组件 → 作品、聊天图片 → 相册；三类条目保留来源与快照
@@ -218,7 +218,9 @@ habitat/
 - ✅ 已有 `/api/health/state`、`GET /api/state`、`POST /api/state/tick`；真实全链探针 19/19
 - ✅ 切片二「聊天上下文注入」：每轮聊天前 tick，状态卡插在 persona system 指令之后；不回传前端、不改写历史；
   未配置 / 空卡 / sidecar 不可达均降级继续聊天；自动 tick 已串行化且时间单调（T-024）
-- ⏭ 下一切片：互动结算（回复完成后生成/写回 delta）；不提前做事件抽取、梦境或主动唤醒
+- ✅ 收尾「状态住进家」（T-025）：回复后异步互动结算；10 分钟节流的事件触发表；梦种 / 梦卡后效；
+  SQLite 事务型 BudgetGuard；主动唤醒进入通知收件箱；独处记录保持 AI 私有；钱包余额 + 不可变流水；21/21 全链验收
+- 默认安全态：主动总开关、唤醒、独处、梦境均默认关闭；普通聊天仍可用，所有 LLM 调用统一计账并受资源预算约束
 
 ### 当前产品状态
 
@@ -231,9 +233,9 @@ habitat/
 
 ### 下一步
 
-1. 🔵 **进行中 · Phase 3B Eventide**：下一切片做互动结算（回复完成后按消息窗口生成结算结果并安全写回）；不提前做事件抽取、主动唤醒或梦境
+1. 🔵 **下一阶段 · Phase 4 Life**：把现有 EventLog / UsageRecord / 通知 / 钱包 / 运行态做成可理解的月历、账本、通知中心与状态页；补价格快照与 Web Push
 2. ⏸ **部署前关卡 · Phase 3A 自部署 Nocturne**：服务器上开启 `api_token`、验证内网 `/mcp`、重跑 `probe-nocturne-live.ts`；详见 `docs/DEPLOYMENT.md` §3
-3. 之后再进入 Eventide 互动结算 → 事件抽取 / 调度 → BudgetGuard 与主动行为；P2 的 AI 自主日记 / 留言依赖这条链路
+3. PRODUCT_SPEC P2 的 AI 自主日记 / 留言现在已有主动行为底座，但应按各自权限模型单独施工，不能直接把独处记录冒充成日记或留言
 
 动手前：先读 `PRODUCT_SPEC` 对应章节 + `TASKS.md` 待优化清单，
 再核对 `DATA_MODEL.md`：**改数据结构要同时动三处**（`shared/types.ts` → Dexie 升版 → 备份格式升版）；

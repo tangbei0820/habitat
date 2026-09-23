@@ -17,6 +17,8 @@ export const ErrorCodes = {
   ProviderUnauthorized: 'PROVIDER_UNAUTHORIZED',
   /** 上游其它错误（非 2xx、连接失败、流中断） */
   ProviderUpstreamError: 'PROVIDER_UPSTREAM_ERROR',
+  /** BudgetGuard 拒绝本次 LLM / 主动行为调用。 */
+  BudgetExceeded: 'BUDGET_EXCEEDED',
   Internal: 'INTERNAL',
 } as const
 

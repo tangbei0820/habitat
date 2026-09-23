@@ -65,7 +65,12 @@ async function sendEvent(res: ServerResponse, payload: unknown): Promise<void> {
   await sendRaw(res, `data: ${JSON.stringify(payload)}\n\n`)
 }
 
-async function handleStream(res: ServerResponse, model: string): Promise<void> {
+async function handleStream(
+  res: ServerResponse,
+  model: string,
+  replyPieces: string[] = REPLY_PIECES,
+  reasoningPieces: string[] = REASONING_PIECES,
+): Promise<void> {
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-cache',
@@ -74,10 +79,10 @@ async function handleStream(res: ServerResponse, model: string): Promise<void> {
     'x-accel-buffering': 'no',
   })
 
-  for (const piece of REASONING_PIECES) {
+  for (const piece of reasoningPieces) {
     await sendEvent(res, { choices: [{ index: 0, delta: { reasoning_content: piece }, finish_reason: null }] })
   }
-  for (const piece of REPLY_PIECES) {
+  for (const piece of replyPieces) {
     await sendEvent(res, { choices: [{ index: 0, delta: { content: piece }, finish_reason: null }] })
   }
   // 末包把 finish_reason 与 usage 塞在一起（DeepSeek 就是这么发的，顺便验证顺序保证）
@@ -88,6 +93,33 @@ async function handleStream(res: ServerResponse, model: string): Promise<void> {
   })
   await sendRaw(res, 'data: [DONE]\n\n')
   res.end()
+}
+
+function backgroundReply(body: Record<string, unknown>): string[] | null {
+  const messages = Array.isArray(body.messages) ? body.messages : []
+  const names = messages
+    .filter(isRecord)
+    .map((message) => typeof message.name === 'string' ? message.name : '')
+  if (names.includes('eventide_settlement')) {
+    return [JSON.stringify({
+      settlement_reason: 'mock 结算：本轮为普通延续。',
+      settlement_result: 'continued',
+      ejaculated: false,
+      heat_delta: 1,
+      pressure_delta: 0,
+      control_delta: 0,
+      sensitivity_delta: 1,
+      reserve_delta: 1,
+      possessiveness_delta: 0,
+      fatigue_delta: 0,
+    })]
+  }
+  if (names.includes('eventide_dream')) {
+    return [JSON.stringify({ content: '梦里有一盏一直亮着的小灯，醒来时心情很柔软。', after_effect_tags: ['tender'] })]
+  }
+  if (names.includes('proactive_wake')) return ['刚刚想起你，', '今天过得还好吗？']
+  if (names.includes('solitude_reflection')) return ['我安静地整理了一下今天的感受，', '把想记住的温柔片段放在心里。']
+  return null
 }
 
 const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -129,7 +161,8 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
       lastChatBody = record
       const model = typeof record.model === 'string' ? record.model : 'mock-chat-small'
       if (record.stream === true) {
-        await handleStream(res, model)
+        const background = backgroundReply(record)
+        await handleStream(res, model, background ?? REPLY_PIECES, background === null ? REASONING_PIECES : [])
         return
       }
       writeJson(res, 200, {

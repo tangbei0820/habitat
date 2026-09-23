@@ -1175,3 +1175,45 @@
 
 **下一步**：Phase 3B 互动结算。回复完成后用本轮消息窗口生成结构化 settlement，校验 / 归一化后写回状态；
 结算失败必须与本轮回复解耦，不能把已经生成成功的聊天作废。
+
+---
+
+### T-025 · 2026-09-24 · Phase 3B 收尾：状态结算、主动行为、BudgetGuard 与钱包
+
+**范围**：一次收完 Phase 3B 剩余里程碑。包含互动结算、事件检查、梦境联动、宿主调度、主动唤醒、
+独处时光、通知底座、EventLog、BudgetGuard 与钱包；不施工 Phase 4 Life 页面，不把服务端主动消息伪造进前端聊天库。
+
+**参考输入（只实查 3 个）**
+
+- Eventide：沿用“宿主选窗口 → 模型只回 JSON → Eventide 归一化 / 限幅 / 写回”；事件检查按 10 分钟节流、
+  当前事件不覆盖、窗口去重；梦境必须经过梦种 / 夜间窗口 / 静默 / 冷却
+- WrenWen：借“状态 / 欲望只负责提出候选，出口仍需独立仲裁与留账”，不把一次阈值命中直接等同于必须发消息
+- astrbot 主动消息插件：借免打扰、随机 / 冷却、连续未回复上限、任务持久化；用户一回应就清零未回复计数
+
+**产品与安全口径**
+
+1. 补全 `PRODUCT_SPEC §9.5`。主动总开关、唤醒、独处、梦境默认全关；Eventide 可在后台推进，但不开关就不调用主动 LLM。
+2. 主动唤醒只写服务端 `notification` 收件箱，Phase 4 再展示 / Web Push；服务端不越界写前端 Dexie。
+3. 独处记录与梦卡写 `solitude_entry`，保持 AI 私有；不冒充尚未施工权限流程的“AI 日记 / 留言”。
+4. 普通聊天不受免打扰和主动总开关影响，但与 settlement / wake / solitude / dream 一样计入 UsageRecord 并过资源预算。
+5. 费用尚无价格快照时不按 0 假装准确：一旦启用费用上限且当天有 `cost=null` 调用，BudgetGuard 安全拒绝后续调用。
+
+**落地**
+
+- sidecar 新增 settlement prompt / apply、宿主事件触发表、dream check / tags apply；状态仍由 Node SQLite 唯一持久化
+- 每轮成功回复后异步结算；后台失败只写 `EventLog` + warning，不撤销已成功回复
+- 新增 `automation_policy / automation_state / automation_run / event_log / notification / solitude_entry / wallet / wallet_transaction`
+- BudgetGuard 用 SQLite 事务先写 `reserved`，并发调度会把预约一起计入，避免两轮同时在旧余额下放行
+- 调度器每分钟检查，重入直接跳过；事件状态即使总开关关闭也可推进，真正 LLM 出口各自再次过闸
+- 钱包余额与不可变流水同事务更新，禁止透支；通知支持已读；策略 / 运行记录 / 事件 / 私有产出 / 钱包均有服务端 API
+- 修复验收暴露的时区暗坑：梦境窗口不能用 UTC `toISOString()` 判断，Provider 现在按策略 IANA 时区传带 offset 的时间
+
+**验收**
+
+- `probe:phase3b`：**21/21**，覆盖默认关闭、聊天不受阻、异步 settlement、唤醒 / 独处、重复抑制、
+  连续未回复停手与用户回复清零、钱包流水 / 防透支、称呼事件、梦境窗口、BudgetGuard 429、通知已读
+- `probe:eventide`：**19/19** 回归通过
+- 两端 typecheck、Python `py_compile`、前端生产构建、`git diff --check` 通过
+
+**Phase 3B 至此完成。下一阶段**：Phase 4 Life 只消费本轮已经建立的服务端事实源，做月历统计、账本、
+通知中心与运行状态；补 PriceSnapshot 后费用闸门才从“安全不可计算”升级为准确金额。

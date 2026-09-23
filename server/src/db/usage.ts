@@ -7,7 +7,15 @@
 import { db } from './index.js'
 import { usageRecord } from './schema.js'
 
-export type UsageService = 'chat' | 'tts' | 'vision' | 'embedding'
+export type UsageService =
+  | 'chat'
+  | 'tts'
+  | 'vision'
+  | 'embedding'
+  | 'state-settlement'
+  | 'proactive-wake'
+  | 'solitude'
+  | 'dream'
 
 export interface UsageInput {
   profileId: string
@@ -17,13 +25,18 @@ export interface UsageInput {
   completionTokens?: number
   totalTokens?: number
   at?: number
+  timeZone?: string
 }
 
-/** 本地时区的 YYYY-MM-DD（不能用 ISO 的 UTC 日期，否则跨零点会串天） */
-export function dayKeyOf(at: number): string {
-  const date = new Date(at)
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+/** 用户时区的 YYYY-MM-DD（不能依赖服务器进程自己的时区）。 */
+export function dayKeyOf(at: number, timeZone = process.env.HABITAT_TIME_ZONE ?? 'Asia/Shanghai'): string {
+  const parts = new Map(new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(at)).map((part) => [part.type, part.value]))
+  return `${parts.get('year') ?? '1970'}-${parts.get('month') ?? '01'}-${parts.get('day') ?? '01'}`
 }
 
 /** 落一条用量记录，返回主键。写库失败由调用方决定如何处置（本轮真跑了，不该因此让流失败） */
@@ -38,7 +51,7 @@ export function recordUsage(input: UsageInput): number {
       promptTokens: input.promptTokens ?? 0,
       completionTokens: input.completionTokens ?? 0,
       totalTokens: input.totalTokens ?? 0,
-      dayKey: dayKeyOf(at),
+      dayKey: dayKeyOf(at, input.timeZone),
       at,
     })
     .run()

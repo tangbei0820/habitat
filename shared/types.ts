@@ -463,6 +463,103 @@ export interface StateProviderHealth {
   lastCheckedAt: number
 }
 
+/* ---------- Phase 3B 主动行为 / 预算 / 钱包 ---------- */
+
+export type AutomationKind = 'chat' | 'wake' | 'solitude' | 'dream' | 'settlement'
+
+export interface AutomationPolicy {
+  enabled: boolean
+  wakeEnabled: boolean
+  solitudeEnabled: boolean
+  dreamEnabled: boolean
+  timeZone: string
+  quietStart: string
+  quietEnd: string
+  minSilenceMinutes: number
+  wakeCooldownMinutes: number
+  maxUnansweredWakes: number
+  maxDailyProactiveRuns: number
+  maxDailyApiCalls: number
+  maxDailyTokens: number
+  maxDailyCostCents: number | null
+  solitudeStart: string
+  solitudeEnd: string
+  triggerWords: string[]
+  dreamSeed: string | null
+}
+
+export interface AutomationRuntimeState {
+  lastCounterpartAt: number | null
+  lastWakeAt: number | null
+  unansweredWakes: number
+  lastSolitudeDayKey: string | null
+  lastDreamDayKey: string | null
+  updatedAt: number
+}
+
+export type AutomationRunStatus = 'reserved' | 'completed' | 'failed' | 'skipped'
+
+export interface AutomationRunRecord {
+  id: string
+  kind: AutomationKind
+  status: AutomationRunStatus
+  reason: string | null
+  usageRecordId: number | null
+  dayKey: string
+  at: number
+  finishedAt: number | null
+}
+
+export interface BudgetDecision {
+  allowed: boolean
+  reason: string | null
+  reservationId: string | null
+}
+
+export type NotificationKind = 'proactive' | 'system' | 'wake' | 'task' | 'api-error' | 'mcp-error'
+
+export interface NotificationRecord {
+  id: string
+  kind: NotificationKind
+  title: string
+  body: string
+  metadata: Record<string, unknown>
+  readAt: number | null
+  createdAt: number
+}
+
+export interface SolitudeEntry {
+  id: string
+  body: string
+  metadata: Record<string, unknown>
+  createdAt: number
+}
+
+export interface EventLogRecord {
+  id: number
+  eventType: string
+  dayKey: string
+  hourKey: string
+  metrics: Record<string, unknown>
+  refId: string | null
+  at: number
+}
+
+export interface WalletSummary {
+  balance: number
+  updatedAt: number
+}
+
+export interface WalletTransactionRecord {
+  id: string
+  delta: number
+  balanceAfter: number
+  reason: string
+  refType: string | null
+  refId: string | null
+  createdAt: number
+}
+
 /* ---------- MCP 诊断日志（§7.2②「逐请求可回放」的查询侧） ---------- */
 
 /** 'out' = Gateway→Server 请求；'in' = Server→Gateway 响应 / 通知 */

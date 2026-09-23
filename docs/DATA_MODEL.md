@@ -278,3 +278,19 @@ Phase 3B 切片一落地。单人格阶段固定使用 `id='primary'` 的一行�
 **持久化归 Node、计算归 Python**：`eventide-sidecar` 每次接收旧 state 并返回新 state，自身不落用户数据；
 Node 收到完整成功响应后才覆盖这行。sidecar 重启不会丢周期进度，上游内部 schema 变化也只影响它自己的
 `load_state` / `dump_state`，不会扩散成 habitat 的字段迁移。
+
+## 9. Phase 3B 主动行为（服务端 SQLite）
+
+| 表 | 权威内容 | 关键不变量 |
+|---|---|---|
+| `automation_policy` | 总开关、分功能开关、时区、时间窗、静默 / 冷却 / 次数 / Token / 费用上限、触发词、梦种 | 单用户固定 `primary`；默认全部主动功能关闭 |
+| `automation_state` | 最后用户互动、最后唤醒、连续未回复、每日独处 / 梦境标记 | **不保存聊天正文**；用户发言原子清零未回复计数 |
+| `automation_run` | BudgetGuard 预约与结果 | LLM 调用前先写 `reserved`；并发检查把未完成预约一起计入预算 |
+| `event_log` | 状态 / 主动行为事实 | Phase 4 统计只聚合此表，不反查聊天库 |
+| `notification` | 主动唤醒与系统通知 | 主动消息先进收件箱，不直接写前端 Dexie |
+| `solitude_entry` | AI 私有独处记录与梦卡 | 与通知、用户日记分库；梦卡用 metadata 标识 |
+| `wallet` | 当前余额缓存 | 只能与流水在同一事务更新，余额不得小于 0 |
+| `wallet_transaction` | 不可变钱包流水 | 每次变化保留 delta、变化后余额、原因与可选来源引用 |
+
+费用预算读取 `usage_record.cost`。Phase 4 的价格快照尚未落地前，存在 `cost=null` 的调用就视为
+“费用不可计算”；若用户启用了费用上限，BudgetGuard 会安全拒绝后续调用，而不是按 0 元放行。

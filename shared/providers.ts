@@ -123,6 +123,24 @@ export interface MemoryProvider {
 export interface StateTickOptions {
   /** 用户最后一次发言时间；Eventide 用它计算等待造成的状态变化。 */
   lastCounterpartMessageAt?: Date
+  /** 最近一条用户文本；只用于宿主配置的称呼 / 关键词触发，不持久化原文。 */
+  counterpartText?: string
+  triggerWords?: string[]
+  /** 事件时间窗口使用的 IANA 时区。 */
+  timeZone?: string
+}
+
+export interface StateEventResult {
+  snapshot: import('./types').BodyStateSnapshot
+  eventKey: string | null
+  started: boolean
+}
+
+export interface StateDreamTrigger {
+  prompt: string
+  probability: number
+  roll: number
+  createdAt: number
 }
 
 export interface StateProvider {
@@ -132,6 +150,16 @@ export interface StateProvider {
   current(): import('./types').BodyStateSnapshot | null
   /** sidecar 探活；失败作为状态返回，不拖垮 habitat-server。 */
   health(): Promise<import('./types').StateProviderHealth>
+  /** 根据最近互动渲染只输出 JSON 的结算 prompt。 */
+  settlementPrompt(messageWindowText: string): Promise<string>
+  /** 把模型结算结果交回 Eventide 归一化并原子写回最新状态。 */
+  settle(result: unknown, now?: Date): Promise<import('./types').BodyStateSnapshot>
+  /** 宿主触发表检查；无候选或节流时仍返回推进后的快照。 */
+  checkEvents(now: Date, options?: StateTickOptions): Promise<StateEventResult>
+  /** 检查梦种是否触发；未触发返回 null。 */
+  checkDream(seed: string, now: Date, lastCounterpartMessageAt: Date, timeZone?: string): Promise<StateDreamTrigger | null>
+  /** 梦卡生成后将标签后效安全写回。 */
+  applyDreamTags(tags: string[], now?: Date): Promise<import('./types').BodyStateSnapshot>
 }
 
 export interface TTSProvider {
