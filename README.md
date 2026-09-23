@@ -18,6 +18,7 @@
   > 版本不符时直接给一句人话再退出，而不是让 `ERR_DLOPEN_FAILED` 炸出栈。
   > 注意 `web` 侧不挑版本（`vite` 纯 JS）；只有 `server` 必须 Node 20。
 - npm
+- Python **3.9+**（仅 Phase 3B 的 Eventide sidecar；主前端/Node 后端仍可独立启动）
 
 ## 启动（开发）
 
@@ -26,6 +27,17 @@ npm run setup        # 首次：安装 web 与 server 依赖
 npm run dev:server   # 终端 1 → http://localhost:3000（/api/health）
 npm run dev:web      # 终端 2 → http://localhost:5173（/api 已代理到 server）
 ```
+
+Phase 3B 状态内核另起一个无状态 Python sidecar（首次安装）：
+
+```bash
+python -m venv .workbuddy/eventide-venv
+.workbuddy/eventide-venv/Scripts/python -m pip install -r eventide-sidecar/requirements.txt
+.workbuddy/eventide-venv/Scripts/python -m uvicorn app:app --app-dir eventide-sidecar --host 127.0.0.1 --port 8234
+```
+
+然后在 `server/.env` 设置 `EVENTIDE_URL=http://127.0.0.1:8234`。Linux/macOS 的虚拟环境解释器路径改为
+`.workbuddy/eventide-venv/bin/python`。
 
 ## 常用命令
 
@@ -64,6 +76,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆链路、read-before-write、诊断留痕（24 项） |
 | `npx tsx scripts/probe-nocturne-demo.ts` | **公网**（Nocturne 官方只读 Demo） | 真实 Streamable HTTP 握手 / 工具清单 / `system://boot`（25 项） |
 | `MCP_NOCTURNE_URL=… npx tsx scripts/probe-nocturne-live.ts` | **自己部署的实例** + 反代已转发 `/mcp` | 反向代理 / Bearer Token（含「不带 Token 再握一次」对照）/ `X-Namespace` / 工具面 / 只读纪律（⛔ 当前受阻，见 `docs/MEMORY.md`） |
+| `npm run probe:eventide` | Eventide sidecar :8234；可选 `PROBE_SERVER` | 真实 Eventide revision / 建态 / 时间推进 / SQLite 恢复 / 故障降级；配置 server 时共 16 项 |
 
 > `probe-nocturne-live.ts` 读 `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`（也可写进 `server/.env`），
 > 默认**不打印** `system://boot` 正文（那是本人记忆），要看加 `NOCTURNE_PROBE_PREVIEW=1`。

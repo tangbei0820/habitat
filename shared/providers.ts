@@ -120,8 +120,18 @@ export interface MemoryProvider {
   delete(uri: string): Promise<MemoryTextResult>
 }
 
+export interface StateTickOptions {
+  /** 用户最后一次发言时间；Eventide 用它计算等待造成的状态变化。 */
+  lastCounterpartMessageAt?: Date
+}
+
 export interface StateProvider {
-  tick(now: Date): Promise<{ stateCard: unknown; payload: unknown }>
+  /** 推进并持久化状态；调用方只拿状态卡与结构化载荷，不接触 Eventide 内部对象。 */
+  tick(now: Date, options?: StateTickOptions): Promise<import('./types').BodyStateSnapshot>
+  /** 读取最近一次已持久化的状态，不触发时间推进。 */
+  current(): import('./types').BodyStateSnapshot | null
+  /** sidecar 探活；失败作为状态返回，不拖垮 habitat-server。 */
+  health(): Promise<import('./types').StateProviderHealth>
 }
 
 export interface TTSProvider {

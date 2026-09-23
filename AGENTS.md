@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar ⚠️ **实测线上跑的是 nginx/1.18.0，不是 Caddy**（T-022），选型待北北确认                      |
-| 当前阶段 | **UX 收口 P0 已收口**（14 项齐）｜**P1 全部 6 项落地**（T-019 输入区快捷栏 / T-020 主屏 Widget / T-021 收藏分类 + 相册分类；本地库升至 **Dexie v10**、备份格式 **v8**）｜**Phase 3B 收口进行中**：自部署 Nocturne 已体检（进程活着、443 正常），**唯一阻塞项 = 宿主 nginx 把 `/mcp` 单独挡在门外**（另有「实例无鉴权」待处理）；本机 Node 20 带 SNI 连公网会被 ECONNRESET（不影响生产同机内网），详见 `docs/DEPLOYMENT.md` |
+| 当前阶段 | **Phase 3B Eventide 施工中**：切片一状态底座已完成（真实 Eventide sidecar + Node Provider + SQLite 宿主持久化 + API，T-023）｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022），不阻塞后续功能施工｜UX P0 与 P1 均已收口 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -79,7 +79,7 @@ habitat/
 | `docs/UI_DESIGN.md`       | 视觉语言（色彩 / 字体 / 圆角 / 间距 / 动效 / Safe Area）                                        | 做任何 UI 前。⚠️ **内容待北北补充，补充前一律只做简单 UI** |
 | `docs/栖息地_UI参考资料_v1.0.md` | ChatGPT Mobile UI 参考 + 栖息地 UI 原则 / 首页方向 / 欢迎语料库 / **给 Coding Agent 的 10 条实现要求** | 做任何 UI 前，与 `UI_DESIGN.md` 一起读        |
 | `docs/REFERENCES.md`      | 外部参考项目库（本项目之外的 GitHub 项目）                                                       | §4 命中任务时按需查                          |
-| `docs/API.md`             | 接口约定                                                                            | 加 / 改接口时同步（现：健康 2 + 聊天 1 + 方案 9 + 诊断 1 + 记忆 6） |
+| `docs/API.md`             | 接口约定                                                                            | 加 / 改接口时同步（现：健康 3 + 聊天 1 + 方案 9 + 诊断 1 + 记忆 6 + 状态 2） |
 | `docs/DATA_MODEL.md`      | **落地口径**：归属 / 字段表 / 索引 / 迁移记录 + 改数据结构的标准顺序 | **改任何数据结构前必读**（§0 是顺序） |
 | `docs/MCP.md`             | 工具层与 Gateway                                                                    | 动 MCP 时                              |
 | `docs/MEMORY.md`          | 记忆系统接入                                                                          | Phase 3A 时                           |
@@ -169,7 +169,7 @@ habitat/
 - Phase 1 Chat MVP：✅ 完成
 - Phase 2 Home 基础数据链：✅ 完成
 - Phase 3A 长期记忆：🚧 一半（客户端链路已验，自部署实例未接）｜**暂停中**，不阻塞 UX 收口
-- Phase 3B Eventide：未开始
+- Phase 3B Eventide：🚧 切片一完成（状态内核 / 持久化 / API），上下文注入与主动行为未开始
 - Phase 4 Life：未开始
 - Phase 5 高级能力：未开始
 - Phase 6 打磨：未开始
@@ -179,7 +179,7 @@ habitat/
 
 ### 当前施工点
 
-**Phase 3B 收口进行中（卡在服务器侧，等北北操作）**；P1 全部落地。
+**Phase 3B Eventide 正式施工中**；T-022 的 Nocturne 生产验真已降级为部署前关卡，不阻塞当前开发。
 
 - ✅ **第一批「消息对象操作」**：编辑（保留原版本，与「换一个」共用一套版本导航）/ 撤回（留痕、不进模型上下文、可恢复）/ 删除 / 多选批量删 / 复制，统一进「长按 + 右键 + `⋯`」同一个菜单
 - ✅ **第二批「跨模块内容流转」**：消息 → 收藏、消息 / 组件 → 作品、聊天图片 → 相册；三类条目保留来源与快照
@@ -211,6 +211,13 @@ habitat/
   且本机 Node 20 连公网本来就被 `ECONNRESET`，开公网收益有限。**关键分水岭实验：服务器上 `curl -i -X POST http://127.0.0.1:<NGINX_PORT>/mcp` 通不通**
 - 完整拓扑 / 接入路径 A·B / Node 20 TLS 分界线的影响面 → **`docs/DEPLOYMENT.md`**；结论摘要 → `docs/MEMORY.md`；任务记录 → `docs/TASKS.md` T-022
 
+**Phase 3B Eventide（T-023 起）**
+
+- ✅ 切片一「状态内核底座」：Eventide 固定到 commit `5d8bef9`，以独立 FastAPI sidecar 运行；sidecar 无状态，
+  Node 持有 `body_state_snapshot` 唯一快照并通过 `StateProvider` 推进
+- ✅ 已有 `/api/health/state`、`GET /api/state`、`POST /api/state/tick`；真实全链探针 16/16
+- ⏭ 下一切片：把 Eventide 状态卡接入聊天上下文组装；Nocturne 继续采用可降级边界，不能让记忆未配置阻塞状态卡
+
 ### 当前产品状态
 
 已完成一次本地验房，完成 `PRODUCT_SPEC` 的 **P0 全部收口**（消息对象操作 / 跨模块内容流转 / 会话置顶与聊天设置 / 会话分组），并**做完 P1 全部 6 项**（输入区快捷栏与请求回复拆开、主屏 Widget、收藏分类与相册分类）。
@@ -222,9 +229,9 @@ habitat/
 
 ### 下一步
 
-1. 🔵 **进行中 · Phase 3B 收口**（**卡在服务器侧，等北北操作**）：① 服务器上用 `config.json` 的 `api_token` 开鉴权（先锁门）；② **先在服务器上验内网 `/mcp`**（`curl -i -X POST http://127.0.0.1:<NGINX_PORT>/mcp`）—— 通即收口，**不必改宿主 nginx**；不通才需要查容器内 nginx 配置；③ 重跑 `probe-nocturne-live.ts`（服务器上用内网地址）收口 Phase 3A 剩余。详见 `docs/DEPLOYMENT.md` §3
-2. **P2**（依赖主动行为 / Eventide 链路）：AI 自主写日记 / 留言｜「一起听」完整能力｜AI 伴学｜**主屏幕 Widget 编排**（Home 从入口列表变成可编排首页，`SPEC` §5.1 / §5.3）—— 后者是 P1 那两张卡片的自然延续
-3. 已记为后续、尚未开工的尾巴：分组与分类的排序（拖拽调序）｜移动端长按会话行进菜单｜语音条转写（ASR）｜留言板 Widget 的「指定分组 / 指定留言」｜三个模块的分类实体是否合并（**要并就三个一起并**）—— 见 `TASKS.md` 待优化清单
+1. 🔵 **进行中 · Phase 3B Eventide**：下一切片做「聊天前 tick + 状态卡注入上下文」，并验证未配置 / 不可达时的降级行为；不提前做事件抽取、主动唤醒或梦境
+2. ⏸ **部署前关卡 · Phase 3A 自部署 Nocturne**：服务器上开启 `api_token`、验证内网 `/mcp`、重跑 `probe-nocturne-live.ts`；详见 `docs/DEPLOYMENT.md` §3
+3. 之后再进入 Eventide 互动结算 → 事件抽取 / 调度 → BudgetGuard 与主动行为；P2 的 AI 自主日记 / 留言依赖这条链路
 
 动手前：先读 `PRODUCT_SPEC` 对应章节 + `TASKS.md` 待优化清单，
 再核对 `DATA_MODEL.md`：**改数据结构要同时动三处**（`shared/types.ts` → Dexie 升版 → 备份格式升版）；

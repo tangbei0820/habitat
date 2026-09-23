@@ -1,0 +1,4 @@
+# Eventide 锁到已验收 commit，升级前先跑 server/scripts/probe-eventide.ts。
+eventide @ https://github.com/chuli1122/Eventide/archive/5d8bef965137427e41d97f5b60e5a14c24dd812c.zip
+fastapi==0.141.1
+uvicorn==0.53.0

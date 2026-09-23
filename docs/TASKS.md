@@ -1104,3 +1104,42 @@
 不再只显示笼统的 `fetch failed`；缺配置或握手失败提前退出时也会关闭 SQLite 并删除临时探针库。
 临时库文件名带进程号，两个探针并行运行也不会互删或争抢同一把 SQLite 锁。
 两端 `typecheck`、前端生产构建、`git diff --check` 均通过；真实探针按预期失败并明确报出底层 `ECONNRESET`。
+
+---
+
+### T-023 · 2026-09-23 · Phase 3B 切片一：Eventide 状态内核底座
+
+**范围**：在不等待自部署 Nocturne 的前提下，先把 Eventide 真实内核接成可独立验收的状态底座。
+本切片只做 sidecar / Provider / 宿主持久化 / API；**不做**聊天上下文注入、事件抽取、梦境、互动结算、主动唤醒或 UI。
+
+**开工参考（只查 3 个）**
+
+- **Eventide**：采用它明确要求的宿主流程——读取 `BodyState` → 按时间 tick → 渲染 `<ephemeral_state>` → 保存状态；
+  依赖固定到 commit `5d8bef965137427e41d97f5b60e5a14c24dd812c`，不跟随浮动 main。
+- **Drivesoid**：借鉴“轻量 HTTP sidecar + 主桥接层上报/读取”的进程边界；不引入它的 16 维模型与 LLM 分类器。
+- **Tidefall**：借鉴“当前状态 / 快照 / 周期任务分层”和可观测 tick；不引入 Supabase / pg_cron，调度仍归 habitat-server。
+
+**实现**
+
+1. 新增 `eventide-sidecar/`：FastAPI 薄壳，仅 `/health` 与 `/v1/tick`；sidecar **不落用户数据、不调 LLM**。
+   Eventide 用 commit 归档 URL安装，FastAPI / Uvicorn 均锁版本；没有复制第三方源码。
+2. `StateProvider` 从占位接口扩成有类型的 `tick / current / health`；`EventideStateProvider` 每次把旧 state 送给 sidecar，
+   收到完整的新 state / stateCard / payload 后再写库。连接失败转换为统一 `PROVIDER_UPSTREAM_ERROR`，健康检查不抛错拖垮主服务。
+3. 新增服务端表 `body_state_snapshot`，单人格固定 `id='primary'`：保存 Eventide 往返 JSON、隐藏状态卡、UI payload、推进时间。
+   **Node 是唯一持久化源，Python 是无状态计算层**；重启 / 重建 Provider 后可恢复。
+4. 新增 `/api/health/state`、`GET /api/state`、`POST /api/state/tick`。tick 不接受客户端自报时间，避免任意跳周期；
+   `EVENTIDE_URL` 留空时主服务照常启动，状态健康明确显示未配置。
+5. 新增 `probe-eventide.ts`：真实 Eventide revision、首次建态、两小时推进、等待时间输入、SQLite 读回、Provider 重建恢复、
+   不可达降级与 habitat-server HTTP 全链。
+
+**验收**
+
+- 真实 Eventide sidecar + Node Provider + SQLite + habitat-server：**16/16**
+- 两端 `typecheck`、前端生产构建、`git diff --check` 通过
+- 临时探针库按进程隔离并在 `finally` 删除；sidecar / server 验收进程均已停止
+
+**边界 / 后续**
+
+- `state` 是 Eventide 自己的可往返 JSON，habitat 不复制其内部字段；未来 UI 只消费 `payload`，上下文只消费 `stateCard`。
+- 单人格先固定一行；若未来多 AI，再把 `primary` 升为 persona id，不能在当前阶段预造多租户模型。
+- 下一切片只做**聊天前 tick + 状态卡注入上下文**及降级验收；Nocturne 未配置 / 不可达不得阻塞 Eventide 状态卡。

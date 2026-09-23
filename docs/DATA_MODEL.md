@@ -22,7 +22,7 @@
 | 数据 | 存放 | 写入方 |
 |---|---|---|
 | 聊天记录、Home 十类生活数据 | **前端 Dexie**（IndexedDB） | `web/src/db/*` 仓储层 |
-| LLM 方案与凭据、用量账本、MCP 诊断日志 | **服务端 SQLite** | `server/src/db/*` |
+| LLM 方案与凭据、用量账本、MCP 诊断日志、Eventide 当前状态 | **服务端 SQLite** | `server/src/db/*` |
 
 两条边界不可越：**铁律 3** 前端不直连 LLM / Nocturne / Eventide；**铁律 4** 记忆只走 MCP 单通道。
 页面**不直接碰 Dexie**，一律经仓储层 —— 读写口径只有一处，日后加分页 / 导出 / 迁移才不用回头改页面。
@@ -262,3 +262,19 @@ Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画
 > ③ 表情 / 更多功能都只是往输入框写文本。
 > 这一条值得记下来：**「能不能不加字段」应当先问一遍**，因为每加一个字段都要连带一次 Dexie 升版
 > 加一次备份升版，而两份版本号还得在同一个任务里一起改。
+
+## 8. Eventide 状态（服务端表 `body_state_snapshot`）
+
+Phase 3B 切片一落地。单人格阶段固定使用 `id='primary'` 的一行：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `state_json` | JSON 文本 | Eventide 自己的可往返状态；habitat 不解析、不复制上游内部字段定义 |
+| `state_card` | 文本 / null | `<ephemeral_state>` 隐藏状态卡，后续进入聊天上下文 |
+| `payload` | JSON 文本 | 给未来 UI 使用的结构化七项状态，不从状态卡反解析 |
+| `settled_at` | 毫秒时间戳 | 本快照推进到哪个时刻 |
+| `updated_at` | 毫秒时间戳 | SQLite 行最后写入时间 |
+
+**持久化归 Node、计算归 Python**：`eventide-sidecar` 每次接收旧 state 并返回新 state，自身不落用户数据；
+Node 收到完整成功响应后才覆盖这行。sidecar 重启不会丢周期进度，上游内部 schema 变化也只影响它自己的
+`load_state` / `dump_state`，不会扩散成 habitat 的字段迁移。

@@ -383,8 +383,57 @@ interface MemoryTextResult { text: string }
 > （`{"error":{"code":"MCP_HANDSHAKE_FAILED","message":"MCP server 'nocturne' is not ready (state=error, lastError=not configured)"}}`）
 > —— 这是**设计行为而非故障**；真实状态看 `GET /api/health/mcp`。
 
+## Phase 3B 已实现（切片一 · Eventide 状态底座）
+
+Eventide 作为**无状态 Python sidecar**运行；habitat-server 持有并持久化唯一的当前状态。
+上游依赖锁在 commit `5d8bef965137427e41d97f5b60e5a14c24dd812c`。
+
+### `GET /api/health/state`
+
+始终返回 200，供聚合状态页消费。未配置 `EVENTIDE_URL` 时 `configured=false`；sidecar 不可达时
+`configured=true, ok=false` 并保留可读错误，不拖垮主服务。
+
+```json
+{
+  "ok": true,
+  "configured": true,
+  "service": "eventide",
+  "revision": "5d8bef965137427e41d97f5b60e5a14c24dd812c",
+  "lastError": null,
+  "lastCheckedAt": 1790180000000
+}
+```
+
+### `GET /api/state`
+
+只读最近一次已持久化快照，**不推进时间**。首次 tick 前返回 `{ "snapshot": null }`；之后：
+
+```json
+{
+  "snapshot": {
+    "state": { "cycle_key": "stable", "values": {} },
+    "stateCard": "<ephemeral_state ...>",
+    "payload": { "heat": { "value": 30, "level": "中低" } },
+    "settledAt": 1790180000000
+  }
+}
+```
+
+`state` 是 Eventide 的往返 JSON，不对前端承诺内部字段；消费方应使用 `payload`。
+
+### `POST /api/state/tick`
+
+请求体用空 JSON `{}`。服务端只采用自己的当前时间，不接受客户端自报时间；读取旧快照、调用 sidecar
+推进、拿到完整结果后原子覆盖 SQLite，再直接返回新的 `BodyStateSnapshot`。
+
+| 情况 | 状态码 | code |
+|---|---|---|
+| `EVENTIDE_URL` 未配置 | 400 | `PROVIDER_NOT_CONFIGURED` |
+| sidecar 不可达 / 非 2xx / 响应形状损坏 | 502 | `PROVIDER_UPSTREAM_ERROR` |
+
 ## 待实现（按阶段）
 
 - Phase 3A 剩余：**自部署 Nocturne 实例**的 Token / Namespace / 反代链路验证（客户端代码已用官方只读 Demo 验通，见 `docs/TASKS.md` T-013）
+- Phase 3B 剩余：状态卡注入聊天上下文、互动结算、事件抽取、主动唤醒 / 独处时光与 BudgetGuard
 - Phase 4：Life 统计 / 账本 / 通知
 - 诊断日志的留存策略（表只增不减，目前没有清空 / 归档入口）

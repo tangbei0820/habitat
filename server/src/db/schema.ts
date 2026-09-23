@@ -110,3 +110,18 @@ export const appKv = sqliteTable('app_kv', {
 })
 
 export type AppKvRow = typeof appKv.$inferSelect
+
+/**
+ * Eventide 当前状态的宿主快照（技术方案 §6.2）。单人格阶段固定只有 `primary` 一行。
+ * stateJson 由 Eventide 自己序列化/反序列化；habitat 只负责原样保存，避免绑定上游内部 schema。
+ */
+export const bodyStateSnapshot = sqliteTable('body_state_snapshot', {
+  id: text('id').primaryKey(),
+  stateJson: text('state_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  stateCard: text('state_card'),
+  payload: text('payload', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  settledAt: integer('settled_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+export type BodyStateSnapshotRow = typeof bodyStateSnapshot.$inferSelect

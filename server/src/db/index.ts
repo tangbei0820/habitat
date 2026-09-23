@@ -91,6 +91,19 @@ CREATE TABLE IF NOT EXISTS app_kv (
 )
 `)
 
+// Eventide 宿主持久化（Phase 3B 切片一）。单人格阶段只写 id='primary' 的一行；
+// sidecar 保持无状态，重启不会丢周期进度。
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS body_state_snapshot (
+  id TEXT PRIMARY KEY,
+  state_json TEXT NOT NULL,
+  state_card TEXT,
+  payload TEXT NOT NULL,
+  settled_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+)
+`)
+
 export const db = drizzle(sqlite, { schema })
 
 export function closeDb(): void {

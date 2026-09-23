@@ -441,6 +441,28 @@ export interface McpHealth {
   servers: McpServerHealth[]
 }
 
+/* ---------- Eventide 状态（服务端 SQLite + Python sidecar） ---------- */
+
+/**
+ * Eventide 的宿主持久化快照。`state` 是上游可往返的 JSON，habitat 不复制其内部字段定义；
+ * `stateCard` 给模型上下文，`payload` 给未来 UI，两条消费路径互不解析对方格式。
+ */
+export interface BodyStateSnapshot {
+  state: Record<string, unknown>
+  stateCard: string | null
+  payload: Record<string, unknown>
+  settledAt: number
+}
+
+export interface StateProviderHealth {
+  ok: boolean
+  configured: boolean
+  service: 'eventide'
+  revision: string | null
+  lastError: string | null
+  lastCheckedAt: number
+}
+
 /* ---------- MCP 诊断日志（§7.2②「逐请求可回放」的查询侧） ---------- */
 
 /** 'out' = Gateway→Server 请求；'in' = Server→Gateway 响应 / 通知 */
