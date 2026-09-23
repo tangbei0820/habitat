@@ -174,6 +174,11 @@ export interface ApiProfile {
   modelMap: ApiProfileModelMap
   /** 附加请求头（部分中转需要）。值可能含密钥，故**不下发前端** */
   headers?: Record<string, string>
+  /**
+   * 是否带 `stream_options: { include_usage: true }`（缺省 = true）。
+   * 绝大多数上游靠它在末包回 usage（记账用）；极少数老自建上游会因此 400，可关。
+   */
+  streamOptions?: boolean
   isActive: boolean
 }
 
@@ -206,6 +211,8 @@ export interface ApiProfilePublic {
   keySource: ApiKeySource
   modelMap: ApiProfileModelMap
   headerNames: string[]
+  /** 与 ApiProfile.streamOptions 同义；不下发敏感信息，这个开关无所谓 */
+  streamOptions: boolean
   isActive: boolean
 }
 
@@ -222,6 +229,8 @@ export interface ApiProfileCreateInput {
   keyRef?: string
   /** 附加请求头。其值可能含凭证，故只在写入时单向传递，不回读 */
   headers?: Record<string, string>
+  /** 缺省 = 开；显式 false 才关（部分不支持 stream_options 的自建上游） */
+  streamOptions?: boolean
   isActive?: boolean
 }
 

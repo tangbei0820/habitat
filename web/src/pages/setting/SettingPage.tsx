@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { McpHealth, ServerHealth } from '@shared/types'
 import { useTheme } from '../../theme/useTheme'
+import { BackupPanel } from '../../features/backup/BackupPanel'
 import { DiagnosticPanel } from '../../features/diagnostics/DiagnosticPanel'
 import { ProviderSettings } from '../../features/providers/ProviderSettings'
 import { ApiRequestError } from '../../lib/api'
@@ -114,6 +115,8 @@ export function SettingPage() {
       </section>
 
       <DiagnosticPanel serverIds={mcp.data?.servers.map((s) => s.serverId) ?? []} />
+
+      <BackupPanel />
 
       <section
         className="rounded-lg border p-4 text-sm"

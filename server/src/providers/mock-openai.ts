@@ -21,6 +21,15 @@ const WRITE_SPLIT = 3
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
+/**
+ * 最近一次 `/v1/chat/completions` 的请求体。
+ *
+ * 存在理由是「客户端到底发了什么」没法从响应侧推断 —— 例如 `stream_options`
+ * 究竟有没有按方案的开关带上去。验收脚本读 `GET /__last-body` 断言真实报文，
+ * 比断言「请求成功」强得多（后者在开 / 关两种模式下都会通过）。
+ */
+let lastChatBody: unknown = null
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -86,6 +95,12 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     console.log('[mock-openai]', req.method, url.pathname, 'auth:', req.headers.authorization ?? '(none)')
 
+    // 调试钩子（故意放在鉴权之前）：只回本进程内存里的快照，不代理任何东西，验收脚本用
+    if (req.method === 'GET' && url.pathname === '/__last-body') {
+      writeJson(res, 200, { body: lastChatBody })
+      return
+    }
+
     const auth = req.headers.authorization
     if (auth === undefined || auth.trim() === '') {
       writeJson(res, 401, openAiError(401, 'missing or invalid api key'))
@@ -110,6 +125,8 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
         return
       }
       const record = isRecord(body) ? body : {}
+      // 记下真实报文，供验收脚本用 GET /__last-body 断言客户端发了什么
+      lastChatBody = record
       const model = typeof record.model === 'string' ? record.model : 'mock-chat-small'
       if (record.stream === true) {
         await handleStream(res, model)

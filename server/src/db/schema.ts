@@ -70,6 +70,11 @@ export const apiProfile = sqliteTable('api_profile', {
   /** 附加请求头（值可能含凭证，故不下发前端；脱敏视图只给名字） */
   headers: text('headers', { mode: 'json' }).$type<Record<string, string>>(),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * 是否在流式请求里带 `stream_options: { include_usage: true }`（默认开）。
+   * 绝大多数上游需要它才能在末包拿到 usage（账本记账用）；极少数老自建上游会因此 400，可按方案关掉。
+   */
+  streamOptions: integer('stream_options', { mode: 'boolean' }).notNull().default(true),
   /** 列表展示顺序；删除中间项不重排（留空隙无所谓，避免每次都全表 UPDATE） */
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: integer('created_at').notNull(),
@@ -92,3 +97,16 @@ export const apiSecret = sqliteTable('api_secret', {
 export type ApiProfileRow = typeof apiProfile.$inferSelect
 export type NewApiProfile = typeof apiProfile.$inferInsert
 export type ApiSecretRow = typeof apiSecret.$inferSelect
+
+/**
+ * AppKv：进程级的少量键值状态（当前只有「方案种子是否已导入过」）。
+ *
+ * 不能用「表为空」当判据：用户删光所有方案后重启，env 种子会借「表为空」复活，
+ * 违背他清空方案的意图。持久标记「导入过」一次，之后的重启都不再碰 env 种子。
+ */
+export const appKv = sqliteTable('app_kv', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+})
+
+export type AppKvRow = typeof appKv.$inferSelect

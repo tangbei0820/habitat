@@ -8,6 +8,9 @@ import type { ChatMessage, ChatSession } from '@shared/types'
  * v1：sessions / messages 基础索引
  * v2：messages 补 `[sessionId+createdAt]` 复合索引 —— 长会话要按时间分页拉取（§9 风险8），
  *     只靠 `sessionId` 单键索引取回来后还得在内存里排序，消息上万条时每次进页面都白排一遍。
+ * v3：分页游标换成 `[sessionId+createdAt+id]` 三元复合索引 —— v2 的游标「不含上界」会让
+ *     createdAt 撞毫秒的两条里较早那条被漏掉（批量导入常见），把 id 纳入键后
+ *     「同毫秒按 id 续取」成为索引天然语义，无需应用层特判。
  */
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
@@ -23,6 +26,10 @@ export class HabitatDb extends Dexie {
     this.version(2).stores({
       sessions: 'id, updatedAt, pinnedAt, archivedAt',
       messages: 'id, sessionId, createdAt, [sessionId+createdAt]',
+    })
+    this.version(3).stores({
+      sessions: 'id, updatedAt, pinnedAt, archivedAt',
+      messages: 'id, sessionId, createdAt, [sessionId+createdAt+id]',
     })
   }
 }

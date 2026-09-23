@@ -183,6 +183,16 @@ habitat/
   - `web`：设置页「诊断日志」时间线（`features/diagnostics/DiagnosticPanel.tsx`）—— 统计行 + 服务 / 阶段 / 只看错误三个筛选 + 「加载更早的记录」；筛选与翻页全交服务端
   - 验收：`server/scripts/probe-diagnostics.ts`（**48 项**，连跑两次通过）+ `web/scripts/verify-diagnostics.mjs`（**36 项**）
 
+- **Phase 1 收尾补给：审查并修完一批未提交改动**（2026-09-23，T-008）
+  - 审查抓到 **1 处阻断**（`main.ts` 导入不存在的 `pruneMcpDiagnostics` → 服务端启动即 `SyntaxError`）、**2 处编译错**（`toPublic` 缺 `streamOptions`；`addVersion(targetId)` 未收窄类型）、**2 处「看着做了、其实没做」**（`streamOptions` 只有列没人读、`app_kv` 表无生产者）
+  - `streamOptions` **全链打通**（仓储四个读写点 + env 种子解析 + 脱敏视图 + 适配器按方案决定发不发 + 路由校验 + 表单开关）；验收断言的是**真实报文**（mock 上游新增 `GET /__last-body` 调试钩子）
+  - `app_kv` 落地：`importProfiles` 判据换成持久标记，**删光方案重启不再让 env 种子复活**
+  - 诊断保留策略补上实现：`pruneMcpDiagnostics`（保留最近 5000 条，走主键水位线），启动时裁一次
+  - Node 版本约束机器化收尾：`.nvmrc` + `engines: "^20"` + `index.ts` 纯门禁（`main.ts` 装本体）；⚠️ 解析 `engines` **不能把 `<` 上界当允许值**（`>=20 <21` 会放行 Node 21）
+  - `CORS_ORIGIN` 支持白名单（默认仍全开）、`.env.example` 补齐；`favicon` / Router future flags / 备份导出 / 流式草稿 / 撞毫秒漏条 / 删除确认 / 模块名单一来源 / 底栏高度实测 —— 这批待优化全部收口
+  - 验收：`probe-diag-retention` **15/15**、`probe-llm` **32/32**、`probe-providers` **52/52**（空库与有方案各跑一次）、`probe-diagnostics` **48/48**、三条前端验收 **36 / 22 / 36** 全过
+  - ⚠️ **编辑工具会偶发「报成功但没落盘」**：本轮有 4 次。改完关键处**必须 grep 回读**，别信返回消息
+
 **Phase 1（Chat MVP）已完成**
 
 **下一步**：Phase 2 · Home 生活模块（依据技术方案 §8）。动手前先扫一遍 `docs/TASKS.md` 的待优化清单。
@@ -191,10 +201,11 @@ habitat/
 
 - 三件套：`npm run dev:mock-mcp`（:3333）+ `npm run dev:server`（:3000）+ `npm run dev:web`（:5173）
 - 验证 MCP 客户端链路：`npx tsx scripts/probe-mock.ts`（在 `server/` 下执行）
-- 验证 LLM Adapter：`npm run dev:mock-openai`（:3334）+ `npx tsx scripts/probe-llm.ts`
-- 验证方案路由：起 mock 上游 + server 后 `npx tsx scripts/probe-providers.ts`（46 项断言）
+- 验证 LLM Adapter：`npm run dev:mock-openai`（:3334）+ `npx tsx scripts/probe-llm.ts`（32 项）
+- 验证方案路由：起 mock 上游 + server 后 `npx tsx scripts/probe-providers.ts`（52 项断言）
 - 验证诊断端点：起 server（自己指定 `HABITAT_DB_PATH`）后 `npx tsx scripts/probe-diagnostics.ts`（48 项断言）
-- 端到端（前端）：`node web/scripts/verify-chat.mjs`（35 项）/ `node web/scripts/verify-providers.mjs`（22 项）/ `node web/scripts/verify-diagnostics.mjs`（36 项）（前置条件见各自文件头注释）
+- 验证诊断保留策略：`npx tsx scripts/probe-diag-retention.ts`（15 项断言，**自带一次性临时库，不需要 server**，也不碰真实记录）
+- 端到端（前端）：`node web/scripts/verify-chat.mjs`（36 项）/ `node web/scripts/verify-providers.mjs`（22 项）/ `node web/scripts/verify-diagnostics.mjs`（36 项）（前置条件见各自文件头注释）
 - ⚠️ **`verify-diagnostics.mjs` 要用 Node ≥ 22 跑**：它用内置 `WebSocket` 驱动 CDP、用内置 `node:sqlite` 写 fixture（刻意避开 `better-sqlite3` —— 那是 Node 20 的 ABI）
 - ⚠️ **跑 `server` 必须用 Node 20**：`better-sqlite3` 原生模块的 ABI 与安装时的 Node 绑定，
   用其它版本会 `ERR_DLOPEN_FAILED`（详见 `README.md` 环境要求）

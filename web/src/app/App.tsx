@@ -50,27 +50,31 @@ function HydrationGate({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
-const router = createBrowserRouter([
-  {
-    element: (
-      <HydrationGate>
-        <AppShell />
-      </HydrationGate>
-    ),
-    children: [
-      { path: '/', element: <Navigate to="/chat" replace /> },
-      { path: '/chat', element: <ChatListPage /> },
-      { path: '/chat/:sessionId', element: <ChatWindowPage /> },
-      { path: '/home', element: <HomePage /> },
-      { path: '/home/:module', element: <HomeModulePage /> },
-      { path: '/llm', element: <LlmPage /> },
-      { path: '/life', element: <LifePage /> },
-      { path: '/setting', element: <SettingPage /> },
-      { path: '*', element: <Navigate to="/chat" replace /> },
-    ],
-  },
-])
+const router = createBrowserRouter(
+  [
+    {
+      element: (
+        <HydrationGate>
+          <AppShell />
+        </HydrationGate>
+      ),
+      children: [
+        { path: '/', element: <Navigate to="/chat" replace /> },
+        { path: '/chat', element: <ChatListPage /> },
+        { path: '/chat/:sessionId', element: <ChatWindowPage /> },
+        { path: '/home', element: <HomePage /> },
+        { path: '/home/:module', element: <HomeModulePage /> },
+        { path: '/llm', element: <LlmPage /> },
+        { path: '/life', element: <LifePage /> },
+        { path: '/setting', element: <SettingPage /> },
+        { path: '*', element: <Navigate to="/chat" replace /> },
+      ],
+    },
+  ],
+  // 显式开启 future flags，消掉控制台升级警告（v7 行为与现用法兼容）
+  { future: { v7_relativeSplatPath: true } },
+)
 
 export function App() {
-  return <RouterProvider router={router} />
+  return <RouterProvider router={router} future={{ v7_startTransition: true }} />
 }

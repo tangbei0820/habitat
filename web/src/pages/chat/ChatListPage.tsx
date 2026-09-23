@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { ChatSession } from '@shared/types'
 import { createSession, deleteSession, listSessions } from '../../db/chat'
@@ -8,6 +8,9 @@ export function ChatListPage() {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<ChatSession[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** 两步删除：点 ✕ 先进入「待确认」，再点一次才真正删（误触拦得住，不用原生弹窗） */
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const confirmTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     listSessions()
@@ -18,14 +21,35 @@ export function ChatListPage() {
       })
   }, [])
 
+  useEffect(
+    () => () => {
+      if (confirmTimerRef.current !== null) window.clearTimeout(confirmTimerRef.current)
+    },
+    [],
+  )
+
+  function askRemove(id: string): void {
+    if (confirmTimerRef.current !== null) window.clearTimeout(confirmTimerRef.current)
+    setConfirmingId(id)
+    // 3 秒没确认就退回普通态，避免列表里长期挂着一个「确认删除」
+    confirmTimerRef.current = window.setTimeout(() => setConfirmingId(null), 3000)
+  }
+
   async function startSession(): Promise<void> {
     const session = await createSession('新的对话')
     navigate(`/chat/${session.id}`)
   }
 
   async function removeSession(id: string): Promise<void> {
-    await deleteSession(id)
-    setSessions((prev) => prev?.filter((s) => s.id !== id) ?? null)
+    try {
+      await deleteSession(id)
+      setSessions((prev) => prev?.filter((s) => s.id !== id) ?? null)
+    } catch (err: unknown) {
+      log.error('删除会话失败', err)
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setConfirmingId(null)
+    }
   }
 
   return (
@@ -76,15 +100,26 @@ export function ChatListPage() {
               {s.pinnedAt !== null && <span className="mr-1">📌</span>}
               {s.title}
             </Link>
-            <button
-              type="button"
-              aria-label="删除会话"
-              className="text-sm"
-              style={{ color: 'var(--color-text-dim)' }}
-              onClick={() => void removeSession(s.id)}
-            >
-              ✕
-            </button>
+            {confirmingId === s.id ? (
+              <button
+                type="button"
+                className="rounded border px-2 py-0.5 text-xs"
+                style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
+                onClick={() => void removeSession(s.id)}
+              >
+                确认删除？
+              </button>
+            ) : (
+              <button
+                type="button"
+                aria-label="删除会话"
+                className="text-sm"
+                style={{ color: 'var(--color-text-dim)' }}
+                onClick={() => askRemove(s.id)}
+              >
+                ✕
+              </button>
+            )}
           </li>
         ))}
       </ul>

@@ -1,18 +1,6 @@
 import { Link } from 'react-router-dom'
 import { greetingByHour } from '../../features/home/welcome'
-
-const MODULES = [
-  { key: 'board', name: '留言板', icon: '💌' },
-  { key: 'countdown', name: '倒数日', icon: '⏳' },
-  { key: 'wishlist', name: '愿望清单', icon: '♡' },
-  { key: 'diary', name: '日记', icon: '📔' },
-  { key: 'bookmarks', name: '收藏', icon: '🔖' },
-  { key: 'works', name: '作品', icon: '🎨' },
-  { key: 'album', name: '相册', icon: '🖼' },
-  { key: 'reading', name: '读书', icon: '📚' },
-  { key: 'music', name: '音乐', icon: '🎵' },
-  { key: 'study', name: '学习', icon: '✏️' },
-] as const
+import { HOME_MODULES } from '../../features/home/modules'
 
 export function HomePage() {
   const greeting = greetingByHour(new Date().getHours())
@@ -28,7 +16,7 @@ export function HomePage() {
       </header>
 
       <ul className="flex flex-col gap-2">
-        {MODULES.map((mod) => (
+        {HOME_MODULES.map((mod) => (
           <li key={mod.key}>
             <Link
               to={`/home/${mod.key}`}

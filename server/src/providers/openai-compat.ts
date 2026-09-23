@@ -218,8 +218,9 @@ export class OpenAICompatProvider implements LLMProvider {
       })),
       stream: true,
       // 让上游在末包回 usage，账本（§6.2 UsageRecord）才有 token 可记。
-      // 极少数不支持该字段的自建上游可能报 400 —— 届时按方案加开关（见 docs/TASKS.md）。
-      stream_options: { include_usage: true },
+      // 极少数老自建上游（老版 vLLM、部分代理）会因这个字段回 400，所以按方案可关：
+      // `ApiProfile.streamOptions`，缺省开（见设置页「高级」里的兼容开关）
+      ...(this.profile.streamOptions === false ? {} : { stream_options: { include_usage: true } }),
       ...(opts.temperature === undefined ? {} : { temperature: opts.temperature }),
       ...(opts.maxTokens === undefined ? {} : { max_tokens: opts.maxTokens }),
       ...(opts.tools === undefined ? {} : { tools: opts.tools }),

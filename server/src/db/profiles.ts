@@ -11,7 +11,11 @@
 import { asc, eq, ne } from 'drizzle-orm'
 import type { ApiProfile, ApiProfileCreateInput, ApiProfileUpdateInput } from '@shared/types'
 import { db } from './index.js'
+import { hasKv, setKv } from './kv.js'
 import { apiProfile, apiSecret, type ApiProfileRow } from './schema.js'
+
+/** `app_kv` 里「env 种子已导入过」的键。判据与表里现存条数无关，理由见 `kv.ts` */
+const SEED_IMPORTED_KEY = 'llm_profiles_seeded'
 
 /**
  * 由名称派生 id。
@@ -52,6 +56,7 @@ function toProfile(row: ApiProfileRow): ApiProfile {
     keyRef: row.keyRef,
     modelMap: row.modelMap,
     ...(row.headers === null || row.headers === undefined ? {} : { headers: row.headers }),
+    streamOptions: row.streamOptions,
     isActive: row.isActive,
   }
 }
@@ -112,6 +117,8 @@ export function createProfile(input: ApiProfileCreateInput): ApiProfile {
       keyRef: input.keyRef ?? '',
       modelMap: input.modelMap,
       headers: input.headers ?? null,
+      // 缺省开：绝大多数上游要靠它才能在末包回 usage（账本记账用）
+      streamOptions: input.streamOptions ?? true,
       isActive,
       sortOrder: nextSortOrder(),
       createdAt: now,
@@ -139,6 +146,7 @@ export function updateProfile(id: string, patch: ApiProfileUpdateInput): ApiProf
   if (patch.headers !== undefined) {
     values.headers = Object.keys(patch.headers).length > 0 ? patch.headers : null
   }
+  if (patch.streamOptions !== undefined) values.streamOptions = patch.streamOptions
 
   db.update(apiProfile).set(values).where(eq(apiProfile.id, id)).run()
   // isActive 单独走互斥路径，别塞进上面的 set（否则会留下两条 active）
@@ -197,13 +205,23 @@ export function clearSecret(profileId: string): boolean {
 }
 
 /**
- * 环境变量方案的一次性导入（仅在表为空时调用）。
+ * 环境变量方案的**一次性**导入。
  *
  * 为什么要它：切片一/二让北北把方案写在 `.env` 里跑通了链路，直接换成 DB 会让那些配置凭空消失。
  * 导入后 **DB 即权威** —— 之后改 `.env` 不再生效（启动日志会说明，避免「改了没反应」的困惑）。
+ *
+ * 判据是 `app_kv` 里的**持久标记**，不是「表是否为空」：
+ * - 用户删光方案后重启，表是空的 —— 若拿表空当判据，env 种子会复活，等于他白删；
+ * - 反过来，升级上来的老库可能已经有方案（手动建的 / 之前导入的），这一轮也要补写标记，
+ *   否则下次他清空方案重启时，同样的「复活」还是会发生。
  */
 export function importProfiles(profiles: readonly ApiProfile[]): number {
-  if (profiles.length === 0 || countProfiles() > 0) return 0
+  if (profiles.length === 0) return 0
+  if (hasKv(SEED_IMPORTED_KEY)) return 0
+  if (countProfiles() > 0) {
+    setKv(SEED_IMPORTED_KEY, String(Date.now()))
+    return 0
+  }
   const now = Date.now()
   const noneActive = !profiles.some((p) => p.isActive)
   db.transaction((tx) => {
@@ -217,6 +235,7 @@ export function importProfiles(profiles: readonly ApiProfile[]): number {
           keyRef: profile.keyRef,
           modelMap: profile.modelMap,
           headers: profile.headers ?? null,
+          streamOptions: profile.streamOptions ?? true,
           isActive: profile.isActive || (noneActive && index === 0),
           sortOrder: index,
           createdAt: now,
@@ -225,5 +244,6 @@ export function importProfiles(profiles: readonly ApiProfile[]): number {
         .run()
     })
   })
+  setKv(SEED_IMPORTED_KEY, String(now))
   return profiles.length
 }

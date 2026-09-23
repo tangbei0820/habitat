@@ -21,6 +21,18 @@ export const MAX_CANDIDATES = 8
 /** 时间键的两端哨兵：比 Date.now() 的取值域更宽，避免边界漏条 */
 const TIME_MAX = Number.MAX_SAFE_INTEGER
 const TIME_MIN = Number.MIN_SAFE_INTEGER
+/** id 键的上界哨兵：'￿' 大于任何正常 uuid，让「无游标」等价于「取到时间尽头」 */
+const ID_MAX = '￿'
+
+/** 思维链落库上限（字符数）：R1 类长思维链会让单条消息记录明显膨胀，超出的截断保留头尾 */
+export const REASONING_LIMIT = 32_000
+
+export function capReasoning(reasoning: string): string {
+  if (reasoning.length <= REASONING_LIMIT) return reasoning
+  const head = reasoning.slice(0, REASONING_LIMIT / 2)
+  const tail = reasoning.slice(-(REASONING_LIMIT / 2))
+  return `${head}\n…（思维链过长，已截断）…\n${tail}`
+}
 
 export function newSession(title: string): ChatSession {
   const now = Date.now()
@@ -120,18 +132,27 @@ export async function listMessages(sessionId: string): Promise<ChatMessage[]> {
 }
 
 /**
- * 取**最近**一页（返回升序）。走复合索引 `[sessionId+createdAt]`，
- * 免去「取回全部再内存排序」；`before` 传已加载最早一条的 createdAt 即可继续往前翻。
+ * 分页游标：「已加载最早一条」的 (createdAt, id)。
+ * 带上 id 是为了 createdAt 撞毫秒时不漏条 —— 见 `db.ts` 的 v3 说明。
+ */
+export interface MessagePageCursor {
+  createdAt: number
+  id: string
+}
+
+/**
+ * 取**最近**一页（返回升序）。走复合索引 `[sessionId+createdAt+id]`，
+ * 上界「不含」语义对三元组整体生效：createdAt 相同则按 id 续取，撞毫秒不再漏条。
  */
 export async function listMessagesPage(
   sessionId: string,
   limit: number,
-  before?: number,
+  before?: MessagePageCursor,
 ): Promise<ChatMessage[]> {
-  const upper: [string, number] = [sessionId, before ?? TIME_MAX]
+  const upper: [string, number, string] = [sessionId, before?.createdAt ?? TIME_MAX, before?.id ?? ID_MAX]
   const rows = await db.messages
-    .where('[sessionId+createdAt]')
-    .between([sessionId, TIME_MIN], upper, true, false)
+    .where('[sessionId+createdAt+id]')
+    .between([sessionId, TIME_MIN, ''], upper, true, false)
     .reverse()
     .limit(limit)
     .toArray()
@@ -140,6 +161,11 @@ export async function listMessagesPage(
 
 export async function appendMessage(message: ChatMessage): Promise<void> {
   await db.messages.add(message)
+}
+
+/** 删除单条消息（流式草稿失败时清掉空回复，不留垃圾记录） */
+export async function deleteMessage(id: string): Promise<void> {
+  await db.messages.delete(id)
 }
 
 export async function updateMessage(
@@ -202,7 +228,7 @@ export async function addVersion(id: string, input: AddVersionInput): Promise<Ch
     ...(input.status === undefined ? {} : { status: input.status }),
     ...(input.reasoning === undefined || input.reasoning === ''
       ? {}
-      : { metadata: { ...message.metadata, reasoning: input.reasoning } }),
+      : { metadata: { ...message.metadata, reasoning: capReasoning(input.reasoning) } }),
     updatedAt: Date.now(),
   }
   await db.messages.put(next)

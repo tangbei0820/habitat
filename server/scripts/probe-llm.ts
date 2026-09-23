@@ -5,7 +5,8 @@
  *   2) npx tsx scripts/probe-llm.ts
  *
  * 覆盖：环境变量解析 / 种子导入 / 脱敏视图（含凭据来源 keySource）/ 表内密钥优先于环境变量 /
- *       listModels / 流式增量（思维链、usage、done）/ 四类错误路径 / 取消（AbortSignal）。
+ *       listModels / 流式增量（思维链、usage、done）/ 四类错误路径 / 取消（AbortSignal）/
+ *       stream_options 兼容开关（断言**真实报文**，靠 mock 的 `GET /__last-body`）。
  * 退出码非 0 表示有断言失败。
  *
  * ⚠️ 两条实现上的讲究：
@@ -23,7 +24,7 @@ process.env.HABITAT_DB_PATH = DB_PATH
 for (const suffix of ['', '-shm', '-wal']) rmSync(`${DB_PATH}${suffix}`, { force: true })
 
 const { LlmRegistry, loadProfiles } = await import('../src/providers/registry.js')
-const { countProfiles, importProfiles, setSecret } = await import('../src/db/profiles.js')
+const { countProfiles, createProfile, importProfiles, setSecret } = await import('../src/db/profiles.js')
 const { ProviderError } = await import('../src/providers/errors.js')
 
 let passed = 0
@@ -229,6 +230,70 @@ try {
   check('表内密钥确实被送去上游（不再是 401）', models.length === 3)
 } catch (err) {
   check('表内密钥确实被送去上游（不再是 401）', false, err instanceof Error ? err.message : String(err))
+}
+
+console.log('\n=== 8. stream_options 兼容开关 ===')
+// 「老自建上游见到 stream_options 就 400」是真实存在的坑，所以这个开关不能只验「能存能读」，
+// 要验**真实报文**里到底带没带 —— 响应侧看不出区别（mock 无论怎样都会回 usage）
+const MOCK_ROOT = BASE_URL.replace(/\/v1\/?$/, '')
+
+async function sendOnce(profileId: string): Promise<{ body: Record<string, unknown> | null; deltas: number }> {
+  const provider = registry.provider(profileId)
+  let deltas = 0
+  for await (const chunk of provider.streamChat([{ role: 'user', content: '开关测试' }])) {
+    if (chunk.type === 'delta') deltas += 1
+  }
+  const res = await fetch(`${MOCK_ROOT}/__last-body`)
+  const parsed = (await res.json()) as { body: Record<string, unknown> | null }
+  return { body: parsed.body, deltas }
+}
+
+try {
+  // 缺省（不传）应当是「开」—— 账本靠末包 usage，关掉会让 token 统计静默变成 0
+  const defaulted = await sendOnce('ok')
+  check(
+    '缺省即开：请求体带 stream_options.include_usage',
+    defaulted.deltas > 0 &&
+      JSON.stringify(defaulted.body?.stream_options) === JSON.stringify({ include_usage: true }),
+    JSON.stringify(defaulted.body?.stream_options),
+  )
+} catch (err) {
+  check('缺省即开：请求体带 stream_options.include_usage', false, err instanceof Error ? err.message : String(err))
+}
+
+// 建一条显式关掉的方案，验「关了就真的不带」
+const offId = createProfile({
+  name: '关掉 stream_options',
+  baseUrl: BASE_URL,
+  keyRef: 'MOCK_KEY',
+  modelMap: { chat: 'mock-chat-small' },
+  streamOptions: false,
+}).id
+check('脱敏视图回传开关状态（false）', view(offId)?.streamOptions === false)
+try {
+  const off = await sendOnce(offId)
+  check(
+    '关掉后请求体不含 stream_options',
+    off.deltas > 0 && off.body !== null && !('stream_options' in off.body),
+    JSON.stringify(off.body?.stream_options),
+  )
+} catch (err) {
+  check('关掉后请求体不含 stream_options', false, err instanceof Error ? err.message : String(err))
+}
+
+// 改回来（PATCH 路径）也要真的落到请求体上 —— 否则「存进去了但读不出来」这种半截实现会溜过去
+try {
+  const { updateProfile } = await import('../src/db/profiles.js')
+  updateProfile(offId, { streamOptions: true })
+  check('更新开关后视图为 true', view(offId)?.streamOptions === true)
+  const back = await sendOnce(offId)
+  check(
+    '改回开后请求体又带上 stream_options',
+    back.body !== null && 'stream_options' in back.body,
+    JSON.stringify(back.body?.stream_options),
+  )
+} catch (err) {
+  check('改回开后请求体又带上 stream_options', false, err instanceof Error ? err.message : String(err))
 }
 
 console.log(`\n=== 汇总：通过 ${passed} / ${passed + failed} ===`)

@@ -45,6 +45,8 @@ export function ProviderForm({ initial, busy, onSubmit, onCancel }: ProviderForm
   const [secret, setSecret] = useState('')
   const [keyRef, setKeyRef] = useState(initial?.keyRef ?? '')
   const [isActive, setIsActive] = useState(initial?.isActive ?? false)
+  /** 缺省开；关掉只为了让「见到 stream_options 就报 400」的老自建上游能用 */
+  const [streamOptions, setStreamOptions] = useState(initial?.streamOptions ?? true)
 
   const canSubmit = name.trim() !== '' && baseUrl.trim() !== '' && chatModel.trim() !== ''
 
@@ -64,6 +66,7 @@ export function ProviderForm({ initial, busy, onSubmit, onCancel }: ProviderForm
         modelMap: { chat: chatModel.trim() },
         // 编辑时**总是**带上 keyRef，这样把它清空才生效；新建时空串就不必传
         ...(isEdit || keyRef.trim() !== '' ? { keyRef: keyRef.trim() } : {}),
+        streamOptions,
         isActive,
       },
       secret.trim() === '' ? null : secret.trim(),
@@ -169,7 +172,7 @@ export function ProviderForm({ initial, busy, onSubmit, onCancel }: ProviderForm
 
       <details className="mb-3">
         <summary className="cursor-pointer text-xs" style={LABEL_STYLE}>
-          高级：从环境变量读密钥
+          高级：环境变量密钥 / 兼容开关
         </summary>
         <div className="mt-2">
           <input
@@ -185,6 +188,19 @@ export function ProviderForm({ initial, busy, onSubmit, onCancel }: ProviderForm
             一般用不到 —— 除非密钥要留在服务端启动环境里（容器部署等）。
           </p>
         </div>
+
+        <label className="mt-3 flex items-start gap-2 text-xs" style={LABEL_STYLE}>
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={streamOptions}
+            onChange={(event) => setStreamOptions(event.target.checked)}
+          />
+          <span>
+            请求里带 <code>stream_options</code>（默认开）—— 靠它才能在末包拿到 token 用量，账本要用。
+            <strong>只有</strong>老自建上游（老版 vLLM、部分中转）因此报 400 时才关掉。
+          </span>
+        </label>
       </details>
 
       <div className="flex gap-2">

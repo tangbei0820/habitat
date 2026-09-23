@@ -53,7 +53,8 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
     "id": "deepseek", "name": "DeepSeek 官方", "provider": "openai-compat",
     "baseUrl": "https://api.deepseek.com/v1", "keyRef": "DEEPSEEK_API_KEY",
     "hasKey": true, "keySource": "env",
-    "modelMap": { "chat": "deepseek-chat" }, "headerNames": [], "isActive": true
+    "modelMap": { "chat": "deepseek-chat" }, "headerNames": [],
+    "streamOptions": true, "isActive": true
   },
   "profiles": [ /* 同上结构 */ ]
 }
@@ -61,6 +62,7 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 
 - `hasKey`：凭据**是否已就绪、可直接发起调用**（即 `keySource !== 'missing'`）
 - `keySource`：凭据从哪来，UI 文案据此区分四种情况（`hasKey` 单独看会把「不需要密钥」和「已配好」混为一谈）
+- `streamOptions`：流式请求是否带 `stream_options: { include_usage: true }`。**缺省 `true`** —— 绝大多数上游靠它在末包回 `usage`，账本（`usage_record`）才有 token 可记。只有老自建上游（老版 vLLM、部分代理）会因这个字段回 400，那时按方案关掉
 
 | `keySource` | 含义 | 能否直接用 |
 | --- | --- | --- |
@@ -126,6 +128,7 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
   "modelMap": { "chat": "deepseek-chat" },
   "keyRef": "DEEPSEEK_API_KEY",
   "headers": { "X-Custom": "…" },
+  "streamOptions": true,
   "isActive": false
 }
 ```
@@ -134,10 +137,11 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 
 - 忽略 `isActive`，**库里一条方案都没有时自动设为默认**（单方案场景不该还要多点一次）
 - 除 `name` / `baseUrl` / `modelMap.chat` 外均可省略；`keyRef` 留空 = 该上游不需要鉴权
+- `streamOptions` 缺省 `true`；**必须传布尔值**，传其它类型返回 `400 BAD_REQUEST`。要关就显式传 `false`
 
 ### `PATCH /api/providers/:id`
 
-局部更新，字段**不出现 = 不改**（显式传 `keyRef: ""` 才是清空）。请求体形状同 `POST`，全字段可选；空对象返回 `400`。
+局部更新，字段**不出现 = 不改**（显式传 `keyRef: ""` 才是清空）。请求体形状同 `POST`，全字段可选；空对象返回 `400`。`streamOptions` 同样只收布尔值。
 
 ### `DELETE /api/providers/:id`
 

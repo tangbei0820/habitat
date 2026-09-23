@@ -81,6 +81,8 @@ function parseProfile(value: unknown, index: number): { profile: ApiProfile } | 
       keyRef: asString(value.keyRef) ?? '',
       modelMap,
       ...(headers === undefined ? {} : { headers }),
+      // 只在显式 `false` 时记下来；其余一律走「缺省 = 开」，免得默认值在多处各写一遍
+      ...(value.streamOptions === false ? { streamOptions: false } : {}),
       isActive: value.isActive === true,
     },
   }
@@ -181,6 +183,8 @@ export class LlmRegistry {
       keySource: resolved.source,
       modelMap: { ...profile.modelMap },
       headerNames: Object.keys(profile.headers ?? {}),
+      // 库里的列非空且带默认值，解析出来的域类型却允许缺省 —— 统一在出口补成布尔值
+      streamOptions: profile.streamOptions ?? true,
       isActive: profile.isActive,
     }
   }

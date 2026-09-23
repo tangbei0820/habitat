@@ -14,8 +14,8 @@
 ### 高 —— 影响正确性，容易踩
 
 - [x] ~~**服务端不读 `.env`**~~ —— 已修（T-003）：新增 `server/src/lib/env.ts`，作为 `src/index.ts` 的**第一个 import** 把 `server/.env` 灌进 `process.env`。刻意不引 dotenv（它可用的 `process.loadEnvFile` 会覆盖既有变量），手写极简解析保证优先级为「**真实环境变量 > .env**」，路径按模块位置解析所以从哪启动都能找到。
-- [ ] **`web` 缺备份导出** —— 铁律 5 要求「版本化迁移 **+ 备份导出**」。现在 Dexie 迁移有了（`version(1)` → `version(2)`），但导出 / 导入入口为零；水合失败只能引导用户「清理站点数据」= 数据直接丢。→ 在设置页补导出 / 导入。
-- [ ] **流式中的回复只活在内存，刷新即丢** —— 流式增量刻意不写库（避免每 token 一次 IndexedDB 写），收尾才落一条。代价：用户在生成过程中刷新 / 关页，这一轮的正文全丢（用户消息已落库，所以会看到「问了没答」）。→ 按 ~500ms 节流落一次草稿，或复用已建好的 `candidates`。
+- [x] ~~**`web` 缺备份导出**~~ —— 已修（T-008）：新增 `web/src/lib/backup.ts` + `features/backup/BackupPanel.tsx`。导出物是自描述 JSON（带 `format` / `version` / `exportedAt`），导入是**整体替换**语义且**先全量校验再动库**（校验不过一行都不写，不留半导入状态），导入走单个 Dexie 事务。设置页给两步确认，不用原生 confirm。
+- [x] ~~**流式中的回复只活在内存，刷新即丢**~~ —— 已修（T-008）：`ChatWindowPage` 先落一条 `status='streaming'` 的草稿，流式增量按 **800ms 节流**合并写回，收尾一次性定性（内容 + 状态 + 思维链）。进页面时把「上一轮留下的 streaming 草稿」标成 `aborted`；失败换来的空回复直接删掉，不留垃圾记录。
 
 ### 中 —— 体验与一致性
 
@@ -24,17 +24,17 @@
 - [x] ~~**`ChatMessage.blocks` 只渲染 `text`**~~ —— 已修（T-006）：`MessageBlock` 改成可辨识联合并补齐 8 种 kind 的载荷契约，新增 `features/chat/MessageBlocks.tsx` 按 kind 分发（5 种真渲染 / 3 种明确占位 / 未知 kind 降级占位）。
 - [x] ~~**`listMessagesPage` 的分页游标没接 UI**~~ —— 已修（T-006）：聊天页滚到顶自动加载更早一页（`onReachTop` + 同步守卫防重复请求）。
 - [x] ~~**发送失败 / 想换一个回答时没有出口**~~ —— 已修（T-006）：抽出 `runGeneration` 供 发送 / 重发 / 换一个 复用；气泡下方给 `‹ n/N ›` 候选导航、「换一个」、「重发」，版本历史落在 `candidates` 上并跨刷新保持。
-- [ ] **分页游标的 `createdAt` 撞毫秒会漏条** —— `listMessagesPage` 的上界是 `[sessionId, before]` 且**不含**该点，若两条消息 `createdAt` 完全相同（同毫秒写入，批量导入时可能），较早那条会被跳过 —— 表现为「刷新后莫名少一条」。→ 换 `[sessionId+createdAt+id]` 三元复合索引，或游标改成「时间戳 + id」并显式跳过已取过的那条。（本次验收的数据是 `+1ms` 递增注入，所以没暴露。）
-- [ ] **会话删除无确认** —— 列表页点 ✕ 直接连同该会话全部消息一起删（`deleteSession` 是事务删除）。
-- [ ] **Home 子模块标题显示原始 key** —— `/home/board` 的标题渲染成 `Board`（对英文 key 做 `capitalize`），而入口列表里是「留言板」。→ 用同一份模块表反查中文名。
-- [ ] **原生模块 ABI 与 Node 版本绑定** —— `better-sqlite3` 的二进制绑定**安装时**的 Node 版本；本仓库是在 Node 20 下装的，用 Node 22 启动会 `ERR_DLOPEN_FAILED`。已在 `README.md` 环境要求里写明，但还没做机器可读的约束。→ 加 `.nvmrc`（或 `package.json` 的 `engines`）+ 启动时校验版本并给一句人话提示。
-- [ ] **`stream_options` 可能被上游拒绝** —— 兼容层无条件发 `stream_options: { include_usage: true }` 以换取末包 usage（账本要用）。极少数自建上游（老版 vLLM、部分代理）会回 400。→ 按方案加开关，默认开。
+- [x] ~~**分页游标的 `createdAt` 撞毫秒会漏条**~~ —— 已修（T-008）：Dexie 升到 `version(3)`，复合索引换成 `[sessionId+createdAt+id]`，游标改成 `{createdAt, id}`。三元组整体是「不含上界」语义，于是「同毫秒按 id 续取」成为索引的天然行为，不必在应用层特判。已确认全仓没有别处还依赖旧的 `[sessionId+createdAt]`（只会随 v3 重建被删掉）。
+- [x] ~~**会话删除无确认**~~ —— 已修（T-008）：列表页点 ✕ 先进入「确认删除？」，再点一次才真删；3 秒无操作自动退回普通态，避免列表里长期挂着一个确认按钮。
+- [x] ~~**Home 子模块标题显示原始 key**~~ —— 已修（T-008）：抽出 `features/home/modules.ts` 作**单一来源**，入口列表与子页标题都从它取；手输未知 key 时退回显示原 key 而不是空白。
+- [x] ~~**原生模块 ABI 与 Node 版本绑定**~~ —— 已修（T-008）：仓库根加 `.nvmrc`（`20`）、`server/package.json` 加 `engines.node: "^20"`；`server/src/index.ts` 拆成**纯版本门禁**（`main.ts` 装应用本体，用动态 `import()` 保证检查先于一切原生模块），版本不符给一句人话再退出，不再让 `ERR_DLOPEN_FAILED` 炸出栈。⚠️ 解析 `engines` 时**不能把 `<` 上界当允许值** —— `>=20 <21` 会被解析成 `[20, 21]` 而放行 Node 21，故 `engines` 统一写成 `^20`，解析函数只取 `<` 之前的部分。
+- [x] ~~**`stream_options` 可能被上游拒绝**~~ —— 已修（T-008）：`api_profile` 加 `stream_options` 列（缺省 `1`，老库靠「缺则补」的 ALTER 演进），全链打通 —— 仓储四个读写点（`toProfile` / `createProfile` / `updateProfile` / `importProfiles`）、env 种子解析、脱敏视图 `ApiProfilePublic.streamOptions`、适配器按方案决定是否带字段、路由 `POST` / `PATCH` 校验布尔值、表单「高级」区给开关。验收直接断言**真实报文**（mock 上游的 `GET /__last-body`）：缺省带 `{"include_usage":true}`、关掉后报文里没有该键、改回开又带上。
 - [ ] **`.env` 里的 JSON 必须写成单行** —— 极简解析器逐行读，把 `HABITAT_LLM_PROFILES` 的 JSON 换行美化会被截断成非法 JSON。报错文案里已点明「请写成一行」。（T-005 起该变量只在**种子导入**时相关，影响面已缩小。）
-- [ ] **`favicon.ico` 404** —— 每个页面控制台一条红字。→ 放个 favicon，或声明空 data URI 的 `<link rel="icon">`。
-- [ ] **React Router v7 future flag 警告** —— 控制台噪音。→ 显式开 `v7_startTransition` / `v7_relativeSplatPath`。
-- [ ] **服务端 CORS 全开** —— `origin: true` 会反射任意来源。本地开发可接受，**上线前必须收紧到具体域名**。
+- [x] ~~**`favicon.ico` 404**~~ —— 已修（T-008）：`web/index.html` 里内联一个 emoji（🌿）的 SVG data URI 图标，零文件、零请求。
+- [x] ~~**React Router v7 future flag 警告**~~ —— 已修（T-008）：显式开 `v7_relativeSplatPath`（`createBrowserRouter`）与 `v7_startTransition`（`RouterProvider`），控制台噪音消失。
+- [x] ~~**服务端 CORS 全开**~~ —— 已修（T-008）：`main.ts` 读 `CORS_ORIGIN`（逗号分隔），设了就按白名单收紧，没设才退回「反射任意来源」。⚠️ **默认仍是全开**（本地开发的便利），所以**上线前必须在 `server/.env` 里设好**，`.env.example` 已补该段与示例。
 - [ ] **密钥在 SQLite 里是明文** —— `api_secret.secret` 直接存原文（个人自用单机，不做加密）。真正的风险点是**备份**：直接打包 `server/data/` 会把密钥一起带走。→ 做「导出 / 备份」功能时必须提供「**不含凭据**」选项（拆表就是为这个留的口子：只导 `api_profile` 即可）。
-- [ ] **删光所有方案后重启，`.env` 里的种子会复活** —— `importProfiles` 的判据是「表为空」，于是用户清空方案 → 重启 → 环境变量里的旧方案又冒出来，违背他的意图。→ 改为持久标记「已导入过」（在库里记一条 kv），而不是看表是否为空。
+- [x] ~~**删光所有方案后重启，`.env` 里的种子会复活**~~ —— 已修（T-008）：新增 `server/src/db/kv.ts` 读写 `app_kv` 表，`importProfiles` 的判据换成持久标记 `llm_profiles_seeded`，**与表里现存条数无关**。升级路径也照顾到：老库若已有方案，这一轮会**补写**标记，否则下次他清空方案重启时同样的「复活」还会发生。
 - [ ] **方案表单没接「选模型」下拉** —— `GET /api/providers/:id/models` 早已就绪，但表单里模型名只能手打，很容易打错。→ 表单里加「从上游拉取模型列表」并给候选。
 - [ ] **`headers` 自定义请求头没有 UI 入口** —— 后端支持写入（`POST` / `PATCH` 都收），但前端表单没暴露。部分中转把凭证塞在自定义头里，这类用户目前只能走环境变量方案。→ 表单「高级」区补一个键值对编辑器。
 - [ ] **诊断表只增不减** —— `mcp_diagnostic_log` 没有任何清理 / 归档 / 保留策略，每次查询还要全表 `count(*)`。MCP 一旦真跑起来（每次工具调用都落一条）它会持续长大。→ 定保留策略（按条数或天数裁），或给一个「清空」入口。
@@ -42,11 +42,14 @@
 - [ ] **`direction: 'in'` 没有生产者** —— 表、类型、UI 都留了这个取值，但 Gateway 的四处 `insertMcpDiagnostic` **全是 `'out'`**，所以「响应方向」的记录从来没被写进去过，等于一段永远为空的分支。→ 要么补上响应侧记录（需要比 SDK 更底层的钩子），要么收窄契约并说明。
 - [ ] **诊断里的 `httpStatus` 恒为 null** —— 官方 SDK 的 transport 不暴露 HTTP 状态码，所以这一列目前零信息量（UI 已按「无值不显示」处理）。→ 真需要它就得自己包一层 fetch，成本不低，先记着。
 - [ ] **诊断面板没有折叠** —— 记录多时会把设置页拉得很长；超长的错误原文也只是 `break-all` 撑开行，没有折叠或截断。
+- [ ] **诊断保留策略只在启动时裁一次** —— `pruneMcpDiagnostics` 挂在启动流程上，且 `MCP_DIAGNOSTIC_RETENTION` 是**写死的常量**。长期不重启的进程表可以涨过上限；想调小或调大只能改代码。→ 需要时补 env 开关（如 `HABITAT_MCP_DIAG_KEEP`）与「每天裁一次」的定时任务。
+- [ ] **备份下载时 `URL.revokeObjectURL` 紧跟 `click()`** —— 同步释放对象 URL，Firefox / 大文件场景下有可能把下载掐掉。→ 改成 `setTimeout(..., 0)`（或下载回调里）再释放。
+- [ ] **验收脚本对环境前提有隐含依赖** —— 已抓到的两类：`probe-providers.ts` 原先断言「新建方案不抢默认」，隐含假设库里已有默认方案，在**空库**上必然假失败（已改成显式造出前提）；`verify-providers.mjs` 则明确要求库里已有一个带密钥的种子方案（靠 `.env`）。→ 新脚本一律把前提**写进断言或自建**，别依赖环境碰巧的样子。
 
 ### 低 —— 开发工具与体验毛刺
 
-- [ ] **`--bottom-nav-height` 是估的 4rem** —— 不是实测的底栏高度，改图标 / 字号后要手动同步。→ 用一次 `ResizeObserver` 实测后写回 CSS 变量。
-- [ ] **思维链整段存进 `metadata.reasoning`，无长度上限** —— 长思维链（尤其 R1 类模型）会让单条消息记录明显膨胀。→ 落库前截断，或改为单独的块（`MessageBlock.kind` 已有扩展位）。
+- [x] ~~**`--bottom-nav-height` 是估的 4rem**~~ —— 已修（T-008）：`BottomNav` 用 `ResizeObserver` 实测自身高度后写回 `--bottom-nav-height`，改图标 / 字号自动跟随，不再需要手动同步。
+- [x] ~~**思维链整段存进 `metadata.reasoning`，无长度上限**~~ —— 已修（T-008）：`db/chat.ts` 加 `capReasoning()` / `REASONING_LIMIT = 32000`，超限保留头尾并插入截断说明（头尾各半 —— 开头是推理起点、结尾是结论，中间最适合丢）。写入路径（`addVersion`、流式草稿、收尾定性）统一走它。
 - [ ] **验收脚本的断言绑定了 mock 的固定回复文案** —— 改 `mock-openai.ts` 的回复就要同步改 `web/scripts/verify-chat.mjs` 的断言。→ 让 mock 回显请求内容，断言改成检查回显。
 - [x] ~~**`ApiProfilePublic.hasKey` 语义有歧义**~~ —— 已修（T-005）：新增 `keySource`（`stored` / `env` / `missing` / `not-required`），UI 文案据此分别渲染「密钥已保存」/「密钥来自环境变量」/「缺密钥，现在调不通」/「无需密钥」。`hasKey` 保留（= `keySource !== 'missing'`），不破坏既有契约。
 - [ ] **`modelMap` 的 tts / vision / embedding 槽位暂时无人消费** —— 已按 §6.2 预留，等 Phase 5 接语音 / 视觉时用。
@@ -65,6 +68,8 @@
 - [ ] **诊断相关：三个同形状的异常类** —— 新增的 `RequestError` 与既有的 `GatewayError` / `ProviderError` 只差一个「属于哪个子域」，错误处理器里要并列写三个 `instanceof`。→ 等第四个出现时合成一个基类（或让后两者继承它）。
 - [ ] **诊断时间线不显示年份** —— 固定 `MM-DD HH:mm:ss.SSS`，跨年时看不出是哪年。
 - [ ] **`probe-diagnostics.ts` 依赖「脚本与 server 用同一个 `HABITAT_DB_PATH`」** —— 对不上时会明确报错提示，但仍需人工对齐（脚本没有自己去问 server「你的库在哪」的手段）。
+- [ ] **流式草稿的并发 flush 有理论上的乱序风险** —— 每次落库写的是**当前完整正文**（不是增量），若两次 flush 的写入真正并发且先后颠倒，库里可能短暂落后于最新内容。800ms 节流让两次 flush 至少隔这么远（IndexedDB 单次写入远快于此），且收尾还会 force 写一次，所以实践中撞不上。→ 真要做严就串行化 flush（排队 + 只保留最后一次）。
+- [ ] **「重新从 `.env` 导入方案」没有入口** —— `app_kv` 的标记一旦写上就永久生效，改了 `HABITAT_LLM_PROFILES` 也不会再导。这本就是「DB 即权威」的应有之义，但用户想推倒重来时只能手动清库。→ 真要给，就在设置页放一个「重新导入环境变量种子」按钮（明确提示会做什么）。
 
 ---
 
@@ -307,3 +312,55 @@
 **下一步（Phase 2）**：Home 生活模块（留言板 / 日记 / 相册…），依据技术方案 §8。
 
 ---
+
+### T-008 · 2026-09-23 · 审查并收口一批未提交改动（Phase 1 收尾的补给）
+
+**范围**：北北带来一批未提交改动（20 个文件，工作区脏、HEAD 仍是 `1729c1c`），要求审查。这批的意图是**顺着上方待优化清单收口**（Node ABI 机器化 / `stream_options` 开关 / CORS / 诊断保留策略 / 撞毫秒漏条 / 流式草稿 / 备份导出 / 模块名单一来源 / 删除确认 / favicon / bottom-nav 高度 / router future flags）。审查后按北北的选择「修阻断 + 补齐半截」执行。
+
+**审查结论（修复前）：1 处阻断 + 2 处编译错 + 2 处「看着做了、其实没做」+ 2 处配置对不上 + 文档未同步**
+
+1. **阻断（实测复现）**：`server/src/main.ts:8` 导入 `pruneMcpDiagnostics`，但 `db/diagnostics.ts` 里没有这个导出 → 启动即 `SyntaxError: The requested module './db/diagnostics.js' does not provide an export named 'pruneMcpDiagnostics'`（Node 20，退出码 1）。**服务端完全起不来**，不只是类型检查错
+2. **编译错**：`providers/registry.ts` 的 `toPublic()` 没带新增的 `streamOptions`（TS2741）；`web/src/pages/chat/ChatWindowPage.tsx` 的 `addVersion(targetId, …)` 里 `targetId` 是 `string | null`（TS2345，运行时不崩 —— 逻辑上 `draftId === null` 与 `targetId !== null` 等价）。⚠️ `vite build` **不做类型检查**，前端那个错被「构建成功」掩盖，只有 `npm run typecheck` 看得见
+3. **半截 1 · `streamOptions` 是死开关**：有列、有 ALTER、有 shared 类型；但 `db/profiles.ts` 四个读写点一行没碰、`openai-compat.ts` 仍硬编码该字段且注释还是旧的、前端无入口 → 老自建上游用户**依然关不掉**，清单里那条「中」级**没被真正解决**
+4. **半截 2 · `app_kv` 无生产者**：`schema.ts` 注释已宣称「不能用『表为空』当判据」，但 `importProfiles` 仍是 `countProfiles() > 0` → 注释承诺的行为**没有发生**（注释与实现不一致，比不写注释更容易骗到后来的人）
+5. **配置对不上**：`main.ts` 注释指「见 `server/.env.example`」但该文件**没有 `CORS_ORIGIN` 条目**；`engines` 写 `>=20 <21` 而解析函数用 `matchAll(/\d+/g)` → 解析出 `[20, 21]`，**Node 21 会被误放行**（ABI 一样是错的）
+
+**已完成**
+
+1. **补上缺失的保留策略**（`db/diagnostics.ts`）：`pruneMcpDiagnostics(keep = MCP_DIAGNOSTIC_RETENTION /* 5000 */)`，走**主键**水位线（`limit 1 offset keep-1` 定位第 keep 条，再 `DELETE WHERE id < 水位线`），不物化「要保留的 id 列表」；非法 `keep` 直接返回 0
+2. **`streamOptions` 全链打通**：`db/profiles.ts` 四个读写点（`toProfile` / `createProfile` / `updateProfile` / `importProfiles`）+ `registry.ts` 的 env 种子解析（只在显式 `false` 时记录，缺省开）+ 脱敏视图 + `openai-compat.ts` 按方案决定是否带字段 + `routes/providers.ts` 两个入口校验布尔值 + 表单「高级」区加开关
+3. **`app_kv` 落地**：新增 `server/src/db/kv.ts`（`getKv` / `setKv` / `hasKv`）；`importProfiles` 判据换成持久标记 `llm_profiles_seeded`，**老库已有方案时也补写标记**（否则升级后同样的「复活」还会发生）
+4. **配置对齐**：`server/.env.example` 补 `CORS_ORIGIN` 段（含示例与「默认全开的含义」说明）；`engines` 收紧为 `^20`；`index.ts` 的 `allowedMajors` 只取 `<` 之前的部分，杜绝「上界被当允许值」
+5. **两处编译错**：`toPublic` 补字段；`ChatWindowPage` 的收尾写回改成**先判 `targetId`** 再判草稿分支（`targetId !== null` = 换一个 / 否则 = 新回复收尾），类型自然收窄，不再需要断言
+6. **验收脚本同步**
+   - 新增 `server/scripts/probe-diag-retention.ts`：**自带一次性临时库**（`HABITAT_DB_PATH` 先设好再用动态 import），验「不足上限不裁 / 超量裁掉最旧的 / 保留条数与留下的是哪些都对 / 幂等 / 非法 keep 不碰库」——**不拿真实记录做实验**
+   - `probe-llm.ts` 新增第 8 节：`stream_options` 兼容开关，断言**真实报文**（借 mock 上游新增的 `GET /__last-body` 调试钩子，`mock-openai.ts` 顺带记录最近一次请求体）
+   - `probe-providers.ts` 新增第 9 节：开关的 HTTP 层读写与非法值 400；并修掉一条**隐含依赖环境**的断言 —— 「新建方案不抢默认」在**空库**上必然假失败（空库首条自动成为默认是 `createProfile` 的设计行为），改成先显式造出「已有默认」这个前提
+   - `verify-chat.mjs` 修掉写死的 Dexie 版本断言（`v2 → 20` 已过期），并**顺手验得更实**：不只比版本号（20/30），还把 v3 引入的三元复合索引取出来断言
+
+**验收结果（全部实跑）**
+
+- 两端 `typecheck` 通过；`web` 构建通过
+- `probe-diag-retention.ts`：**15/15**
+- `probe-llm.ts`：**32/32**（原 27 + 新增 5）
+- `probe-providers.ts`：**52/52，空库与「有方案时」各跑一次都过**（原 46 + 新增 6）
+- `probe-diagnostics.ts`：**48/48**
+- `verify-chat.mjs` / `verify-providers.mjs` / `verify-diagnostics.mjs`：**35→36 / 22 / 36** 全过，三条均「控制台零异常」
+- 启动冒烟：空库 + env 种子 → 首次导入；`PATCH streamOptions=false` 落库并在**报文**里生效；删光方案重启 → **种子不复活**（`app_kv` 标记生效）；Node 22 启动被门禁拦下并给出一句人话
+
+**排查中踩到的坑（值得记的是前两条，属于工具行为而非代码）**
+
+- **编辑工具偶发「报成功但没落盘」**：本轮 4 次编辑（`profiles.ts` 的 `updateProfile`、`routes/providers.ts` 的 `parseCreateInput`、`mock-openai.ts` 的变量声明）都以「Successfully edited」返回，但文件里没有改动。→ 每次编辑后**必须 grep 回读**关键行，不能凭返回消息判断
+- **`noUnusedLocals` / `noUnusedParameters` 全开**，所以验收脚本里的 `for await (const _x of …)` 也会报错 —— 循环变量必须在断言里真的被用到
+- `vite build` 不做类型检查：类型错能一路构建成功，**只能用 `typecheck` 兜**
+
+**本任务新增待优化**：中 3 条（诊断保留策略只在启动时裁一次且阈值写死 / 备份下载同步 revoke 对象 URL / 验收脚本对环境前提有隐含依赖）、低 2 条（流式草稿并发 flush 的理论乱序 / 「重新从 `.env` 导入方案」无入口），已录入上方汇总清单。
+
+**验证命令**
+
+- 纯库（不需要 server）：`cd server && npx tsx scripts/probe-diag-retention.ts`
+- 需要 mock 上游：起 `npm run dev:mock-openai`，再 `cd server && npx tsx scripts/probe-llm.ts`
+- 需要 mock + server：`HABITAT_LLM_PROFILES='[…mock…]' MOCK_KEY=sk-mock PORT=3100 HABITAT_DB_PATH=./data/probe.db npm run dev:server`，再 `npx tsx scripts/probe-providers.ts` / `scripts/probe-diagnostics.ts`
+- 端到端：起 mock + server（隔离端口）+ vite（`--host 127.0.0.1`）+ 无头 Edge，串行跑三条 `web/scripts/verify-*.mjs`（前置见各自文件头注释）
+
+**下一步（Phase 2）**：Home 生活模块（留言板 / 日记 / 相册…），依据技术方案 §8。

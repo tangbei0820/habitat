@@ -243,10 +243,36 @@ await reloadAndWait(`document.body.innerText.includes('链路正常')`, '刷新�
 const reloadedText = await evaluate('document.body.innerText')
 check('刷新后消息仍在（Dexie 落库）', reloadedText.includes('链路正常'), '')
 
-/* ---------- 7. IndexedDB 版本 ---------- */
-const dbInfo = await evaluate(`(async () => JSON.stringify(await indexedDB.databases()))()`)
-// Dexie 把声明的版本号 ×10 用作 IndexedDB 版本，所以 v2 → 20
-check('Dexie 已升到 v2', dbInfo.includes('"version":20'), dbInfo)
+/* ---------- 7. IndexedDB 版本与索引 ---------- */
+// Dexie 把声明的版本号 ×10 当作 IndexedDB 版本（v1→10 / v2→20 / v3→30）。
+// 这里不只比版本号：光看版本号分不出「升到了 v3」和「v3 的 stores 写错了」，
+// 所以顺带把 v3 引入的三元复合索引取出来验一眼。
+const dbInfo = await evaluate(`(async () => {
+  const list = await indexedDB.databases()
+  const target = list.find((d) => d.name === 'habitat-db')
+  if (!target) return JSON.stringify({ version: null, indexes: [] })
+  const indexes = await new Promise((res) => {
+    const req = indexedDB.open('habitat-db')
+    req.onsuccess = () => {
+      const db = req.result
+      try {
+        const store = db.transaction('messages').objectStore('messages')
+        res(Array.from(store.indexNames))
+      } finally {
+        db.close()
+      }
+    }
+    req.onerror = () => res([])
+  })
+  return JSON.stringify({ version: target.version ?? null, indexes })
+})()`)
+const dbState = JSON.parse(dbInfo)
+check('Dexie 已升到 v3（IndexedDB 版本 30）', dbState.version === 30, dbInfo)
+check(
+  'v3 的三元复合索引已建出',
+  Array.isArray(dbState.indexes) && dbState.indexes.includes('[sessionId+createdAt+id]'),
+  JSON.stringify(dbState.indexes),
+)
 
 /* ---------- 8. 虚拟列表：注入 200 条后只看可见区 ---------- */
 const seeded = await evaluate(`(async () => {

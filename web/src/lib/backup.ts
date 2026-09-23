@@ -1,0 +1,84 @@
+/**
+ * 本地数据备份 / 恢复（铁律 5：版本化迁移 **+ 备份导出**）。
+ *
+ * 导出物是一个自描述的 JSON 文件：带上格式标识与版本号，日后改结构时导入方能给出
+ * 「这份备份太旧 / 太新」的明确提示，而不是默默导出一堆对不上的数据。
+ * 导出**全量**（sessions + messages）：个人数据量的场景，部分备份的取舍逻辑比全量更危险。
+ */
+import type { ChatMessage, ChatSession } from '@shared/types'
+import { db } from '../db/db'
+
+export const BACKUP_FORMAT = 'habitat-backup'
+export const BACKUP_VERSION = 1
+
+export interface HabitatBackup {
+  format: typeof BACKUP_FORMAT
+  version: number
+  exportedAt: number
+  sessions: ChatSession[]
+  messages: ChatMessage[]
+}
+
+export interface BackupCounts {
+  sessions: number
+  messages: number
+}
+
+export async function exportAll(): Promise<HabitatBackup> {
+  const [sessions, messages] = await Promise.all([db.sessions.toArray(), db.messages.toArray()])
+  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: Date.now(), sessions, messages }
+}
+
+/** 触发浏览器下载；调用方决定文件名 */
+export function downloadBackup(backup: HabitatBackup): void {
+  const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  const stamp = new Date(backup.exportedAt)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  anchor.href = url
+  anchor.download = `habitat-backup-${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}.json`
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function looksLikeSession(value: unknown): value is ChatSession {
+  return isRecord(value) && typeof value.id === 'string' && value.type === 'chat-session'
+}
+
+function looksLikeMessage(value: unknown): value is ChatMessage {
+  return isRecord(value) && typeof value.id === 'string' && value.type === 'chat-message'
+}
+
+/**
+ * 恢复备份：**整体替换**现有数据（导入语义是「回到备份那一刻」，不是合并）。
+ * 先完整校验再动库 —— 校验不过一行都不写，避免半导入状态。
+ */
+export async function importAll(raw: unknown): Promise<BackupCounts> {
+  if (!isRecord(raw) || raw.format !== BACKUP_FORMAT) {
+    throw new Error('不是栖息地备份文件（缺少 format 标识）')
+  }
+  if (raw.version !== BACKUP_VERSION) {
+    throw new Error(`备份版本不匹配：文件是 v${String(raw.version)}，当前支持 v${BACKUP_VERSION}`)
+  }
+  if (!Array.isArray(raw.sessions) || !Array.isArray(raw.messages)) {
+    throw new Error('备份内容损坏：sessions / messages 必须是数组')
+  }
+  const sessions = raw.sessions.filter(looksLikeSession)
+  const messages = raw.messages.filter(looksLikeMessage)
+  if (sessions.length !== raw.sessions.length || messages.length !== raw.messages.length) {
+    throw new Error('备份内容损坏：存在无法识别的记录')
+  }
+
+  await db.transaction('rw', db.sessions, db.messages, async () => {
+    await db.sessions.clear()
+    await db.messages.clear()
+    await db.sessions.bulkAdd(sessions)
+    await db.messages.bulkAdd(messages)
+  })
+  return { sessions: sessions.length, messages: messages.length }
+}

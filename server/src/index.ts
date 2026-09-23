@@ -1,103 +1,54 @@
-// 必须是第一个 import：它要在 db/index.js 于模块加载期读环境变量之前把 .env 灌进来
-import { envFileLoaded } from './lib/env.js'
-import cors from '@fastify/cors'
-import Fastify from 'fastify'
-import type { ApiError, ErrorCode } from '@shared/errors'
-import { closeDb } from './db/index.js'
-import { importProfiles } from './db/profiles.js'
-import { RequestError } from './lib/errors.js'
-import { GatewayError, McpGateway } from './mcp/gateway.js'
-import { loadMcpRegistry } from './mcp/registry.js'
-import { ProviderError } from './providers/errors.js'
-import { LlmRegistry, loadProfiles } from './providers/registry.js'
-import { registerChatRoutes } from './routes/chat.js'
-import { registerDiagnosticRoutes } from './routes/diagnostics.js'
-import { registerHealthRoutes } from './routes/health.js'
-import { registerProviderRoutes } from './routes/providers.js'
+/**
+ * 进程入口：唯一职责是**在加载任何含原生模块的依赖之前**校验 Node 版本。
+ *
+ * `better-sqlite3` 的预编译二进制与**安装时**的 Node 版本绑定（ABI），
+ * 用别的 major 版本启动会得到一句毫无头绪的 `ERR_DLOPEN_FAILED`。
+ * 这里按 server/package.json 的 `engines.node` 提前检查，版本不符给一句人话再退出，
+ * 而不是让原生模块在 import 阶段炸出栈。
+ */
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const app = Fastify({
-  logger: {
-    transport: {
-      target: 'pino-pretty',
-    },
-  },
-})
+/** src/index.ts → server/ */
+const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-await app.register(cors, { origin: true })
+/**
+ * 从 `engines.node` 里取出**允许的 major 列表**。
+ *
+ * 只认 engines 里实际会写的几种写法（`^20` / `20` / `>=20 <21`）。
+ * 关键是**不把 `<` 后面的数字当允许值** —— 那是排他的上界：
+ * 早先的实现用 `matchAll(/\d+/g)` 把范围里所有数字都收进来，`>=20 <21` 解析成 `[20, 21]`，
+ * 于是 Node 21 被放行，而它的 ABI 和 22 一样是错的（正是这个检查要拦的东西）。
+ */
+function allowedMajors(range: string | undefined): number[] {
+  if (range === undefined) return []
+  const lowerPart = range.split('<')[0] ?? ''
+  return [...lowerPart.matchAll(/\d+/g)].map((match) => Number(match[0]))
+}
 
-/** 带 shared 错误码的业务异常 → HTTP 状态码 */
-function statusForCode(code: ErrorCode): number {
-  switch (code) {
-    case 'NOT_FOUND':
-    case 'PROVIDER_NOT_FOUND':
-      return 404
-    case 'BAD_REQUEST':
-    case 'PROVIDER_NOT_CONFIGURED':
-      return 400
-    case 'UNAUTHORIZED':
-    case 'PROVIDER_UNAUTHORIZED':
-      return 401
-    default:
-      return 502
+function checkNodeVersion(): void {
+  let range: string | undefined
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(serverRoot, 'package.json'), 'utf8')) as {
+      engines?: { node?: string }
+    }
+    range = pkg.engines?.node
+  } catch {
+    return // 读不到 package.json 就不拦（开发态极少见，不该因此起不来）
+  }
+  const majors = allowedMajors(range)
+  const major = Number(process.versions.node.split('.')[0])
+  if (majors.length > 0 && !majors.includes(major)) {
+    console.error(
+      `[habitat-server] 当前 Node 是 v${process.versions.node}，但服务端依赖的原生模块按 Node ${range} 编译。` +
+        `请切换 Node 版本后重试（仓库根有 .nvmrc）。`,
+    )
+    process.exit(1)
   }
 }
 
-// 统一错误映射：业务错误一律 ApiError 形状，错误不静默
-app.setErrorHandler((err: unknown, _req, reply) => {
-  if (err instanceof GatewayError || err instanceof ProviderError || err instanceof RequestError) {
-    const body: ApiError = { error: { code: err.code, message: err.message, detail: err.detail } }
-    return reply.status(statusForCode(err.code)).send(body)
-  }
-  app.log.error(err)
-  const body: ApiError = {
-    error: { code: 'INTERNAL', message: err instanceof Error ? err.message : String(err) },
-  }
-  return reply.status(500).send(body)
-})
+checkNodeVersion()
 
-const gateway = new McpGateway(loadMcpRegistry(), app.log)
-registerHealthRoutes(app, gateway)
-registerDiagnosticRoutes(app)
-
-// LLM 方案：**服务端 SQLite 是权威源**（见 db/profiles.ts）。
-// 环境变量 HABITAT_LLM_PROFILES 仅作**首次种子**：表为空时导入一次，之后改 .env 不再生效（以设置页为准）
-const { profiles: seedProfiles, problems } = loadProfiles()
-const importedProfiles = importProfiles(seedProfiles)
-const llmRegistry = new LlmRegistry()
-registerProviderRoutes(app, llmRegistry)
-registerChatRoutes(app, llmRegistry)
-if (!envFileLoaded) app.log.info('未发现 server/.env，按进程环境变量运行')
-for (const problem of problems) app.log.warn({ problem }, 'LLM 方案配置被跳过')
-if (importedProfiles > 0) {
-  app.log.info({ count: importedProfiles }, '已从 HABITAT_LLM_PROFILES 导入方案（仅首次；此后以数据库为准）')
-} else if (seedProfiles.length > 0) {
-  app.log.info(
-    { count: seedProfiles.length },
-    'HABITAT_LLM_PROFILES 未导入：数据库已有方案，请改用设置页编辑（环境变量只在首次生效）',
-  )
-}
-const activeProfile = llmRegistry.active()
-app.log.info(
-  { profiles: llmRegistry.list().map((p) => p.id), active: activeProfile?.id ?? null },
-  'LLM 方案已装载',
-)
-if (activeProfile === null) {
-  app.log.warn('尚无 LLM 方案 —— 打开设置页添加，或设置 HABITAT_LLM_PROFILES')
-}
-
-// 启动即连接 MCP server；单个失败不阻塞启动（状态机 + 诊断表已留痕）
-await gateway.connectAll()
-
-const port = Number(process.env.PORT ?? 3000)
-const host = process.env.HOST ?? '0.0.0.0'
-
-await app.listen({ port, host })
-
-async function shutdown(): Promise<void> {
-  await app.close()
-  await gateway.closeAll()
-  closeDb()
-  process.exit(0)
-}
-process.on('SIGINT', () => void shutdown())
-process.on('SIGTERM', () => void shutdown())
+// 版本过关后才加载应用本体（动态 import 保证上面的检查先于一切原生模块）
+await import('./main.js')

@@ -7,7 +7,8 @@
  *   3) npx tsx scripts/probe-providers.ts
  *
  * 覆盖：列表 / 新建 / 字段校验 / 更新 / 凭据生命周期（写入 → 生效 → 清除 → 回落）/
- *       设为默认（互斥）/ 删除（含 active 自动转移）/ id 生成 / 视图脱敏 / 端到端聊天。
+ *       设为默认（互斥）/ 删除（含 active 自动转移）/ id 生成 / 视图脱敏 / 端到端聊天 /
+ *       stream_options 兼容开关的读写与校验。
  *
  * ⚠️ 脚本自己建的方案会在结束前删掉，可重复运行。
  * 退出码非 0 表示有断言失败。
@@ -93,12 +94,23 @@ if (initial.active !== null) {
 }
 
 console.log('\n=== 1. 新建 ===')
+// 先把「库里已有一个默认」这个前提**显式造出来**。
+// 之前这里直接断言 made.isActive === false，隐含假设库里已有默认 —— 空库跑就必然假失败，
+// 而空库首条自动成为默认是 createProfile 的**设计行为**（单方案场景不该还要多按一次）。
+if (initial.active === null) {
+  const seeded = remember(
+    (await call('POST', '/api/providers', { ...validInput, name: '默认占位', isActive: true }))
+      .body as ApiProfilePublic,
+  )
+  check('空库首条自动成为默认（设计如此）', seeded.isActive === true, `isActive=${seeded.isActive}`)
+}
+
 const createRes = await call('POST', '/api/providers', validInput)
 check('新建返回 201', createRes.status === 201, `status=${createRes.status}`)
 const made = remember(createRes.body as ApiProfilePublic)
 check('id 由名称生成（UI 方案 → ui-方案）', made.id === 'ui-方案', `id=${made.id}`)
 check('keyRef 留空 → keySource=not-required', made.keySource === 'not-required' && made.hasKey === true)
-check('已有默认方案时不抢默认', made.isActive === false)
+check('已有默认方案时不抢默认', made.isActive === false, `isActive=${made.isActive}`)
 const afterCreate = await listProfiles()
 check('列表里多了一条', afterCreate.profiles.some((p) => p.id === made.id))
 
@@ -225,7 +237,42 @@ check('收到 chat-delta', chatText.includes('event: chat-delta'))
 check('收到 chat-done', chatText.includes('event: chat-done'))
 check('流里不含密钥', !chatText.includes(SECRET))
 
-console.log('\n=== 9. 清理脚本自建的方案 ===')
+console.log('\n=== 9. stream_options 兼容开关 ===')
+// 老自建上游见到它就 400，所以这个开关必须能存、能读、能改，非法值还得挡住
+const defaultSwitch = remember(
+  (await call('POST', '/api/providers', { ...validInput, name: '缺省开关' })).body as ApiProfilePublic,
+)
+check('新建不带该字段 → 默认开', defaultSwitch.streamOptions === true, `${defaultSwitch.streamOptions}`)
+
+const switchedOff = remember(
+  (await call('POST', '/api/providers', { ...validInput, name: '关掉开关', streamOptions: false }))
+    .body as ApiProfilePublic,
+)
+check('新建时显式关掉 → 视图为 false', switchedOff.streamOptions === false, `${switchedOff.streamOptions}`)
+check('是布尔而不是 0/1', typeof switchedOff.streamOptions === 'boolean', typeof switchedOff.streamOptions)
+
+const switchedBack = await call('PATCH', `/api/providers/${encodeURIComponent(switchedOff.id)}`, {
+  streamOptions: true,
+})
+check('PATCH 改回开 → 视图为 true', (switchedBack.body as ApiProfilePublic).streamOptions === true)
+
+const badPatch = await call('PATCH', `/api/providers/${encodeURIComponent(switchedOff.id)}`, {
+  streamOptions: 'no',
+})
+check(
+  'PATCH 非布尔 → 400 BAD_REQUEST',
+  badPatch.status === 400 && errorCode(badPatch) === 'BAD_REQUEST',
+  `${badPatch.status} ${errorCode(badPatch)}`,
+)
+
+const badCreate = await call('POST', '/api/providers', { ...validInput, name: '坏开关', streamOptions: 1 })
+check(
+  '新建非布尔 → 400 BAD_REQUEST',
+  badCreate.status === 400 && errorCode(badCreate) === 'BAD_REQUEST',
+  `${badCreate.status} ${errorCode(badCreate)}`,
+)
+
+console.log('\n=== 10. 清理脚本自建的方案 ===')
 for (const id of [...created]) {
   await call('DELETE', `/api/providers/${encodeURIComponent(id)}`)
 }

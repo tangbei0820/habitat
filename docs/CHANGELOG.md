@@ -198,3 +198,37 @@
 - 断言把「渲染行数」当成了「总数」：仅工具调用时渲染 30 行（一页）而总数 41 → 比数字就比统计行里的 `total`。
 - 长流水线挤在单条命令里会超时被杀（`SIGTERM`，且管道缓冲导致输出全丢，看起来像「什么都没跑」）→ 后台任务 + 输出落日志，再另开命令 tail。
 - `better-sqlite3` 的 ABI 绑定 Node 20，而 CDP 验收要 Node ≥22 的内置 `WebSocket` → 验收脚本改用 Node 22 内置的 `node:sqlite`，两头都不欠。
+
+### Phase 1 · 收尾补给（T-008）：修正阻断与半截实现
+
+> 背景：上一批未提交改动是在「收口待优化清单」，但其中一处让**服务端完全起不来**，另有两处是「只写了壳、没接上」。本次审查后按「修阻断 + 补齐半截」修完，并补上对应的验收。
+
+**server**
+
+- **修阻断**：新增 `db/diagnostics.ts` 的 `pruneMcpDiagnostics(keep = MCP_DIAGNOSTIC_RETENTION /* 5000 */)` —— `main.ts` 一直在调它，实现却是空的（启动即 `SyntaxError`）。走**主键水位线**（`limit 1 offset keep-1` 定位第 keep 条，再 `DELETE WHERE id < 水位线`），不物化「要保留的 id 列表」；非法 `keep` 返回 0。
+- **`streamOptions` 全链打通**（此前只有列和类型，没人读也没人写）：
+  - `db/profiles.ts` 四个读写点补齐（`toProfile` / `createProfile` / `updateProfile` / `importProfiles`）
+  - `providers/registry.ts`：env 种子解析支持该字段（只在显式 `false` 时记录，其余走「缺省开」）；`toPublic()` 补字段（原来这里直接编译不过）
+  - `providers/openai-compat.ts`：按方案决定是否发 `stream_options`（原来无条件硬编码）
+  - `routes/providers.ts`：`POST` / `PATCH` 都校验布尔值，非布尔一律 400
+- **`app_kv` 落地**：新增 `db/kv.ts`（`getKv` / `setKv` / `hasKv`）；`importProfiles` 的判据从「表是否为空」换成**持久标记** `llm_profiles_seeded`，且**老库已有方案时也补写标记**（否则升级后「删光重启 → 种子复活」照样会发生）。
+- **配置对齐**：`engines.node` 收紧为 `^20`；`index.ts` 的 `allowedMajors` 只取 `<` 之前的数字（原来 `matchAll(/\d+/g)` 会把 `>=20 <21` 的上界 21 也当允许值，放行 ABI 同样不对的 Node 21）；`.env.example` 补 `CORS_ORIGIN` 段。
+
+**web**
+
+- `pages/chat/ChatWindowPage.tsx`：收尾写回改成**先判 `targetId`**（`!== null` = 换一个加版本 / 否则 = 新回复收尾定性），类型自然收窄，消掉 `addVersion(targetId)` 的 TS2345。运行时行为不变（原先两个分支逻辑等价，只是类型推不出来）。
+- `features/providers/ProviderForm.tsx`：「高级」区加 `stream_options` 兼容开关（默认开），并说明「只有老自建上游因它报 400 时才关」。
+
+**验收**
+
+- 新增 `server/scripts/probe-diag-retention.ts`：**自带一次性临时库**（先设 `HABITAT_DB_PATH` 再动态 import），验「不足上限不裁 / 超量裁掉最旧的 / 保留条数与留下的是哪些都对 / 幂等 / 非法 keep 不碰库」——**不拿真实记录做实验**，跑完连 WAL 一起删。**15/15**。
+- `probe-llm.ts`：新增第 8 节断言 `stream_options` 的**真实报文**。为此给 mock 上游加了调试钩子 `GET /__last-body`（记录最近一次 chat/completions 的请求体）——「请求成功」在开 / 关两种模式下都会通过，只有报文能区分。**32/32**。
+- `probe-providers.ts`：新增第 9 节（开关的 HTTP 层读写 + 非布尔 400）。**52/52**；并修掉一条**隐含依赖环境**的断言：`新建方案不抢默认` 在**空库**上必然假失败（空库首条自动成为默认是设计行为），改成先显式造出「已有默认」这个前提，空库与有方案两种状态都跑通。
+- `verify-chat.mjs`：`Dexie 已升到 v2` 的断言写死了 `"version":20`，v3 后失效。改为**解析出数值**断言 `30`，并**顺手验得更实** —— 把 v3 引入的三元复合索引 `[sessionId+createdAt+id]` 取出来断言（光比版本号分不出「升到了 v3」和「v3 的 stores 写错了」）。**36/36**。
+- `verify-providers.mjs` **22/22**、`verify-diagnostics.mjs` **36/36**；两端 `typecheck` + `web` 构建通过。
+- 启动冒烟：空库 + env 种子 → 首次导入；`PATCH streamOptions=false` 落库并在报文里生效；删光方案重启 → **种子不复活**；Node 22 启动被门禁拦下并给出一句人话。
+
+**本次踩到的坑（工具行为，不是代码）**
+
+- 编辑工具本轮**4 次「报成功但没落盘」**（`profiles.ts` 的 `updateProfile`、`routes/providers.ts` 的 `parseCreateInput`、`mock-openai.ts` 的变量声明）。前两次是类型检查 / 第一次冒烟测试才发现 —— 后来都靠 grep 回读。→ **改完关键处一律 grep 回读**。
+- `schema.ts` 的注释写明了正确判据（「不能用表为空当判据」），但实现没跟上。**注释与实现不一致比不写注释更危险** —— 它会让后来的人以为已经做过了。

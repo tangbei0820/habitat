@@ -120,6 +120,14 @@ function parseHeadersInput(raw: unknown): Record<string, string> {
   return headers
 }
 
+/** 兼容开关：只接受布尔值。缺省不传 = 开（默认值由仓储层兜） */
+function parseStreamOptions(raw: unknown): boolean {
+  if (typeof raw !== 'boolean') {
+    throw new ProviderError(ErrorCodes.BadRequest, 'streamOptions 必须是布尔值')
+  }
+  return raw
+}
+
 function parseCreateInput(raw: unknown): ApiProfileCreateInput {
   const record = requireRecord(raw)
   return {
@@ -128,6 +136,9 @@ function parseCreateInput(raw: unknown): ApiProfileCreateInput {
     modelMap: parseModelMapInput(record.modelMap),
     ...(record.keyRef === undefined ? {} : { keyRef: parseKeyRefInput(record.keyRef) }),
     ...(record.headers === undefined ? {} : { headers: parseHeadersInput(record.headers) }),
+    ...(record.streamOptions === undefined
+      ? {}
+      : { streamOptions: parseStreamOptions(record.streamOptions) }),
     ...(record.isActive === undefined ? {} : { isActive: record.isActive === true }),
   }
 }
@@ -141,6 +152,7 @@ function parseUpdateInput(raw: unknown): ApiProfileUpdateInput {
   if (record.modelMap !== undefined) patch.modelMap = parseModelMapInput(record.modelMap)
   if (record.keyRef !== undefined) patch.keyRef = parseKeyRefInput(record.keyRef)
   if (record.headers !== undefined) patch.headers = parseHeadersInput(record.headers)
+  if (record.streamOptions !== undefined) patch.streamOptions = parseStreamOptions(record.streamOptions)
   if (record.isActive !== undefined) patch.isActive = record.isActive === true
   if (Object.keys(patch).length === 0) {
     throw new ProviderError(ErrorCodes.BadRequest, '没有要更新的字段')

@@ -12,6 +12,11 @@
   > 本仓库依赖是在 Node 20 下安装的，换用其它 Node 版本启动会报
   > `ERR_DLOPEN_FAILED / NODE_MODULE_VERSION`。真要用别的版本，得
   > `npm --prefix server install` 重装原生模块。
+  >
+  > 现在有机器可读的约束了：仓库根有 `.nvmrc`（`nvm use` 即可），`server/package.json` 声明了
+  > `engines.node: "^20"`，且 `server/src/index.ts` 会在加载任何原生模块**之前**校验版本，
+  > 版本不符时直接给一句人话再退出，而不是让 `ERR_DLOPEN_FAILED` 炸出栈。
+  > 注意 `web` 侧不挑版本（`vite` 纯 JS）；只有 `server` 必须 Node 20。
 - npm
 
 ## 启动（开发）

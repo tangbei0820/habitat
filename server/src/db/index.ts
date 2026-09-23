@@ -70,12 +70,24 @@ CREATE TABLE IF NOT EXISTS api_profile (
   updated_at INTEGER NOT NULL
 )
 `)
+// v3 之后的列用「缺则补」的方式演进：CREATE TABLE 只建初版，老库靠这几行补齐
+const profileColumns = sqlite.pragma('table_info(api_profile)') as Array<{ name: string }>
+if (!profileColumns.some((col) => col.name === 'stream_options')) {
+  sqlite.exec('ALTER TABLE api_profile ADD COLUMN stream_options INTEGER NOT NULL DEFAULT 1')
+}
 sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_api_profile_order ON api_profile (sort_order, created_at)`)
 sqlite.exec(`
 CREATE TABLE IF NOT EXISTS api_secret (
   profile_id TEXT PRIMARY KEY,
   secret TEXT NOT NULL,
   updated_at INTEGER NOT NULL
+)
+`)
+// 进程级键值状态（方案种子导入标记等）
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS app_kv (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
 )
 `)
 

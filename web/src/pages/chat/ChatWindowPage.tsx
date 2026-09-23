@@ -7,12 +7,16 @@ import { MessageBlocks } from '../../features/chat/MessageBlocks'
 import {
   addVersion,
   appendMessage,
+  capReasoning,
+  deleteMessage,
   getSession,
   listMessagesPage,
   messageText,
   newMessage,
   selectCandidateVersion,
+  textBlock,
   touchSession,
+  updateMessage,
 } from '../../db/chat'
 import { ApiRequestError } from '../../lib/api'
 import { streamChat } from '../../lib/chatStream'
@@ -22,14 +26,20 @@ import { log } from '../../lib/log'
 const PAGE_SIZE = 60
 /** 自动命名会话时截取的字数 */
 const TITLE_LIMIT = 18
+/**
+ * 流式草稿的落库节流：增量**不**逐 token 写 IndexedDB（那是每 token 一次磁盘写），
+ * 按这个间隔合并落一次。刷新丢的最多是这不到一秒的内容，而不是整轮回复。
+ */
+const DRAFT_FLUSH_MS = 800
 
-/** 列表项：已落库消息 + 正在流式的那条（后者不落库，收尾时才写一次） */
-type ChatItem =
-  | { kind: 'message'; message: ChatMessage; text: string; isLast: boolean }
-  | { kind: 'streaming'; text: string }
+interface ChatItem {
+  message: ChatMessage
+  text: string
+  isLast: boolean
+}
 
 function itemKey(item: ChatItem): string {
-  return item.kind === 'message' ? item.message.id : '__streaming__'
+  return item.message.id
 }
 
 function titleFrom(text: string): string {
@@ -75,34 +85,15 @@ function TinyButton({
 }
 
 function ChatBubble({ item, actions }: { item: ChatItem; actions: BubbleActions }) {
-  if (item.kind === 'streaming') {
-    return (
-      <div className="flex justify-start px-4 py-1.5">
-        <div
-          className="max-w-[82%] break-words rounded-2xl px-3 py-2 text-sm"
-          style={{
-            backgroundColor: 'var(--color-surface)',
-            color: 'var(--color-text)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          <span className="whitespace-pre-wrap">{item.text}</span>
-          <span className="ml-0.5 animate-pulse" style={{ opacity: 0.7 }}>
-            {item.text === '' ? '…' : '▍'}
-          </span>
-        </div>
-      </div>
-    )
-  }
-
   const { message, text } = item
   const isUser = message.role === 'user'
+  const isStreaming = message.status === 'streaming' || message.status === 'pending'
   const interrupted = message.status === 'aborted' || message.status === 'error'
   const versionCount = message.candidates.length
   const selected = message.candidates.findIndex((candidate) => candidate.selected)
 
   // 「换一个」只给最后一条 AI 回复：改中间那条，后面已经发生的对话就与它脱节了
-  const canReroll = !isUser && item.isLast && text !== '' && !actions.busy
+  const canReroll = !isUser && item.isLast && text !== '' && !actions.busy && !isStreaming
   // 「重发」出现在「最后一条是用户消息」时 —— 意味着这一轮压根没拿到回复（失败 / 停在首字之前）
   const canResend = isUser && item.isLast && !actions.busy
   const showActions = canReroll || canResend || versionCount > 1
@@ -122,6 +113,11 @@ function ChatBubble({ item, actions }: { item: ChatItem; actions: BubbleActions 
         ) : (
           // AI 侧走块分发：一条消息体内可能是文字 + 图片 + 工具结果任意组合（§6.2 可扩展块）
           <MessageBlocks blocks={message.blocks} />
+        )}
+        {isStreaming && (
+          <span className="ml-0.5 animate-pulse" style={{ opacity: 0.7 }}>
+            {text === '' ? '…' : '▍'}
+          </span>
         )}
         {interrupted && (
           <span className="ml-1 text-xs opacity-60">
@@ -168,7 +164,6 @@ export function ChatWindowPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const [session, setSession] = useState<ChatSession | null | undefined>(undefined)
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [streaming, setStreaming] = useState<{ content: string; reasoning: string } | null>(null)
   const [sending, setSending] = useState(false)
   const [errorText, setErrorText] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -199,7 +194,18 @@ export function ChatWindowPage() {
         ])
         if (cancelled) return
         setSession(loaded)
-        setMessages(page)
+        // 上一轮的流式草稿（刷新 / 关页留下的）在这里定性为「已停止」：
+        // 它确实停了 —— 服务端连接随页面卸载而断开，不可能还在生成
+        const stale = page.filter((m) => m.status === 'streaming' || m.status === 'pending')
+        if (stale.length > 0) {
+          const ids = new Set(stale.map((m) => m.id))
+          setMessages(page.map((m) => (ids.has(m.id) ? { ...m, status: 'aborted' } : m)))
+          void Promise.all(stale.map((m) => updateMessage(m.id, { status: 'aborted' }))).catch(
+            (err: unknown) => log.error('标记中断消息失败', err),
+          )
+        } else {
+          setMessages(page)
+        }
         // 拉满一页说明前面可能还有；不满则已知到底
         setHasMore(page.length === PAGE_SIZE)
       } catch (err) {
@@ -223,7 +229,7 @@ export function ChatWindowPage() {
     [],
   )
 
-  /** 向上翻一页。`before` 是「不含」语义，所以拿已加载的最早一条当游标 */
+  /** 向上翻一页。`before` 是「不含」语义，所以拿已加载的最早一条 (createdAt, id) 当游标 */
   async function loadEarlier(): Promise<void> {
     if (sessionId === undefined || loadingEarlierRef.current || !hasMore) return
     const oldest = messagesRef.current[0]
@@ -232,7 +238,10 @@ export function ChatWindowPage() {
     loadingEarlierRef.current = true
     setLoadingEarlier(true)
     try {
-      const earlier = await listMessagesPage(sessionId, PAGE_SIZE, oldest.createdAt)
+      const earlier = await listMessagesPage(sessionId, PAGE_SIZE, {
+        createdAt: oldest.createdAt,
+        id: oldest.id,
+      })
       if (earlier.length > 0) setMessages((prev) => [...earlier, ...prev])
       setHasMore(earlier.length === PAGE_SIZE)
     } catch (err) {
@@ -245,20 +254,48 @@ export function ChatWindowPage() {
 
   /**
    * 一轮生成的完整生命周期：发送 / 重发 / 换一个 三条路共用，差别只在「结果写到哪」。
-   * `targetId` 为空 = 追加一条新回复；有值 = 给那条消息加一个版本（换一个）。
+   * `targetId` 为空 = 新回复（先落一条 streaming 草稿，节流更新，收尾定性）；
+   * 有值 = 给那条消息加一个版本（换一个，收尾才写，中间不写库）。
    */
   async function runGeneration(history: LlmChatMessage[], targetId: string | null): Promise<void> {
     if (sessionId === undefined) return
     const controller = new AbortController()
     abortRef.current = controller
     setSending(true)
-    setStreaming({ content: '', reasoning: '' })
     setErrorText(null)
 
     // 累加用局部变量而不是 state：回调里读 state 只会拿到闭包里的旧值
     let content = ''
     let reasoning = ''
     let failure: string | null = null
+
+    let draftId: string | null = null
+    let lastFlush = 0
+    if (targetId === null) {
+      const assistant = newMessage({ sessionId, role: 'assistant', text: '', status: 'streaming' })
+      await appendMessage(assistant)
+      draftId = assistant.id
+      lastFlush = Date.now()
+      setMessages((prev) => [...prev, assistant])
+    }
+
+    const flushDraft = async (force = false): Promise<void> => {
+      if (draftId === null) return
+      const now = Date.now()
+      if (!force && now - lastFlush < DRAFT_FLUSH_MS) return
+      lastFlush = now
+      const patch = {
+        blocks: [textBlock(content)],
+        ...(reasoning === '' ? {} : { metadata: { reasoning: capReasoning(reasoning) } }),
+      }
+      try {
+        await updateMessage(draftId, patch)
+        setMessages((prev) => prev.map((m) => (m.id === draftId ? { ...m, ...patch } : m)))
+      } catch (err) {
+        // 草稿落库失败不中断生成：收尾还会再写一次
+        log.error('流式草稿落库失败', err)
+      }
+    }
 
     try {
       await streamChat(
@@ -267,7 +304,7 @@ export function ChatWindowPage() {
           onDelta: (delta) => {
             if (delta.content !== undefined) content += delta.content
             if (delta.reasoning !== undefined) reasoning += delta.reasoning
-            setStreaming({ content, reasoning })
+            void flushDraft()
           },
           onError: (err) => {
             failure = err.message
@@ -294,26 +331,34 @@ export function ChatWindowPage() {
         ? 'done'
         : 'error'
 
-    // 内容非空才落库：错误换来的空回复不留垃圾记录
-    if (content !== '') {
-      if (targetId === null) {
-        const assistant = newMessage({ sessionId, role: 'assistant', text: content, status })
-        // 思维链不展示但也不能丢（§8.2：思绪与内部推理在代码层隔离，Phase 3 由 Mini Terminal 取用）
-        if (reasoning !== '') assistant.metadata = { reasoning }
-        await appendMessage(assistant)
-        setMessages((prev) => [...prev, assistant])
-      } else {
-        // 换一个：正文非空才替换，失败 / 空回复时保住旧版本，用户不会有损失
+    // 按「这轮结果写到哪」分支：目标消息存在 = 换一个（加版本）；否则 = 新回复（收尾定性草稿）
+    if (targetId !== null) {
+      // 换一个：正文非空才替换，失败 / 空回复时保住旧版本，用户不会有损失
+      if (content !== '') {
         const updated = await addVersion(targetId, { content, status, reasoning })
         if (updated !== null) {
           setMessages((prev) => prev.map((m) => (m.id === targetId ? updated : m)))
         }
       }
-      await touchSession(sessionId)
+    } else if (draftId !== null) {
+      if (content !== '') {
+        // 收尾定性：内容 + 状态一次写回，刷新后这轮的成果完整可见
+        const finalPatch = {
+          blocks: [textBlock(content)],
+          status,
+          ...(reasoning === '' ? {} : { metadata: { reasoning: capReasoning(reasoning) } }),
+        }
+        await updateMessage(draftId, finalPatch)
+        setMessages((prev) => prev.map((m) => (m.id === draftId ? { ...m, ...finalPatch } : m)))
+        await touchSession(sessionId)
+      } else {
+        // 失败换来的空回复不留垃圾记录
+        await deleteMessage(draftId)
+        setMessages((prev) => prev.filter((m) => m.id !== draftId))
+      }
     }
 
     abortRef.current = null
-    setStreaming(null)
     setSending(false)
     setErrorText(failure)
   }
@@ -366,16 +411,15 @@ export function ChatWindowPage() {
     }
   }
 
-  const items = useMemo<ChatItem[]>(() => {
-    const list: ChatItem[] = messages.map((message, index) => ({
-      kind: 'message',
-      message,
-      text: messageText(message),
-      isLast: index === messages.length - 1,
-    }))
-    if (streaming !== null) list.push({ kind: 'streaming', text: streaming.content })
-    return list
-  }, [messages, streaming])
+  const items = useMemo<ChatItem[]>(
+    () =>
+      messages.map((message, index) => ({
+        message,
+        text: messageText(message),
+        isLast: index === messages.length - 1,
+      })),
+    [messages],
+  )
 
   // 刻意不做 memo：这些回调都读最新 state，缓存住反而会闭包读到旧数组
   const actions: BubbleActions = {
@@ -384,10 +428,7 @@ export function ChatWindowPage() {
     onResend: (id) => void resend(id),
     onSelectVersion: (id, index) => void selectVersion(id, index),
   }
-  const renderItem = useCallback(
-    (item: ChatItem) => <ChatBubble item={item} actions={actions} />,
-    [actions],
-  )
+  const renderItem = useCallback((item: ChatItem) => <ChatBubble item={item} actions={actions} />, [actions])
 
   const canSend = draft.trim() !== '' && !sending
 
