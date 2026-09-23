@@ -370,7 +370,11 @@ async function newSession(label) {
   await evaluate(
     `(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.includes('新建')).click(); return 'ok' })()`,
   )
-  await waitFor(`location.pathname !== ${JSON.stringify(previous)}`, `${label}：新建会话`, 20000)
+  await waitFor(
+    `location.pathname.startsWith('/chat/') && location.pathname !== ${JSON.stringify(previous)}`,
+    `${label}：新建会话`,
+    20000,
+  )
   return evaluate(`location.pathname.split('/').pop()`)
 }
 

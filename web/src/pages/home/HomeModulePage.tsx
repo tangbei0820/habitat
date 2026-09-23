@@ -1,5 +1,26 @@
 import { Link, useParams } from 'react-router-dom'
 import { homeModuleName } from '../../features/home/modules'
+import { BoardModule } from '../../features/home/BoardModule'
+import { CountdownModule } from '../../features/home/CountdownModule'
+import { WishlistModule } from '../../features/home/WishlistModule'
+
+function moduleContent(module: string | undefined, name: string) {
+  if (module === 'board') return <BoardModule />
+  if (module === 'countdown') return <CountdownModule />
+  if (module === 'wishlist') return <WishlistModule />
+  return (
+    <div
+      className="rounded-lg border p-6 text-center text-sm"
+      style={{
+        borderColor: 'var(--color-border)',
+        backgroundColor: 'var(--color-surface)',
+        color: 'var(--color-text-dim)',
+      }}
+    >
+      「{name}」模块将在 Phase 2 后续切片接入
+    </div>
+  )
+}
 
 export function HomeModulePage() {
   const { module } = useParams<{ module: string }>()
@@ -11,16 +32,7 @@ export function HomeModulePage() {
         ‹ 返回首页
       </Link>
       <h1 className="mb-4 mt-2 text-lg font-semibold">{name}</h1>
-      <div
-        className="rounded-lg border p-6 text-center text-sm"
-        style={{
-          borderColor: 'var(--color-border)',
-          backgroundColor: 'var(--color-surface)',
-          color: 'var(--color-text-dim)',
-        }}
-      >
-        「{name}」模块占位 —— Phase 2（Home 生活模块）接入
-      </div>
+      {moduleContent(module, name)}
     </div>
   )
 }

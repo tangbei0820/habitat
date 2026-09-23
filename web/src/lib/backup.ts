@@ -5,11 +5,11 @@
  * 「这份备份太旧 / 太新」的明确提示，而不是默默导出一堆对不上的数据。
  * 导出**全量**（sessions + messages）：个人数据量的场景，部分备份的取舍逻辑比全量更危险。
  */
-import type { ChatMessage, ChatSession } from '@shared/types'
+import type { ChatMessage, ChatSession, CountdownDay, Moment, WishlistItem } from '@shared/types'
 import { db } from '../db/db'
 
 export const BACKUP_FORMAT = 'habitat-backup'
-export const BACKUP_VERSION = 1
+export const BACKUP_VERSION = 2
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -17,16 +17,37 @@ export interface HabitatBackup {
   exportedAt: number
   sessions: ChatSession[]
   messages: ChatMessage[]
+  moments: Moment[]
+  wishlist: WishlistItem[]
+  countdowns: CountdownDay[]
 }
 
 export interface BackupCounts {
   sessions: number
   messages: number
+  moments: number
+  wishlist: number
+  countdowns: number
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, messages] = await Promise.all([db.sessions.toArray(), db.messages.toArray()])
-  return { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: Date.now(), sessions, messages }
+  const [sessions, messages, moments, wishlist, countdowns] = await Promise.all([
+    db.sessions.toArray(),
+    db.messages.toArray(),
+    db.moments.toArray(),
+    db.wishlist.toArray(),
+    db.countdowns.toArray(),
+  ])
+  return {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    exportedAt: Date.now(),
+    sessions,
+    messages,
+    moments,
+    wishlist,
+    countdowns,
+  }
 }
 
 /** 触发浏览器下载；调用方决定文件名 */
@@ -39,7 +60,8 @@ export function downloadBackup(backup: HabitatBackup): void {
   anchor.href = url
   anchor.download = `habitat-backup-${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}.json`
   anchor.click()
-  URL.revokeObjectURL(url)
+  // Firefox / 大文件场景下同步释放可能在下载真正开始前就把 URL 提前销毁。
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -54,6 +76,18 @@ function looksLikeMessage(value: unknown): value is ChatMessage {
   return isRecord(value) && typeof value.id === 'string' && value.type === 'chat-message'
 }
 
+function looksLikeMoment(value: unknown): value is Moment {
+  return isRecord(value) && typeof value.id === 'string' && value.type === 'moment' && typeof value.content === 'string'
+}
+
+function looksLikeWishlistItem(value: unknown): value is WishlistItem {
+  return isRecord(value) && typeof value.id === 'string' && value.type === 'wishlist-item' && typeof value.title === 'string'
+}
+
+function looksLikeCountdown(value: unknown): value is CountdownDay {
+  return isRecord(value) && typeof value.id === 'string' && value.type === 'countdown-day' && typeof value.targetDate === 'string'
+}
+
 /**
  * 恢复备份：**整体替换**现有数据（导入语义是「回到备份那一刻」，不是合并）。
  * 先完整校验再动库 —— 校验不过一行都不写，避免半导入状态。
@@ -62,8 +96,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   if (!isRecord(raw) || raw.format !== BACKUP_FORMAT) {
     throw new Error('不是栖息地备份文件（缺少 format 标识）')
   }
-  if (raw.version !== BACKUP_VERSION) {
-    throw new Error(`备份版本不匹配：文件是 v${String(raw.version)}，当前支持 v${BACKUP_VERSION}`)
+  if (raw.version !== 1 && raw.version !== BACKUP_VERSION) {
+    throw new Error(`备份版本不匹配：文件是 v${String(raw.version)}，当前支持 v1–v${BACKUP_VERSION}`)
   }
   if (!Array.isArray(raw.sessions) || !Array.isArray(raw.messages)) {
     throw new Error('备份内容损坏：sessions / messages 必须是数组')
@@ -74,11 +108,37 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：存在无法识别的记录')
   }
 
-  await db.transaction('rw', db.sessions, db.messages, async () => {
+  // v1 只有聊天数据；导入旧备份时 Home 表按空数组处理，不把用户旧备份直接判死。
+  const momentsRaw = raw.version === 1 ? [] : raw.moments
+  const wishlistRaw = raw.version === 1 ? [] : raw.wishlist
+  const countdownsRaw = raw.version === 1 ? [] : raw.countdowns
+  if (!Array.isArray(momentsRaw) || !Array.isArray(wishlistRaw) || !Array.isArray(countdownsRaw)) {
+    throw new Error('备份内容损坏：Home 数据必须是数组')
+  }
+  const moments = momentsRaw.filter(looksLikeMoment)
+  const wishlist = wishlistRaw.filter(looksLikeWishlistItem)
+  const countdowns = countdownsRaw.filter(looksLikeCountdown)
+  if (moments.length !== momentsRaw.length || wishlist.length !== wishlistRaw.length || countdowns.length !== countdownsRaw.length) {
+    throw new Error('备份内容损坏：存在无法识别的 Home 记录')
+  }
+
+  await db.transaction('rw', db.sessions, db.messages, db.moments, db.wishlist, db.countdowns, async () => {
     await db.sessions.clear()
     await db.messages.clear()
+    await db.moments.clear()
+    await db.wishlist.clear()
+    await db.countdowns.clear()
     await db.sessions.bulkAdd(sessions)
     await db.messages.bulkAdd(messages)
+    await db.moments.bulkAdd(moments)
+    await db.wishlist.bulkAdd(wishlist)
+    await db.countdowns.bulkAdd(countdowns)
   })
-  return { sessions: sessions.length, messages: messages.length }
+  return {
+    sessions: sessions.length,
+    messages: messages.length,
+    moments: moments.length,
+    wishlist: wishlist.length,
+    countdowns: countdowns.length,
+  }
 }

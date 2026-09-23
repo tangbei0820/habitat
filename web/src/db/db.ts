@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { ChatMessage, ChatSession } from '@shared/types'
+import type { ChatMessage, ChatSession, CountdownDay, Moment, WishlistItem } from '@shared/types'
 
 /**
  * 本地数据层（铁律5）：第一天就版本化迁移。
@@ -15,6 +15,9 @@ import type { ChatMessage, ChatSession } from '@shared/types'
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
   messages!: Table<ChatMessage, string>
+  moments!: Table<Moment, string>
+  wishlist!: Table<WishlistItem, string>
+  countdowns!: Table<CountdownDay, string>
 
   constructor() {
     super('habitat-db')
@@ -30,6 +33,14 @@ export class HabitatDb extends Dexie {
     this.version(3).stores({
       sessions: 'id, updatedAt, pinnedAt, archivedAt',
       messages: 'id, sessionId, createdAt, [sessionId+createdAt+id]',
+    })
+    // Phase 2 第一批：留言板 / 愿望清单 / 倒数日。新表不需要 upgrade 回调，旧数据原样保留。
+    this.version(4).stores({
+      sessions: 'id, updatedAt, pinnedAt, archivedAt',
+      messages: 'id, sessionId, createdAt, [sessionId+createdAt+id]',
+      moments: 'id, createdAt, author',
+      wishlist: 'id, status, createdAt, updatedAt',
+      countdowns: 'id, targetDate, createdAt',
     })
   }
 }

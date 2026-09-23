@@ -22,7 +22,8 @@ export function BackupPanel() {
       const backup = await exportAll()
       downloadBackup(backup)
       setIsError(false)
-      setMessage(`已导出 ${backup.sessions.length} 个会话、${backup.messages.length} 条消息`)
+      const homeCount = backup.moments.length + backup.wishlist.length + backup.countdowns.length
+      setMessage(`已导出 ${backup.sessions.length} 个会话、${backup.messages.length} 条消息、${homeCount} 条生活记录`)
     } catch (err: unknown) {
       log.error('导出备份失败', err)
       setIsError(true)
@@ -54,7 +55,8 @@ export function BackupPanel() {
       }
       const counts = await importAll(raw)
       setIsError(false)
-      setMessage(`导入完成：${counts.sessions} 个会话、${counts.messages} 条消息。刷新页面后生效。`)
+      const homeCount = counts.moments + counts.wishlist + counts.countdowns
+      setMessage(`导入完成：${counts.sessions} 个会话、${counts.messages} 条消息、${homeCount} 条生活记录。刷新页面后生效。`)
       setPendingFile(null)
       if (input !== null) input.value = ''
     } catch (err: unknown) {
@@ -75,7 +77,7 @@ export function BackupPanel() {
         数据备份
       </h2>
       <p className="mb-3 text-xs" style={{ color: 'var(--color-text-dim)' }}>
-        导出全部本地聊天记录（JSON 文件）。换浏览器 / 清站点数据前先导一份。
+        导出全部本地聊天与共同生活记录（JSON 文件）。换浏览器 / 清站点数据前先导一份。
       </p>
 
       <div className="flex flex-wrap items-center gap-2">

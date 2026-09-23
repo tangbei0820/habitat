@@ -143,6 +143,31 @@ export interface ChatMessage extends BaseObject {
   editedAt: number | null
 }
 
+/* ---------- Home 共同生活（本地 Dexie） ---------- */
+
+/** 留言板的一条生活痕迹；作者位预留给 Phase 3 后的小栖主动写入。 */
+export interface Moment extends BaseObject {
+  type: 'moment'
+  content: string
+  author: 'user' | 'companion'
+}
+
+export type WishlistStatus = 'open' | 'done'
+
+export interface WishlistItem extends BaseObject {
+  type: 'wishlist-item'
+  title: string
+  status: WishlistStatus
+  completedAt: number | null
+}
+
+/** `targetDate` 固定为本地日期 `YYYY-MM-DD`，避免纯日期被时区偏移。 */
+export interface CountdownDay extends BaseObject {
+  type: 'countdown-day'
+  title: string
+  targetDate: string
+}
+
 /* ---------- LLM 方案（§6.2 ApiProfile / §7.1 多方案管理） ---------- */
 
 /** 适配器类型。§7.1：以 OpenAI Chat Completions 兼容协议为最小公分母，后续可加原生适配器 */
