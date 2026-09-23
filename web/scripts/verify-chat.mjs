@@ -1781,10 +1781,8 @@ check(
   '',
 )
 /**
- * ⚠️ 光断言「播放器在」是不够的 —— 它可能被**压成一条**：
- * 气泡是收缩宽度块，播放器若写 `w-full`，父宽由内容决定 → `width:100%` 解成极小值。
- * 这个 bug 第一版就真的出现了（截图上是气泡里一个约 40px 的小方块），而「元素存在」的断言照样全绿。
- * 所以这里量真实渲染宽度 —— **元素在不在**和**它长没长出来**是两条独立的断言。
+ * ⚠️ 量的是**真实渲染宽度**，不是「元素在不在」—— 播放器第一版就真的被压成约 40px 的窄条
+ * （气泡是收缩宽度块，`w-full` 在这种上下文里解成极小值），而「元素存在」断言照样全绿。
  */
 const audioBox = await evaluate(`(() => {
   const el = document.querySelector('[data-testid="chat-message-area"] audio')
@@ -1797,6 +1795,30 @@ check(
   '语音条播放器有正常宽度（没有被收缩容器压扁）',
   audioBox.found === true && audioBox.width >= 180 && audioBox.height >= 20,
   JSON.stringify(audioBox),
+)
+/**
+ * ⚠️ 时长文字的**颜色**也要验：块视图最早只服务 AI 侧（浅底深字），
+ * 挪到用户侧（深底反白）之后，硬编码的 `--color-text-dim` 会变成深底上的深字 —— 等于看不见。
+ * 判据是「和气泡自己的文字色一致」，而不是「不等于某个具体色值」。
+ */
+const durationStyle = await evaluate(`(() => {
+  const el = document.querySelector('[data-testid="audio-duration"]')
+  if (el === null) return { found: false }
+  const bubbleEl = el.closest('[data-message-id]')?.querySelector('[data-bubble-mode]') ?? null
+  return {
+    found: true,
+    text: el.innerText.trim(),
+    color: getComputedStyle(el).color,
+    bubbleColor: bubbleEl === null ? null : getComputedStyle(bubbleEl).color,
+  }
+})()`)
+check(
+  '语音条时长文字可读（继承气泡文字色，不是硬编码的次要色）',
+  durationStyle.found === true &&
+    durationStyle.text !== '' &&
+    durationStyle.bubbleColor !== null &&
+    durationStyle.color === durationStyle.bubbleColor,
+  JSON.stringify(durationStyle),
 )
 await shot('shot-chat-voice.png')
 

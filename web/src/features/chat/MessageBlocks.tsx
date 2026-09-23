@@ -69,11 +69,10 @@ function AudioBlockView({ payload }: { payload: AudioBlock['payload'] }) {
         */}
         <audio controls src={payload.url} style={{ width: '14rem' }} />
         {payload.durationMs !== undefined && (
-          <span
-            data-testid="audio-duration"
-            className="shrink-0 text-xs"
-            style={{ color: 'var(--color-text-dim)' }}
-          >
+          // ⚠️ 用 `opacity` 而不是 `color: var(--color-text-dim)`：
+          // 块视图现在**两侧气泡都在用**，用户气泡是深色底 + 反白字，
+          // 硬编码的「次要文字色」在深底上等于看不见。继承当前文字色 + 降透明度两边都成立
+          <span data-testid="audio-duration" className="shrink-0 text-xs opacity-75">
             {formatDuration(payload.durationMs)}
           </span>
         )}
