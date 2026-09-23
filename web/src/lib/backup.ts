@@ -17,19 +17,21 @@ import type {
   Photo,
   ReadingNote,
   StudyRecord,
+  SessionGroup,
   WishlistItem,
 } from '@shared/types'
 import { MAX_PHOTO_BYTES } from '@shared/types'
 import { db } from '../db/db'
 
 export const BACKUP_FORMAT = 'habitat-backup'
-export const BACKUP_VERSION = 5
+export const BACKUP_VERSION = 6
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
   version: number
   exportedAt: number
   sessions: ChatSession[]
+  sessionGroups: SessionGroup[]
   messages: ChatMessage[]
   moments: Moment[]
   wishlist: WishlistItem[]
@@ -45,6 +47,7 @@ export interface HabitatBackup {
 
 export interface BackupCounts {
   sessions: number
+  sessionGroups: number
   messages: number
   moments: number
   wishlist: number
@@ -59,8 +62,9 @@ export interface BackupCounts {
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, messages, moments, wishlist, countdowns, diaries, bookmarks, artworks, photos, readingNotes, musicTracks, studyRecords] = await Promise.all([
+  const [sessions, sessionGroups, messages, moments, wishlist, countdowns, diaries, bookmarks, artworks, photos, readingNotes, musicTracks, studyRecords] = await Promise.all([
     db.sessions.toArray(),
+    db.sessionGroups.toArray(),
     db.messages.toArray(),
     db.moments.toArray(),
     db.wishlist.toArray(),
@@ -78,6 +82,7 @@ export async function exportAll(): Promise<HabitatBackup> {
     version: BACKUP_VERSION,
     exportedAt: Date.now(),
     sessions,
+    sessionGroups,
     messages,
     moments,
     wishlist,
@@ -112,6 +117,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function looksLikeSession(value: unknown): value is ChatSession {
   return isRecord(value) && typeof value.id === 'string' && value.type === 'chat-session'
+}
+
+/**
+ * 只认「标识 + 名称」，不要求 `collapsed` —— 缺字段时它在界面上等同于「展开」，
+ * 而按备份内容原样写入才是导入语义（回到备份那一刻）。
+ */
+function looksLikeSessionGroup(value: unknown): value is SessionGroup {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    value.type === 'session-group' &&
+    typeof value.name === 'string'
+  )
 }
 
 function looksLikeMessage(value: unknown): value is ChatMessage {
@@ -247,22 +265,26 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   if (!isRecord(raw) || raw.format !== BACKUP_FORMAT) {
     throw new Error('不是栖息地备份文件（缺少 format 标识）')
   }
-  if (![1, 2, 3, 4, BACKUP_VERSION].includes(raw.version as number)) {
-    throw new Error(`备份版本不匹配：文件是 v${String(raw.version)}，当前支持 v1–v${BACKUP_VERSION}`)
+  const version = raw.version
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1 || version > BACKUP_VERSION) {
+    throw new Error(`备份版本不匹配：文件是 v${String(version)}，当前支持 v1–v${BACKUP_VERSION}`)
   }
   if (!Array.isArray(raw.sessions) || !Array.isArray(raw.messages)) {
     throw new Error('备份内容损坏：sessions / messages 必须是数组')
   }
-  const sessions = raw.sessions.filter(looksLikeSession)
+  // 老备份里的会话没有 groupId 字段；补成 null 让它落进未分组区，而不是在列表里变成「哪都不属于」
+  const sessions = raw.sessions
+    .filter(looksLikeSession)
+    .map((session) => ({ ...session, groupId: session.groupId ?? null }))
   const messages = raw.messages.filter(looksLikeMessage)
   if (sessions.length !== raw.sessions.length || messages.length !== raw.messages.length) {
     throw new Error('备份内容损坏：存在无法识别的记录')
   }
 
   // v1 只有聊天数据；导入旧备份时 Home 表按空数组处理，不把用户旧备份直接判死。
-  const momentsRaw = raw.version === 1 ? [] : raw.moments
-  const wishlistRaw = raw.version === 1 ? [] : raw.wishlist
-  const countdownsRaw = raw.version === 1 ? [] : raw.countdowns
+  const momentsRaw = version >= 2 ? raw.moments : []
+  const wishlistRaw = version >= 2 ? raw.wishlist : []
+  const countdownsRaw = version >= 2 ? raw.countdowns : []
   if (!Array.isArray(momentsRaw) || !Array.isArray(wishlistRaw) || !Array.isArray(countdownsRaw)) {
     throw new Error('备份内容损坏：Home 数据必须是数组')
   }
@@ -274,8 +296,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   }
 
   // v3 新增日记与收藏；v1/v2 导入时这两张表为空，继续遵守“整体替换”语义。
-  const diariesRaw = raw.version === 3 || raw.version === 4 || raw.version === 5 ? raw.diaries : []
-  const bookmarksRaw = raw.version === 3 || raw.version === 4 || raw.version === 5 ? raw.bookmarks : []
+  const diariesRaw = version >= 3 ? raw.diaries : []
+  const bookmarksRaw = version >= 3 ? raw.bookmarks : []
   if (!Array.isArray(diariesRaw) || !Array.isArray(bookmarksRaw)) {
     throw new Error('备份内容损坏：diaries / bookmarks 必须是数组')
   }
@@ -286,8 +308,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   }
 
   // v4 新增作品与相册；旧版导入时清空新表，保持整体替换的确定性。
-  const artworksRaw = raw.version === 4 || raw.version === 5 ? raw.artworks : []
-  const photosRaw = raw.version === 4 || raw.version === 5 ? raw.photos : []
+  const artworksRaw = version >= 4 ? raw.artworks : []
+  const photosRaw = version >= 4 ? raw.photos : []
   if (!Array.isArray(artworksRaw) || !Array.isArray(photosRaw)) {
     throw new Error('备份内容损坏：artworks / photos 必须是数组')
   }
@@ -298,9 +320,9 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   }
 
   // v5 新增读书、音乐与学习；旧版导入时清空新表。
-  const readingNotesRaw = raw.version === 5 ? raw.readingNotes : []
-  const musicTracksRaw = raw.version === 5 ? raw.musicTracks : []
-  const studyRecordsRaw = raw.version === 5 ? raw.studyRecords : []
+  const readingNotesRaw = version >= 5 ? raw.readingNotes : []
+  const musicTracksRaw = version >= 5 ? raw.musicTracks : []
+  const studyRecordsRaw = version >= 5 ? raw.studyRecords : []
   if (!Array.isArray(readingNotesRaw) || !Array.isArray(musicTracksRaw) || !Array.isArray(studyRecordsRaw)) {
     throw new Error('备份内容损坏：readingNotes / musicTracks / studyRecords 必须是数组')
   }
@@ -311,8 +333,21 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：存在无法识别的读书、音乐或学习记录')
   }
 
-  await db.transaction('rw', [db.sessions, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks, db.artworks, db.photos, db.readingNotes, db.musicTracks, db.studyRecords], async () => {
+  // v6 新增会话分组；旧版导入时分组按空处理，会话的 groupId 已在上面归成 null，一起落进未分组区。
+  // ⚠️ 刻意**不**在这里清洗「指向不存在分组」的 groupId：导入语义是「回到备份那一刻」，
+  //    备份里是什么就写什么；脏引用由列表页的未分组兜底区消化（SPEC §2.1.3）。
+  const sessionGroupsRaw = version >= 6 ? raw.sessionGroups : []
+  if (!Array.isArray(sessionGroupsRaw)) {
+    throw new Error('备份内容损坏：sessionGroups 必须是数组')
+  }
+  const sessionGroups = sessionGroupsRaw.filter(looksLikeSessionGroup)
+  if (sessionGroups.length !== sessionGroupsRaw.length) {
+    throw new Error('备份内容损坏：存在无法识别的分组')
+  }
+
+  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks, db.artworks, db.photos, db.readingNotes, db.musicTracks, db.studyRecords], async () => {
     await db.sessions.clear()
+    await db.sessionGroups.clear()
     await db.messages.clear()
     await db.moments.clear()
     await db.wishlist.clear()
@@ -325,6 +360,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.musicTracks.clear()
     await db.studyRecords.clear()
     await db.sessions.bulkAdd(sessions)
+    await db.sessionGroups.bulkAdd(sessionGroups)
     await db.messages.bulkAdd(messages)
     await db.moments.bulkAdd(moments)
     await db.wishlist.bulkAdd(wishlist)
@@ -339,6 +375,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   })
   return {
     sessions: sessions.length,
+    sessionGroups: sessionGroups.length,
     messages: messages.length,
     moments: moments.length,
     wishlist: wishlist.length,

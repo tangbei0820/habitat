@@ -279,28 +279,40 @@ check('刷新后消息仍在（Dexie 落库）', reloadedText.includes('链路�
 const dbInfo = await evaluate(`(async () => {
   const list = await indexedDB.databases()
   const target = list.find((d) => d.name === 'habitat-db')
-  if (!target) return JSON.stringify({ version: null, indexes: [] })
-  const indexes = await new Promise((res) => {
+  if (!target) return JSON.stringify({ version: null, stores: [], indexes: [], sessionIndexes: [] })
+  const read = await new Promise((res) => {
     const req = indexedDB.open('habitat-db')
     req.onsuccess = () => {
       const db = req.result
       try {
-        const store = db.transaction('messages').objectStore('messages')
-        res(Array.from(store.indexNames))
+        res({
+          stores: Array.from(db.objectStoreNames),
+          indexes: Array.from(db.transaction('messages').objectStore('messages').indexNames),
+          sessionIndexes: Array.from(db.transaction('sessions').objectStore('sessions').indexNames),
+        })
       } finally {
         db.close()
       }
     }
-    req.onerror = () => res([])
+    req.onerror = () => res({ stores: [], indexes: [], sessionIndexes: [] })
   })
-  return JSON.stringify({ version: target.version ?? null, indexes })
+  return JSON.stringify({ version: target.version ?? null, ...read })
 })()`)
 const dbState = JSON.parse(dbInfo)
-check('Dexie 当前为 v7（IndexedDB 版本 70）', dbState.version === 70, dbInfo)
+// ⚠️ 只比「升到了 v8」分不出「v8 的 stores 写错了」，所以顺带验这次迁移该带来的东西
+check('Dexie 当前为 v8（IndexedDB 版本 80）', dbState.version === 80, dbInfo)
 check(
   'v3 的三元复合索引已建出',
   Array.isArray(dbState.indexes) && dbState.indexes.includes('[sessionId+createdAt+id]'),
   JSON.stringify(dbState.indexes),
+)
+check(
+  'v8 带来 sessions.groupId 索引与 sessionGroups 表',
+  Array.isArray(dbState.sessionIndexes) &&
+    dbState.sessionIndexes.includes('groupId') &&
+    Array.isArray(dbState.stores) &&
+    dbState.stores.includes('sessionGroups'),
+  JSON.stringify({ stores: dbState.stores, sessionIndexes: dbState.sessionIndexes }),
 )
 
 /* ---------- 8. 虚拟列表：注入 200 条后只看可见区 ---------- */
@@ -724,11 +736,13 @@ async function clickConfirm() {
 }
 
 /** 写入受控 textarea：必须走原生 setter + input 事件，直接赋值 React 收不到 */
-async function setTextarea(selector, text) {
+/** 写入受控表单控件（input / textarea）：必须走原生 setter + input 事件，直接赋值 React 收不到 */
+async function setField(selector, text) {
   return evaluate(`(() => {
     const el = document.querySelector(${JSON.stringify(selector)})
     if (!el) return 'missing'
-    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
+    const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value').set
     setter.call(el, ${JSON.stringify(text)})
     el.dispatchEvent(new Event('input', { bubbles: true }))
     return el.value
@@ -779,7 +793,7 @@ await waitFor(`document.querySelector('[data-testid="edit-textarea"]') !== null`
 const prefill = await evaluate(`document.querySelector('[data-testid="edit-textarea"]').value`)
 check('编辑框预填当前正文', prefill === '第一句话', String(prefill))
 
-await setTextarea('[data-testid="edit-textarea"]', '第一句话（改过）')
+await setField('[data-testid="edit-textarea"]', '第一句话（改过）')
 await evaluate(`(() => { document.querySelector('[data-testid="edit-save"]').click(); return 'ok' })()`)
 await waitFor(`document.body.innerText.includes('第一句话（改过）')`, '编辑后正文更新')
 
@@ -1118,7 +1132,9 @@ const relativePinOrder = async () => evaluate(`(() => {
 const beforePinOrder = await relativePinOrder()
 check('普通会话保持消息活跃时间倒序', beforePinOrder.newer < beforePinOrder.old, JSON.stringify(beforePinOrder))
 
-await evaluate(`(() => { document.querySelector('[data-testid="pin-session-pin-old"]').click(); return 'ok' })()`)
+await evaluate(`(() => { document.querySelector('[data-testid="session-menu-pin-old"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="action-pin"]') !== null`, '会话行「⋯」菜单打开')
+await evaluate(`(() => { document.querySelector('[data-testid="action-pin"]').click(); return 'ok' })()`)
 await waitFor(`document.querySelector('[data-testid^="session-row-"]')?.dataset.testid === 'session-row-pin-old'`, '置顶会话移到顶部')
 const pinnedState = await evaluate(`(async () => {
   const db = await new Promise((res, rej) => { const r = indexedDB.open('habitat-db'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
@@ -1127,8 +1143,14 @@ const pinnedState = await evaluate(`(async () => {
 })()`)
 check('置顶即时重排并持久化时间戳', typeof pinnedState?.pinnedAt === 'number' && pinnedState.updatedAt === 1000, JSON.stringify(pinnedState))
 
-await evaluate(`(() => { document.querySelector('[data-testid="pin-session-pin-old"]').click(); return 'ok' })()`)
-await waitFor(`document.querySelector('[data-testid="pin-session-pin-old"]')?.textContent.trim() === '置顶'`, '取消置顶按钮恢复')
+await evaluate(`(() => { document.querySelector('[data-testid="session-menu-pin-old"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="action-pin"]') !== null`, '已置顶会话的菜单打开')
+const pinnedMenuLabel = await evaluate(`document.querySelector('[data-testid="action-pin"]').innerText.trim()`)
+check('已置顶会话的菜单改为「取消置顶」', pinnedMenuLabel === '取消置顶', pinnedMenuLabel)
+await evaluate(`(() => { document.querySelector('[data-testid="action-pin"]').click(); return 'ok' })()`)
+// ⚠️ 不能等「行内 ⋯ 又出现了」——菜单开着时列表并未卸载，条件会瞬间成立（假通过）。
+// 等轻提示才说明这次操作真的落地了。
+await waitFor(`document.body.innerText.includes('已取消置顶')`, '取消置顶落地')
 const afterUnpinOrder = await relativePinOrder()
 const unpinnedState = await evaluate(`(async () => {
   const db = await new Promise((res, rej) => { const r = indexedDB.open('habitat-db'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
@@ -1154,7 +1176,7 @@ const defaultSettings = await evaluate(`(() => ({
 }))()`)
 check('聊天设置读取当前会话默认值', defaultSettings.remark === '' && defaultSettings.background === '' && defaultSettings.bubbleMode === 'chat', JSON.stringify(defaultSettings))
 
-await setTextarea('[data-testid="chat-setting-remark"]', '只属于这段对话的备注')
+await setField('[data-testid="chat-setting-remark"]', '只属于这段对话的备注')
 await evaluate(`(() => {
   const setSelect = (selector, value) => {
     const el = document.querySelector(selector)
@@ -1185,7 +1207,7 @@ check(
     savedSettings.session?.updatedAt === 2000,
   JSON.stringify(savedSettings),
 )
-check('本批保持 Dexie v7，不新增 schema', savedSettings.version === 70, String(savedSettings.version))
+check('会话设置不牵动 schema（v8 由分组迁移带来）', savedSettings.version === 80, String(savedSettings.version))
 
 const appliedSettings = await evaluate(`(() => {
   const area = document.querySelector('[data-testid="chat-message-area"]')
@@ -1209,6 +1231,291 @@ const reopenedSettings = await evaluate(`(() => ({
 check('重新打开设置可回读已保存值', reopenedSettings.remark === '只属于这段对话的备注' && reopenedSettings.background === '#edf4f1' && reopenedSettings.bubbleMode === 'native', JSON.stringify(reopenedSettings))
 
 await send('Emulation.clearDeviceMetricsOverride')
+
+/* 12.10 P0 收尾：会话分组（SPEC §2.1.3，Dexie v8） */
+
+/** 页面上现存的分区（id + 名称）—— 按名称定位，不靠「数了几个」，也不靠脚本自己记变量 */
+const listGroups = () =>
+  evaluate(`(() => [...document.querySelectorAll('[data-testid^="group-section-"]')]
+    .map((el) => {
+      const id = el.dataset.testid.replace('group-section-', '')
+      const nameEl = document.querySelector('[data-testid="group-name-' + id + '"]')
+      return { id, name: nameEl ? nameEl.innerText.trim() : '' }
+    }))()`)
+/** 等某个名称的分区出现，并返回它的 id */
+async function waitGroupNamed(name) {
+  await waitFor(`[...document.querySelectorAll('[data-testid^="group-name-"]')].some((el) => el.innerText.trim() === ${JSON.stringify(name)})`, `分区出现：${name}`)
+  return (await listGroups()).find((g) => g.name === name)?.id ?? ''
+}
+
+/** 只取「分区标题 + 本节两条验收会话行」，用来判 DOM 顺序 = 这条会话落在哪个分区里 */
+const listOrder = () =>
+  evaluate(`(() => [...document.querySelectorAll(
+    '[data-testid="session-row-group-a"], [data-testid="session-row-group-b"], [data-testid="pinned-section"], [data-testid="unassigned-section"], [data-testid^="group-section-"]'
+  )].map((el) => el.dataset.testid))()`)
+
+const readRow = (table, id) =>
+  evaluate(`(async () => {
+    const db = await new Promise((res, rej) => { const r = indexedDB.open('habitat-db'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+    const store = db.transaction(${JSON.stringify(table)}).objectStore(${JSON.stringify(table)})
+    const value = await new Promise((res, rej) => { const r = store.get(${JSON.stringify(id)}); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+    db.close()
+    return value
+  })()`)
+const readSession = (id) => readRow('sessions', id)
+const readGroup = (id) => readRow('sessionGroups', id)
+
+/** 上一条轻提示消失后再做下一个动作 —— 提示还在会让下一步的等待条件瞬间成立（假通过） */
+async function waitToastGone() {
+  await waitFor(`document.querySelector('[data-testid="list-toast"]') === null`, '上一条提示消失', 8000)
+}
+
+async function openRowMenu(id) {
+  await evaluate(`(() => { document.querySelector('[data-testid="session-menu-${id}"]').click(); return 'ok' })()`)
+  await waitFor(`document.querySelector('[data-testid="action-sheet"]') !== null`, `会话行菜单打开：${id}`)
+}
+
+async function openGroupMenu(id) {
+  await evaluate(`(() => { document.querySelector('[data-testid="group-menu-${id}"]').click(); return 'ok' })()`)
+  await waitFor(`document.querySelector('[data-testid="action-sheet"]') !== null`, `分组菜单打开：${id}`)
+}
+
+/** 当前菜单项文案（排掉同前缀的菜单容器与遮罩） */
+const sheetItems = () =>
+  evaluate(`(() => [...document.querySelectorAll('[data-testid^="action-"]')]
+    .filter((el) => el.dataset.testid !== 'action-sheet' && el.dataset.testid !== 'action-sheet-backdrop')
+    .map((el) => el.innerText.trim()))()`)
+
+await seedSessions([
+  {
+    id: 'group-a', type: 'chat-session', title: '分组验收会话 A', pinnedAt: null, groupId: null,
+    remark: null, background: null, bubbleMode: 'chat', archivedAt: null,
+    createdAt: 3000, updatedAt: 3000,
+  },
+  {
+    id: 'group-b', type: 'chat-session', title: '分组验收会话 B', pinnedAt: null, groupId: null,
+    remark: null, background: null, bubbleMode: 'chat', archivedAt: null,
+    createdAt: 3100, updatedAt: 3100,
+  },
+])
+await evaluate(`(() => { history.pushState({}, '', '/chat'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="session-row-group-a"]') !== null`, '分组验收会话进入列表')
+
+/* 12.10.1 创建分组 */
+await evaluate(`(() => { document.querySelector('[data-testid="create-group"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="group-name-input"]') !== null`, '分组命名弹层打开')
+const emptyNameDisabled = await evaluate(`document.querySelector('[data-testid="group-name-save"]').disabled`)
+check('分组名为空时不能保存', emptyNameDisabled === true, String(emptyNameDisabled))
+await setField('[data-testid="group-name-input"]', '工作')
+await evaluate(`(() => { document.querySelector('[data-testid="group-name-save"]').click(); return 'ok' })()`)
+await waitFor(`document.body.innerText.includes('已创建分组「工作」')`, '创建分组反馈')
+const workGroup = await waitGroupNamed('工作')
+check('创建分组后列表出现「工作」分区', workGroup !== '', JSON.stringify(await listGroups()))
+const workGroupRow = await readGroup(workGroup)
+check(
+  '分组落库（名称 / 类型 / 默认展开）',
+  workGroupRow?.name === '工作' && workGroupRow?.type === 'session-group' && workGroupRow?.collapsed === false,
+  JSON.stringify(workGroupRow),
+)
+
+/* 12.10.2 未分组会话的菜单项 */
+await waitToastGone()
+await openRowMenu('group-a')
+const ungroupedItems = await sheetItems()
+check(
+  '未分组会话菜单：置顶 / 移入分组 / 删除，且不给「移出分组」',
+  ungroupedItems.includes('置顶会话') &&
+    ungroupedItems.includes('移入分组') &&
+    ungroupedItems.includes('删除会话') &&
+    !ungroupedItems.includes('移出分组'),
+  JSON.stringify(ungroupedItems),
+)
+
+/* 12.10.3 移入分组 */
+await menuAction('move')
+await waitFor(`document.querySelector('[data-testid="action-group:${workGroup}"]') !== null`, '选组菜单列出目标分组')
+await menuAction(`group:${workGroup}`)
+await waitFor(`document.body.innerText.includes('已移入「工作」')`, '移入分组反馈')
+const movedOrder = await listOrder()
+check(
+  '会话落进所属分区（DOM 顺序夹在该分区与未分组区之间）',
+  movedOrder.indexOf(`group-section-${workGroup}`) > -1 &&
+    movedOrder.indexOf(`group-section-${workGroup}`) < movedOrder.indexOf('session-row-group-a') &&
+    movedOrder.indexOf('session-row-group-a') < movedOrder.indexOf('unassigned-section'),
+  JSON.stringify(movedOrder),
+)
+const workCount = await evaluate(`document.querySelector('[data-testid="group-count-${workGroup}"]').innerText.trim()`)
+check('分区计数跟随会话数', workCount === '1', workCount)
+const storedA = await readSession('group-a')
+check('移入分组落库且不刷新消息活跃时间', storedA?.groupId === workGroup && storedA?.updatedAt === 3000, JSON.stringify(storedA))
+
+/* 12.10.4 折叠 / 展开 + 刷新保持 */
+await waitToastGone()
+await evaluate(`(() => { document.querySelector('[data-testid="group-toggle-${workGroup}"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="session-row-group-a"]') === null`, '折叠后组内会话不再渲染')
+const collapsedRow = await readGroup(workGroup)
+check('折叠状态落库（不是只活在界面里）', collapsedRow?.collapsed === true, JSON.stringify(collapsedRow))
+
+await reloadAndWait(`document.querySelector('[data-testid="create-group"]') !== null`, '刷新后回到会话列表')
+const afterReload = await evaluate(`(() => ({
+  group: document.querySelector('[data-testid="group-section-${workGroup}"]') !== null,
+  row: document.querySelector('[data-testid="session-row-group-a"]') !== null,
+}))()`)
+check('刷新后分组与折叠状态都保持', afterReload.group === true && afterReload.row === false, JSON.stringify(afterReload))
+
+await evaluate(`(() => { document.querySelector('[data-testid="group-toggle-${workGroup}"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="session-row-group-a"]') !== null`, '展开后组内会话回来')
+
+/* 12.10.5 置顶跨分组浮到最顶（SPEC §2.1.2 定的优先级） */
+await waitToastGone()
+await openRowMenu('group-a')
+await menuAction('pin')
+await waitFor(`document.querySelector('[data-testid="pinned-section"]') !== null`, '出现置顶区')
+const pinnedOrder = await listOrder()
+check(
+  '置顶会话浮到最顶并离开原分区',
+  pinnedOrder[0] === 'pinned-section' &&
+    pinnedOrder.indexOf('session-row-group-a') === 1 &&
+    pinnedOrder.indexOf(`group-section-${workGroup}`) > 1,
+  JSON.stringify(pinnedOrder),
+)
+const pinnedWorkCount = await evaluate(`document.querySelector('[data-testid="group-count-${workGroup}"]').innerText.trim()`)
+check('置顶后原分区计数归零', pinnedWorkCount === '0', pinnedWorkCount)
+
+/* 12.10.6 取消置顶 → 回落原分组（groupId 没被改写，所以是显示上的浮动） */
+await waitToastGone()
+await openRowMenu('group-a')
+const pinnedMenu = await sheetItems()
+check(
+  '已置顶且已分组的会话菜单：取消置顶 + 移出分组',
+  pinnedMenu.includes('取消置顶') && pinnedMenu.includes('移出分组'),
+  JSON.stringify(pinnedMenu),
+)
+await menuAction('pin')
+await waitFor(`document.querySelector('[data-testid="pinned-section"]') === null`, '取消置顶后置顶区消失')
+const fallbackOrder = await listOrder()
+check(
+  '取消置顶后回落到原分组',
+  fallbackOrder.indexOf(`group-section-${workGroup}`) < fallbackOrder.indexOf('session-row-group-a'),
+  JSON.stringify(fallbackOrder),
+)
+
+/* 12.10.7 移出分组 */
+await waitToastGone()
+await openRowMenu('group-a')
+await menuAction('ungroup')
+await waitFor(`document.body.innerText.includes('已移出分组')`, '移出分组反馈')
+const ungroupedOrder = await listOrder()
+check(
+  '移出分组后落进未分组区',
+  ungroupedOrder.indexOf('unassigned-section') < ungroupedOrder.indexOf('session-row-group-a'),
+  JSON.stringify(ungroupedOrder),
+)
+
+/* 12.10.8 重命名分组 */
+await waitToastGone()
+await evaluate(`(() => { document.querySelector('[data-testid="create-group"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="group-name-input"]') !== null`, '再次打开分组命名弹层')
+await setField('[data-testid="group-name-input"]', '归档')
+await evaluate(`(() => { document.querySelector('[data-testid="group-name-save"]').click(); return 'ok' })()`)
+const archiveGroup = await waitGroupNamed('归档')
+
+await waitToastGone()
+await openGroupMenu(workGroup)
+await menuAction('rename-group')
+await waitFor(`document.querySelector('[data-testid="group-name-input"]') !== null`, '重命名弹层打开')
+const namePrefill = await evaluate(`document.querySelector('[data-testid="group-name-input"]').value`)
+check('重命名弹层预填当前名称', namePrefill === '工作', String(namePrefill))
+await setField('[data-testid="group-name-input"]', '生活')
+await evaluate(`(() => { document.querySelector('[data-testid="group-name-save"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="group-name-${workGroup}"]').innerText.trim() === '生活'`, '分区标题更新')
+const renamedGroup = await readGroup(workGroup)
+check('重命名落库', renamedGroup?.name === '生活', JSON.stringify(renamedGroup))
+
+/* 12.10.9 删除分组（非空）：确认语必须说清几条会话回到未分组，且会话本身不能丢 */
+await waitToastGone()
+await openRowMenu('group-b')
+await menuAction('move')
+await waitFor(`document.querySelector('[data-testid="action-group:${archiveGroup}"]') !== null`, '选组菜单列出第二个分组')
+await menuAction(`group:${archiveGroup}`)
+await waitFor(`document.querySelector('[data-testid="group-count-${archiveGroup}"]').innerText.trim() === '1'`, '会话进入第二个分组')
+
+await waitToastGone()
+await openGroupMenu(archiveGroup)
+await menuAction('delete-group')
+await waitFor(`document.querySelector('[data-testid="group-confirm-${archiveGroup}"]') !== null`, '删除分组需要二次确认')
+const deleteConfirmText = await evaluate(`document.querySelector('[data-testid="group-confirm-${archiveGroup}"]').innerText.trim()`)
+check('删组确认语说清会有几条会话回到未分组', deleteConfirmText.includes('1 个会话回到未分组'), deleteConfirmText)
+await evaluate(`(() => { document.querySelector('[data-testid="group-confirm-${archiveGroup}"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="group-section-${archiveGroup}"]') === null`, '分组已删除')
+await waitFor(`document.body.innerText.includes('已删除分组，1 个会话回到未分组')`, '删除分组反馈')
+const survivorRows = await evaluate(`(async () => {
+  const db = await new Promise((res, rej) => { const r = indexedDB.open('habitat-db'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  const store = db.transaction('sessions').objectStore('sessions')
+  const get = (id) => new Promise((res, rej) => { const r = store.get(id); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  const a = await get('group-a')
+  const b = await get('group-b')
+  db.close()
+  return { a, b }
+})()`)
+check(
+  '删分组不删会话，组内会话回到未分组',
+  survivorRows.a !== undefined && survivorRows.b !== undefined && survivorRows.b?.groupId === null,
+  JSON.stringify(survivorRows),
+)
+
+/* 12.10.10 删除分组（空）：确认语不带条数 */
+await waitToastGone()
+await openGroupMenu(workGroup)
+await menuAction('delete-group')
+await waitFor(`document.querySelector('[data-testid="group-confirm-${workGroup}"]') !== null`, '空分组同样要二次确认')
+const emptyDeleteText = await evaluate(`document.querySelector('[data-testid="group-confirm-${workGroup}"]').innerText.trim()`)
+check('空分组的确认语不带条数', emptyDeleteText === '确认删除？', emptyDeleteText)
+await evaluate(`(() => { document.querySelector('[data-testid="group-confirm-${workGroup}"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="group-section-${workGroup}"]') === null`, '空分组已删除')
+await waitFor(`document.body.innerText.includes('已删除分组')`, '空分组删除反馈')
+
+/* 12.10.11 脏引用兜底：groupId 指向不存在的分组时，会话不能消失 */
+await waitToastGone()
+await evaluate(`(() => { document.querySelector('[data-testid="create-group"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="group-name-input"]') !== null`, '重建一个分组用于兜底验收')
+await setField('[data-testid="group-name-input"]', '临时')
+await evaluate(`(() => { document.querySelector('[data-testid="group-name-save"]').click(); return 'ok' })()`)
+const lonelyGroup = await waitGroupNamed('临时')
+
+await evaluate(`(async () => {
+  const db = await new Promise((res, rej) => { const r = indexedDB.open('habitat-db'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  const store = db.transaction('sessions', 'readwrite').objectStore('sessions')
+  const row = await new Promise((res, rej) => { const r = store.get('group-a'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  await new Promise((res, rej) => { const r = store.put({ ...row, groupId: 'ghost-group-不存在的分组' }); r.onsuccess = () => res('ok'); r.onerror = () => rej(r.error) })
+  db.close()
+  return 'ok'
+})()`)
+await reloadAndWait(`document.querySelector('[data-testid="session-row-group-a"]') !== null`, '脏引用会话仍渲染')
+const ghostOrder = await listOrder()
+check(
+  'groupId 指向不存在分组时落进未分组兜底区（会话不消失）',
+  ghostOrder.indexOf('session-row-group-a') > ghostOrder.indexOf('unassigned-section'),
+  JSON.stringify(ghostOrder),
+)
+
+/* 12.10.12 没有分组时，列表回到平铺（不用分组的人不该看到分组的痕迹） */
+await waitToastGone()
+await openGroupMenu(lonelyGroup)
+await menuAction('delete-group')
+await waitFor(`document.querySelector('[data-testid="group-confirm-${lonelyGroup}"]') !== null`, '删除最后一个分组需二次确认')
+await evaluate(`(() => { document.querySelector('[data-testid="group-confirm-${lonelyGroup}"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelectorAll('[data-testid^="group-section-"]').length === 0`, '分组全部删除')
+const flatState = await evaluate(`(() => ({
+  unassigned: document.querySelector('[data-testid="unassigned-section"]') !== null,
+  pinned: document.querySelector('[data-testid="pinned-section"]') !== null,
+  rows: document.querySelectorAll('[data-testid^="session-row-"]').length,
+}))()`)
+check(
+  '没有分组时列表回到平铺（不渲染任何分区标题）',
+  flatState.unassigned === false && flatState.pinned === false && flatState.rows >= 2,
+  JSON.stringify(flatState),
+)
 
 /* ---------- 13. 控制台 ---------- */
 const errors = consoleLogs.filter((l) => l.startsWith('[error]') || l.startsWith('[exception]'))

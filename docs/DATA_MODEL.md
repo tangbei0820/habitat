@@ -52,12 +52,13 @@ interface BaseObject {
 |---|---|---|
 | `title` | `string` | 首条消息自动取名（截 18 字） |
 | `pinnedAt` | `number \| null` | **置顶 = 时间戳而非布尔**（技术方案 §6.2），排序按它降序 |
+| `groupId` | `string \| null` | 所属分组；`null` = 未分组。**置顶不改写它**（见 3.5） |
 | `remark` | `string \| null` | 会话备注（SPEC §2.2.1 聊天设置） |
 | `background` | `string \| null` | 会话背景 |
 | `bubbleMode` | `'chat' \| 'native'` | 气泡模式 |
 | `archivedAt` | `number \| null` | 归档（尚无 UI 生产者） |
 
-索引：`id, updatedAt, pinnedAt, archivedAt`
+索引：`id, updatedAt, pinnedAt, archivedAt, groupId`
 
 ### 3.2 ChatMessage（本地表 `messages`）
 
@@ -111,6 +112,34 @@ interface MessageCandidate {
 
 内容未变时编辑**不新增版本** —— 否则 `‹ n/N ›` 里会出现两条一模一样的。
 
+### 3.5 会话分组（本地表 `sessionGroups`，SPEC §2.1.3）
+
+```ts
+interface SessionGroup extends BaseObject {
+  type: 'session-group'
+  name: string
+  collapsed: boolean
+}
+```
+
+索引：`id, createdAt`
+
+| 动作 | 落库口径 |
+|---|---|
+| **创建** | 名称 trim 后非空、上限 30 字（分区标题只有一行）；`collapsed` 默认 `false` |
+| **重命名** | 改 `name` 并更新 `updatedAt`（分组本身就是被编辑的对象） |
+| **折叠 / 展开** | 只改 `collapsed`，**不动 `updatedAt`** —— 它不算「分组被编辑过」 |
+| **删除分组** | 同一事务内把组内会话的 `groupId` 置回 `null`，再删分组行。**只删分区，不删会话**（返回被移出的条数，供确认语说明影响） |
+| **会话移入 / 移出** | 只改会话的 `groupId`，**不刷新 `updatedAt`** —— 换分区不代表这段对话又活跃了 |
+| **置顶** | 只改 `pinnedAt`，**`groupId` 原样不动**（SPEC §2.1.2：置顶是显示上的浮动，取消后回落到原分组） |
+
+**置顶与分组的优先级**：置顶**优先于分组**，置顶会话在列表最顶单独成区、脱离原分组显示；
+列表分区顺序为「置顶区 → 各分组（创建顺序）→ 未分组区」。
+
+**未分组区是兜底区**：`groupId` 为 `null`、**或指向已不存在的分组**的会话都渲染在这里。
+写入侧（`setSessionGroup` / `deleteSessionGroup`）已保证不会产生悬空引用，但导入的备份与手工改过的库不受我们控制 ——
+兜底放在**渲染**层，任何新的读取点都不会因为「这条会话哪个分区都不属于」而把它漏掉。
+
 ## 4. Home 生活实体（本地）
 
 十类生活数据，全部继承基座：
@@ -149,7 +178,7 @@ interface MessageCandidate {
 
 | 项 | 改动 | 依据 |
 |---|---|---|
-| 会话分组 | `ChatSession` 加 `groupId`，新增分组表 → Dexie v8 | SPEC §2.1.3 |
+| ~~会话分组~~ | ✅ 已落地（T-018）：`ChatSession.groupId` + `sessionGroups` 表 → Dexie v8 | SPEC §2.1.3 |
 | 日记权限模型 | `Diary` 加 `author`、可见性 / 锁定；新增「查看请求」实体 | SPEC §3.4 / §6.3 |
 | 作品来源引用 | 复用基座的 `sourceId` / `sessionId`，**不新增字段**；聊天来源已落地（T-016） | SPEC §3.6.3 |
 | 相册来源引用 | 同上；聊天图片来源与 block 位置已落地（T-016） | SPEC §3.7.2 |
@@ -168,6 +197,22 @@ interface MessageCandidate {
 | v5 | 50 | 日记 / 统一收藏（第二批） |
 | v6 | 60 | 作品 / 相册（第三批） |
 | v7 | 70 | 读书 / 音乐 / 学习（第四批） |
+| v8 | 80 | `sessions` 加 `groupId` 索引 + `sessionGroups` 表（会话分组，T-018）。**本版是首个带 `upgrade()` 回调的迁移**：给所有老会话补 `groupId: null` |
 
 Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画版本（`verify-chat.mjs`）。
 **每次升版都要在 `db.ts` 的版本注释里写清「为什么」**；只写「加了张表」等于没写。
+
+> ⚠️ v8 为什么用 `upgrade()` 补字段，而不是「读的时候把 `undefined` 当 `null` 容忍」：
+> 后者会让「会话一定有 `groupId`」这条不变量只存在于**读取方的记忆**里，
+> 任何忘记兜底的新读取点都会让会话从列表里凭空消失。字段补齐放在迁移里，只写一次、对所有人成立。
+
+**每次加表 / 加字段都要同步 `web/src/lib/backup.ts` 的备份格式版本**（铁律 5），否则导出会漏表：
+备份格式与 Dexie 版本并非同一套编号，各自演进，但**必须同一次任务里一起改**。
+
+| 备份格式 | 对应内容 |
+|---|---|
+| v1–v2 | 聊天 |
+| v3 | + 日记 / 收藏 |
+| v4 | + 作品 / 相册 |
+| v5 | + 读书 / 音乐 / 学习 |
+| v6 | + 会话分组（T-018）；旧版导入时分组按空处理，会话 `groupId` 补成 `null` |

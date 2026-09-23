@@ -264,8 +264,41 @@ check('学习记录新增、编辑、汇总并跨刷新保留', true)
 
 const backupCheck = await evaluate(`(async () => {
   const backupModule = await import('/src/lib/backup.ts')
+  const readBack = (store, id) => new Promise((resolve, reject) => {
+    const request = indexedDB.open('habitat-db')
+    request.onsuccess = () => {
+      const db = request.result
+      const get = db.transaction(store).objectStore(store).get(id)
+      get.onsuccess = () => { const value = get.result; db.close(); resolve(value) }
+      get.onerror = () => { db.close(); reject(get.error) }
+    }
+    request.onerror = () => reject(request.error)
+  })
+  // v6 唯一的新东西是会话分组，所以先往库里塞一组「分组 + 归属」再导出
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.open('habitat-db')
+    request.onsuccess = () => {
+      const db = request.result
+      const tx = db.transaction(['sessions', 'sessionGroups'], 'readwrite')
+      tx.objectStore('sessionGroups').put({
+        id: 'verify-home-group', type: 'session-group', name: '备份验收分组',
+        collapsed: true, createdAt: Date.now(), updatedAt: Date.now(),
+      })
+      tx.objectStore('sessions').put({
+        id: 'verify-home-session', type: 'chat-session', title: '备份验收会话', pinnedAt: null,
+        groupId: 'verify-home-group', remark: null, background: null, bubbleMode: 'chat',
+        archivedAt: null, createdAt: Date.now(), updatedAt: Date.now(),
+      })
+      tx.oncomplete = () => { db.close(); resolve('ok') }
+      tx.onerror = () => { db.close(); reject(tx.error) }
+    }
+    request.onerror = () => reject(request.error)
+  })
+
   const backup = await backupModule.exportAll()
   const restored = await backupModule.importAll(backup)
+  const restoredGroupRow = await readBack('sessionGroups', 'verify-home-group')
+  const restoredSessionRow = await readBack('sessions', 'verify-home-session')
   let unsafeBookmarkRejected = false
   let unsafePhotoRejected = false
   let unsafeMusicRejected = false
@@ -303,6 +336,17 @@ const backupCheck = await evaluate(`(async () => {
   } catch {
     unsafeMusicRejected = true
   }
+  const legacyV5 = await backupModule.importAll({
+    format: 'habitat-backup', version: 5, exportedAt: Date.now(),
+    sessions: [{
+      id: 'legacy-v5-session', type: 'chat-session', title: 'v5 时期的会话', pinnedAt: null,
+      remark: null, background: null, bubbleMode: 'chat', archivedAt: null,
+      createdAt: Date.now(), updatedAt: Date.now(),
+    }],
+    messages: [], moments: [], wishlist: [], countdowns: [], diaries: [], bookmarks: [],
+    artworks: [], photos: [], readingNotes: [], musicTracks: [], studyRecords: [],
+  })
+  const legacyV5Session = await readBack('sessions', 'legacy-v5-session')
   const legacyV4 = await backupModule.importAll({
     format: 'habitat-backup', version: 4, exportedAt: Date.now(), sessions: [], messages: [],
     moments: [], wishlist: [], countdowns: [], diaries: [], bookmarks: [], artworks: [], photos: [],
@@ -341,9 +385,43 @@ const backupCheck = await evaluate(`(async () => {
     legacyV3NewTables: legacyV3.artworks + legacyV3.photos,
     legacyV2NewTables: legacyV2.diaries + legacyV2.bookmarks,
     legacyV1Home: legacyV1.moments + legacyV1.wishlist + legacyV1.countdowns + legacyV1.diaries + legacyV1.bookmarks + legacyV1.artworks + legacyV1.photos + legacyV1.readingNotes + legacyV1.musicTracks + legacyV1.studyRecords,
+    exportedGroups: backup.sessionGroups.length,
+    restoredGroups: restored.sessionGroups,
+    restoredGroupName: restoredGroupRow?.name,
+    restoredGroupCollapsed: restoredGroupRow?.collapsed,
+    restoredSessionGroupId: restoredSessionRow?.groupId,
+    legacyV5Groups: legacyV5.sessionGroups,
+    legacyV5SessionFound: legacyV5Session !== undefined,
+    legacyV5SessionGroupId: legacyV5Session === undefined ? 'no-session' : legacyV5Session.groupId,
   }
 })()`)
-check('备份 v5 覆盖十类 Home 数据并可整体恢复', backupCheck.version === 5 && backupCheck.exportedHome >= 9 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
+check('备份 v6 覆盖十类 Home 数据并可整体恢复', backupCheck.version === 6 && backupCheck.exportedHome >= 9 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
+check(
+  '备份 v6 带走会话分组与归属（含折叠状态）',
+  backupCheck.exportedGroups === 1 &&
+    backupCheck.restoredGroups === 1 &&
+    backupCheck.restoredGroupName === '备份验收分组' &&
+    backupCheck.restoredGroupCollapsed === true &&
+    backupCheck.restoredSessionGroupId === 'verify-home-group',
+  JSON.stringify({
+    exportedGroups: backupCheck.exportedGroups,
+    restoredGroups: backupCheck.restoredGroups,
+    name: backupCheck.restoredGroupName,
+    collapsed: backupCheck.restoredGroupCollapsed,
+    sessionGroupId: backupCheck.restoredSessionGroupId,
+  }),
+)
+check(
+  '旧 v5 备份仍可导入：分组为空，会话补成未分组',
+  backupCheck.legacyV5Groups === 0 &&
+    backupCheck.legacyV5SessionFound === true &&
+    backupCheck.legacyV5SessionGroupId === null,
+  JSON.stringify({
+    groups: backupCheck.legacyV5Groups,
+    sessionFound: backupCheck.legacyV5SessionFound,
+    sessionGroupId: backupCheck.legacyV5SessionGroupId,
+  }),
+)
 check('备份导入拒绝非 HTTP(S) 的外部收藏', backupCheck.unsafeBookmarkRejected === true)
 check('备份导入拒绝 SVG 等非白名单图片', backupCheck.unsafePhotoRejected === true)
 check('备份导入拒绝音乐记录中的危险协议', backupCheck.unsafeMusicRejected === true)
@@ -359,7 +437,7 @@ const dbShape = await evaluate(`(async () => {
   db.close()
   return value
 })()`)
-check('Dexie 已升到 v7 且十张 Home 表齐全', dbShape.version === 70 && ['moments', 'wishlist', 'countdowns', 'diaries', 'bookmarks', 'artworks', 'photos', 'readingNotes', 'musicTracks', 'studyRecords'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
+check('Dexie 已升到 v8 且十张 Home 表齐全', dbShape.version === 80 && ['moments', 'wishlist', 'countdowns', 'diaries', 'bookmarks', 'artworks', 'photos', 'readingNotes', 'musicTracks', 'studyRecords'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
 check('控制台无异常', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '))
 
 const passed = results.filter(Boolean).length

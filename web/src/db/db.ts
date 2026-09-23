@@ -10,6 +10,7 @@ import type {
   Photo,
   ReadingNote,
   MusicTrack,
+  SessionGroup,
   StudyRecord,
   WishlistItem,
 } from '@shared/types'
@@ -24,9 +25,15 @@ import type {
  * v3：分页游标换成 `[sessionId+createdAt+id]` 三元复合索引 —— v2 的游标「不含上界」会让
  *     createdAt 撞毫秒的两条里较早那条被漏掉（批量导入常见），把 id 纳入键后
  *     「同毫秒按 id 续取」成为索引天然语义，无需应用层特判。
+ * v4–v7：Phase 2 的十类 Home 生活实体（留言……学习记录），纯新增表，旧数据原样保留。
+ * v8：会话分组（SPEC §2.1.3）—— `sessions` 加 `groupId` 索引 + 新增 `sessionGroups` 表。
+ *     唯一的**真迁移**在这里：老会话没有 `groupId` 字段，upgrade 里统一补成 `null`。
+ *     不靠「读的时候把 undefined 当 null 容忍」—— 那样「会话一定有 groupId」这条不变量
+ *     就只存在于读取方的记忆里，任何忘记兜底的新读取点都会让会话从列表里凭空消失。
  */
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
+  sessionGroups!: Table<SessionGroup, string>
   messages!: Table<ChatMessage, string>
   moments!: Table<Moment, string>
   wishlist!: Table<WishlistItem, string>
@@ -99,6 +106,32 @@ export class HabitatDb extends Dexie {
       musicTracks: 'id, createdAt, updatedAt',
       studyRecords: 'id, studiedOn, createdAt, updatedAt',
     })
+    // v8：会话分组。`sessions` 多一个 `groupId` 索引（按分组取会话是列表页的主要读法，
+    // 不做索引就得全表扫回来再在内存里分堆）+ 新增 `sessionGroups` 表。
+    this.version(8)
+      .stores({
+        sessions: 'id, updatedAt, pinnedAt, archivedAt, groupId',
+        sessionGroups: 'id, createdAt',
+        messages: 'id, sessionId, createdAt, [sessionId+createdAt+id]',
+        moments: 'id, createdAt, author',
+        wishlist: 'id, status, createdAt, updatedAt',
+        countdowns: 'id, targetDate, createdAt',
+        diaries: 'id, entryDate, createdAt, updatedAt',
+        bookmarks: 'id, targetType, targetId, createdAt, &[targetType+targetId]',
+        artworks: 'id, category, createdAt, updatedAt',
+        photos: 'id, takenAt, createdAt',
+        readingNotes: 'id, status, createdAt, updatedAt',
+        musicTracks: 'id, createdAt, updatedAt',
+        studyRecords: 'id, studiedOn, createdAt, updatedAt',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('sessions')
+          .toCollection()
+          .modify((session: ChatSession) => {
+            if (session.groupId === undefined) session.groupId = null
+          })
+      })
   }
 }
 

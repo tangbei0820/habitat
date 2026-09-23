@@ -20,11 +20,26 @@ export type BubbleMode = 'chat' | 'native'
 export interface ChatSession extends BaseObject {
   type: 'chat-session'
   title: string
+  /** 置顶是**时间戳而非布尔**（§6.2）：取消置顶后仍能回到原本的活跃顺序 */
   pinnedAt: number | null
+  /** 所属分组；`null` = 未分组。指向已不存在的分组时按未分组处理（SPEC §2.1.3 兜底区） */
+  groupId: string | null
   remark: string | null
   background: string | null
   bubbleMode: BubbleMode
   archivedAt: number | null
+}
+
+/**
+ * 会话分组（SPEC §2.1.3，本地 Dexie）。
+ *
+ * 只是一个「分区」：**删分组不删会话** —— 组内会话的 `groupId` 会被置回 `null` 落进未分组区。
+ * 折叠状态跟着数据走（不是 UI 局部状态），刷新与换设备后保持一致。
+ */
+export interface SessionGroup extends BaseObject {
+  type: 'session-group'
+  name: string
+  collapsed: boolean
 }
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'

@@ -12,6 +12,7 @@ import type {
   MessageCandidate,
   MessageRole,
   MessageStatus,
+  SessionGroup,
   TextBlock,
 } from '@shared/types'
 import { db } from './db'
@@ -42,6 +43,7 @@ export function newSession(title: string): ChatSession {
     type: 'chat-session',
     title,
     pinnedAt: null,
+    groupId: null,
     remark: null,
     background: null,
     bubbleMode: 'chat',
@@ -150,6 +152,110 @@ export async function updateSessionSettings(
     background: input.background,
     bubbleMode: input.bubbleMode,
   }
+  await db.sessions.put(next)
+  return next
+}
+
+/* ---------- 会话分组（SPEC §2.1.3） ---------- */
+
+/** 分区标题只有一行，名称过长会把右侧菜单按钮挤出去 */
+export const SESSION_GROUP_NAME_MAX = 30
+
+function normalizeGroupName(name: string): string {
+  const trimmed = name.trim()
+  if (trimmed === '') throw new Error('分组名称不能为空')
+  if (trimmed.length > SESSION_GROUP_NAME_MAX) {
+    throw new Error(`分组名称不能超过 ${SESSION_GROUP_NAME_MAX} 字`)
+  }
+  return trimmed
+}
+
+/**
+ * 按创建顺序取全部分组。
+ * 「分组排序」是 SPEC §2.1.3 的后续扩展 —— 创建顺序同样是一个全序，删组也不会让兄弟分组换位，
+ * 所以在引入显式排序字段之前，它比任何「按名称排」之类的猜测都稳。
+ */
+export async function listSessionGroups(): Promise<SessionGroup[]> {
+  return db.sessionGroups.orderBy('createdAt').toArray()
+}
+
+export async function createSessionGroup(name: string): Promise<SessionGroup> {
+  // 刻意不查重名：一个人自用，两个「工作」总比「建不出来但不说为什么」可接受。
+  // 真要加约束，得连「同名时是合并还是拒绝」一起定，不适合顺手塞一条。
+  const now = Date.now()
+  const group: SessionGroup = {
+    id: crypto.randomUUID(),
+    type: 'session-group',
+    name: normalizeGroupName(name),
+    collapsed: false,
+    createdAt: now,
+    updatedAt: now,
+  }
+  await db.sessionGroups.add(group)
+  return group
+}
+
+/** 改名的 `updatedAt` 跟上：分组本身就是被编辑的对象（会话那边不跟，是因为它会牵动列表排序） */
+export async function renameSessionGroup(id: string, name: string): Promise<SessionGroup | null> {
+  const group = await db.sessionGroups.get(id)
+  if (group === undefined) return null
+  const next: SessionGroup = { ...group, name: normalizeGroupName(name), updatedAt: Date.now() }
+  await db.sessionGroups.put(next)
+  return next
+}
+
+/**
+ * 折叠状态单独一个写口：它只在列表页被点，不牵动任何会话，改了它也不算「分组被编辑过」，
+ * 所以**不动 `updatedAt`**。
+ */
+export async function setSessionGroupCollapsed(
+  id: string,
+  collapsed: boolean,
+): Promise<SessionGroup | null> {
+  const group = await db.sessionGroups.get(id)
+  if (group === undefined) return null
+  const next: SessionGroup = { ...group, collapsed }
+  await db.sessionGroups.put(next)
+  return next
+}
+
+/**
+ * 删除分组：**只删分区，不删会话** —— 组内会话的 `groupId` 在同一事务里置回 `null`。
+ * 返回被移出的会话数（确认语要说清影响了几条）。
+ *
+ * 必须同事务：分两步写会留下「会话指向一个已不存在的分组」的中间态，
+ * 那种数据要靠读取方兜底才不丢，而兜底是会被忘记的。
+ */
+export async function deleteSessionGroup(id: string): Promise<number> {
+  return db.transaction('rw', db.sessionGroups, db.sessions, async () => {
+    const affected = await db.sessions
+      .where('groupId')
+      .equals(id)
+      .modify((session: ChatSession) => {
+        session.groupId = null
+      })
+    await db.sessionGroups.delete(id)
+    return affected
+  })
+}
+
+/**
+ * 把会话移入 / 移出分组，`groupId` 传 `null` 即移出。
+ *
+ * 与置顶、会话设置一致**不刷新 `updatedAt`** —— 换个分区不代表这段对话又活跃了，
+ * 否则整理一次分组就会把整个列表的活跃顺序搅乱。
+ */
+export async function setSessionGroup(
+  sessionId: string,
+  groupId: string | null,
+): Promise<ChatSession | null> {
+  const session = await db.sessions.get(sessionId)
+  if (session === undefined) return null
+  if (groupId !== null && (await db.sessionGroups.get(groupId)) === undefined) {
+    // 不校验就会写下「指向不存在分组」的引用：那条会话哪个分区都不属于，等于从列表里消失
+    throw new Error('目标分组不存在或已被删除')
+  }
+  const next: ChatSession = { ...session, groupId }
   await db.sessions.put(next)
   return next
 }

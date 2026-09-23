@@ -9,7 +9,7 @@ import {
   type BubbleActions,
   type ChatItem,
 } from '../../features/chat/ChatBubble'
-import { MessageActionSheet, type MessageAction } from '../../features/chat/MessageActionSheet'
+import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
 import { ChatSettingsSheet } from '../../features/chat/ChatSettingsSheet'
 import {
   createMessageArtwork,
@@ -389,7 +389,7 @@ export function ChatWindowPage() {
    * 当前菜单该显示哪些项 —— 随对象类型与状态动态变化（SPEC §2.3.3）。
    * 撤回态只剩「恢复」与「删除」：正文已经不在界面上，谈「编辑 / 复制」没有意义。
    */
-  const sheetActions = useMemo<MessageAction[] | null>(() => {
+  const sheetActions = useMemo<SheetAction[] | null>(() => {
     if (sheetFor === null) return null
     const message = messages.find((m) => m.id === sheetFor)
     if (message === undefined) return null
@@ -406,7 +406,7 @@ export function ChatWindowPage() {
       ]
     }
 
-    const items: MessageAction[] = []
+    const items: SheetAction[] = []
     if (hasText) items.push({ id: 'copy', label: '复制' })
     items.push({ id: 'edit', label: '编辑' })
     items.push({ id: 'bookmark', label: '收藏' })
@@ -834,7 +834,7 @@ export function ChatWindowPage() {
         />
       )}
 
-      <MessageActionSheet
+      <ActionSheet
         actions={sheetActions}
         onSelect={(id) => void runSheetAction(id)}
         onClose={() => setSheetFor(null)}
