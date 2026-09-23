@@ -233,8 +233,6 @@
 - 编辑工具本轮**4 次「报成功但没落盘」**（`profiles.ts` 的 `updateProfile`、`routes/providers.ts` 的 `parseCreateInput`、`mock-openai.ts` 的变量声明）。前两次是类型检查 / 第一次冒烟测试才发现 —— 后来都靠 grep 回读。→ **改完关键处一律 grep 回读**。
 - `schema.ts` 的注释写明了正确判据（「不能用表为空当判据」），但实现没跟上。**注释与实现不一致比不写注释更危险** —— 它会让后来的人以为已经做过了。
 
-## 2026-09-23
-
 ### Phase 2 · Home 生活模块（完成）
 
 **shared / 本地数据**
@@ -260,3 +258,75 @@
 - `web/scripts/verify-home.mjs` 最终 **23/23**：十入口、各模块主路径、刷新持久化、备份 v5 自恢复、v1–v4 兼容、恶意数据拒绝、Dexie v7 表形状与控制台零异常。
 - 聊天完整回归 **36/36**；两端 `typecheck` 与前端生产构建通过。
 - 已知边界：相册 data URL 有约 33% base64 膨胀；生活模块暂按个人早期数据量全量读取。后续优化已收敛到 `docs/TASKS.md`。
+
+### Phase 3A · 长期记忆链路（客户端代码已验，T-013）
+
+**shared**
+
+- `providers.ts`：`MemoryProvider` 从「`unknown` 占位」定成真实契约 —— 六个方法（`recall` / `search` / `read` / `create` / `update` / `delete`）统一收口到 `MemoryTextResult`（`{ text }`）。
+  - 刻意**不按 Nocturne 的内部数据库 schema 建模**：它的工具返回的是「给模型读的文本」，我们只做转交 —— 它改内部结构不会牵动我们的类型。
+- `MemoryCreateInput` / `MemoryUpdateInput`：`update` 的「精确 / 块替换」与「追加」互斥，Nocturne **刻意不提供全文覆盖**。这条约束写在类型注释里，而不是指望调用方自觉。
+
+**server**
+
+- 新增 `providers/nocturne-memory.ts`：`MemoryProvider` 的 MCP 实现（MemoryProvider → ToolGateway → Nocturne MCP），**不碰它的 REST**（铁律 4）。
+- 新增 `routes/memory.ts`：6 个端点 `boot` / `search` / `read` / `POST` / `PATCH` / `DELETE`；参数校验从严（`domain://path` 形式、`system://` 只读、三种修改模式互斥）；**未配 MCP 时返回 502，语义是「设计行为」而非故障**。
+- `mcp/registry.ts` / `main.ts` / `.env.example` 接上记忆服务配置；`mcp/mock-server.ts` 扩容出记忆工具，让写路径能在**不连外网**的前提下验。
+
+**验收**
+
+- `server/scripts/probe-memory.ts`：本地 mock 全链 **24/24**（boot / search / read / create / update 三种模式 / 参数校验 / read-before-write）。
+- `server/scripts/probe-nocturne-demo.ts`：**真实**打 Nocturne 官方只读 Demo **25/25**（连跑两次一致）。分两段跑，为的是「卡在哪一层能判」——先原始 SDK 直连隔离协议层，再经 `McpGateway` 验我们自己的生产代码路径。
+  - **选官方 Demo 的理由**：官方 README 写明该实例服务端只开放 `read_memory` / `search_memory` —— **只读由服务端物理保证**，比调用方自觉可靠。
+  - 真实协议事实：`serverInfo = Nocturne Memory Interface v1.26.0`；工具清单恰好 2 个；`search_memory` 的真实 `inputSchema` 是 `query, domain, limit`，与我们适配器的参数映射**逐字对上**；`system://boot` 返回 8101 字正文。
+- 再用真实 habitat-server 走一遍完整 HTTP 链路（独立临时库 + :3300）：四个 GET 全通，诊断表 3 条、`errorCount=0`。
+- **全程只读** —— 用记录型包装统计实际发出的调用，仅 `read_memory` ×1 + `search_memory` ×1；临时库与临时进程跑完即清。
+
+**未结清**：本轮验的是**客户端代码**，不是自部署实例。Bearer Token、`X-Namespace`、Caddy 反代与内网回源四段仍未走，风险 1 未结清 —— 但它**不阻塞** UX 收口。
+
+### 文档体系对齐（T-014）：引入 PRODUCT_SPEC 作为产品行为权威
+
+**零代码改动**（故未跑 typecheck）。
+
+- **`PRODUCT_SPEC` 落位**：原文件在仓库根、名为《栖息地_PRODUCT_SPEC_交互定义_v0.1_结构草稿.md》，而 AGENTS / TASKS / REFERENCES 三处引用的都是 `docs/PRODUCT_SPEC.md` —— **引用是断的**。已移入 `docs/`。
+- **`AGENTS.md` 修复**（上一轮改版留下的 5 处表格损坏 + 2 处信息丢失）：§2 折行断表、§4 表头 4 列而分隔行 3 列、§4 两行**黏连**、重复的 UI 行；补回 3 行仍有效的任务与「维护约定」小节。
+- **`README.md` 承接「本地验收」**：把原 AGENTS §6 里的高价值前置条件（Node 双轨约束、验收要换端口、vite 必须 `--host 127.0.0.1`、后台进程会被回收）按项目分工移入 README，并补上 Phase 3A 新增的两个探针。
+- **`docs/API.md` 补 6 个记忆端点** —— 补上此前欠的维护约定（新增接口 → 同步 API.md）。
+- **`docs/TASKS.md` 登记 PRODUCT_SPEC 差异**：P0（14）/ P1（6）/ P2（6），每条带 SPEC 章节引用；**不复制产品定义正文**，避免与 SPEC 双写。
+
+### UX 收口 · P0 第一批（T-015）：消息对象操作
+
+**前置：先把 SPEC 里悬置的语义定下来**（产品行为的家是 SPEC，不该只躺在 TASKS 里）
+
+1. 编辑**保留原版本**，复用 `candidates`（`origin: 'edit'`），与「换一个」共用同一套 `‹ n/N ›` 版本导航 —— 不另造第二套历史
+2. 编辑用户消息后**不自动删除、不自动重生成后续**；「从这条重新生成」是显式动作，且必须二次确认
+3. 撤回**留痕、不进模型上下文、可恢复**；删除**物理删除 + 二次确认**，不另做回收站（兜底交给备份导出）
+4. 用户消息与 AI 消息**权限完全对等**
+
+**本地数据**
+
+- **零 schema 改动，Dexie 不升版**：Phase 1 建表时按技术方案 §6.3 的「两次提前量」已预埋 `candidates[].origin`（本就有 `'edit'`）、`recalledAt`、`editedAt`、`pinnedAt`。
+- `db/chat.ts`：抽出 `withNewVersion(message, content, origin)` 供 `addVersion` 与 `editMessage` 共用。
+  - 原先「登记旧版本 → 追加新版本 → 淘汰最旧」只长在「换一个」这一条路径上；复制一份必然漂移（典型是某条路径忘了版本上限，版本数没有天花）。
+- 新增 `editMessage`（内容未变则不新增版本）/ `recallMessage`（只写 `recalledAt`）/ `restoreMessage`（置回 `null`）/ `deleteMessages`（批量物理删）。
+
+**web**
+
+- 新增 `features/chat/ChatBubble.tsx` 与 `features/chat/MessageActionSheet.tsx` —— 气泡原先整个长在页面里，页面已涨到 1058 行，拆完 755 行。
+- 菜单**关闭时不渲染任何 DOM**：否则验收脚本整页读 `innerText` 会被藏起来的菜单项骗到。
+- 交互入口三合一：长按（移动端主路径）+ 右键（桌面）+ `···`，三者进同一个菜单。刻意**不给每条消息都挂一行** —— 60 条各加一行会把列表撑高约 1.1 屏。
+- **「撤回不进上下文」只有一处落点**：`historyUpTo` 的过滤。刻意不放进 `messageText()` —— 那里是「取纯文本投影」，与「这段该不该送出去」是两件事，混进来会让所有复用它的地方（列表预览、版本登记）被动改行为。
+- 共用一条二次确认条（撤回 / 删除 / 批量删 / 从这条重新生成），配轻提示反馈（已复制 / 已撤回 / 已恢复 / 已删除 N 条）；破坏性操作的确认语一律说清后果与条数。
+
+**验收**
+
+- `web/scripts/verify-chat.mjs` **36 → 57 项全过**。新增 21 项中最硬的一条是**读 mock 上游的真实报文**（`GET /__last-body`）证明撤回的消息确实没被送出 —— UI 藏消息很容易，送没送出去才是关键。
+- `verify-providers.mjs` 22/22、`verify-home.mjs` 23/23、`verify-diagnostics.mjs` 36/36，**无回归**；四条均「控制台零异常」。
+- 两端 `typecheck` + 前端生产构建通过。
+- 顺带补上 `.workbuddy/run-front-verify.sh` 漏跑的 `verify-home`（此前 README 说四支、实际只跑三支）。
+
+**踩到的坑（已进 `docs/TASKS.md`）**
+
+- **点完「发送」不能立刻等「按钮变回发送」**：React 状态更新是异步的，按下那一瞬间等待条件就成立，紧接着读到的是**上一轮**的报文 —— 两条断言因此假失败。判据必须是「这一轮的回复已经落地」。
+- **`document.querySelector('textarea')` 会抓错框**：内联编辑态会在 DOM 更靠前的位置放一个 textarea。输入框一律用 `[data-testid="composer"]` 定位。
+- **编辑工具静默失败（第 2 次遇到）**：三处替换报「成功」但文件没变，靠类型检查兜住。

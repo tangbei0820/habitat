@@ -202,16 +202,22 @@ export interface AddVersionInput {
  * ⚠️ `blocks` 与展示版本必须同步：前者是渲染与历史组装的投影，后者是版本历史。
  * 两者一旦分家，就会出现「屏幕上看到的」和「下一轮送出去的」不是同一段话。
  */
-export async function addVersion(id: string, input: AddVersionInput): Promise<ChatMessage | null> {
-  const message = await db.messages.get(id)
-  if (message === undefined) return null
-
-  const origin = input.origin ?? 'reroll'
+/**
+ * 在版本链上追加一条并选中它，同时把「当前正文」登记成前一条版本。
+ *
+ * 「换一个」与「编辑」共用这一处 —— SPEC §2.3.4 要求两者共用同一套版本历史；
+ * 各写一遍必然会漂移（典型是其中一处忘了淘汰上限，于是那条路径的版本数没有天花）。
+ */
+function withNewVersion(
+  message: ChatMessage,
+  content: string,
+  origin: MessageCandidate['origin'],
+): MessageCandidate[] {
   const versions: MessageCandidate[] =
     message.candidates.length > 0
       ? message.candidates.map((candidate) => ({ ...candidate, selected: false }))
       : [{ content: messageText(message), origin, selected: false }]
-  versions.push({ content: input.content, origin, selected: true })
+  versions.push({ content, origin, selected: true })
 
   // 超限时淘汰**最旧的未展示项**，绝不淘汰刚选中的那个 ——
   // 否则「n/N」里会出现一个屏幕上正显示、却找不到对应条目的版本
@@ -220,11 +226,18 @@ export async function addVersion(id: string, input: AddVersionInput): Promise<Ch
     if (victim < 0) break
     versions.splice(victim, 1)
   }
+  return versions
+}
 
+export async function addVersion(id: string, input: AddVersionInput): Promise<ChatMessage | null> {
+  const message = await db.messages.get(id)
+  if (message === undefined) return null
+
+  const origin = input.origin ?? 'reroll'
   const next: ChatMessage = {
     ...message,
     blocks: [textBlock(input.content)],
-    candidates: versions,
+    candidates: withNewVersion(message, input.content, origin),
     ...(input.status === undefined ? {} : { status: input.status }),
     ...(input.reasoning === undefined || input.reasoning === ''
       ? {}
@@ -253,4 +266,65 @@ export async function selectCandidateVersion(
   }
   await db.messages.put(next)
   return next
+}
+
+/* ---------- 消息对象操作（SPEC §2.3）：编辑 / 撤回 / 恢复 / 批量删除 ---------- */
+
+/**
+ * 编辑消息正文（SPEC §2.3.4）。
+ *
+ * **保留原版本**：旧正文进版本链（`origin: 'edit'`），与「换一个」共用同一套 ‹ n/N › 导航 ——
+ * 不另造第二套历史。内容没变就直接返回，不白造一条一模一样的版本。
+ *
+ * ⚠️ 这里**不动后续消息**。SPEC 定的是「编辑用户消息后不自动删除、不自动重生成后续」：
+ * 编辑的常见意图是改一句话，不该连带毁掉其后已经产生的对话。「从这条重新生成」是用户显式触发的另一件事。
+ */
+export async function editMessage(id: string, content: string): Promise<ChatMessage | null> {
+  const message = await db.messages.get(id)
+  if (message === undefined) return null
+  if (messageText(message) === content) return message
+
+  const now = Date.now()
+  const next: ChatMessage = {
+    ...message,
+    blocks: [textBlock(content)],
+    candidates: withNewVersion(message, content, 'edit'),
+    editedAt: now,
+    updatedAt: now,
+  }
+  await db.messages.put(next)
+  return next
+}
+
+/**
+ * 撤回（SPEC §2.3.5）：只打 `recalledAt`，**正文与版本链原样保留**。
+ *
+ * 保留正文有两个理由：撤回不是销毁（要能恢复），以及恢复时不该丢内容。
+ * 「不进模型上下文」不在这里做 —— 那是上下文组装的事（见 `ChatWindowPage` 的 `historyUpTo`）。
+ */
+export async function recallMessage(id: string): Promise<ChatMessage | null> {
+  const message = await db.messages.get(id)
+  if (message === undefined) return null
+  const now = Date.now()
+  const next: ChatMessage = { ...message, recalledAt: now, updatedAt: now }
+  await db.messages.put(next)
+  return next
+}
+
+/** 取消撤回：正文一直都在库里，所以只需把标记抹掉 */
+export async function restoreMessage(id: string): Promise<ChatMessage | null> {
+  const message = await db.messages.get(id)
+  if (message === undefined) return null
+  const next: ChatMessage = { ...message, recalledAt: null, updatedAt: Date.now() }
+  await db.messages.put(next)
+  return next
+}
+
+/**
+ * 批量删除（多选后用）。`anyOf(...).delete()` 一次成型、返回真实删除条数，
+ * 由 Dexie 包在一个事务里 —— 中途失败留下一半，用户会以为已经删干净了。
+ */
+export async function deleteMessages(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0
+  return db.messages.where('id').anyOf(ids).delete()
 }

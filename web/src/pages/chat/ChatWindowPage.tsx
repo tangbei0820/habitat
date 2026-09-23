@@ -1,18 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { LlmChatMessage } from '@shared/providers'
 import type { ChatMessage, ChatSession, MessageStatus } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
-import { MessageBlocks } from '../../features/chat/MessageBlocks'
+import {
+  ChatBubble,
+  itemKey,
+  type BubbleActions,
+  type ChatItem,
+} from '../../features/chat/ChatBubble'
+import { MessageActionSheet, type MessageAction } from '../../features/chat/MessageActionSheet'
 import {
   addVersion,
   appendMessage,
   capReasoning,
   deleteMessage,
+  deleteMessages,
+  editMessage,
   getSession,
   listMessagesPage,
   messageText,
   newMessage,
+  recallMessage,
+  restoreMessage,
   selectCandidateVersion,
   textBlock,
   touchSession,
@@ -31,16 +41,7 @@ const TITLE_LIMIT = 18
  * 按这个间隔合并落一次。刷新丢的最多是这不到一秒的内容，而不是整轮回复。
  */
 const DRAFT_FLUSH_MS = 800
-
-interface ChatItem {
-  message: ChatMessage
-  text: string
-  isLast: boolean
-}
-
-function itemKey(item: ChatItem): string {
-  return item.message.id
-}
+const TOAST_MS = 1800
 
 function titleFrom(text: string): string {
   const oneLine = text.replace(/\s+/g, ' ').trim()
@@ -50,115 +51,26 @@ function titleFrom(text: string): string {
 /**
  * 组装某一轮请求的历史：**截止到 `upToIndex`（含）**，其后的一律不送。
  *
- * 「换一个」与「重发」都靠它把「同一轮」钉住：换一个时若不截断，等于让模型接着自己
- * 刚写的那段往下续，出的东西必然跑偏。
+ * 两条规则：
+ * 1. 「换一个」与「重发」靠它把「同一轮」钉住 —— 换一个时若不截断，等于让模型接着自己
+ *    刚写的那段往下续，出的东西必然跑偏。
+ * 2. **撤回过的消息不进上下文**（SPEC §2.3.5）。这里是该语义的**唯一落点** ——
+ *    刻意不放进 `messageText()`：那里的职责是「取纯文本投影」，与「这段该不该送出去」是两件事；
+ *    混在一起会让所有复用它的地方（列表预览、版本登记）都被动地跟着改行为。
  */
 function historyUpTo(messages: ChatMessage[], upToIndex: number): LlmChatMessage[] {
   return messages
     .slice(0, upToIndex + 1)
+    .filter((message) => message.recalledAt === null)
     .map((message): LlmChatMessage => ({ role: message.role, content: messageText(message) }))
     .filter((message) => message.content !== '')
 }
 
-interface BubbleActions {
-  busy: boolean
-  onReroll: (id: string) => void
-  onResend: (id: string) => void
-  onSelectVersion: (id: string, index: number) => void
-}
-
-/** 气泡下方的小字操作钮 */
-function TinyButton({
-  children,
-  onClick,
-  disabled = false,
-}: {
-  children: ReactNode
-  onClick: () => void
-  disabled?: boolean
-}) {
-  return (
-    <button type="button" onClick={onClick} disabled={disabled} className="px-0.5 disabled:opacity-30">
-      {children}
-    </button>
-  )
-}
-
-function ChatBubble({ item, actions }: { item: ChatItem; actions: BubbleActions }) {
-  const { message, text } = item
-  const isUser = message.role === 'user'
-  const isStreaming = message.status === 'streaming' || message.status === 'pending'
-  const interrupted = message.status === 'aborted' || message.status === 'error'
-  const versionCount = message.candidates.length
-  const selected = message.candidates.findIndex((candidate) => candidate.selected)
-
-  // 「换一个」只给最后一条 AI 回复：改中间那条，后面已经发生的对话就与它脱节了
-  const canReroll = !isUser && item.isLast && text !== '' && !actions.busy && !isStreaming
-  // 「重发」出现在「最后一条是用户消息」时 —— 意味着这一轮压根没拿到回复（失败 / 停在首字之前）
-  const canResend = isUser && item.isLast && !actions.busy
-  const showActions = canReroll || canResend || versionCount > 1
-
-  return (
-    <div className={`flex flex-col px-4 py-1.5 ${isUser ? 'items-end' : 'items-start'}`}>
-      <div
-        className="max-w-[82%] break-words rounded-2xl px-3 py-2 text-sm"
-        style={{
-          backgroundColor: isUser ? 'var(--color-primary)' : 'var(--color-surface)',
-          color: isUser ? 'var(--color-primary-contrast)' : 'var(--color-text)',
-          border: isUser ? 'none' : '1px solid var(--color-border)',
-        }}
-      >
-        {isUser ? (
-          <span className="whitespace-pre-wrap">{text}</span>
-        ) : (
-          // AI 侧走块分发：一条消息体内可能是文字 + 图片 + 工具结果任意组合（§6.2 可扩展块）
-          <MessageBlocks blocks={message.blocks} />
-        )}
-        {isStreaming && (
-          <span className="ml-0.5 animate-pulse" style={{ opacity: 0.7 }}>
-            {text === '' ? '…' : '▍'}
-          </span>
-        )}
-        {interrupted && (
-          <span className="ml-1 text-xs opacity-60">
-            {message.status === 'aborted' ? '（已停止）' : '（中断）'}
-          </span>
-        )}
-      </div>
-
-      {showActions && (
-        <div
-          className="mt-0.5 flex items-center gap-2 pl-1 text-xs"
-          style={{ color: 'var(--color-text-dim)' }}
-        >
-          {versionCount > 1 && (
-            <span className="flex items-center gap-1">
-              <TinyButton
-                disabled={selected <= 0 || actions.busy}
-                onClick={() => actions.onSelectVersion(message.id, selected - 1)}
-              >
-                ‹
-              </TinyButton>
-              <span>
-                {selected + 1}/{versionCount}
-              </span>
-              <TinyButton
-                disabled={selected >= versionCount - 1 || actions.busy}
-                onClick={() => actions.onSelectVersion(message.id, selected + 1)}
-              >
-                ›
-              </TinyButton>
-            </span>
-          )}
-          {canReroll && (
-            <TinyButton onClick={() => actions.onReroll(message.id)}>换一个</TinyButton>
-          )}
-          {canResend && <TinyButton onClick={() => actions.onResend(message.id)}>重发</TinyButton>}
-        </div>
-      )}
-    </div>
-  )
-}
+/** 破坏性操作统一走「先说清楚要动什么、再确认」——三个入口共用一份状态 */
+type PendingConfirm =
+  | { kind: 'recall'; ids: string[]; text: string }
+  | { kind: 'delete'; ids: string[]; text: string }
+  | { kind: 'regenerate'; ids: string[]; text: string; index: number }
 
 export function ChatWindowPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
@@ -170,6 +82,15 @@ export function ChatWindowPage() {
   const [hasMore, setHasMore] = useState(false)
   const [loadingEarlier, setLoadingEarlier] = useState(false)
 
+  /* ---------- 消息对象操作（SPEC §2.3）的状态 ---------- */
+  const [sheetFor, setSheetFor] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState('')
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set())
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
   const abortRef = useRef<AbortController | null>(null)
   /**
    * 同步守卫：`onReachTop` 在贴顶时会连着触发好几次，而 `setLoadingEarlier` 生效要等下一帧 ——
@@ -178,13 +99,30 @@ export function ChatWindowPage() {
   const loadingEarlierRef = useRef(false)
   /** 供回调读最新消息列表，避免闭包读到旧数组 */
   const messagesRef = useRef<ChatMessage[]>([])
+  const toastTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
 
+  // 轻提示自己会走，别让它跟着会话一起留下来
+  useEffect(() => {
+    if (toast === null) return
+    toastTimerRef.current = window.setTimeout(() => setToast(null), TOAST_MS)
+    return () => {
+      if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
+    }
+  }, [toast])
+
   useEffect(() => {
     if (sessionId === undefined) return
+    // 换会话时把消息级操作状态清干净：残留的选中 / 待确认会作用到另一个会话的消息上
+    setSheetFor(null)
+    setEditingId(null)
+    setEditDraft('')
+    setSelectMode(false)
+    setSelectedIds(new Set())
+    setPendingConfirm(null)
     let cancelled = false
     void (async () => {
       try {
@@ -411,6 +349,180 @@ export function ChatWindowPage() {
     }
   }
 
+  /* ---------- 消息对象操作：菜单 / 编辑 / 撤回 / 多选（SPEC §2.3） ---------- */
+
+  function showToast(text: string): void {
+    setToast(text)
+  }
+
+  /** 把仓储层返回的新记录贴回列表；null 表示那条消息已经不在了，静默忽略 */
+  function applyMessage(updated: ChatMessage | null): void {
+    if (updated === null) return
+    setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
+  }
+
+  function exitSelectMode(): void {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }
+
+  function toggleSelect(id: string): void {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  /**
+   * 当前菜单该显示哪些项 —— 随对象类型与状态动态变化（SPEC §2.3.3）。
+   * 撤回态只剩「恢复」与「删除」：正文已经不在界面上，谈「编辑 / 复制」没有意义。
+   */
+  const sheetActions = useMemo<MessageAction[] | null>(() => {
+    if (sheetFor === null) return null
+    const message = messages.find((m) => m.id === sheetFor)
+    if (message === undefined) return null
+    const isUser = message.role === 'user'
+    const isLast = messages[messages.length - 1]?.id === message.id
+    const hasText = messageText(message) !== ''
+    const index = messages.findIndex((m) => m.id === message.id)
+
+    if (message.recalledAt !== null) {
+      return [
+        { id: 'restore', label: '恢复这条消息' },
+        { id: 'delete', label: '删除', danger: true },
+      ]
+    }
+
+    const items: MessageAction[] = []
+    if (hasText) items.push({ id: 'copy', label: '复制' })
+    items.push({ id: 'edit', label: '编辑' })
+    items.push({ id: 'multi', label: '多选' })
+    // SPEC §2.3.3：AI 消息按当前状态追加「换一个 / 重发 / 切换历史候选」
+    if (!isUser && isLast && hasText) items.push({ id: 'reroll', label: '换一个' })
+    if (isUser && isLast) items.push({ id: 'resend', label: '重发' })
+    // SPEC §2.3.4：编辑用户消息后，截断其后内容并重生成必须是**显式**动作
+    if (isUser && !isLast && index >= 0 && index < messages.length - 1) {
+      items.push({ id: 'regenerate', label: '从这条重新生成' })
+    }
+    items.push({ id: 'recall', label: '撤回' })
+    items.push({ id: 'delete', label: '删除', danger: true })
+    return items
+  }, [sheetFor, messages])
+
+  async function runSheetAction(actionId: string): Promise<void> {
+    const id = sheetFor
+    setSheetFor(null)
+    if (id === null) return
+    const index = messages.findIndex((m) => m.id === id)
+    const message = index < 0 ? undefined : messages[index]
+    if (message === undefined) return
+
+    switch (actionId) {
+      case 'copy': {
+        try {
+          await navigator.clipboard.writeText(messageText(message))
+          showToast('已复制')
+        } catch (err) {
+          // 非安全上下文 / 权限被拒时剪贴板不可用。明确告诉用户，而不是静默失败
+          log.error('复制失败', err)
+          setErrorText('复制失败：浏览器拒绝了剪贴板写入')
+        }
+        break
+      }
+      case 'edit':
+        setEditingId(id)
+        setEditDraft(messageText(message))
+        break
+      case 'multi':
+        setSelectMode(true)
+        setSelectedIds(new Set([id]))
+        break
+      case 'reroll':
+        await reroll(id)
+        break
+      case 'resend':
+        await resend(id)
+        break
+      case 'recall':
+        setPendingConfirm({
+          kind: 'recall',
+          ids: [id],
+          text: '撤回这条消息？撤回后它不再进入对话上下文，但可以恢复。',
+        })
+        break
+      case 'restore': {
+        applyMessage(await restoreMessage(id))
+        showToast('已恢复')
+        break
+      }
+      case 'regenerate': {
+        const following = messages.slice(index + 1)
+        setPendingConfirm({
+          kind: 'regenerate',
+          ids: following.map((m) => m.id),
+          text: `从这条重新生成？会移除其后的 ${following.length} 条消息，且不可恢复。`,
+          index,
+        })
+        break
+      }
+      case 'delete':
+        setPendingConfirm({ kind: 'delete', ids: [id], text: '删除这条消息？此操作不可恢复。' })
+        break
+      default:
+        break
+    }
+  }
+
+  async function confirmPending(): Promise<void> {
+    const pending = pendingConfirm
+    if (pending === null) return
+    setPendingConfirm(null)
+    try {
+      if (pending.kind === 'recall') {
+        for (const id of pending.ids) applyMessage(await recallMessage(id))
+        showToast('已撤回')
+        return
+      }
+      if (pending.kind === 'regenerate') {
+        // 先把历史算出来再删：删完 `messages` 就成了被截断的那份，没法再当上下文用
+        const history = historyUpTo(messages, pending.index)
+        await deleteMessages(pending.ids)
+        setMessages((prev) => prev.filter((m) => !pending.ids.includes(m.id)))
+        exitSelectMode()
+        await runGeneration(history, null)
+        return
+      }
+      await deleteMessages(pending.ids)
+      setMessages((prev) => prev.filter((m) => !pending.ids.includes(m.id)))
+      showToast(pending.ids.length > 1 ? `已删除 ${pending.ids.length} 条` : '已删除')
+      exitSelectMode()
+    } catch (err) {
+      log.error('消息操作失败', err)
+      setErrorText(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  /**
+   * 保存编辑。以气泡自带的 id 为准（而不是页面级的 `editingId`）——
+   * 两者本该一致，但万一编辑期间会话切了，写错地方比写不进去糟得多。
+   *
+   * 只改这一条，**不碰后续** —— SPEC §2.3.4 定的是「不自动删除、不自动重生成后续」；
+   * 要截断后续得走菜单里的「从这条重新生成」，那是个显式动作。
+   */
+  async function saveEditFor(id: string): Promise<void> {
+    const text = editDraft
+    setEditingId(null)
+    setEditDraft('')
+    try {
+      applyMessage(await editMessage(id, text))
+    } catch (err) {
+      log.error('编辑消息失败', err)
+      setErrorText(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   const items = useMemo<ChatItem[]>(
     () =>
       messages.map((message, index) => ({
@@ -424,11 +536,33 @@ export function ChatWindowPage() {
   // 刻意不做 memo：这些回调都读最新 state，缓存住反而会闭包读到旧数组
   const actions: BubbleActions = {
     busy: sending,
+    selectMode,
+    editDraft,
     onReroll: (id) => void reroll(id),
     onResend: (id) => void resend(id),
     onSelectVersion: (id, index) => void selectVersion(id, index),
+    onOpenMenu: (id) => setSheetFor(id),
+    onToggleSelect: toggleSelect,
+    onEditDraftChange: setEditDraft,
+    onEditSave: (id) => void saveEditFor(id),
+    onEditCancel: () => {
+      setEditingId(null)
+      setEditDraft('')
+    },
   }
-  const renderItem = useCallback((item: ChatItem) => <ChatBubble item={item} actions={actions} />, [actions])
+
+  const renderItem = useCallback(
+    (item: ChatItem) => (
+      <ChatBubble
+        item={item}
+        actions={actions}
+        selected={selectedIds.has(item.message.id)}
+        editing={editingId === item.message.id}
+      />
+    ),
+    // actions 每次渲染都是新对象（刻意为之），所以这里等于「总是重渲」——正是我们要的
+    [actions, selectedIds, editingId],
+  )
 
   const canSend = draft.trim() !== '' && !sending
 
@@ -480,53 +614,142 @@ export function ChatWindowPage() {
         </div>
       )}
 
-      <div
-        className="safe-bottom flex shrink-0 items-end gap-2 border-t px-3 py-3"
-        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
-      >
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          rows={1}
-          placeholder="输入消息…"
-          className="max-h-32 flex-1 resize-none rounded-lg border px-3 py-2 text-sm outline-none"
+      {/* 二次确认条：撤回 / 删除 / 重新生成 三个入口共用。刻意不自动作废 ——
+          用户正在读确认语时按钮自己消失，比多留一会儿更恼人 */}
+      {pendingConfirm !== null && (
+        <div
+          data-testid="confirm-bar"
+          className="flex shrink-0 items-center gap-3 border-t px-3 py-2"
           style={{
             borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-bg)',
-            color: 'var(--color-text)',
+            backgroundColor: 'var(--color-surface-alt)',
           }}
-          onKeyDown={(e) => {
-            // isComposing：中文输入法选词时的回车不能当发送（否则一句话被切两半）
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault()
-              void send()
-            }
-          }}
-        />
-        {sending ? (
+        >
+          <span data-testid="confirm-text" className="flex-1 text-xs">
+            {pendingConfirm.text}
+          </span>
           <button
             type="button"
-            onClick={() => abortRef.current?.abort()}
-            className="rounded-full px-4 py-2 text-sm"
+            data-testid="confirm-yes"
+            onClick={() => void confirmPending()}
+            className="rounded px-3 py-1 text-xs"
+            style={{ backgroundColor: 'var(--color-danger)', color: 'var(--color-primary-contrast)' }}
+          >
+            确认
+          </button>
+          <button
+            type="button"
+            data-testid="confirm-no"
+            onClick={() => setPendingConfirm(null)}
+            className="rounded px-3 py-1 text-xs"
+            style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)' }}
+          >
+            取消
+          </button>
+        </div>
+      )}
+
+      {selectMode ? (
+        <div
+          data-testid="select-bar"
+          className="safe-bottom flex shrink-0 items-center gap-3 border-t px-3 py-3"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+        >
+          <span data-testid="select-count" className="flex-1 text-sm">
+            已选 {selectedIds.size} 项
+          </span>
+          <button
+            type="button"
+            data-testid="select-delete"
+            disabled={selectedIds.size === 0}
+            onClick={() =>
+              setPendingConfirm({
+                kind: 'delete',
+                ids: [...selectedIds],
+                text: `删除选中的 ${selectedIds.size} 条消息？此操作不可恢复。`,
+              })
+            }
+            className="rounded px-3 py-1.5 text-sm disabled:opacity-40"
+            style={{ backgroundColor: 'var(--color-danger)', color: 'var(--color-primary-contrast)' }}
+          >
+            删除
+          </button>
+          <button
+            type="button"
+            data-testid="select-cancel"
+            onClick={exitSelectMode}
+            className="rounded px-3 py-1.5 text-sm"
             style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text)' }}
           >
-            停止
+            取消
           </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void send()}
-            disabled={!canSend}
-            className="rounded-full px-4 py-2 text-sm disabled:opacity-40"
+        </div>
+      ) : (
+        <div
+          className="safe-bottom flex shrink-0 items-end gap-2 border-t px-3 py-3"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+        >
+          <textarea
+            data-testid="composer"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={1}
+            placeholder="输入消息…"
+            className="max-h-32 flex-1 resize-none rounded-lg border px-3 py-2 text-sm outline-none"
             style={{
-              backgroundColor: 'var(--color-primary)',
-              color: 'var(--color-primary-contrast)',
+              borderColor: 'var(--color-border)',
+              backgroundColor: 'var(--color-bg)',
+              color: 'var(--color-text)',
             }}
-          >
-            发送
-          </button>
-        )}
-      </div>
+            onKeyDown={(e) => {
+              // isComposing：中文输入法选词时的回车不能当发送（否则一句话被切两半）
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                void send()
+              }
+            }}
+          />
+          {sending ? (
+            <button
+              type="button"
+              onClick={() => abortRef.current?.abort()}
+              className="rounded-full px-4 py-2 text-sm"
+              style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text)' }}
+            >
+              停止
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void send()}
+              disabled={!canSend}
+              className="rounded-full px-4 py-2 text-sm disabled:opacity-40"
+              style={{
+                backgroundColor: 'var(--color-primary)',
+                color: 'var(--color-primary-contrast)',
+              }}
+            >
+              发送
+            </button>
+          )}
+        </div>
+      )}
+
+      {toast !== null && (
+        <div
+          data-testid="toast"
+          className="pointer-events-none fixed bottom-24 left-1/2 -translate-x-1/2 rounded-full px-3 py-1.5 text-xs"
+          style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text)' }}
+        >
+          {toast}
+        </div>
+      )}
+
+      <MessageActionSheet
+        actions={sheetActions}
+        onSelect={(id) => void runSheetAction(id)}
+        onClose={() => setSheetFor(null)}
+      />
     </div>
   )
 }

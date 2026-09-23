@@ -1,7 +1,11 @@
 /**
  * 聊天链路前端验收（无头 Edge + CDP 裸驱动）
  *
- * 覆盖：新建会话 → 发送 → 流式渲染 → 中止 → 刷新持久化 → 虚拟列表 → 控制台异常。
+ * 覆盖：新建会话 → 发送 → 流式渲染 → 中止 → 刷新持久化 → 虚拟列表 → 消息块按 kind 分发 →
+ *       分页加载 → 换一个 / 重发 → 消息对象操作（编辑 / 撤回 / 删除 / 多选 / 复制）→ 控制台异常。
+ *
+ * ⚠️ 「撤回不进模型上下文」这类语义**没有别的验法**：只能读 mock 上游记下的真实报文
+ *    （`GET /__last-body`）看客户端到底送了什么。UI 上把消息藏起来很容易，送没送出去才是关键。
  *
  * 前置（四件都得起着；agent-browser 在本沙箱会被 SIGTERM 拦，所以直接用 CDP 裸驱动）：
  *   server/ : node node_modules/tsx/dist/cli.mjs src/providers/mock-openai.ts   → :3334
@@ -17,6 +21,14 @@ import { fileURLToPath } from 'node:url'
 
 const CDP = process.env.VERIFY_CDP ?? 'http://127.0.0.1:9222'
 const APP = process.env.VERIFY_APP ?? 'http://127.0.0.1:5174'
+/** mock 上游地址：撤回 / 编辑的「到底送了什么」要读它的调试钩子 */
+const MOCK = process.env.VERIFY_MOCK ?? 'http://127.0.0.1:3334'
+/**
+ * 输入框一律显式指定 `[data-testid="composer"]`。
+ * ⚠️ **别再用 `document.querySelector('textarea')`** —— 消息内联编辑态会在 DOM **更靠前**的位置
+ * 放一个 textarea，裸选第一个会把字打进编辑框里，然后一路假失败。
+ */
+const COMPOSER = `document.querySelector('[data-testid="composer"]')`
 /** 截图落在 .workbuddy/（已被 .gitignore 忽略），仅供人工核对视觉 */
 const OUT = fileURLToPath(new URL('../../.workbuddy', import.meta.url))
 mkdirSync(OUT, { recursive: true })
@@ -105,8 +117,8 @@ async function waitFor(expression, label, timeout = 20000) {
 
 /** 像真人一样输入：聚焦后走 CDP 的 insertText，React 受控组件一定收得到 */
 async function type(text) {
-  await waitFor(`document.querySelector('textarea') !== null`, '输入框出现')
-  await evaluate(`(() => { document.querySelector('textarea').focus(); return 'ok' })()`)
+  await waitFor(`${COMPOSER} !== null`, '输入框出现')
+  await evaluate(`(() => { ${COMPOSER}.focus(); return 'ok' })()`)
   await sleep(200)
   await send('Input.insertText', { text })
   await sleep(450)
@@ -115,8 +127,25 @@ async function type(text) {
 async function sendButtonState() {
   return evaluate(`(() => {
     const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '发送')
-    const ta = document.querySelector('textarea')
+    const ta = ${COMPOSER}
     return { found: btn !== undefined, disabled: btn ? btn.disabled : null, draft: ta ? ta.value : null }
+  })()`)
+}
+
+/** 读 mock 上游记下的最近一次 chat 请求体 —— 「客户端到底送了什么」的唯一硬证据 */
+async function lastUpstreamBody() {
+  const res = await fetch(`${MOCK}/__last-body`)
+  if (!res.ok) throw new Error(`读 mock 报文失败：HTTP ${res.status}`)
+  return res.json()
+}
+
+/** 点「发送」按钮（到处都要用，收一处） */
+async function clickSend() {
+  return evaluate(`(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '发送')
+    if (!btn) return 'missing'
+    btn.click()
+    return 'ok'
   })()`)
 }
 
@@ -617,7 +646,307 @@ check(
   '',
 )
 
-/* ---------- 12. 控制台 ---------- */
+/* ---------- 12. 消息对象操作（SPEC §2.3） ---------- */
+
+// 拉高视口：这一步要在同一条会话里比对多轮消息，虚拟列表默认只渲染可视区
+await send('Emulation.setDeviceMetricsOverride', {
+  width: 420,
+  height: 1600,
+  deviceScaleFactor: 1,
+  mobile: false,
+})
+
+/** 按 `data-message-id` 精确定位一条消息的根节点 */
+const BY_ID = (id) => `document.querySelector('[data-message-id="${id}"]')`
+/**
+ * 按气泡内文定位。⚠️ 只用于 UI 现场产生的消息（那时拿不到 id），且正文必须够独特 ——
+ * `includes` 是子串匹配，'甲' 会同时命中 '甲和乙'。
+ */
+const BY_TEXT = (text) =>
+  `[...document.querySelectorAll('[data-message-id]')].find((el) => (el.innerText ?? '').includes(${JSON.stringify(text)}))`
+/**
+ * 气泡本体（挂指针 / 右键处理的那一层）。
+ * ⚠️ 事件必须派发到它身上：事件只会**往上冒**，派发在根节点上不会「往下」触发气泡的处理函数。
+ */
+const BUBBLE_OF = (rootExpr) => `${rootExpr}?.querySelector('.rounded-2xl')`
+/** 菜单项的 testid 白名单（`action-sheet` 与遮罩也以 action- 开头，得排掉） */
+const MENU_ITEMS = `[...document.querySelectorAll('[data-testid]')]
+  .filter((el) => /^action-(copy|edit|multi|reroll|resend|regenerate|recall|restore|delete)$/.test(el.dataset.testid))
+  .map((el) => el.innerText)`
+
+/** 右键气泡 → 等菜单出来。比长按稳定（不受计时器抖动影响），但走的是同一套回调 */
+async function openMenuAt(rootExpr, label) {
+  const fired = await evaluate(`(() => {
+    const bubble = ${BUBBLE_OF(rootExpr)}
+    if (!bubble) return 'missing'
+    bubble.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+    return 'ok'
+  })()`)
+  if (fired !== 'ok') throw new Error(`找不到气泡：${label}`)
+  await waitFor(`document.querySelector('[data-testid="action-sheet"]') !== null`, `菜单打开：${label}`)
+}
+
+async function menuAction(id) {
+  const clicked = await evaluate(`(() => {
+    const btn = document.querySelector('[data-testid="action-${id}"]')
+    if (!btn) return 'missing'
+    btn.click()
+    return 'ok'
+  })()`)
+  if (clicked !== 'ok') throw new Error(`菜单项不存在：${id}`)
+  await sleep(250)
+}
+
+/** 点二次确认的「确认」，把确认语回传出来供断言 */
+async function clickConfirm() {
+  await waitFor(`document.querySelector('[data-testid="confirm-yes"]') !== null`, '二次确认条出现')
+  const text = await evaluate(`document.querySelector('[data-testid="confirm-text"]').innerText`)
+  await evaluate(`(() => { document.querySelector('[data-testid="confirm-yes"]').click(); return 'ok' })()`)
+  await sleep(400)
+  return text
+}
+
+/** 写入受控 textarea：必须走原生 setter + input 事件，直接赋值 React 收不到 */
+async function setTextarea(selector, text) {
+  return evaluate(`(() => {
+    const el = document.querySelector(${JSON.stringify(selector)})
+    if (!el) return 'missing'
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
+    setter.call(el, ${JSON.stringify(text)})
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    return el.value
+  })()`)
+}
+
+const sessionOps = await newSession('对象操作')
+
+/* 12.1 先造两条真消息（走真实发送链路，才能验到「编辑后上下文里是什么」） */
+await type('第一句话')
+await clickSend()
+await waitFor(`document.body.innerText.includes('流式回复')`, '第一轮回复落地', 25000)
+await waitIdle('第一轮收尾')
+
+/* 12.2 长按打开菜单 —— 移动端主路径，不能只验右键 */
+const longPress = await evaluate(`(async () => {
+  const bubble = ${BUBBLE_OF(BY_TEXT('第一句话'))}
+  if (!bubble) return 'missing'
+  const r = bubble.getBoundingClientRect()
+  bubble.dispatchEvent(
+    new PointerEvent('pointerdown', { bubbles: true, clientX: r.left + 8, clientY: r.top + 8 }),
+  )
+  await new Promise((res) => setTimeout(res, 900))
+  return document.querySelector('[data-testid="action-sheet"]') !== null ? 'open' : 'closed'
+})()`)
+check('长按气泡打开消息菜单（移动端路径）', longPress === 'open', String(longPress))
+
+const menuLabels = JSON.parse(await evaluate(`JSON.stringify(${MENU_ITEMS})`))
+check(
+  '菜单项随对象状态生成（非末条用户消息）',
+  ['复制', '编辑', '多选', '从这条重新生成', '撤回', '删除'].every((label) =>
+    menuLabels.includes(label),
+  ) &&
+    !menuLabels.includes('重发') &&
+    !menuLabels.includes('换一个'),
+  menuLabels.join(' / '),
+)
+await evaluate(
+  `(() => { document.querySelector('[data-testid="action-sheet-backdrop"]').click(); return 'ok' })()`,
+)
+await sleep(250)
+
+/* 12.3 编辑：保留原版本、可切回、不改后续（SPEC §2.3.4） */
+await openMenuAt(BY_TEXT('第一句话'), '第一句话')
+await menuAction('edit')
+await waitFor(`document.querySelector('[data-testid="edit-textarea"]') !== null`, '进入内联编辑')
+const prefill = await evaluate(`document.querySelector('[data-testid="edit-textarea"]').value`)
+check('编辑框预填当前正文', prefill === '第一句话', String(prefill))
+
+await setTextarea('[data-testid="edit-textarea"]', '第一句话（改过）')
+await evaluate(`(() => { document.querySelector('[data-testid="edit-save"]').click(); return 'ok' })()`)
+await waitFor(`document.body.innerText.includes('第一句话（改过）')`, '编辑后正文更新')
+
+const editedState = await evaluate(`(() => {
+  const text = document.body.innerText
+  return {
+    twoVersions: text.includes('2/2'),
+    mark: text.includes('已编辑'),
+    followed: text.includes('流式回复'),
+  }
+})()`)
+check('编辑后版本链变 2 条（原版本被保留）', editedState.twoVersions, JSON.stringify(editedState))
+check('编辑过的消息带可辨识标记', editedState.mark, '')
+check('编辑不改动后续对话（后续回复仍在）', editedState.followed, '')
+
+// 切回上一版：「原版本真的还在」的直接证据 —— 只看到 `2/2` 三个字说明不了这一点
+await evaluate(
+  `(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '‹').click(); return 'ok' })()`,
+)
+await waitFor(`document.body.innerText.includes('1/2')`, '切回编辑前的版本')
+const backToOld = await evaluate(`document.body.innerText.includes('第一句话（改过）')`)
+check('可切回编辑前的原版本', backToOld === false, `改后文本仍可见=${String(backToOld)}`)
+await evaluate(
+  `(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '›').click(); return 'ok' })()`,
+)
+await waitFor(`document.body.innerText.includes('第一句话（改过）')`, '切回编辑后的版本')
+
+/* 12.4 撤回：留痕、不进上下文、可恢复（SPEC §2.3.5） */
+await type('这句会被撤回')
+const replyCountBeforeRecall = await evaluate(`(document.body.innerText.match(/流式回复/g) ?? []).length`)
+await clickSend()
+await waitFor(
+  `(document.body.innerText.match(/流式回复/g) ?? []).length > ${replyCountBeforeRecall}`,
+  '撤回目标那一轮拿到回复',
+  25000,
+)
+await waitIdle('撤回轮收尾')
+
+await openMenuAt(BY_TEXT('这句会被撤回'), '这句会被撤回')
+await menuAction('recall')
+const recallConfirm = await clickConfirm()
+check(
+  '撤回需二次确认且说明「不再进上下文」',
+  recallConfirm.includes('撤回') && recallConfirm.includes('上下文'),
+  recallConfirm,
+)
+await waitFor(`document.querySelector('[data-testid="recalled"]') !== null`, '撤回痕迹出现')
+const recalledState = await evaluate(`(() => {
+  const mark = document.querySelector('[data-testid="recalled"]')
+  return {
+    mark: mark ? mark.innerText : null,
+    originalVisible: document.body.innerText.includes('这句会被撤回'),
+  }
+})()`)
+check(
+  '撤回留下「曾存在」痕迹且原文不再显示',
+  recalledState.mark !== null &&
+    recalledState.mark.includes('你撤回了一条消息') &&
+    recalledState.originalVisible === false,
+  JSON.stringify(recalledState),
+)
+
+/* 12.5 撤回不进模型上下文 —— 读 mock 上游的真实报文，这是该语义唯一的硬证据 */
+await type('撤回之后的新问题')
+const replyCountBeforeAsk = await evaluate(`(document.body.innerText.match(/流式回复/g) ?? []).length`)
+await clickSend()
+/**
+ * ⚠️ 点了发送**不能**直接 `waitIdle`：按钮要等 React 状态更新才变成「停止」，
+ * 立刻检查时它还是「发送」，于是 `waitIdle` 在按下的那一瞬间就返回 ——
+ * 紧接着读 `__last-body` 拿到的是**上一轮**的报文（上一轮里那句话当然还在）。
+ * 判据必须是「这一轮的回复已经落地」。
+ */
+await waitFor(
+  `(document.body.innerText.match(/流式回复/g) ?? []).length > ${replyCountBeforeAsk}`,
+  '撤回后新一轮拿到回复',
+  25000,
+)
+await waitIdle('撤回后新一轮收尾')
+const upstream = await lastUpstreamBody()
+const sentHistory = JSON.stringify(upstream.body?.messages ?? [])
+check('撤回的消息不进模型上下文（读 mock 真实报文）', !sentHistory.includes('这句会被撤回'), sentHistory.slice(0, 200))
+check('编辑后的正文反而进了上下文', sentHistory.includes('第一句话（改过）'), '')
+check('撤回不牵连其他历史', sentHistory.includes('撤回之后的新问题'), '')
+
+/* 12.6 撤回可恢复（撤回不是销毁） */
+await openMenuAt(BY_TEXT('撤回了一条消息'), '撤回态消息')
+const recalledMenu = JSON.parse(await evaluate(`JSON.stringify(${MENU_ITEMS})`))
+check(
+  '撤回态菜单只剩「恢复」与「删除」',
+  recalledMenu.join(' / ') === '恢复这条消息 / 删除',
+  recalledMenu.join(' / '),
+)
+await menuAction('restore')
+await waitFor(`document.body.innerText.includes('这句会被撤回')`, '恢复后正文回来')
+const restoredState = await evaluate(`(() => ({
+  originalVisible: document.body.innerText.includes('这句会被撤回'),
+  markGone: document.querySelector('[data-testid="recalled"]') === null,
+}))()`)
+check(
+  '撤回可恢复（原文回来、痕迹消失）',
+  restoredState.originalVisible && restoredState.markGone,
+  JSON.stringify(restoredState),
+)
+
+/* 12.7 删除 / 多选 / 复制 —— 用直接写库的消息，id 可控，定位不靠子串匹配 */
+await seedMessages(sessionOps, [
+  seedMessage('ops-del', 'assistant', [
+    { kind: 'text', order: 0, payload: { text: '待删除的消息甲' } },
+  ]),
+  seedMessage('ops-del2', 'user', [
+    { kind: 'text', order: 0, payload: { text: '待删除的消息乙' } },
+  ]),
+  seedMessage('ops-copy', 'assistant', [
+    { kind: 'text', order: 0, payload: { text: '待复制的消息丙' } },
+  ]),
+])
+await reloadAndWait(`document.body.innerText.includes('待复制的消息丙')`, '待操作消息回填')
+
+// 复制：剪贴板写入在无头环境需要显式授权 + 焦点模拟，否则 Chromium 直接拒
+await send('Page.bringToFront').catch(() => undefined)
+await send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => undefined)
+await send('Browser.grantPermissions', {
+  origin: APP,
+  permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'],
+}).catch(() => undefined)
+await openMenuAt(BY_ID('ops-copy'), 'ops-copy')
+await menuAction('copy')
+await waitFor(`document.body.innerText.includes('已复制')`, '复制反馈')
+const clip = await evaluate(`(async () => {
+  try {
+    return { ok: true, text: await navigator.clipboard.readText() }
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) }
+  }
+})()`)
+check(
+  '复制写入系统剪贴板且有明确反馈',
+  clip.ok === true && clip.text === '待复制的消息丙',
+  JSON.stringify(clip),
+)
+
+// 删除：物理删除 + 二次确认
+await openMenuAt(BY_ID('ops-del'), 'ops-del')
+await menuAction('delete')
+const deleteConfirm = await clickConfirm()
+check('删除需二次确认且说明不可恢复', deleteConfirm.includes('不可恢复'), deleteConfirm)
+await waitFor(
+  `document.body.innerText.includes('待删除的消息甲') === false`,
+  '删除生效',
+)
+check('删除后消息从界面移除', true, '')
+
+// 多选：点气泡勾选 → 批量删除（确认语必须说清条数）
+await openMenuAt(BY_ID('ops-del2'), 'ops-del2')
+await menuAction('multi')
+await waitFor(`document.querySelector('[data-testid="select-bar"]') !== null`, '进入多选模式')
+const selectOne = await evaluate(`document.querySelector('[data-testid="select-count"]').innerText`)
+check('进入多选时自动选中发起的那条', selectOne.includes('1 项'), selectOne)
+const pickedSecond = await evaluate(`(() => {
+  const bubble = ${BUBBLE_OF(BY_ID('ops-copy'))}
+  if (!bubble) return 'missing'
+  bubble.click()
+  return 'ok'
+})()`)
+await waitFor(
+  `document.querySelector('[data-testid="select-count"]').innerText.includes('2 项')`,
+  '勾选第二条',
+)
+check('点气泡即可勾选', pickedSecond === 'ok', String(pickedSecond))
+await evaluate(
+  `(() => { document.querySelector('[data-testid="select-delete"]').click(); return 'ok' })()`,
+)
+const batchConfirm = await clickConfirm()
+check('批量删除的确认语说清条数', batchConfirm.includes('2 条'), batchConfirm)
+await waitFor(
+  `document.body.innerText.includes('待删除的消息乙') === false &&
+   document.body.innerText.includes('待复制的消息丙') === false`,
+  '批量删除生效',
+)
+const selectBarGone = await evaluate(`document.querySelector('[data-testid="select-bar"]') === null`)
+check('批量删除后自动退出多选', selectBarGone, '')
+
+await send('Emulation.clearDeviceMetricsOverride')
+
+/* ---------- 13. 控制台 ---------- */
 const errors = consoleLogs.filter((l) => l.startsWith('[error]') || l.startsWith('[exception]'))
 check('控制台无异常', errors.length === 0, errors.slice(0, 3).join(' | '))
 

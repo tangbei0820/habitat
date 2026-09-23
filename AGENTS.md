@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar                                 |
-| 当前阶段 | **Phase 2 已完成**：十个 Home 生活模块、Dexie v7、备份 v5 与完整浏览器验收已收口；下一阶段 Phase 3A 长期记忆（Nocturne） |
+| 当前阶段 | **Phase 3A 施工中**：记忆链路（`MemoryProvider` → `ToolGateway` → Nocturne MCP）本地全链探针 24/24，客户端代码已用 Nocturne **官方只读 Demo** 打真实 server 验真 25/25（T-013）；**自部署实例尚未接** |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -161,119 +161,60 @@ habitat/
 
 ---
 
-## 6. 当前进度 & 维护约定
+## 6. 当前进度
 
-**已完成**
+### 当前状态
 
-- **Phase 0 全部完成**（2026-09-22）
-  - 骨架：`web/` `server/` `shared/` `docs/`、TS strict、`@shared` 别名、Vite proxy（`/api` → :3000）、本地 git
-  - 可视化三件套：① Home 外壳（10 个生活模块入口 + 分时欢迎语）② Chat（会话列表 + 聊天窗口壳，真实导航、Dexie 落库）③ 主题系统（深浅 CSS 变量 + 切换即时生效 + 跨刷新保持）
-  - 五 Tab 路由 + `AppShell` + 底部导航 + SafeArea（`viewport-fit=cover` / `interactive-widget=resizes-content`）
-  - MCP Gateway 最小可用：官方 SDK Streamable HTTP + 每 server 状态机 + `mcp_diagnostic_log` 全量留痕；`GET /api/health`、`GET /api/health/mcp`；开发用 mock MCP server（`npm run dev:mock-mcp`）
-  - 本地数据层 Dexie `version(1)`（`sessions` / `messages`）+ 启动水合失败拦截
+- Phase 0：✅ 完成
+- Phase 1 Chat MVP：✅ 完成
+- Phase 2 Home 基础数据链：✅ 完成
+- Phase 3A 长期记忆：🚧 一半（客户端链路已验，自部署实例未接）
+- Phase 3B Eventide：未开始
+- Phase 4 Life：未开始
+- Phase 5 高级能力：未开始
+- Phase 6 打磨：未开始
 
-- **Phase 1 · 切片一：通用 OpenAI 兼容层**（2026-09-22）
-  - `shared`：`LLMProvider` 接口族落地（`streamChat` 流式事件 / `listModels`）、`ApiProfile` + 脱敏视图 `ApiProfilePublic`、Provider 四个错误码
-  - `server`：`OpenAICompatProvider`（fetch + 自写 SSE 解析，含思维链、usage、tool_calls 透传、空闲超时、AbortSignal 取消）；`LlmRegistry` 方案注册表 + Adapter 工厂；`GET /api/providers`、`GET /api/providers/:id/models`、`POST /api/providers/:id/test`
-  - 密钥模型：方案只存 `keyRef`（环境变量名），真值只在服务端进程环境里，**永不下发前端**
-  - `server/.env` 现在真的会被读取（此前 `.env.example` 是摆设）
-  - 开发用 mock OpenAI 上游（`:3334`）+ 验收脚本 `scripts/probe-llm.ts`（20 项断言全过）
+**UX 收口横切（依 `PRODUCT_SPEC` §7）**：P0 🚧 第一批完成（消息对象操作）｜P1 未开始｜P2 未开始
 
-- **Phase 1 · 切片二：本地存储的聊天链路（SSE 端到端）**（2026-09-22）
-  - 契约：`shared/events.ts` 定义聊天流协议（`ChatStreamRequest` + `chat-delta` / `chat-usage` / `chat-done` / `chat-error`）
-  - `server`：`POST /api/chat`（SSE）—— 校验 → 转发 → 记账；**先取上游首个 chunk 再写响应头**，于是配置/鉴权/连通性错误走结构化 4xx/5xx，只有流中途故障才走 `chat-error` 事件；客户端断开即 abort 上游
-  - `server`：`usage_record` 表 + `db/usage.ts`（§6.2「每次调用强制落一条」，`day_key` 用本地时区）
-  - `web`：自写 SSE 客户端 `lib/chatStream.ts`（`EventSource` 不支持 POST，故用 fetch + ReadableStream）、本地仓储层 `db/chat.ts`、Dexie `version(2)`（补 `[sessionId+createdAt]` 复合索引，支撑按时间分页）
-  - `web`：聊天窗口真实发送 / 流式累加渲染 / 中止保留已收内容 / 错误提示 / 首条消息自动命名会话；流式中不写库，收尾才落一条
-  - `web`：自写不定高虚拟列表 `components/VirtualList.tsx`（实测高度缓存 + 二分定位 + 贴底跟随，§9 风险8）
-  - 会话窗口改为**沉浸式**：隐藏底部导航、自持滚动容器（否则 fixed 底栏会盖住输入区）；避让底栏改用 `--bottom-nav-height` token，去掉魔法数字 `pb-16`
-  - 前端端到端验收脚本 `web/scripts/verify-chat.mjs`（无头 Edge + CDP，13 项断言全过）
+### 当前施工点
 
-- **Phase 1 · 切片三：API 方案管理 UI**（2026-09-23）
-  - **方案权威源从环境变量换成服务端 SQLite**（`api_profile` / `api_secret` 两表；凭据独立成表，使「读方案」的路径不可能顺带读出密钥）。`HABITAT_LLM_PROFILES` 降级为**首次种子**（仅表为空时导入一次）
-  - `LlmRegistry` 换成读 DB，**对外接口一字未改**；凭据优先级 **`stored` > `env`**（UI 可为环境变量方案补填密钥）
-  - `db/profiles.ts` 仓储层：CRUD + 凭据 + `activate` 互斥 + 种子导入；删掉默认方案会自动顶上下一条
-  - 五个新端点：`POST /api/providers`、`PATCH /:id`、`DELETE /:id`、`POST /:id/activate`、`PUT|DELETE /:id/secret`。**密钥只进不出**（没有任何端点回读它）
-  - `shared`：`ApiProfilePublic` 加 `keySource`（`stored` / `env` / `missing` / `not-required`），消除 `hasKey` 的语义歧义
-  - `web`：设置页「API 方案」区块（`features/providers/`）—— 列表 + 行内表单 + 测试连接 + 设为默认 + 两步删除；表单主路径只暴露四项，`keyRef` 收进「高级」
-  - 验收：`server/scripts/probe-providers.ts`（46 项）+ `web/scripts/verify-providers.mjs`（22 项，连跑两次通过）
+**进行中：`PRODUCT_SPEC` 的 UX 收口（P0）** —— Phase 3A 停在一个干净检查点。
 
-- **Phase 1 · 切片四：消息块分发 + 分页加载 + 重发 / 换一个**（2026-09-23）
-  - `shared`：`MessageBlock` 从 `{ kind, payload: unknown }` 改成**可辨识联合**，8 种 kind 各定载荷契约（`text` / `html` / `image` / `audio` / `file` / `tool-result` / `widget` / `tab-group`），渲染器 switch 即收窄 payload
-  - `web`：新增 `features/chat/MessageBlocks.tsx` —— 按 kind 分发；`text` / `image` / `audio` / `file` / `tool-result` 真渲染，`html` / `widget` / `tab-group` 明确占位（**html 不直接注入**，等沙箱方案），运行时未知 kind 降级占位不崩页
-  - `web`：`VirtualList` 补 `onReachTop` 回调 + **向上插入的锚点补偿**（按 item key 定位锚点项还原 `scrollTop`，解决「prepend 后跳位」）；聊天页接 `listMessagesPage` 的 `before` 游标，滚到顶自动加载更早一页
-  - `web`：`db/chat.ts` 补 `addVersion` / `selectCandidateVersion`（版本历史 + `blocks` 投影同步，超 `MAX_CANDIDATES` 淘汰最旧非展示项）；`ChatWindowPage` 抽出 `runGeneration` 供 发送 / 重发 / 换一个 复用，气泡下方给 `‹ n/N ›` 候选导航 + 「换一个」（末条 AI 回复）+「重发」（末条用户消息无回复时）
-  - 验收：`verify-chat.mjs` 扩到 **35 项全过**（含块分发 8 种、分页 `3408 → 6934 → 7334` 且锚定后 `scrollTop=3840`、换一个记两个版本并可切回、重发新增一条回复）；`verify-providers.mjs` 回归 22 项通过
+- ✅ **P0 第一批「消息对象操作」已完成**：编辑（保留原版本，与「换一个」共用一套版本导航）/ 撤回（留痕、不进模型上下文、可恢复）/ 删除（物理删 + 二次确认）/ 多选批量删 / 复制，统一进「长按 + 右键 + `···`」同一个菜单
+- 🚧 **P0 续**：跨模块内容流转（消息收藏 → 收藏中心、收录至作品、图片加入相册）→ 会话置顶 / 分组 / 聊天设置入口
+  - ⚠️ **分组要动数据结构（Dexie v8）** —— 按 `docs/DATA_MODEL.md` §0 的顺序走
 
-- **Phase 1 · 切片五（收尾）：诊断日志查询 + 设置页时间线**（2026-09-23）
-  - `shared`：`McpDiagnosticEntry` / `McpDiagnosticQuery` / `McpDiagnosticPage`；`handshake` 筛选是**三态**（不传 / 仅握手 / 仅工具调用）
-  - `server`：`GET /api/diagnostics/mcp`（`serverId` / `handshake` / `errorsOnly` / `limit` / `before`）—— 只读、字段**原样下发**；按 `id` 倒序、`limit+1` 判断 `hasMore`、`total` + `errorCount` 一次聚合；**游标不参与计数**，翻页时 `total` 不会越翻越小
-  - `server`：补 `(server_id, id)` / `(handshake, id)` 索引 + `error IS NOT NULL` 部分索引；新增 `lib/errors.ts` 的 `RequestError`，让参数校验错误不再落成 500
-  - `web`：设置页「诊断日志」时间线（`features/diagnostics/DiagnosticPanel.tsx`）—— 统计行 + 服务 / 阶段 / 只看错误三个筛选 + 「加载更早的记录」；筛选与翻页全交服务端
-  - 验收：`server/scripts/probe-diagnostics.ts`（**48 项**，连跑两次通过）+ `web/scripts/verify-diagnostics.mjs`（**36 项**）
+**Phase 3A（暂停中，未结清）**
 
-- **Phase 1 收尾补给：审查并修完一批未提交改动**（2026-09-23，T-008）
-  - 审查抓到 **1 处阻断**（`main.ts` 导入不存在的 `pruneMcpDiagnostics` → 服务端启动即 `SyntaxError`）、**2 处编译错**（`toPublic` 缺 `streamOptions`；`addVersion(targetId)` 未收窄类型）、**2 处「看着做了、其实没做」**（`streamOptions` 只有列没人读、`app_kv` 表无生产者）
-  - `streamOptions` **全链打通**（仓储四个读写点 + env 种子解析 + 脱敏视图 + 适配器按方案决定发不发 + 路由校验 + 表单开关）；验收断言的是**真实报文**（mock 上游新增 `GET /__last-body` 调试钩子）
-  - `app_kv` 落地：`importProfiles` 判据换成持久标记，**删光方案重启不再让 env 种子复活**
-  - 诊断保留策略补上实现：`pruneMcpDiagnostics`（保留最近 5000 条，走主键水位线），启动时裁一次
-  - Node 版本约束机器化收尾：`.nvmrc` + `engines: "^20"` + `index.ts` 纯门禁（`main.ts` 装本体）；⚠️ 解析 `engines` **不能把 `<` 上界当允许值**（`>=20 <21` 会放行 Node 21）
-  - `CORS_ORIGIN` 支持白名单（默认仍全开）、`.env.example` 补齐；`favicon` / Router future flags / 备份导出 / 流式草稿 / 撞毫秒漏条 / 删除确认 / 模块名单一来源 / 底栏高度实测 —— 这批待优化全部收口
-  - 验收：`probe-diag-retention` **15/15**、`probe-llm` **32/32**、`probe-providers` **52/52**（空库与有方案各跑一次）、`probe-diagnostics` **48/48**、三条前端验收 **36 / 22 / 36** 全过
-  - ⚠️ **编辑工具会偶发「报成功但没落盘」**：本轮有 4 次。改完关键处**必须 grep 回读**，别信返回消息
+- MemoryProvider → ToolGateway → Nocturne MCP 已落地；Nocturne 官方只读 Demo 已真实验通
+- 自部署 Nocturne 实例仍需验证 Bearer Token / Namespace / Caddy / 内网回源
 
-**Phase 1（Chat MVP）已完成**
+### 当前产品状态
 
-- **Phase 2 · 第一批：留言板 / 愿望清单 / 倒数日**（2026-09-23）
-  - `shared`：`Moment` / `WishlistItem` / `CountdownDay` 本地实体契约
-  - `web`：Dexie v4 三表 + `db/home.ts` 仓储层；三个模块的新增 / 状态 / 二次确认删除 / 加载空态错误态
-  - 备份升 v2 并保留 v1 导入兼容；`verify-home.mjs` 9/9
-  - 交接复核同时修掉 `verify-chat.mjs` “新建会话路径”竞态，复验 36/36
+已完成一次本地验房，并完成 `PRODUCT_SPEC` 的 **P0 第一批收口**（消息对象操作）。
 
-- **Phase 2 · 第二批：日记 + 收藏**（2026-09-23）
-  - `shared`：`Diary` + 统一 `Bookmark(targetType + targetId)` 契约；`web`：Dexie v5 两表与仓储层
-  - 日记支持新增 / 编辑 / 二次确认删除；收藏先落外部链接入口，HTTP(S) 校验 + 复合唯一索引去重
-  - 备份升 v3，保持 v1/v2 导入兼容并拒绝备份里的危险链接协议
-  - 验收：`verify-home.mjs` 14/14，`verify-chat.mjs` 36/36
+**产品行为的权威是 `docs/PRODUCT_SPEC.md`**（不再是「实现即定义」）；
+现有实现与产品定义之间的差异清单与进度见 **`docs/TASKS.md` → 「PRODUCT_SPEC 差异」**。
 
-- **Phase 2 · 第三批：作品 + 相册**（2026-09-23）
-  - `shared`：`Artwork` / `Photo` 契约；`web`：Dexie v6 两表与仓储层
-  - 作品支持新增 / 编辑 / 二次确认删除与安全外链；相册保存真实图片，限 PNG / JPEG / WebP / GIF、单张 3 MB，并核对 base64 真实体积
-  - 备份升 v4，保持 v1–v3 导入兼容；危险协议、非白名单 / 超限 / 体积不符图片在写库前拒绝
-  - 验收：`verify-home.mjs` 18/18，`verify-chat.mjs` 36/36
+界面仍属 MVP 级简单 UI —— `docs/UI_DESIGN.md` 被补充前不堆视觉细节（铁律 6）。
 
-- **Phase 2 · 第四批（收尾）：读书 + 音乐 + 学习**（2026-09-23）
-  - `shared`：`ReadingNote` / `MusicTrack` / `StudyRecord`；`web`：Dexie v7 三表与仓储层
-  - 三模块均支持新增 / 编辑 / 二次确认删除；音乐外链限 HTTP(S)，学习时长限 1–1440 分钟整数
-  - 备份升 v5，十类 Home 数据原子恢复并保持 v1–v4 导入兼容
-  - 验收：`verify-home.mjs` 23/23，`verify-chat.mjs` 36/36
+### 下一步
 
-**Phase 2（Home 生活模块）已完成**
+1. **P0 续**：先做「跨模块内容流转」（消息 → 收藏 / 作品 / 相册），再做会话置顶 / 分组 / 聊天设置入口
+2. P0 走完再转 P1，之后回到 Phase 3B（自部署 Nocturne 的 Token / Namespace / Caddy / 回源验证）
 
-**下一步**：Phase 3A 长期记忆接入（Nocturne，经 MCP Gateway 单通道）。
+动手前：先读 `PRODUCT_SPEC` 对应章节 + `TASKS.md` 待优化清单，再核对 `DATA_MODEL.md` 是否要升 Dexie 版本。
 
-**本地验收方式**
+### 维护约定
 
-- 三件套：`npm run dev:mock-mcp`（:3333）+ `npm run dev:server`（:3000）+ `npm run dev:web`（:5173）
-- 验证 MCP 客户端链路：`npx tsx scripts/probe-mock.ts`（在 `server/` 下执行）
-- 验证 LLM Adapter：`npm run dev:mock-openai`（:3334）+ `npx tsx scripts/probe-llm.ts`（32 项）
-- 验证方案路由：起 mock 上游 + server 后 `npx tsx scripts/probe-providers.ts`（52 项断言）
-- 验证诊断端点：起 server（自己指定 `HABITAT_DB_PATH`）后 `npx tsx scripts/probe-diagnostics.ts`（48 项断言）
-- 验证诊断保留策略：`npx tsx scripts/probe-diag-retention.ts`（15 项断言，**自带一次性临时库，不需要 server**，也不碰真实记录）
-- 端到端（前端）：`node web/scripts/verify-chat.mjs`（36 项）/ `node web/scripts/verify-providers.mjs`（22 项）/ `node web/scripts/verify-diagnostics.mjs`（36 项）/ `node web/scripts/verify-home.mjs`（23 项）（前置条件见各自文件头注释）
-- ⚠️ **`verify-diagnostics.mjs` 要用 Node ≥ 22 跑**：它用内置 `WebSocket` 驱动 CDP、用内置 `node:sqlite` 写 fixture（刻意避开 `better-sqlite3` —— 那是 Node 20 的 ABI）
-- ⚠️ **跑 `server` 必须用 Node 20**：`better-sqlite3` 原生模块的 ABI 与安装时的 Node 绑定，
-  用其它版本会 `ERR_DLOPEN_FAILED`（详见 `README.md` 环境要求）
-- ⚠️ **端到端验收务必换端口**（例如 server 3200 / vite 5274 / CDP 9333），别复用你正在跑的实例 ——
-  验收会重建数据库文件，在跑的那个进程会握着一个「幽灵文件」，读写全对不上
-- ⚠️ **起 vite 加 `--host 127.0.0.1`**：默认 `localhost` 在 Windows 上解析到 `::1`，脚本用 `127.0.0.1` 会连不上（症状：`curl` 返回 `000`，而 vite 日志写着 listening）
-- ⚠️ **后台进程在同一终端命令结束后会被回收**：起 mock / server 与执行验收脚本要写在同一条命令里；
-  整条流水线较长时用「后台任务 + 输出落日志文件」，再另开命令 tail，别硬塞进一条前台命令（会被超时杀掉且输出全丢）
+- **每完成一次任务** → 先按顺序追加 `docs/TASKS.md` 一条记录（已完成 + 待优化），再进入下一进程
+- **每完成一个 Phase** → 更新本文件 §6 + 追加 `docs/CHANGELOG.md`
+- **每新增一个外部参考项目** → 补进 `docs/REFERENCES.md`
+- **新增 / 修改接口** → 同步 `docs/API.md`
+- **产品定义或架构有变更** → 先改 `docs/PRODUCT_SPEC.md` / 技术方案，再同步本文件
 
-**维护约定**
+### 详细记录去哪看
 
-- **每完成一次任务 → 先按顺序追加 `docs/TASKS.md` 一条记录**（已完成 + 待优化），再进入下一进程
-- 每完成一个 Phase → 更新本文档 §6 + 追加 `docs/CHANGELOG.md`
-- 每新增一个外部参考项目 → 补进 `docs/REFERENCES.md`
-- 新增 / 修改接口 → 同步 `docs/API.md`
-- 架构有变更 → **先改技术方案**，再同步本文档
+- 施工记录与待优化 → `docs/TASKS.md`
+- 版本历史 → `docs/CHANGELOG.md`
+- 本地启动与验收命令 → `README.md`（含 Node 版本双轨约束、端口隔离等前置条件）
