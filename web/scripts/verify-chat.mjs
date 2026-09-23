@@ -2,7 +2,7 @@
  * 聊天链路前端验收（无头 Edge + CDP 裸驱动）
  *
  * 覆盖：新建会话 → 发送 → 流式渲染 → 中止 → 刷新持久化 → 虚拟列表 → 消息块按 kind 分发 →
- *       分页加载 → 换一个 / 重发 → 消息对象操作（编辑 / 撤回 / 删除 / 多选 / 复制）→ 控制台异常。
+ *       分页加载 → 换一个 / 重发 → 消息对象操作 → 跨模块收录（收藏 / 作品 / 相册）→ 控制台异常。
  *
  * ⚠️ 「撤回不进模型上下文」这类语义**没有别的验法**：只能读 mock 上游记下的真实报文
  *    （`GET /__last-body`）看客户端到底送了什么。UI 上把消息藏起来很容易，送没送出去才是关键。
@@ -671,7 +671,7 @@ const BY_TEXT = (text) =>
 const BUBBLE_OF = (rootExpr) => `${rootExpr}?.querySelector('.rounded-2xl')`
 /** 菜单项的 testid 白名单（`action-sheet` 与遮罩也以 action- 开头，得排掉） */
 const MENU_ITEMS = `[...document.querySelectorAll('[data-testid]')]
-  .filter((el) => /^action-(copy|edit|multi|reroll|resend|regenerate|recall|restore|delete)$/.test(el.dataset.testid))
+  .filter((el) => /^action-(copy|edit|bookmark|artwork|album|multi|reroll|resend|regenerate|recall|restore|delete)$/.test(el.dataset.testid))
   .map((el) => el.innerText)`
 
 /** 右键气泡 → 等菜单出来。比长按稳定（不受计时器抖动影响），但走的是同一套回调 */
@@ -742,9 +742,10 @@ check('长按气泡打开消息菜单（移动端路径）', longPress === 'open
 const menuLabels = JSON.parse(await evaluate(`JSON.stringify(${MENU_ITEMS})`))
 check(
   '菜单项随对象状态生成（非末条用户消息）',
-  ['复制', '编辑', '多选', '从这条重新生成', '撤回', '删除'].every((label) =>
+  ['复制', '编辑', '收藏', '收录至作品', '多选', '从这条重新生成', '撤回', '删除'].every((label) =>
     menuLabels.includes(label),
   ) &&
+    !menuLabels.includes('加入相册') &&
     !menuLabels.includes('重发') &&
     !menuLabels.includes('换一个'),
   menuLabels.join(' / '),
@@ -943,6 +944,134 @@ await waitFor(
 )
 const selectBarGone = await evaluate(`document.querySelector('[data-testid="select-bar"]') === null`)
 check('批量删除后自动退出多选', selectBarGone, '')
+
+/* 12.8 跨模块内容流转：原位收录、来源追溯、按类型出菜单、重复与失败反馈 */
+const sessionFlow = await newSession('跨模块内容流转')
+const GIF_1PX = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+await seedMessages(sessionFlow, [
+  seedMessage('flow-text', 'assistant', [
+    { kind: 'text', order: 0, payload: { text: '值得长期留下的跨模块内容' } },
+  ]),
+  seedMessage('flow-component', 'assistant', [
+    { kind: 'widget', order: 0, payload: { title: '行程卡片', source: 'mock-component' } },
+  ]),
+  seedMessage('flow-image', 'assistant', [
+    { kind: 'text', order: 0, payload: { text: '一张聊天图片' } },
+    { kind: 'image', order: 1, payload: { url: GIF_1PX, alt: '一像素纪念照' } },
+  ]),
+  seedMessage('flow-bad-image', 'assistant', [
+    { kind: 'image', order: 0, payload: { url: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=', alt: '不支持的 SVG' } },
+  ]),
+])
+await reloadAndWait(`document.body.innerText.includes('值得长期留下的跨模块内容')`, '跨模块消息回填')
+
+await openMenuAt(BY_ID('flow-text'), 'flow-text')
+const textFlowMenu = JSON.parse(await evaluate(`JSON.stringify(${MENU_ITEMS})`))
+check(
+  '普通消息显示收藏 / 作品，但不显示加入相册',
+  textFlowMenu.includes('收藏') && textFlowMenu.includes('收录至作品') && !textFlowMenu.includes('加入相册'),
+  textFlowMenu.join(' / '),
+)
+await menuAction('bookmark')
+await waitFor(`document.body.innerText.includes('已加入收藏')`, '收藏成功反馈')
+check('聊天消息可从原位加入收藏', true, '')
+
+await openMenuAt(BY_ID('flow-text'), 'flow-text duplicate bookmark')
+await menuAction('bookmark')
+await waitFor(`document.body.innerText.includes('这条消息已经收藏过了')`, '重复收藏反馈')
+check('重复收藏有明确反馈', true, '')
+
+await openMenuAt(BY_ID('flow-text'), 'flow-text artwork')
+await menuAction('artwork')
+await waitFor(`document.body.innerText.includes('已收录至作品')`, '作品收录成功反馈')
+check('聊天消息可从原位收录至作品', true, '')
+
+await openMenuAt(BY_ID('flow-text'), 'flow-text duplicate artwork')
+await menuAction('artwork')
+await waitFor(`document.body.innerText.includes('这条消息已经收录到作品了')`, '重复作品反馈')
+check('重复收录作品有明确反馈', true, '')
+
+await openMenuAt(BY_ID('flow-component'), 'flow-component')
+await menuAction('artwork')
+await waitFor(`document.body.innerText.includes('已收录至作品')`, '组件收录成功反馈')
+check('组件消息可收录至作品', true, '')
+
+await openMenuAt(BY_ID('flow-image'), 'flow-image')
+const imageFlowMenu = JSON.parse(await evaluate(`JSON.stringify(${MENU_ITEMS})`))
+check('只有图片消息出现加入相册', imageFlowMenu.includes('加入相册'), imageFlowMenu.join(' / '))
+await menuAction('album')
+await waitFor(`document.body.innerText.includes('已加入相册 1 张')`, '相册收录成功反馈')
+check('聊天图片可从原位加入相册', true, '')
+
+await openMenuAt(BY_ID('flow-image'), 'flow-image duplicate photo')
+await menuAction('album')
+await waitFor(`document.body.innerText.includes('这张图片已经加入相册了')`, '重复图片反馈')
+check('重复加入相册有明确反馈', true, '')
+
+await openMenuAt(BY_ID('flow-bad-image'), 'flow-bad-image')
+await menuAction('album')
+await waitFor(`document.body.innerText.includes('聊天图片不是可收录的')`, '图片失败反馈')
+check('不支持的聊天图片给出失败原因', true, '')
+
+const flowStored = await evaluate(`(async () => {
+  const db = await new Promise((res, rej) => {
+    const req = indexedDB.open('habitat-db')
+    req.onsuccess = () => res(req.result)
+    req.onerror = () => rej(req.error)
+  })
+  const tx = db.transaction(['bookmarks', 'artworks', 'photos'], 'readonly')
+  const one = (req) => new Promise((res, rej) => { req.onsuccess = () => res(req.result ?? null); req.onerror = () => rej(req.error) })
+  const bookmark = await one(tx.objectStore('bookmarks').index('[targetType+targetId]').get(['chat-message', 'flow-text']))
+  const artwork = await one(tx.objectStore('artworks').get('artwork-chat-flow-text'))
+  const component = await one(tx.objectStore('artworks').get('artwork-chat-flow-component'))
+  const photo = await one(tx.objectStore('photos').get('photo-chat-flow-image-1'))
+  db.close()
+  return { bookmark, artwork, component, photo }
+})()`)
+check(
+  '收藏保存消息快照与来源会话',
+  flowStored.bookmark?.targetId === 'flow-text' &&
+    flowStored.bookmark?.sourceId === 'flow-text' &&
+    flowStored.bookmark?.sessionId === sessionFlow &&
+    flowStored.bookmark?.note?.includes('值得长期留下'),
+  JSON.stringify(flowStored.bookmark),
+)
+check(
+  '作品保存稳定快照与来源信息',
+  flowStored.artwork?.sourceId === 'flow-text' &&
+    flowStored.artwork?.sessionId === sessionFlow &&
+    flowStored.artwork?.description?.includes('值得长期留下'),
+  JSON.stringify(flowStored.artwork),
+)
+check(
+  '组件作品保存组件快照',
+  flowStored.component?.description?.includes('[组件] 行程卡片') &&
+    flowStored.component?.metadata?.sourceBlockKinds?.includes('widget'),
+  JSON.stringify(flowStored.component),
+)
+check(
+  '相册保存原图与消息 / block 来源',
+  flowStored.photo?.sourceId === 'flow-image' &&
+    flowStored.photo?.sessionId === sessionFlow &&
+    flowStored.photo?.imageDataUrl?.startsWith('data:image/gif;base64,') &&
+    flowStored.photo?.metadata?.sourceBlockOrder === 1,
+  JSON.stringify(flowStored.photo),
+)
+
+await evaluate(`(() => { history.pushState({}, '', '/home/bookmarks'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
+await waitFor(`document.body.innerText.includes('值得长期留下的跨模块内容')`, '收藏中心显示消息快照')
+const bookmarkSourceLink = await evaluate(`document.querySelector('a[href*="message=flow-text"]')?.getAttribute('href') ?? null`)
+check('收藏中心可查看原聊天来源', bookmarkSourceLink?.includes(`/chat/${sessionFlow}`) === true, String(bookmarkSourceLink))
+
+await evaluate(`(() => { history.pushState({}, '', '/home/works'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
+await waitFor(`document.body.innerText.includes('[组件] 行程卡片')`, '作品中心显示组件快照')
+const artworkSourceLink = await evaluate(`document.querySelector('a[href*="message=flow-component"]')?.getAttribute('href') ?? null`)
+check('作品中心可查看原聊天来源', artworkSourceLink?.includes(`/chat/${sessionFlow}`) === true, String(artworkSourceLink))
+
+await evaluate(`(() => { history.pushState({}, '', '/home/album'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
+await waitFor(`document.body.innerText.includes('一像素纪念照')`, '相册显示聊天图片')
+const photoSourceLink = await evaluate(`document.querySelector('a[href*="message=flow-image"]')?.getAttribute('href') ?? null`)
+check('相册可查看原聊天来源', photoSourceLink?.includes(`/chat/${sessionFlow}`) === true, String(photoSourceLink))
 
 await send('Emulation.clearDeviceMetricsOverride')
 

@@ -3,6 +3,7 @@ import {
   type Artwork,
   type ArtworkCategory,
   type Bookmark,
+  type ChatMessage,
   type CountdownDay,
   type Diary,
   type Moment,
@@ -18,6 +19,10 @@ import { db } from './db'
 
 function nowId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`
+}
+
+function isConstraintError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'name' in err && err.name === 'ConstraintError'
 }
 
 function requiredText(value: string, label: string): string {
@@ -184,6 +189,87 @@ export async function createExternalBookmark(title: string, href: string, note: 
   return item
 }
 
+const CHAT_SNAPSHOT_LIMIT = 3_000
+
+function clipped(value: string, limit: number): string {
+  const normalized = value.trim()
+  return normalized.length > limit ? `${normalized.slice(0, limit - 1)}…` : normalized
+}
+
+function sourceActor(message: ChatMessage): string {
+  if (message.role === 'user') return '你'
+  if (message.role === 'assistant') return '小栖'
+  if (message.role === 'system') return '系统'
+  return '工具'
+}
+
+/**
+ * 给跨模块条目保存一份稳定、纯文本的消息快照。
+ * HTML 只按原文保存、不渲染；图片只记可读说明，避免把 data URL 再复制一遍。
+ */
+function chatSnapshot(message: ChatMessage): string {
+  const parts = [...message.blocks]
+    .sort((a, b) => a.order - b.order)
+    .map((block): string => {
+      switch (block.kind) {
+        case 'text': return block.payload.text
+        case 'html': return `[HTML]\n${block.payload.html}`
+        case 'image': return `[图片] ${block.payload.alt?.trim() || '聊天图片'}`
+        case 'audio': return `[音频] ${block.payload.transcript?.trim() || '聊天音频'}`
+        case 'file': return `[文件] ${block.payload.name}`
+        case 'tool-result': return `[工具结果] ${block.payload.toolName}${block.payload.summary === undefined ? '' : `：${block.payload.summary}`}`
+        case 'widget': return `[组件] ${block.payload.title?.trim() || block.payload.source?.trim() || '未命名组件'}`
+        case 'tab-group': return `[组件组] ${block.payload.tabs.map((tab) => tab.label).join(' / ')}`
+      }
+    })
+    .filter((part) => part.trim() !== '')
+  return clipped(parts.join('\n\n'), CHAT_SNAPSHOT_LIMIT) || '（无可读文本的消息）'
+}
+
+function chatSourceMetadata(message: ChatMessage, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    sourceModule: 'chat',
+    sourceObjectType: 'chat-message',
+    sourceRole: message.role,
+    sourceCreatedAt: message.createdAt,
+    sourceBlockKinds: message.blocks.map((block) => block.kind),
+    ...extra,
+  }
+}
+
+function chatEntryTitle(message: ChatMessage, snapshot: string): string {
+  const firstLine = snapshot.split(/\r?\n/, 1)[0]?.replace(/^\[[^\]]+\]\s*/, '').trim() ?? ''
+  return clipped(`${sourceActor(message)}的消息 · ${firstLine || '聊天内容'}`, 120)
+}
+
+/** 从消息原位写入统一收藏；复合唯一索引仍是最后一道并发去重闸门。 */
+export async function createMessageBookmark(message: ChatMessage): Promise<Bookmark> {
+  const existing = await db.bookmarks.where('[targetType+targetId]').equals(['chat-message', message.id]).first()
+  if (existing !== undefined) throw new Error('这条消息已经收藏过了')
+  const at = Date.now()
+  const snapshot = chatSnapshot(message)
+  const item: Bookmark = {
+    id: nowId('bookmark'),
+    type: 'bookmark',
+    targetType: 'chat-message',
+    targetId: message.id,
+    title: chatEntryTitle(message, snapshot),
+    note: snapshot,
+    sourceId: message.id,
+    sessionId: message.sessionId,
+    metadata: chatSourceMetadata(message),
+    createdAt: at,
+    updatedAt: at,
+  }
+  try {
+    await db.bookmarks.add(item)
+  } catch (err) {
+    if (isConstraintError(err)) throw new Error('这条消息已经收藏过了')
+    throw err
+  }
+  return item
+}
+
 export async function deleteBookmark(id: string): Promise<void> {
   await db.bookmarks.delete(id)
 }
@@ -226,6 +312,41 @@ export async function createArtwork(
     updatedAt: at,
   }
   await db.artworks.add(item)
+  return item
+}
+
+function artworkCategoryFor(message: ChatMessage): ArtworkCategory {
+  if (message.blocks.some((block) => block.kind === 'image' || block.kind === 'html' || block.kind === 'widget' || block.kind === 'tab-group')) return 'visual'
+  if (message.blocks.some((block) => block.kind === 'audio')) return 'audio'
+  if (message.blocks.some((block) => block.kind === 'text')) return 'writing'
+  return 'other'
+}
+
+/** 收录整条消息（含组件摘要）为作品快照；消息 id 同时承担稳定去重身份。 */
+export async function createMessageArtwork(message: ChatMessage): Promise<Artwork> {
+  const id = `artwork-chat-${message.id}`
+  if (await db.artworks.get(id) !== undefined) throw new Error('这条消息已经收录到作品了')
+  const at = Date.now()
+  const snapshot = chatSnapshot(message)
+  const item: Artwork = {
+    id,
+    type: 'artwork',
+    title: chatEntryTitle(message, snapshot),
+    category: artworkCategoryFor(message),
+    description: snapshot,
+    externalUrl: null,
+    sourceId: message.id,
+    sessionId: message.sessionId,
+    metadata: chatSourceMetadata(message),
+    createdAt: at,
+    updatedAt: at,
+  }
+  try {
+    await db.artworks.add(item)
+  } catch (err) {
+    if (isConstraintError(err)) throw new Error('这条消息已经收录到作品了')
+    throw err
+  }
   return item
 }
 
@@ -294,6 +415,95 @@ export async function createPhoto(input: {
   }
   await db.photos.add(item)
   return item
+}
+
+function localDateKey(timestamp: number): string {
+  const date = new Date(timestamp)
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function blobAsDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('无法读取聊天图片'))
+    reader.onerror = () => reject(reader.error ?? new Error('无法读取聊天图片'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function loadChatImage(url: string): Promise<{ dataUrl: string; mimeType: PhotoMime; sizeBytes: number }> {
+  let parsed: URL
+  try {
+    parsed = new URL(url, window.location.href)
+  } catch {
+    throw new Error('聊天图片地址无效，无法加入相册')
+  }
+  if (!['data:', 'blob:', 'http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('聊天图片来源不受支持，无法加入相册')
+  }
+  let response: Response
+  try {
+    response = await fetch(url)
+  } catch {
+    throw new Error('无法读取聊天图片，可能是图片来源禁止跨域访问')
+  }
+  if (!response.ok) throw new Error(`无法读取聊天图片（${response.status}）`)
+  const blob = await response.blob()
+  const mimeType = blob.type.split(';', 1)[0]?.toLowerCase() ?? ''
+  if (!PHOTO_MIMES.includes(mimeType as PhotoMime)) throw new Error('聊天图片不是可收录的 PNG、JPEG、WebP 或 GIF')
+  if (blob.size <= 0 || blob.size > MAX_PHOTO_BYTES) throw new Error('聊天图片大小必须在 3 MB 以内')
+  return { dataUrl: await blobAsDataUrl(blob), mimeType: mimeType as PhotoMime, sizeBytes: blob.size }
+}
+
+export interface MessagePhotoCaptureResult {
+  added: Photo[]
+  skipped: number
+}
+
+/**
+ * 把消息里的所有顶层图片一次加入相册。先把图片全部读完再开事务，避免第二张失败时只留下第一张。
+ * 以「消息 id + block.order」生成稳定主键，所以重复点击不会产生副本。
+ */
+export async function createMessagePhotos(message: ChatMessage): Promise<MessagePhotoCaptureResult> {
+  const images = message.blocks.filter((block) => block.kind === 'image')
+  if (images.length === 0) throw new Error('这条消息里没有可加入相册的图片')
+  const prepared = await Promise.all(images.map(async (block, index) => {
+    const loaded = await loadChatImage(block.payload.url)
+    const at = Date.now()
+    const title = clipped(block.payload.alt?.trim() || `聊天图片 ${index + 1}`, 120)
+    const item: Photo = {
+      id: `photo-chat-${message.id}-${block.order}`,
+      type: 'photo',
+      title,
+      caption: `来自${sourceActor(message)}的聊天消息`,
+      imageDataUrl: loaded.dataUrl,
+      mimeType: loaded.mimeType,
+      sizeBytes: loaded.sizeBytes,
+      takenAt: localDateKey(message.createdAt),
+      sourceId: message.id,
+      sessionId: message.sessionId,
+      metadata: chatSourceMetadata(message, { sourceBlockKind: 'image', sourceBlockOrder: block.order }),
+      createdAt: at,
+      updatedAt: at,
+    }
+    return item
+  }))
+
+  const added: Photo[] = []
+  let skipped = 0
+  await db.transaction('rw', db.photos, async () => {
+    for (const item of prepared) {
+      if (await db.photos.get(item.id) !== undefined) {
+        skipped += 1
+      } else {
+        await db.photos.add(item)
+        added.push(item)
+      }
+    }
+  })
+  if (added.length === 0) throw new Error(images.length === 1 ? '这张图片已经加入相册了' : '这条消息里的图片已经全部加入相册了')
+  return { added, skipped }
 }
 
 export async function deletePhoto(id: string): Promise<void> {

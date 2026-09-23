@@ -151,8 +151,8 @@ interface MessageCandidate {
 |---|---|---|
 | 会话分组 | `ChatSession` 加 `groupId`，新增分组表 → Dexie v8 | SPEC §2.1.3 |
 | 日记权限模型 | `Diary` 加 `author`、可见性 / 锁定；新增「查看请求」实体 | SPEC §3.4 / §6.3 |
-| 作品来源引用 | 复用基座的 `sourceId` / `sessionId`，**不新增字段** | SPEC §3.6.3 |
-| 相册来源引用 | 同上 | SPEC §3.7.2 |
+| 作品来源引用 | 复用基座的 `sourceId` / `sessionId`，**不新增字段**；聊天来源已落地（T-016） | SPEC §3.6.3 |
+| 相册来源引用 | 同上；聊天图片来源与 block 位置已落地（T-016） | SPEC §3.7.2 |
 
 > ⚠️ 日记的「AI 决定允许 / 拒绝查看」需要 AI 侧决策能力，属 Eventide 与主动行为链路之后
 > （SPEC §3.4.5）。P0 只落**用户侧**（封面 + 请求入口 + 不可编辑），不留半截的假 AI 行为。

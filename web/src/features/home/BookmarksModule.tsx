@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { Bookmark } from '@shared/types'
 import { createExternalBookmark, deleteBookmark, listBookmarks } from '../../db/home'
+import { ContentSourceLink } from './ContentSourceLink'
 
 export function BookmarksModule() {
   const [items, setItems] = useState<Bookmark[]>([])
@@ -75,6 +76,7 @@ export function BookmarksModule() {
               ) : <p className="font-medium">{item.title}</p>}
               <p className="mt-1 break-all text-xs" style={{ color: 'var(--color-text-dim)' }}>{item.targetId}</p>
               {item.note !== null && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{item.note}</p>}
+              <ContentSourceLink item={item} />
               <div className="mt-3 flex justify-end">
                 <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} className="text-xs" style={{ color: deletingId === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deletingId === item.id ? '确认删除？' : '删除'}</button>
               </div>

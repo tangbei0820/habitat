@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { Artwork, ArtworkCategory } from '@shared/types'
 import { createArtwork, deleteArtwork, listArtworks, updateArtwork } from '../../db/home'
+import { ContentSourceLink } from './ContentSourceLink'
 
 const CATEGORY_LABELS: Record<ArtworkCategory, string> = {
   writing: '文字',
@@ -108,6 +109,7 @@ export function WorksModule() {
               </div>
               <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.description}</p>
               {item.externalUrl !== null && <a href={item.externalUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block break-all text-xs underline" style={{ color: 'var(--color-primary)' }}>打开作品链接</a>}
+              <ContentSourceLink item={item} />
               <div className="mt-3 flex justify-end gap-3 text-xs">
                 <button type="button" onClick={() => startEditing(item)} style={{ color: 'var(--color-primary)' }}>编辑</button>
                 <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deletingId === item.id ? '确认删除？' : '删除'}</button>

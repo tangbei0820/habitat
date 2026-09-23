@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { MAX_PHOTO_BYTES, type Photo, type PhotoMime } from '@shared/types'
 import { createPhoto, deletePhoto, listPhotos } from '../../db/home'
+import { ContentSourceLink } from './ContentSourceLink'
 
 const ALLOWED_MIMES: readonly PhotoMime[] = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 
@@ -123,6 +124,7 @@ export function AlbumModule() {
                 <h3 className="break-words text-sm font-medium">{item.title}</h3>
                 <time className="mt-1 block text-xs" style={{ color: 'var(--color-text-dim)' }}>{item.takenAt}</time>
                 {item.caption !== null && <p className="mt-2 break-words text-xs">{item.caption}</p>}
+                <ContentSourceLink item={item} />
                 <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} className="mt-3 text-xs" style={{ color: deletingId === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deletingId === item.id ? '确认删除？' : '删除'}</button>
               </div>
             </li>

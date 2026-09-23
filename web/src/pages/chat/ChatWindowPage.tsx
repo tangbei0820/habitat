@@ -11,6 +11,11 @@ import {
 } from '../../features/chat/ChatBubble'
 import { MessageActionSheet, type MessageAction } from '../../features/chat/MessageActionSheet'
 import {
+  createMessageArtwork,
+  createMessageBookmark,
+  createMessagePhotos,
+} from '../../db/home'
+import {
   addVersion,
   appendMessage,
   capReasoning,
@@ -386,6 +391,7 @@ export function ChatWindowPage() {
     const isUser = message.role === 'user'
     const isLast = messages[messages.length - 1]?.id === message.id
     const hasText = messageText(message) !== ''
+    const hasImage = message.blocks.some((block) => block.kind === 'image')
     const index = messages.findIndex((m) => m.id === message.id)
 
     if (message.recalledAt !== null) {
@@ -398,6 +404,9 @@ export function ChatWindowPage() {
     const items: MessageAction[] = []
     if (hasText) items.push({ id: 'copy', label: '复制' })
     items.push({ id: 'edit', label: '编辑' })
+    items.push({ id: 'bookmark', label: '收藏' })
+    items.push({ id: 'artwork', label: '收录至作品' })
+    if (hasImage) items.push({ id: 'album', label: '加入相册' })
     items.push({ id: 'multi', label: '多选' })
     // SPEC §2.3.3：AI 消息按当前状态追加「换一个 / 重发 / 切换历史候选」
     if (!isUser && isLast && hasText) items.push({ id: 'reroll', label: '换一个' })
@@ -434,6 +443,38 @@ export function ChatWindowPage() {
       case 'edit':
         setEditingId(id)
         setEditDraft(messageText(message))
+        break
+      case 'bookmark':
+        try {
+          await createMessageBookmark(message)
+          setErrorText(null)
+          showToast('已加入收藏')
+        } catch (err) {
+          // 重复收藏属于用户可恢复的业务反馈，不应污染「控制台零异常」基线
+          log.warn('收藏消息未完成', err)
+          setErrorText(err instanceof Error ? err.message : String(err))
+        }
+        break
+      case 'artwork':
+        try {
+          await createMessageArtwork(message)
+          setErrorText(null)
+          showToast('已收录至作品')
+        } catch (err) {
+          log.warn('收录消息至作品未完成', err)
+          setErrorText(err instanceof Error ? err.message : String(err))
+        }
+        break
+      case 'album':
+        try {
+          const result = await createMessagePhotos(message)
+          setErrorText(null)
+          const suffix = result.skipped > 0 ? `，${result.skipped} 张已存在` : ''
+          showToast(`已加入相册 ${result.added.length} 张${suffix}`)
+        } catch (err) {
+          log.warn('聊天图片加入相册未完成', err)
+          setErrorText(err instanceof Error ? err.message : String(err))
+        }
         break
       case 'multi':
         setSelectMode(true)
