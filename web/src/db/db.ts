@@ -1,11 +1,13 @@
 import Dexie, { type Table } from 'dexie'
 import type {
+  Artwork,
   Bookmark,
   ChatMessage,
   ChatSession,
   CountdownDay,
   Diary,
   Moment,
+  Photo,
   WishlistItem,
 } from '@shared/types'
 
@@ -28,6 +30,8 @@ export class HabitatDb extends Dexie {
   countdowns!: Table<CountdownDay, string>
   diaries!: Table<Diary, string>
   bookmarks!: Table<Bookmark, string>
+  artworks!: Table<Artwork, string>
+  photos!: Table<Photo, string>
 
   constructor() {
     super('habitat-db')
@@ -61,6 +65,18 @@ export class HabitatDb extends Dexie {
       countdowns: 'id, targetDate, createdAt',
       diaries: 'id, entryDate, createdAt, updatedAt',
       bookmarks: 'id, targetType, targetId, createdAt, &[targetType+targetId]',
+    })
+    // Phase 2 第三批：作品 + 相册。图片正文嵌在 Photo 中，表只索引元数据。
+    this.version(6).stores({
+      sessions: 'id, updatedAt, pinnedAt, archivedAt',
+      messages: 'id, sessionId, createdAt, [sessionId+createdAt+id]',
+      moments: 'id, createdAt, author',
+      wishlist: 'id, status, createdAt, updatedAt',
+      countdowns: 'id, targetDate, createdAt',
+      diaries: 'id, entryDate, createdAt, updatedAt',
+      bookmarks: 'id, targetType, targetId, createdAt, &[targetType+targetId]',
+      artworks: 'id, category, createdAt, updatedAt',
+      photos: 'id, takenAt, createdAt',
     })
   }
 }

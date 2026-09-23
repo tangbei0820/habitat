@@ -197,6 +197,30 @@ export interface Bookmark extends BaseObject {
   note: string | null
 }
 
+export type ArtworkCategory = 'writing' | 'visual' | 'audio' | 'other'
+
+export interface Artwork extends BaseObject {
+  type: 'artwork'
+  title: string
+  category: ArtworkCategory
+  description: string
+  externalUrl: string | null
+}
+
+export const MAX_PHOTO_BYTES = 3 * 1024 * 1024
+export type PhotoMime = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
+
+/** Phase 2 先以内联 data URL 保存，确保 IndexedDB 与 JSON 备份都能原样恢复。 */
+export interface Photo extends BaseObject {
+  type: 'photo'
+  title: string
+  caption: string | null
+  imageDataUrl: string
+  mimeType: PhotoMime
+  sizeBytes: number
+  takenAt: string
+}
+
 /* ---------- LLM 方案（§6.2 ApiProfile / §7.1 多方案管理） ---------- */
 
 /** 适配器类型。§7.1：以 OpenAI Chat Completions 兼容协议为最小公分母，后续可加原生适配器 */

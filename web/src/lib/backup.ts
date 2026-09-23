@@ -6,18 +6,21 @@
  * 导出**全量本地表**：个人数据量的场景，部分备份的取舍逻辑比全量更危险。
  */
 import type {
+  Artwork,
   Bookmark,
   ChatMessage,
   ChatSession,
   CountdownDay,
   Diary,
   Moment,
+  Photo,
   WishlistItem,
 } from '@shared/types'
+import { MAX_PHOTO_BYTES } from '@shared/types'
 import { db } from '../db/db'
 
 export const BACKUP_FORMAT = 'habitat-backup'
-export const BACKUP_VERSION = 3
+export const BACKUP_VERSION = 4
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -30,6 +33,8 @@ export interface HabitatBackup {
   countdowns: CountdownDay[]
   diaries: Diary[]
   bookmarks: Bookmark[]
+  artworks: Artwork[]
+  photos: Photo[]
 }
 
 export interface BackupCounts {
@@ -40,10 +45,12 @@ export interface BackupCounts {
   countdowns: number
   diaries: number
   bookmarks: number
+  artworks: number
+  photos: number
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, messages, moments, wishlist, countdowns, diaries, bookmarks] = await Promise.all([
+  const [sessions, messages, moments, wishlist, countdowns, diaries, bookmarks, artworks, photos] = await Promise.all([
     db.sessions.toArray(),
     db.messages.toArray(),
     db.moments.toArray(),
@@ -51,6 +58,8 @@ export async function exportAll(): Promise<HabitatBackup> {
     db.countdowns.toArray(),
     db.diaries.toArray(),
     db.bookmarks.toArray(),
+    db.artworks.toArray(),
+    db.photos.toArray(),
   ])
   return {
     format: BACKUP_FORMAT,
@@ -63,6 +72,8 @@ export async function exportAll(): Promise<HabitatBackup> {
     countdowns,
     diaries,
     bookmarks,
+    artworks,
+    photos,
   }
 }
 
@@ -137,6 +148,52 @@ function looksLikeBookmark(value: unknown): value is Bookmark {
   }
 }
 
+const ARTWORK_CATEGORIES = ['writing', 'visual', 'audio', 'other'] as const
+const PHOTO_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const
+const MAX_PHOTO_BASE64_LENGTH = Math.ceil(MAX_PHOTO_BYTES / 3) * 4
+
+function looksLikeArtwork(value: unknown): value is Artwork {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    value.type !== 'artwork' ||
+    typeof value.title !== 'string' ||
+    typeof value.description !== 'string' ||
+    !ARTWORK_CATEGORIES.includes(value.category as typeof ARTWORK_CATEGORIES[number]) ||
+    (value.externalUrl !== null && typeof value.externalUrl !== 'string')
+  ) return false
+  if (value.externalUrl === null) return true
+  try {
+    const url = new URL(value.externalUrl)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function looksLikePhoto(value: unknown): value is Photo {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    value.type !== 'photo' ||
+    typeof value.title !== 'string' ||
+    (value.caption !== null && typeof value.caption !== 'string') ||
+    !PHOTO_MIMES.includes(value.mimeType as typeof PHOTO_MIMES[number]) ||
+    !Number.isInteger(value.sizeBytes) ||
+    (value.sizeBytes as number) <= 0 ||
+    (value.sizeBytes as number) > MAX_PHOTO_BYTES ||
+    typeof value.takenAt !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value.takenAt) ||
+    typeof value.imageDataUrl !== 'string'
+  ) return false
+  const prefix = `data:${String(value.mimeType)};base64,`
+  if (!value.imageDataUrl.startsWith(prefix)) return false
+  const payload = value.imageDataUrl.slice(prefix.length)
+  if (payload.length === 0 || payload.length > MAX_PHOTO_BASE64_LENGTH || !/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) return false
+  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0
+  return Math.floor(payload.length * 3 / 4) - padding === value.sizeBytes
+}
+
 /**
  * 恢复备份：**整体替换**现有数据（导入语义是「回到备份那一刻」，不是合并）。
  * 先完整校验再动库 —— 校验不过一行都不写，避免半导入状态。
@@ -145,7 +202,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   if (!isRecord(raw) || raw.format !== BACKUP_FORMAT) {
     throw new Error('不是栖息地备份文件（缺少 format 标识）')
   }
-  if (raw.version !== 1 && raw.version !== 2 && raw.version !== BACKUP_VERSION) {
+  if (raw.version !== 1 && raw.version !== 2 && raw.version !== 3 && raw.version !== BACKUP_VERSION) {
     throw new Error(`备份版本不匹配：文件是 v${String(raw.version)}，当前支持 v1–v${BACKUP_VERSION}`)
   }
   if (!Array.isArray(raw.sessions) || !Array.isArray(raw.messages)) {
@@ -172,8 +229,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   }
 
   // v3 新增日记与收藏；v1/v2 导入时这两张表为空，继续遵守“整体替换”语义。
-  const diariesRaw = raw.version === 3 ? raw.diaries : []
-  const bookmarksRaw = raw.version === 3 ? raw.bookmarks : []
+  const diariesRaw = raw.version === 3 || raw.version === 4 ? raw.diaries : []
+  const bookmarksRaw = raw.version === 3 || raw.version === 4 ? raw.bookmarks : []
   if (!Array.isArray(diariesRaw) || !Array.isArray(bookmarksRaw)) {
     throw new Error('备份内容损坏：diaries / bookmarks 必须是数组')
   }
@@ -183,7 +240,19 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：存在无法识别的日记或收藏')
   }
 
-  await db.transaction('rw', [db.sessions, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks], async () => {
+  // v4 新增作品与相册；旧版导入时清空新表，保持整体替换的确定性。
+  const artworksRaw = raw.version === 4 ? raw.artworks : []
+  const photosRaw = raw.version === 4 ? raw.photos : []
+  if (!Array.isArray(artworksRaw) || !Array.isArray(photosRaw)) {
+    throw new Error('备份内容损坏：artworks / photos 必须是数组')
+  }
+  const artworks = artworksRaw.filter(looksLikeArtwork)
+  const photos = photosRaw.filter(looksLikePhoto)
+  if (artworks.length !== artworksRaw.length || photos.length !== photosRaw.length) {
+    throw new Error('备份内容损坏：存在无法识别的作品或照片')
+  }
+
+  await db.transaction('rw', [db.sessions, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks, db.artworks, db.photos], async () => {
     await db.sessions.clear()
     await db.messages.clear()
     await db.moments.clear()
@@ -191,6 +260,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.countdowns.clear()
     await db.diaries.clear()
     await db.bookmarks.clear()
+    await db.artworks.clear()
+    await db.photos.clear()
     await db.sessions.bulkAdd(sessions)
     await db.messages.bulkAdd(messages)
     await db.moments.bulkAdd(moments)
@@ -198,6 +269,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.countdowns.bulkAdd(countdowns)
     await db.diaries.bulkAdd(diaries)
     await db.bookmarks.bulkAdd(bookmarks)
+    await db.artworks.bulkAdd(artworks)
+    await db.photos.bulkAdd(photos)
   })
   return {
     sessions: sessions.length,
@@ -207,5 +280,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     countdowns: countdowns.length,
     diaries: diaries.length,
     bookmarks: bookmarks.length,
+    artworks: artworks.length,
+    photos: photos.length,
   }
 }

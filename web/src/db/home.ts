@@ -1,4 +1,15 @@
-import type { Bookmark, CountdownDay, Diary, Moment, WishlistItem } from '@shared/types'
+import {
+  MAX_PHOTO_BYTES,
+  type Artwork,
+  type ArtworkCategory,
+  type Bookmark,
+  type CountdownDay,
+  type Diary,
+  type Moment,
+  type Photo,
+  type PhotoMime,
+  type WishlistItem,
+} from '@shared/types'
 import { db } from './db'
 
 function nowId(prefix: string): string {
@@ -171,4 +182,116 @@ export async function createExternalBookmark(title: string, href: string, note: 
 
 export async function deleteBookmark(id: string): Promise<void> {
   await db.bookmarks.delete(id)
+}
+
+const ARTWORK_CATEGORIES: readonly ArtworkCategory[] = ['writing', 'visual', 'audio', 'other']
+
+function optionalHttpUrl(value: string): string | null {
+  const normalized = value.trim()
+  if (normalized === '') return null
+  let url: URL
+  try {
+    url = new URL(normalized)
+  } catch {
+    throw new Error('作品链接需要包含 http:// 或 https://')
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('作品链接只支持 HTTP(S)')
+  return url.toString()
+}
+
+export async function listArtworks(): Promise<Artwork[]> {
+  return db.artworks.orderBy('updatedAt').reverse().toArray()
+}
+
+export async function createArtwork(
+  title: string,
+  category: ArtworkCategory,
+  description: string,
+  externalUrl: string,
+): Promise<Artwork> {
+  if (!ARTWORK_CATEGORIES.includes(category)) throw new Error('作品类型无效')
+  const at = Date.now()
+  const item: Artwork = {
+    id: nowId('artwork'),
+    type: 'artwork',
+    title: requiredText(title, '作品名称'),
+    category,
+    description: requiredText(description, '作品说明'),
+    externalUrl: optionalHttpUrl(externalUrl),
+    createdAt: at,
+    updatedAt: at,
+  }
+  await db.artworks.add(item)
+  return item
+}
+
+export async function updateArtwork(
+  id: string,
+  title: string,
+  category: ArtworkCategory,
+  description: string,
+  externalUrl: string,
+): Promise<void> {
+  if (!ARTWORK_CATEGORIES.includes(category)) throw new Error('作品类型无效')
+  const changed = await db.artworks.update(id, {
+    title: requiredText(title, '作品名称'),
+    category,
+    description: requiredText(description, '作品说明'),
+    externalUrl: optionalHttpUrl(externalUrl),
+    updatedAt: Date.now(),
+  })
+  if (changed === 0) throw new Error('这件作品已经不存在')
+}
+
+export async function deleteArtwork(id: string): Promise<void> {
+  await db.artworks.delete(id)
+}
+
+const PHOTO_MIMES: readonly PhotoMime[] = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+
+function hasExpectedBase64Size(dataUrl: string, mimeType: string, sizeBytes: number): boolean {
+  const prefix = `data:${mimeType};base64,`
+  if (!dataUrl.startsWith(prefix)) return false
+  const payload = dataUrl.slice(prefix.length)
+  if (payload.length === 0 || payload.length > Math.ceil(MAX_PHOTO_BYTES / 3) * 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) return false
+  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0
+  return Math.floor(payload.length * 3 / 4) - padding === sizeBytes
+}
+
+export async function listPhotos(): Promise<Photo[]> {
+  return db.photos.orderBy('takenAt').reverse().toArray()
+}
+
+export async function createPhoto(input: {
+  title: string
+  caption: string
+  imageDataUrl: string
+  mimeType: string
+  sizeBytes: number
+  takenAt: string
+}): Promise<Photo> {
+  if (!PHOTO_MIMES.includes(input.mimeType as PhotoMime)) throw new Error('只支持 PNG、JPEG、WebP 或 GIF 图片')
+  if (!Number.isInteger(input.sizeBytes) || input.sizeBytes <= 0 || input.sizeBytes > MAX_PHOTO_BYTES) {
+    throw new Error('图片大小必须在 3 MB 以内')
+  }
+  if (!hasExpectedBase64Size(input.imageDataUrl, input.mimeType, input.sizeBytes)) throw new Error('图片内容与格式或大小不匹配')
+  const at = Date.now()
+  const item: Photo = {
+    id: nowId('photo'),
+    type: 'photo',
+    title: requiredText(input.title, '照片名称'),
+    caption: input.caption.trim() === '' ? null : input.caption.trim(),
+    imageDataUrl: input.imageDataUrl,
+    mimeType: input.mimeType as PhotoMime,
+    sizeBytes: input.sizeBytes,
+    takenAt: requiredDate(input.takenAt),
+    createdAt: at,
+    updatedAt: at,
+  }
+  await db.photos.add(item)
+  return item
+}
+
+export async function deletePhoto(id: string): Promise<void> {
+  await db.photos.delete(id)
 }
