@@ -63,6 +63,11 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npx tsx scripts/probe-diag-retention.ts` | **不需要 server**（自带一次性临时库，跑完自删） | 诊断日志保留策略（15 项） |
 | `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆链路、read-before-write、诊断留痕（24 项） |
 | `npx tsx scripts/probe-nocturne-demo.ts` | **公网**（Nocturne 官方只读 Demo） | 真实 Streamable HTTP 握手 / 工具清单 / `system://boot`（25 项） |
+| `MCP_NOCTURNE_URL=… npx tsx scripts/probe-nocturne-live.ts` | **自己部署的实例** + 反代已转发 `/mcp` | 反向代理 / Bearer Token（含「不带 Token 再握一次」对照）/ `X-Namespace` / 工具面 / 只读纪律（⛔ 当前受阻，见 `docs/MEMORY.md`） |
+
+> `probe-nocturne-live.ts` 读 `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`（也可写进 `server/.env`），
+> 默认**不打印** `system://boot` 正文（那是本人记忆），要看加 `NOCTURNE_PROBE_PREVIEW=1`。
+> 握手失败时它会**先把报错翻译成「卡在哪一层」**（404 → 反代缺 location；401/403 → Token；`ECONNRESET` → 链路；证书 → 链不完整）。
 
 ### 端到端（前端，无头 Edge + CDP）
 
@@ -101,4 +106,4 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 ## 备注
 
 - `web` 已配置 `@shared` 别名指向 `shared/`；`server` 侧别名随首个共享类型落地时接通（tsx 支持 tsconfig paths）。
-- 服务端生产构建与部署流程在部署阶段细化，见 `docs/DEPLOYMENT.md`（待补充）。
+- 服务端生产构建与部署流程见 `docs/DEPLOYMENT.md`（已含实测拓扑：宿主 nginx + Nocturne 容器 nginx 两层、Nocturne 反代接入流程与现成片段、Node 20 TLS 分界线）。

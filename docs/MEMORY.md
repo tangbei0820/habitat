@@ -1,6 +1,7 @@
 # MEMORY · 记忆系统接入
 
-状态：**Phase 3A 施工中**。本地 mock 全链探针 24/24；客户端代码已用官方只读 Demo 打真实 server 验真（25/25，见 `docs/TASKS.md` T-013），**自部署实例尚未接**。
+状态：**Phase 3A 施工中**。本地 mock 全链探针 24/24；客户端代码已用官方只读 Demo 打真实 server 验真（25/25，见 `docs/TASKS.md` T-013）；
+**自部署实例已体检但未接**（T-022，2026-09-23）—— 进程活着、443 证书正常，但 **`/mcp` 被最外层 nginx 单独挡在门外**，链路仍不通，另有**鉴权缺失**待处理。
 
 对接对象：已部署的 Nocturne（MCP，SSE / Streamable HTTP）。
 职责边界：世界书 = 永远注入的设定；Nocturne = 按需召回的经历；AI 日记 = AI 自己的生活记录。
@@ -39,5 +40,56 @@
 | --- | --- | --- |
 | 客户端代码（打**真实** server，只读） | `cd server && npx tsx scripts/probe-nocturne-demo.ts` | 25/25 |
 | 本地全链（mock，**含写路径**） | 起 `dev:mock-mcp` + `dev:server` 后 `npx tsx scripts/probe-memory.ts` | 24/24 |
+| **自部署实例**（Token / Namespace / 反代） | `cd server && MCP_NOCTURNE_URL=https://beiyan.cc/mcp MCP_NOCTURNE_TOKEN=… npx tsx scripts/probe-nocturne-live.ts` | ⛔ **受阻**（见下） |
 
-⚠️ 前者依赖公网可达，属**专项验证**（换环境时当连通性体检用），不并入常规回归。
+⚠️ 第 1、3 条依赖公网可达，属**专项验证**（换环境时当连通性体检用），不并入常规回归。
+⚠️ 第 3 条**必须先修好反代**（见下），否则它只会如实报一个 404 加一句「反代缺 location」。
+
+## 自部署实例体检（T-022 · 2026-09-23）
+
+**目标**：`https://beiyan.cc`（阿里云 ECS `120.27.247.75`）。**结论：进程都好，卡在反代。**
+
+| 段 | 结论 |
+| --- | --- |
+| DNS | ✅ 直连 origin（Cloudflare 代理未启用或灰云） |
+| 443 TLS | ✅ 握手正常，证书链完整（`beiyan.cc ← LE YR1 ← Root YR ← ISRG Root X1`） |
+| 80 HTTP | ❌ **阿里云按 Host 头拦未备案域名**（返回 `Non-compliance ICP Filing`）；裸 IP 时 nginx 正常 301 |
+| Nocturne 进程 | ✅ `/health` = `{"status":"ok","buckets":12,"decay_engine":"running"}`；`/dashboard` = 夜曲面板 200 |
+| MCP 路径 | ❌ **`/mcp` 被单独拦下**：`GET` / `POST initialize` 均得 **nginx 默认 404 HTML**（署名 `nginx/1.18.0 (Ubuntu)`） |
+
+### 定位依据（两种 404 不是同一个东西回的）
+
+| 路径 | 结果 | 含义 |
+| --- | --- | --- |
+| `/health/`、`/dashboard/` | **307** | FastAPI 的 `redirect_slashes` —— 请求已**穿透到 Python 后端** |
+| `/zzz-*`、`/index.html`、`/favicon.ico`、`/assets/`、`/docs` | 404 **纯文本 9 字节** `Not Found` | Starlette 默认 404 —— **同样来自后端** |
+| `/mcp`、`/mcp/` | 404 **HTML 162 字节** | **nginx 默认 404 页** —— 与上面**不是同一个东西**在回话 |
+
+结论：最外层 nginx 对绝大多数路径是**通配转发到后端**的，**唯独 `/mcp` 被单独拦下**，连后端都没碰到。
+所以「补 `/mcp` 转发」的正确做法不是新增一条 location，而是**找到那条把它挡在外面的规则并删掉/取代**。
+
+⭐ 另一条重要事实：Nocturne **上游默认配置已经把 `/mcp` 配好了**（`frontend/nginx.conf` 里 `location /mcp`
+→ `backend:8233/mcp`，且 `proxy_buffering off` / `proxy_http_version 1.1` / `proxy_read_timeout 86400s` /
+`add_header X-Accel-Buffering no` 一应俱全）。**两层 nginx 里，容器那层是齐的，缺的是宿主那层。**
+→ 完整拓扑与操作流程见 `docs/DEPLOYMENT.md`。
+
+### 反代配置要点（待北北在服务器上补）
+
+**别只加一行 `proxy_pass`** —— MCP 的 Streamable HTTP 是**流式**的，nginx 默认会把响应缓冲住，
+表现为「握手过了但事件不推 / 连接假死」。location 里至少要带上 `proxy_buffering off`、`proxy_cache off`、
+`proxy_http_version 1.1`、加大 `proxy_read_timeout`、`chunked_transfer_encoding off`、`add_header X-Accel-Buffering no`。
+（上游 `frontend/nginx.conf` 里那一段可以**直接照抄**，见 `docs/DEPLOYMENT.md` §3。）
+
+### 两个未结风险
+
+1. 🔴 **该实例没有任何鉴权层** —— `/health`、`/dashboard`、`/api/*` 全部**无凭据 200**，且带 `access-control-allow-origin: *`。
+   dashboard 页面里可枚举约 30 个接口，含 `/api/buckets`、`/api/search`、`/api/config`、`/api/import/upload`
+   （最后这个**从路径名看是写操作，没有实测**）。
+   → 记忆库当前对公网开放，需加一层鉴权（反代 basic auth / Cloudflare Access / 限制来源）。
+   ⚠️ 体检只做到**状态码级**，没有读取任何记忆内容。
+2. ⚠️ **TLS 客户端分界线**：带 `SNI=beiyan.cc` 时 **Node 20 连续 6/6 `ECONNRESET`**，Node 22 与 openssl 3.5.7 均 6/6 通过；
+   不带 SNI（裸 IP）时两个版本都通；换 9 组 TLS 参数全无效。
+   ✅ **已由北北在沙箱外的终端复核确认**（同报 `ERR ECONNRESET`），排除本地出口代理干扰，是真实现象。
+   机制疑似链路层 DPI 针对 OpenSSL 3.0.x 的 ClientHello，未最终证实。
+   **影响面**：仅「在**本机**用 Node 20 的 server 连**公网** beiyan.cc」；生产为同机内网直连，**不受影响**。
+   本地开发连远程实例这条路暂时不通 —— 走 `probe-nocturne-demo.ts` 或 `dev:mock-mcp`，端到端联调放服务器上做。

@@ -61,7 +61,13 @@
 - [ ] **多选没有「全选 / 区间选择」** —— 目前只能逐条点气泡。长会话里想删掉一整段（比如清理一次失败的实验）非常费手。→ 等真实用例出现再设计，最好与未来的搜索 / 筛选一起做，而不是先长出一个孤立的「全选」按钮。
 - [ ] **撤回 / 删除不回改「已经生成的回复」** —— 我们保证的是**被撤回的内容不再进上下文**（SPEC §2.3.5）；而 AI 早先基于它写下的回复仍留在会话里、也仍进上下文，所以可能出现「AI 的话像是在回应一段已经看不见的内容」。这是 SPEC 有意的取舍（撤回是「让它退出对话历史」，不是「改写已经发生的事」），但真实使用中若觉得别扭，需要另定一条规则。
 - [ ] **相册用 data URL 存原图，容量增长较快** —— 现阶段单张已限 3 MB、格式白名单并校验真实 base64 体积，但 base64 本身约有 33% 膨胀，导出的 JSON 也会把原图一起带上。→ 真实照片量上来后改 Blob / OPFS + 缩略图，并补总容量提示；切换存储前必须先做无损迁移与备份兼容。
-- [ ] **公网 Demo 只验到「客户端代码」，自部署实例仍未验** —— T-013 用 Nocturne 官方只读 Demo（`https://misaligned.top/mcp`）跑通了真实 Streamable HTTP 握手、工具清单与 `system://boot`，但它**不是** `beiyan.cc` 上那个实例：Bearer Token、`X-Namespace`、Caddy 反代与内网回源这几段都还没走过。→ 部署链路验证仍属风险 1 的未结部分，接阿里云时按 §4 拓扑逐段验。
+- [ ] **公网 Demo 只验到「客户端代码」，自部署实例仍未验** —— T-013 用 Nocturne 官方只读 Demo（`https://misaligned.top/mcp`）跑通了真实 Streamable HTTP 握手、工具清单与 `system://boot`，但它**不是** `beiyan.cc` 上那个实例：Bearer Token、`X-Namespace`、nginx 反代与内网回源这几段都还没走过。→ 部署链路验证仍属风险 1 的未结部分，接阿里云时按 §4 拓扑逐段验。**（T-022 已实测体检，结论见下方 T-022 记录与 `docs/MEMORY.md` / `docs/DEPLOYMENT.md`：进程活着、443 证书正常，但 `/mcp` 被最外层 nginx 单独挡下，链路仍不通。）**
+- [ ] 🔴 **自部署 Nocturne 实例没有任何鉴权层**（T-022 实测）—— `/health`、`/dashboard`（339 KB 面板）、`/api/*` **全部无凭据 200**，且带 `access-control-allow-origin: *`；dashboard 页面里可枚举约 30 个接口，含 `/api/buckets`、`/api/search`、`/api/config`、`/api/import/upload`（最后这个**从路径名看是写操作，没有实测**）。→ 记忆库当前对公网开放。**探测只到状态码级，未读取任何记忆内容。**
+  **优先走 Nocturne 自己的开关**：`config.json` 里的 `api_token`（compose 已挂载 `./config.json:/app/config.json`），启用后**除 `/health` 外所有 `/api/`、`/mcp`、`/sse` 均需 `Authorization: Bearer <token>`** —— 比在反代加 basic auth 更对口，且正好与 MCP 接入需要的那把凭据是同一个。反代 basic auth / Cloudflare Access / 限制来源 IP 可作为第二层。
+- [ ] ⚠️ **反代实际是 nginx，文档写的是 Caddy**（T-022 实测 `Server: nginx/1.18.0 (Ubuntu)`）—— 而且链路上**有两个 nginx**：宿主机 apt nginx 1.18.0 + Nocturne 容器内 `nginx:alpine`（由 `frontend/` build）。**上游那层已经把 `/mcp` 配好了**（`frontend/nginx.conf` 的 `location /mcp` 带全套反缓冲指令），**缺的是宿主那层**。
+  ⚠️ 关键定位：宿主 nginx 对多数路径是**通配转发到后端**（`/health/`、`/dashboard/` 回 **307** 是 FastAPI `redirect_slashes`；`/zzz-*`、`/index.html`、`/assets/` 回 **9 字节纯文本 404** 是 Starlette），**唯独 `/mcp`（含尾斜杠）回的是 nginx 自己的 162 字节 HTML 404 页** —— 说明它是**被单独拦下的**，连后端都没碰到。
+  → 修法不是「新增一条 location」，而是**找到那条把它挡在外面的规则删掉/取代**；补的时候要带 `proxy_buffering off` / `proxy_cache off` / `proxy_http_version 1.1` / `proxy_read_timeout 86400s` / `chunked_transfer_encoding off` / `add_header X-Accel-Buffering no`（可直接照抄上游那份）。完整片段见 `docs/DEPLOYMENT.md` §3.2。
+**但若走内网直连（推荐路径 A），宿主那层根本不需要改** —— 容器内 nginx 上游已配好，公网可以不开 `/mcp`（少一个「含写工具」的暴露面）。**反代选型（改文档 / 真换成 Caddy）待北北确认。**
 - [ ] **`gateway.connectAll()` 会阻塞服务启动** —— `main.ts` 在 `app.listen()` **之前** `await gateway.connectAll()`，而 SDK 的默认请求超时是 60s。MCP server 挂着时启动会被拖住（公网 Demo 实测握手 2.2–4.6s，单机同机部署可忽略）。→ 给 `connect()` 加显式超时，或把 `connectAll()` 从启动路径摘出去改成后台重试（`diagnostics()` 已经有重连能力，接上定时器即可）。
 
 - [ ] **分组排序（拖拽调序）未做** —— SPEC §2.1.3 明确把「分组排序」列为后续扩展，本轮按**创建顺序**排列（创建顺序也是全序，删组不会让兄弟分组换位，所以在引入显式排序字段前它最稳），但用户没法把常用分组提前。→ 需要显式排序字段（大概率又是一次 Dexie 升版）+ 拖拽交互，一起做更划算。
@@ -84,6 +90,8 @@
 - [x] ~~**`--bottom-nav-height` 是估的 4rem**~~ —— 已修（T-008）：`BottomNav` 用 `ResizeObserver` 实测自身高度后写回 `--bottom-nav-height`，改图标 / 字号自动跟随，不再需要手动同步。
 - [x] ~~**思维链整段存进 `metadata.reasoning`，无长度上限**~~ —— 已修（T-008）：`db/chat.ts` 加 `capReasoning()` / `REASONING_LIMIT = 32000`，超限保留头尾并插入截断说明（头尾各半 —— 开头是推理起点、结尾是结论，中间最适合丢）。写入路径（`addVersion`、流式草稿、收尾定性）统一走它。
 - [ ] **验收脚本的断言绑定了 mock 的固定回复文案** —— 改 `mock-openai.ts` 的回复就要同步改 `web/scripts/verify-chat.mjs` 的断言。→ 让 mock 回显请求内容，断言改成检查回显。
+- [ ] **`probe-nocturne-live.ts` 默认不打印 boot 正文** —— 那是本人记忆，默认只打印字数（要看得加 `NOCTURNE_PROBE_PREVIEW=1`）。代价是排查「召回内容对不对」时得多敲一个环境变量。→ 保持现状；若日后要做召回质量评估，应改成写文件而不是打屏。
+- [ ] ⚠️ **本机对 `SNI=beiyan.cc` 存在 TLS 客户端分界线**（T-022 实测）—— 带 SNI 时 **Node 20（OpenSSL 3.0.15）连续 6/6 `ECONNRESET`**，而 Node 22（OpenSSL 3.5.5）与 Git Bash 的 openssl 3.5.7 **6/6 通过**；**不带 SNI（裸 IP）时两个版本都通**；换 9 组 TLS 参数（TLS1.2/1.3、`ecdhCurve`、`ciphers`、ALPN）**全部无效**。→ 机制从外部判不了（疑似链路 DPI 按 ClientHello 特征重置连接）。**影响很直接：habitat `server` 必须跑 Node 20（`better-sqlite3` ABI），所以本地开发时用 server 连 `beiyan.cc` 会失败。** ✅ **已由北北在沙箱外终端复核确认**（同报 `ERR ECONNRESET`），排除本环境出口代理干扰，是真实现象；**生产为同机内网直连，不受影响**（见 `docs/DEPLOYMENT.md` §4）。
 - [x] ~~**`ApiProfilePublic.hasKey` 语义有歧义**~~ —— 已修（T-005）：新增 `keySource`（`stored` / `env` / `missing` / `not-required`），UI 文案据此分别渲染「密钥已保存」/「密钥来自环境变量」/「缺密钥，现在调不通」/「无需密钥」。`hasKey` 保留（= `keySource !== 'missing'`），不破坏既有契约。
 - [ ] **`modelMap` 的 tts / vision / embedding 槽位暂时无人消费** —— 已按 §6.2 预留，等 Phase 5 接语音 / 视觉时用。
 - [ ] **mock MCP 的 GET / DELETE 分支取错 session id** —— `mock-server.ts` 的 POST 分支正确地读 `req.headers['mcp-session-id']`，但 GET / DELETE 分支读的是 `url.searchParams.get('sessionId')`；官方 SDK 明确是**发 header**（见 `node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js:427`）。后果：SSE 流与显式关会话两条路径必然 400（目前 Gateway 没用到，所以没暴露）。→ 统一改读 header。
@@ -950,3 +958,149 @@
 
 **下一步**：**P1 还剩 2 项** —— 收藏分类（§3.5.4）/ 相册分类（§3.7.3）。
 之后回 Phase 3B（自部署 Nocturne 的 Token / Namespace / Caddy / 回源验证）。
+
+---
+
+### T-021 · 2026-09-23 · PRODUCT_SPEC P1 第三批：收藏分类 + 相册分类（Dexie v10 / 备份 v8）
+
+> ⚠️ **本条为补记。** T-021 当时只更新了上方「差异清单」与「待优化清单」，**漏了这条任务记录**（违反维护约定：
+> 「每完成一次任务 → 先按顺序追加 TASKS 一条记录」）。于 T-022 轮次回头补齐 —— 与 T-021 代码同一 commit（`2893fe5`）。
+
+**范围**：SPEC §3.5.4（收藏中心管理：自定义分类 / 手动收纳）与 §3.7.3（相册管理：建立分类相册 / 将图片加入指定相册）。
+**P1 全部 6 项至此完成。**
+
+**产品语义（先定后做）**
+
+- **单归属** —— 一条收藏最多属于一个分类、一张照片最多属于一个相册。分类是**收纳**维度，不是**标记**维度；
+  多维度标记留给 SPEC §3.5.4 早已写下的「标签」。让分类兼任标签，两边都会变得难用，而这个边界越晚划代价越大。
+- **删分类不删内容** —— 同事务把类内归属置 `null`（与 §2.1.3 删会话分组完全同构）。用户点「删除分类」想删的是**容器**，
+  顺手删掉内容的分类没人敢用。
+- **未分类是兜底区** —— `null` 与「指向已不存在分类」的脏引用都归这里（与会话分组、Widget 脏引用**第三次**同构）。
+- **相册的「移出相册」与「删除照片」是两个动作** —— 移出只置空归属；合成一个动作，用户想「把这照片挪出来」时会以为只能删，
+  而删下去照片就真没了（本模块唯一不可逆的操作，必须让它只能被明确选到）。
+- **界面用顶部筛选条**（全部 / 未分类 / 各分类），分类的增删改收进筛选条旁的「⋯」；**不做纵向分区** ——
+  收藏卡片本来就高，靠筛选翻找比靠滚动分区快，分区还会让「这条属于哪个区」变成界面上必须回答的问题。
+
+**schema（P1 第二次动数据）**
+
+- `shared/types.ts` 新增 `BookmarkCategory` / `PhotoCollection`；`Bookmark.categoryId` / `Photo.collectionId`（`string | null`）
+- **Dexie 升 v10**：`bookmarkCategories` / `photoCollections` 两张表 + 两个归属索引，**带 `upgrade()` 给老数据补 `null`**
+  （判据与 v9 对照：**改动会不会让老记录缺字段** —— 会就要回调，纯新增表就不要）
+- **备份格式升 v8**：带走两张分类表与归属；旧版（≤v7）导入时分类按空、归属补 `null`
+- 校验函数 `looksLikeBookmarkCategory` / `looksLikePhotoCollection` **只认 id / type / name** —— 校验过严会让手改过的备份整份导不进去
+
+**web**
+
+- `features/chat/GroupNameSheet.tsx` → 提升为 **`components/NameSheet.tsx`**（会话分组 / 收藏分类 / 相册三处共用，testid 统一 `name-sheet-*`）
+  —— 三处的名字输入形态完全一样，没有理由存在三套
+- 新增 `features/home/categories.ts`（纯逻辑，无 React）：`countByCategory` / `filterByCategory` / `normalizeSelection`。
+  `normalizeSelection` 管「当前选中的分类被删掉后把筛选拉回全部」，否则页面会停在一个不存在的分类上、列表空着而用户不知道发生了什么
+- 新增 `features/home/CategoryBar.tsx`（筛选条 + 管理菜单 + 删除二次确认）；**一个分类都没有时不渲染筛选条**（没有可筛的东西时那是一条纯噪音）
+- 重写 `BookmarksModule` / `AlbumModule`：条目「⋯」菜单含移入 / 移出 / 删除；
+  「移入 → ＋新建分类」用 `createToken` 信号把新建动作转交筛选条，不在条目菜单里再长一个命名弹层
+
+**验收（全部实跑）**
+
+- `verify-home.mjs` **46 → 75 项全过**（29 项清单见 `docs/CHANGELOG.md`）
+- `verify-chat.mjs` 135/135（Dexie 版本断言同步升 v10）、providers 22/22、diagnostics 36/36，**无回归**；四条均「控制台零异常」
+- 两端 `typecheck` + 前端生产构建通过
+
+**排查中踩到的坑**
+
+- ⚠️ **编辑工具会「静默成功」** —— 工具返回成功但文件实际没变，本轮至少 4 次（`shared/types.ts` 的类型、`db.ts` 的 import、
+  `CategoryBar` 的 `unit` prop，以及 **SPEC §3.7.3 整节**）。→ **一次「成功」不能当证据**：改完立刻 grep 核实，
+  没落地用 `sed -i` 兜底重做，最后靠 typecheck / 跑验收抓漏。
+  ⚠️ 更值得记的是：**验收全绿也暴露不了文档缺失** —— §3.7.3 那节是靠收尾时逐份复核文档才发现的。**收尾必须回头核文档。**
+- ⚠️ **操作会改变「当前筛选下的可见集合」** —— 在「资料」分类下把那条收藏移出分类，它立刻从列表消失，
+  之后「点这一行菜单」全部超时，**极易误诊成渲染坏了或数据没写进去**（实际数据完全正常）。
+  → 操作归属之后**显式把筛选切回「全部」**，并在这行加注释说明为什么。
+- ⚠️ **量词靠断言才拦得住** —— 相册删除确认语写成「1 **条**照片回到未分类」，是 `verify-home` 那条断言先失败的
+  （肉眼 review「确认删除？（1 条回到未分类）」看不出任何问题）。→ `CategoryBar` 加 `unit` prop（默认「条」，相册传「张」）。
+
+**本任务新增待优化**：中 4 条（三模块分类实体是否合并、分类条数在内存里算、分类不能调序、筛选态不落库）、
+低 4 条（移入新建用 `createToken`、分类可重名、删除确认放在菜单里、相册无撤销入口），已录入上方汇总清单。
+
+**下一步**：P1 全部完成。下一片由北北定：P2（AI 自主日记 / 留言、一起听、AI 伴学、主屏 Widget 编排）或 Phase 3B。
+
+---
+
+### T-022 · 2026-09-23 · Phase 3B 起步：自部署 Nocturne 接入体检（**受阻，未完成**）
+
+**范围**：接 `beiyan.cc` 上自部署的 Nocturne —— 即技术方案 §9 风险1 对策的后半句「再排阿里云链路」，
+也就是 Bearer Token / `X-Namespace` / 反代 / 内网回源四段。**本轮只做到「体检 + 备好工具」，链路本身没通。**
+
+**实测结论（分五段）**
+
+| 段 | 结论 | 证据 |
+| --- | --- | --- |
+| DNS | ✅ 解析到 `120.27.247.75`（阿里云 ECS **直连** —— Cloudflare 代理未启用或灰云） | `nslookup beiyan.cc` |
+| 443 TLS | ✅ 握手正常，证书链**完整**（`beiyan.cc ← Let's Encrypt YR1 ← Root YR ← ISRG Root X1`） | `openssl s_client -showcerts` |
+| 80 HTTP | ❌ **阿里云按 Host 头拦截未备案域名**，返回 `Non-compliance ICP Filing` 页；但裸 IP 访问时 nginx 正常回 301 | 实测响应体 |
+| Nocturne 进程 | ✅ `/health` → `{"status":"ok","buckets":12,"decay_engine":"running"}`；`/dashboard` → 夜曲面板 200 | HTTP 200 |
+| **MCP 路径** | ❌ **`/mcp` 被最外层 nginx 单独挡下** —— `GET` 与 `POST initialize` 都回 **nginx 自己的 162 字节 HTML 404 页**（署名 `nginx/1.18.0 (Ubuntu)`）；`/mcp/` 同 | 实测 |
+
+**定位依据：链路上有两个 nginx，两种 404 不是同一个东西回的**
+
+- 拓扑：`浏览器/客户端 → 宿主 nginx 1.18.0 (Ubuntu) → Nocturne 容器 nginx（frontend/ build，nginx:alpine）→ backend:8233（FastAPI）`
+- **Nocturne 上游默认配置已经把 `/mcp` 配好了** —— `frontend/nginx.conf` 的 `location /mcp` → `backend:8233/mcp`，且反缓冲指令齐全。**容器那层是齐的，缺的是宿主那层。**
+- 宿主 nginx 对**多数路径是通配转发到后端**：
+
+  | 路径 | 结果 | 含义 |
+  | --- | --- | --- |
+  | `/health/`、`/dashboard/` | **307** | FastAPI `redirect_slashes` —— **已穿透到 Python 后端** |
+  | `/zzz-*`、`/index.html`、`/favicon.ico`、`/assets/`、`/docs` | 404 **纯文本 9 字节** `Not Found` | Starlette 默认 404 —— **同样来自后端** |
+  | `/mcp`、`/mcp/` | 404 **HTML 162 字节** | **nginx 默认 404 页** —— 与上面**不是同一个东西**在回话 |
+
+- → 结论：`/mcp` **不是「没配」，是被单独拦下的**，连后端都没碰到。修法是**找到那条规则删掉/取代**，而不是新增 location。
+
+- ⚠️ **技术方案 §4 拓扑里早就写了「备案后启用域名」** —— 今天这条被实测坐实：80 端口确实按 Host 拦。
+  **443 目前可用**（至少对现代 TLS 客户端），但 80 上的域名访问是不可用的。
+- ⚠️ **文档说反代是 Caddy，实际跑的是 `nginx/1.18.0 (Ubuntu)`** —— 与 `AGENTS.md` §5 风险 2 直接相关（见上方待优化清单）。
+
+**新发现的风险（未结）**
+
+1. 🔴 **该实例没有任何鉴权层** —— `/health`、`/dashboard`（339 KB 面板）、`/api/*` **全部无凭据 200**，且带 `access-control-allow-origin: *`。
+   dashboard 页面里可枚举出约 30 个接口，含 `/api/buckets`、`/api/search`、`/api/config`、`/api/import/upload`（最后这个**从路径名看是写操作，没有实测**）。
+   → 记忆库当前对公网开放。**探测只做到状态码级，没有读取任何记忆内容。**
+2. ⚠️ **TLS 客户端分界线（本机实测）** —— 带 `SNI=beiyan.cc` 时 **Node 20（OpenSSL 3.0.15）连续 6/6 被 `ECONNRESET`**，
+   而 Node 22（OpenSSL 3.5.5）与 Git Bash openssl 3.5.7 **6/6 通过**；**不带 SNI（裸 IP）时两个版本都通**。
+   换 9 组 TLS 参数（TLS1.2/1.3、`ecdhCurve`、`ciphers`、ALPN）**全部无效**。
+   → 机制从外部判不了（疑似链路 DPI 按 ClientHello 特征重置）。**影响直接**：habitat `server` 必须跑 Node 20
+   （`better-sqlite3` ABI），所以**本地开发用 server 连 `beiyan.cc` 会失败**。✅ **北北已在沙箱外终端复核**（同报 `ERR ECONNRESET`），
+   排除本环境出口代理干扰，是真实现象。**但生产是同机内网直连，不经过此链路，不受影响**（见 `docs/DEPLOYMENT.md` §4）。
+3. ⚠️ **证书链用了较新的 Let's Encrypt 中间证书（YR1 / Root YR）** —— 北北的 Android 有过「证书库过旧、缺现代根证书」的前科，
+   建议用手机实开一次 `https://beiyan.cc/dashboard` 确认不报证书错。
+
+**本轮交付**
+
+- 新增 `server/scripts/probe-nocturne-live.ts` —— **自部署验真脚本**，照 `probe-nocturne-demo.ts` 的结构：
+  反代可达性 / 原始握手 / **鉴权对照（故意不带 Token 再握一次）** / `X-Namespace` / 经 Gateway 生产路径 / 工具清单 /
+  `system://boot` / `search_memory` / **只读纪律**。
+  - ⚠️ 与 Demo 版的**关键差别**：Demo 是服务端物理只读（只下发 2 个工具），自部署实例是**完整 7 个工具、含写** ——
+    「不写坏数据」**没有服务端兜底**，所以脚本全程只调读工具，并用记录型包装**断言实际发出的调用落在读工具内**。
+  - 默认**不打印 boot 正文**（那是本人记忆），要看加 `NOCTURNE_PROBE_PREVIEW=1`。
+  - 握手失败时**先把报错翻译成「卡在哪一层」**：404 → 反代缺 location；401/403 → Token；`ECONNRESET` → 链路；证书 → 链不完整。
+- `typecheck` 通过；已拿当前状态实跑一次 —— **如实报出 `/health` 200 + 握手 404 + 反代提示**，行为符合预期。
+
+**待优化**：中 2 条、低 2 条，已录入上方汇总清单。
+
+**下一步（等北北）**：
+
+① **先开鉴权** —— 服务器上给 `config.json` 配 `api_token`，重启 backend。一举两得：既补上「记忆库裸奔」，又拿到 MCP 接入要的那把凭据。
+② **关键分水岭实验**：在服务器上 `curl -i -X POST http://127.0.0.1:<NGINX_PORT>/mcp`（带 `Accept: application/json, text/event-stream`）
+- **通** → 链路已通，**收口，不必改宿主 nginx**（生产是同机内网直连，公网 `/mcp` 可以不开 —— 少一个「含写工具」的暴露面）
+- **不通** → 查容器内那层：`docker exec <nginx容器> cat /etc/nginx/conf.d/default.conf`（可能版本较老，上游新版才有 `location /mcp`）
+③ **`X-Namespace` 单人格留空** —— 走实例默认空间即可；日后多个 AI 共用同一实例才需要分区。
+④ 就绪后重跑 `probe-nocturne-live.ts`（**在服务器上打内网地址**）收口 Phase 3A 剩余。
+
+> 公网暴露 `/mcp`（需改宿主 nginx 并补反缓冲指令）列为**不推荐的可选路径** —— 理由是收益有限（本机 Node 20 连公网本就被 `ECONNRESET`）
+> 而暴露面明确（7 个工具含写）。完整片段见 `docs/DEPLOYMENT.md` §3.2。
+
+**本轮（T-022 续）新增**：`docs/DEPLOYMENT.md` 从占位写成初稿 —— 实测拓扑（两层 nginx）、体检证据、
+接入流程与现成片段、Node 20 TLS 分界线的影响面、待确认项。
+
+**本轮（T-022 再续）复核**：服务器 SSH 未配置可用凭据，无法越权代改；本机再次确认 TCP 443 可达、
+但 Node 与系统 HTTPS 客户端均在 TLS 阶段被重置。`probe-nocturne-live.ts` 补了两处收口：诊断会展开 `cause` 链，
+不再只显示笼统的 `fetch failed`；缺配置或握手失败提前退出时也会关闭 SQLite 并删除临时探针库。
+临时库文件名带进程号，两个探针并行运行也不会互删或争抢同一把 SQLite 锁。
+两端 `typecheck`、前端生产构建、`git diff --check` 均通过；真实探针按预期失败并明确报出底层 `ECONNRESET`。

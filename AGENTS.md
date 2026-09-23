@@ -45,8 +45,8 @@
 | 前端   | React 18 + TypeScript(strict) + Vite + Dexie(IndexedDB) + Zustand + Tailwind（Tokens 走 CSS 变量） |
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
-| 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar                                 |
-| 当前阶段 | **UX 收口 P0 已收口**（14 项齐）｜**P1 全部 6 项落地**（T-019 输入区快捷栏 / T-020 主屏 Widget / T-021 收藏分类 + 相册分类；本地库升至 **Dexie v10**、备份格式 **v8**）｜Phase 3A 停在干净检查点：记忆链路本地探针 24/24 + 客户端代码用 Nocturne **官方只读 Demo** 验真 25/25，**自部署实例尚未接**（T-013） |
+| 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar ⚠️ **实测线上跑的是 nginx/1.18.0，不是 Caddy**（T-022），选型待北北确认                      |
+| 当前阶段 | **UX 收口 P0 已收口**（14 项齐）｜**P1 全部 6 项落地**（T-019 输入区快捷栏 / T-020 主屏 Widget / T-021 收藏分类 + 相册分类；本地库升至 **Dexie v10**、备份格式 **v8**）｜**Phase 3B 收口进行中**：自部署 Nocturne 已体检（进程活着、443 正常），**唯一阻塞项 = 宿主 nginx 把 `/mcp` 单独挡在门外**（另有「实例无鉴权」待处理）；本机 Node 20 带 SNI 连公网会被 ECONNRESET（不影响生产同机内网），详见 `docs/DEPLOYMENT.md` |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -83,7 +83,7 @@ habitat/
 | `docs/DATA_MODEL.md`      | **落地口径**：归属 / 字段表 / 索引 / 迁移记录 + 改数据结构的标准顺序 | **改任何数据结构前必读**（§0 是顺序） |
 | `docs/MCP.md`             | 工具层与 Gateway                                                                    | 动 MCP 时                              |
 | `docs/MEMORY.md`          | 记忆系统接入                                                                          | Phase 3A 时                           |
-| `docs/DEPLOYMENT.md`      | 部署                                                                              | 部署时（占位中）                             |
+| `docs/DEPLOYMENT.md`      | 部署：**实测拓扑（两层 nginx）/ 体检证据 / Nocturne 反代接入流程与片段 / Node 20 TLS 分界线**                | 部署、反代、链路排查时                          |
 | `docs/CHANGELOG.md`       | 变更记录（按 Phase，面向版本）                                                             | **每完成一个 Phase 追加**                   |
 | `docs/TASKS.md`           | **任务记录 + 待优化清单**（面向推进）｜所有「本次没做、以后要做」的问题都收敛在这 | **每次任务收尾必读必写**                      |
 | `README.md`               | 对外说明 + 本地启动 SOP + **本地验收命令**                                                  | 首次搭环境 / 跑验收前                        |
@@ -179,7 +179,7 @@ habitat/
 
 ### 当前施工点
 
-**P1 全部落地，停下等确认**（停留在「下一步」之前）。
+**Phase 3B 收口进行中（卡在服务器侧，等北北操作）**；P1 全部落地。
 
 - ✅ **第一批「消息对象操作」**：编辑（保留原版本，与「换一个」共用一套版本导航）/ 撤回（留痕、不进模型上下文、可恢复）/ 删除 / 多选批量删 / 复制，统一进「长按 + 右键 + `⋯`」同一个菜单
 - ✅ **第二批「跨模块内容流转」**：消息 → 收藏、消息 / 组件 → 作品、聊天图片 → 相册；三类条目保留来源与快照
@@ -196,10 +196,20 @@ habitat/
   - 已定语义（`PRODUCT_SPEC` §3.5.4 / §3.7.3）：**单归属**（一条内容最多属于一个分类，多维度标记留给后续的「标签」，不让分类兼任）；**删分类不删内容**（同事务把类内归属置 `null`）；**未分类是兜底区**（也收指向不存在分类的脏数据）；相册的**「移出相册」与「删除照片」是两个动作**，措辞不混用
   - 顺带把 `GroupNameSheet` 提升为通用 `components/NameSheet.tsx`（会话分组 / 收藏分类 / 相册三处共用，testid 统一为 `name-sheet-*`），并给收藏 / 相册条目补上「⋯」菜单（与会话行同一套做法）
 
-**Phase 3A（暂停中，未结清）**
+**Phase 3A（施工中，未结清）**
 
-- MemoryProvider → ToolGateway → Nocturne MCP 已落地；Nocturne 官方只读 Demo 已真实验通
-- 自部署 Nocturne 实例仍需验证 Bearer Token / Namespace / Caddy / 内网回源
+- MemoryProvider → ToolGateway → Nocturne MCP 已落地；Nocturne 官方只读 Demo 已真实验通（T-013）
+- **自部署实例已体检，但链路不通**（T-022，2026-09-23）：进程活着（`/health` 200）、443 证书链完整、80 被阿里云按未备案域名拦截
+- ⛔ **当前唯一阻塞项：宿主 nginx 把 `/mcp` 单独挡在门外** —— 链路上**有两个 nginx**（宿主 apt nginx 1.18.0 + Nocturne 容器 `nginx:alpine`），
+  **上游那层已把 `/mcp` 配好（连反缓冲指令都齐），缺的是宿主那层**；且宿主对其它路径是**通配转发**的，唯独 `/mcp` 例外
+  （证据：`/health/`、`/dashboard/` 回 **307**（FastAPI 特征），`/zzz-*`、`/index.html` 回 **9 字节纯文本 404**（Starlette），
+  而 `/mcp` 回的是 **nginx 自己的 HTML 404 页**）。→ 修法是**找到那条拦截规则删掉/取代**，不是新增 location
+- 🔴 体检同时发现：**该实例没有任何鉴权层**（`/dashboard` 与 `/api/*` 无凭据 200，含写接口）→ 记忆库当前对公网开放。
+  **建议顺序：先用 `config.json` 的 `api_token` 把门锁上，再处理 `/mcp`** —— 一举两得（同时拿到 MCP 要的那把凭据）
+- ⭐ **但别急着改宿主 nginx**：生产形态是 habitat-server 与 Nocturne **同机内网直连**，**根本不经过宿主那层**
+  （容器内 nginx 上游已把 `/mcp` 配好）→ **公网可以不开 `/mcp`**（少一个「含写工具」的暴露面），
+  且本机 Node 20 连公网本来就被 `ECONNRESET`，开公网收益有限。**关键分水岭实验：服务器上 `curl -i -X POST http://127.0.0.1:<NGINX_PORT>/mcp` 通不通**
+- 完整拓扑 / 接入路径 A·B / Node 20 TLS 分界线的影响面 → **`docs/DEPLOYMENT.md`**；结论摘要 → `docs/MEMORY.md`；任务记录 → `docs/TASKS.md` T-022
 
 ### 当前产品状态
 
@@ -212,9 +222,9 @@ habitat/
 
 ### 下一步
 
-1. **P2**（依赖主动行为 / Eventide 链路）：AI 自主写日记 / 留言｜「一起听」完整能力｜AI 伴学｜**主屏幕 Widget 编排**（Home 从入口列表变成可编排首页，`SPEC` §5.1 / §5.3）—— 后者是 P1 那两张卡片的自然延续
-2. 已记为后续、尚未开工的尾巴：分组与分类的排序（拖拽调序）｜移动端长按会话行进菜单｜语音条转写（ASR）｜留言板 Widget 的「指定分组 / 指定留言」｜三个模块的分类实体是否合并（**要并就三个一起并**）—— 见 `TASKS.md` 待优化清单
-3. 之后回 **Phase 3B**（自部署 Nocturne 的 Token / Namespace / Caddy / 回源验证）
+1. 🔵 **进行中 · Phase 3B 收口**（**卡在服务器侧，等北北操作**）：① 服务器上用 `config.json` 的 `api_token` 开鉴权（先锁门）；② **先在服务器上验内网 `/mcp`**（`curl -i -X POST http://127.0.0.1:<NGINX_PORT>/mcp`）—— 通即收口，**不必改宿主 nginx**；不通才需要查容器内 nginx 配置；③ 重跑 `probe-nocturne-live.ts`（服务器上用内网地址）收口 Phase 3A 剩余。详见 `docs/DEPLOYMENT.md` §3
+2. **P2**（依赖主动行为 / Eventide 链路）：AI 自主写日记 / 留言｜「一起听」完整能力｜AI 伴学｜**主屏幕 Widget 编排**（Home 从入口列表变成可编排首页，`SPEC` §5.1 / §5.3）—— 后者是 P1 那两张卡片的自然延续
+3. 已记为后续、尚未开工的尾巴：分组与分类的排序（拖拽调序）｜移动端长按会话行进菜单｜语音条转写（ASR）｜留言板 Widget 的「指定分组 / 指定留言」｜三个模块的分类实体是否合并（**要并就三个一起并**）—— 见 `TASKS.md` 待优化清单
 
 动手前：先读 `PRODUCT_SPEC` 对应章节 + `TASKS.md` 待优化清单，
 再核对 `DATA_MODEL.md`：**改数据结构要同时动三处**（`shared/types.ts` → Dexie 升版 → 备份格式升版）；
