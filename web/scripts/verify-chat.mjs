@@ -2,10 +2,16 @@
  * 聊天链路前端验收（无头 Edge + CDP 裸驱动）
  *
  * 覆盖：新建会话 → 发送 → 流式渲染 → 中止 → 刷新持久化 → 虚拟列表 → 消息块按 kind 分发 →
- *       分页加载 → 换一个 / 重发 → 消息对象操作 → 跨模块收录 → 会话置顶 / 聊天设置 → 控制台异常。
+ *       分页加载 → 换一个 / 重发 → 消息对象操作 → 跨模块收录 → 会话置顶 / 聊天设置 →
+ *       会话分组 → 输入区快捷栏 / 请求回复拆开 / 语音条 → 控制台异常。
  *
  * ⚠️ 「撤回不进模型上下文」这类语义**没有别的验法**：只能读 mock 上游记下的真实报文
  *    （`GET /__last-body`）看客户端到底送了什么。UI 上把消息藏起来很容易，送没送出去才是关键。
+ *    同理「只发送没请求回复」也要读报文 —— 不去问上游，就只能靠「界面上没多出一条回复」来猜。
+ *
+ * ⚠️ 语音条验收依赖启动无头 Edge 时带 `--use-fake-device-for-media-stream`
+ *    `--use-fake-ui-for-media-stream`（假麦克风）。缺了这两个开关，
+ *    `getUserMedia` 拿不到流，录音相关的断言会全线失败 —— 那是环境问题，不是功能坏了。
  *
  * 前置（四件都得起着；agent-browser 在本沙箱会被 SIGTERM 拦，所以直接用 CDP 裸驱动）：
  *   server/ : node node_modules/tsx/dist/cli.mjs src/providers/mock-openai.ts   → :3334
@@ -149,20 +155,60 @@ async function clickSend() {
   })()`)
 }
 
-/** 等这一轮真正收尾：按钮从「停止」回到「发送」才算完（收到末个 delta ≠ 已收尾） */
-async function waitIdle(label) {
-  await waitFor(
-    `[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '发送')`,
-    label,
-    25000,
-  )
-}
-
 /** reload 之后旧 DOM 还在，直接轮询会被它骗过 —— 先等新文档进入，再等条件 */
 async function reloadAndWait(expression, label, timeout = 25000) {
   await send('Page.reload')
   await sleep(2000)
   await waitFor(expression, label, timeout)
+}
+
+/** 消息已定性的状态：中止保留了半截内容是合法收尾，不该被当成「还没完」 */
+const TERMINAL_STATUSES = new Set(['done', 'error', 'aborted'])
+
+/**
+ * 直接读 IndexedDB 里的消息，而不是数 DOM。
+ * 渲染层是虚拟列表（只渲染可视区），而且「只发送」的关键证据恰恰是**没渲染出来的回复** ——
+ * 数 DOM 等于用一个会漏数的尺子去量「有没有多出一条」。
+ */
+const readMessages = (sessionId) =>
+  evaluate(`(async () => {
+    const db = await new Promise((res, rej) => {
+      const r = indexedDB.open('habitat-db')
+      r.onsuccess = () => res(r.result)
+      r.onerror = () => rej(r.error)
+    })
+    const store = db.transaction('messages').objectStore('messages')
+    const rows = await new Promise((res, rej) => {
+      const r = store.index('sessionId').getAll(${JSON.stringify(sessionId)})
+      r.onsuccess = () => res(r.result)
+      r.onerror = () => rej(r.error)
+    })
+    db.close()
+    return rows.sort((a, b) => a.createdAt - b.createdAt)
+  })()`)
+
+/**
+ * 等这一轮真正收尾。
+ *
+ * ⚠️ **不要再用「页面上有没有一个文案是『发送』的按钮」当判据** —— 那个按钮**一直都在**，
+ * 只是输入框为空时 disabled。所以那个条件在手指刚点下去、生成还没启动的一瞬间就成立，
+ * 等于没等。本脚本此前就是那么写的，8 处调用其实都在抢跑，只是恰好被后面的显式等待兜住了；
+ * 一旦后面紧跟的断言也读库，就会直接读到一个还没开始生成的瞬间。
+ *
+ * 真判据只有一个：**库里最后一条消息是 `assistant` 且已定性**（不再是 `streaming` / `pending`）。
+ * 这条判据同时能覆盖「换一个」——它改的是已存在的 assistant 消息，不会新增一条。
+ */
+async function waitIdle(label, timeout = 30000) {
+  const sessionId = await evaluate(`location.pathname.split('/').pop() ?? ''`)
+  if (sessionId === '') throw new Error(`waitIdle：当前不在会话窗口里（${label}）`)
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    const rows = await readMessages(sessionId)
+    const last = rows[rows.length - 1]
+    if (last !== undefined && last.role === 'assistant' && TERMINAL_STATUSES.has(last.status)) return
+    await sleep(200)
+  }
+  throw new Error(`等待超时：${label}`)
 }
 
 await send('Runtime.enable')
@@ -861,10 +907,11 @@ await type('撤回之后的新问题')
 const replyCountBeforeAsk = await evaluate(`(document.body.innerText.match(/流式回复/g) ?? []).length`)
 await clickSend()
 /**
- * ⚠️ 点了发送**不能**直接 `waitIdle`：按钮要等 React 状态更新才变成「停止」，
- * 立刻检查时它还是「发送」，于是 `waitIdle` 在按下的那一瞬间就返回 ——
- * 紧接着读 `__last-body` 拿到的是**上一轮**的报文（上一轮里那句话当然还在）。
- * 判据必须是「这一轮的回复已经落地」。
+ * 这里保留一条显式的「这一轮回复已落地」等待，而不是直接 `waitIdle`。
+ * 理由是不抢跑：`waitIdle` 现在读的是库、已经可靠，但**它只保证「库里最后一条 assistant 已定性」**，
+ * 而这条断言要读 mock 的 `__last-body` —— 必须确保这一轮真的发出去了。
+ * 曾经的坑是判据写成「页面上有没有『发送』按钮」，那个条件在手指刚点下时就成立（按钮一直都在），
+ * 于是紧接着读到的报文是**上一轮**的，上一轮里那句话当然还在，断言就成了假通过。
  */
 await waitFor(
   `(document.body.innerText.match(/流式回复/g) ?? []).length > ${replyCountBeforeAsk}`,
@@ -1517,7 +1564,239 @@ check(
   JSON.stringify(flatState),
 )
 
-/* ---------- 13. 控制台 ---------- */
+/* ---------- 13. 输入区：快捷操作栏 + 请求回复拆开（SPEC §2.4） ---------- */
+// 全新会话 —— 本节按「未回复条数」断言，不能被前面留下的会话与消息污染
+const composerSession = await newSession('输入区验收会话')
+
+const rolesOf = (rows) => rows.map((m) => m.role).join(',')
+
+const quickBar = await evaluate(`(() => {
+  const bar = document.querySelector('[data-testid="quick-bar"]')
+  return {
+    bar: bar !== null,
+    voice: document.querySelector('[data-testid="quick-voice"]') !== null,
+    emoji: document.querySelector('[data-testid="quick-emoji"]') !== null,
+    more: document.querySelector('[data-testid="quick-more"]') !== null,
+    reply: document.querySelector('[data-testid="request-reply"]') !== null,
+  }
+})()`)
+check(
+  '输入框下方有快捷操作栏：语音条 / 表情包 / 更多 / 请求回复',
+  quickBar.bar && quickBar.voice && quickBar.emoji && quickBar.more && quickBar.reply,
+  JSON.stringify(quickBar),
+)
+
+const replyIdle = await evaluate(`(() => {
+  const btn = document.querySelector('[data-testid="request-reply"]')
+  return {
+    disabled: btn.disabled,
+    hint: document.querySelector('[data-testid="unreplied-hint"]') !== null,
+  }
+})()`)
+check(
+  '没有待回复消息时「请求回复」不可用、也不显示提示条',
+  replyIdle.disabled === true && replyIdle.hint === false,
+  JSON.stringify(replyIdle),
+)
+
+// 先走一遍默认路径：确认「拆开」没有把原来的一步发送改坏
+await type('第一条：正常发送')
+await clickSend()
+await waitIdle('第一条正常发送收尾')
+const afterFirst = await readMessages(composerSession)
+check(
+  '主按钮「发送」仍是一步拿到回复（默认行为未被改变）',
+  afterFirst.length === 2 && rolesOf(afterFirst) === 'user,assistant',
+  rolesOf(afterFirst),
+)
+const upstreamAfterFirst = await lastUpstreamBody()
+
+/* --- 只发送：不请求回复 --- */
+await type('第二条：只发送')
+await evaluate(`(() => { document.querySelector('[data-testid="quick-more"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="action-sheet"]') !== null`, '「更多功能」菜单打开')
+const moreItems = await sheetItems()
+check(
+  '「更多功能」菜单含只发送 / 插入当前时间 / 清空输入',
+  moreItems.some((t) => t.includes('只发送，不请求回复')) &&
+    moreItems.some((t) => t.includes('插入当前时间')) &&
+    moreItems.some((t) => t.includes('清空输入')),
+  JSON.stringify(moreItems),
+)
+await evaluate(`(() => { document.querySelector('[data-testid="action-silent-send"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="toast"]') !== null`, '只发送的轻提示')
+const silentToast = await evaluate(`document.querySelector('[data-testid="toast"]').innerText.trim()`)
+// 给「万一真的偷偷发了请求」留出到达 mock 的时间：断言「没请求」必须等够，否则是假通过
+await sleep(900)
+const upstreamAfterSilent = await lastUpstreamBody()
+check('「只发送」给出明确反馈', silentToast.includes('未请求回复'), silentToast)
+check(
+  '「只发送」确实没有触发模型调用（上游报文一字未变）',
+  JSON.stringify(upstreamAfterSilent) === JSON.stringify(upstreamAfterFirst),
+  '',
+)
+
+await waitFor(
+  `document.querySelector('[data-testid="unreplied-hint"]') !== null`,
+  '待回复提示条出现',
+)
+const hint1 = await evaluate(`document.querySelector('[data-testid="unreplied-hint"]').innerText.trim()`)
+const reply1 = await evaluate(`(() => {
+  const btn = document.querySelector('[data-testid="request-reply"]')
+  return { disabled: btn.disabled, label: btn.innerText.trim() }
+})()`)
+const afterSilent1 = await readMessages(composerSession)
+check('「只发送」只落用户消息，不产生回复草稿', rolesOf(afterSilent1) === 'user,assistant,user', rolesOf(afterSilent1))
+check('待回复提示条写清条数', hint1.includes('1 条消息还没请求回复'), hint1)
+check(
+  '「请求回复」随待回复消息变为可用并显示条数',
+  reply1.disabled === false && reply1.label.includes('(1)'),
+  JSON.stringify(reply1),
+)
+
+/* --- 连续只发送两条，再一次性请求回复 --- */
+await type('第三条：也只发送')
+await evaluate(`(() => { document.querySelector('[data-testid="quick-more"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="action-sheet"]') !== null`, '再次打开「更多功能」')
+await waitFor(`document.querySelector('[data-testid="action-silent-send"]') !== null`, '有内容时才出现「只发送」')
+await evaluate(`(() => { document.querySelector('[data-testid="action-silent-send"]').click(); return 'ok' })()`)
+await waitFor(
+  `document.querySelector('[data-testid="unreplied-hint"]').innerText.includes('2 条消息还没请求回复')`,
+  '待回复累积到 2 条',
+)
+const hint2 = await evaluate(`document.querySelector('[data-testid="unreplied-hint"]').innerText.trim()`)
+check('多条未回复时提示条累计条数', hint2.includes('2 条消息还没请求回复'), hint2)
+
+await evaluate(`(() => { document.querySelector('[data-testid="request-reply"]').click(); return 'ok' })()`)
+await waitIdle('「请求回复」收尾')
+const afterReply = await readMessages(composerSession)
+check(
+  '一次「请求回复」只补一条回复（处理整批而不是逐条补）',
+  rolesOf(afterReply) === 'user,assistant,user,user,assistant',
+  rolesOf(afterReply),
+)
+const upstreamAfterReply = JSON.stringify(await lastUpstreamBody())
+check(
+  '两条未回复消息一起进了这一轮上下文',
+  upstreamAfterReply.includes('第二条：只发送') && upstreamAfterReply.includes('第三条：也只发送'),
+  '',
+)
+const replyAfter = await evaluate(`(() => {
+  const btn = document.querySelector('[data-testid="request-reply"]')
+  return {
+    disabled: btn.disabled,
+    hint: document.querySelector('[data-testid="unreplied-hint"]') !== null,
+  }
+})()`)
+check(
+  '回复落地后提示条消失、「请求回复」回到不可用',
+  replyAfter.hint === false && replyAfter.disabled === true,
+  JSON.stringify(replyAfter),
+)
+
+/* --- 「更多」的菜单项按状态增减，不是渲染出来再置灰 --- */
+await evaluate(`(() => { document.querySelector('[data-testid="quick-more"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="action-sheet"]') !== null`, '空输入时打开「更多功能」')
+const emptyMore = await sheetItems()
+check(
+  '输入框为空时「只发送」「清空输入」不出现',
+  !emptyMore.some((t) => t.includes('只发送')) &&
+    !emptyMore.some((t) => t.includes('清空输入')) &&
+    emptyMore.some((t) => t.includes('插入当前时间')),
+  JSON.stringify(emptyMore),
+)
+await evaluate(`(() => { document.querySelector('[data-testid="action-insert-time"]').click(); return 'ok' })()`)
+const timeDraft = await evaluate(`document.querySelector('[data-testid="composer"]').value`)
+check('「插入当前时间」写进输入框', /^\d{2}:\d{2}$/.test(timeDraft.trim()), timeDraft)
+
+await evaluate(`(() => { document.querySelector('[data-testid="quick-more"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="action-clear-draft"]') !== null`, '有内容时出现「清空输入」')
+await evaluate(`(() => { document.querySelector('[data-testid="action-clear-draft"]').click(); return 'ok' })()`)
+const clearedDraft = await evaluate(`document.querySelector('[data-testid="composer"]').value`)
+check('「清空输入」把输入框清空', clearedDraft === '', JSON.stringify(clearedDraft))
+
+/* --- 表情包：插入光标处，不是一律追加到末尾 --- */
+await evaluate(`(() => { document.querySelector('[data-testid="quick-emoji"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="emoji-panel"]') !== null`, '表情面板展开')
+const emojiState = await evaluate(`(() => {
+  const els = [...document.querySelectorAll('[data-testid="emoji-option"]')]
+  return { count: els.length, first: els[0]?.innerText.trim() ?? '', second: els[1]?.innerText.trim() ?? '' }
+})()`)
+check('表情面板展开且有一屏可选表情', emojiState.count >= 24, JSON.stringify(emojiState))
+await evaluate(`(() => { document.querySelectorAll('[data-testid="emoji-option"]')[0].click(); return 'ok' })()`)
+await evaluate(`(() => { document.querySelectorAll('[data-testid="emoji-option"]')[1].click(); return 'ok' })()`)
+await sleep(400)
+const emojiDraft = await evaluate(`document.querySelector('[data-testid="composer"]').value`)
+check(
+  '连续点两个表情按顺序插入（光标落在插入内容之后）',
+  emojiDraft === emojiState.first + emojiState.second,
+  `${JSON.stringify(emojiDraft)} vs ${JSON.stringify(emojiState.first + emojiState.second)}`,
+)
+await evaluate(`(() => { document.querySelector('[data-testid="quick-emoji"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="emoji-panel"]') === null`, '表情面板收起')
+
+/* --- 语音条：真录一段真发出去（无头 Edge 带假麦克风跑） --- */
+const beforeVoice = await readMessages(composerSession)
+const assistantsBeforeVoice = beforeVoice.filter((m) => m.role === 'assistant').length
+
+await evaluate(`(() => { document.querySelector('[data-testid="quick-voice"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="voice-recording"]') !== null`, '进入录音态', 15000)
+await sleep(1600)
+const voiceTime = await evaluate(`document.querySelector('[data-testid="voice-time"]').innerText.trim()`)
+check('录音中显示实时计时', /录音中\s*0:0[1-9]/.test(voiceTime), voiceTime)
+await shot('shot-chat-recording.png')
+
+await evaluate(`(() => { document.querySelector('[data-testid="voice-send"]').click(); return 'ok' })()`)
+await waitIdle('语音条发完并拿到回复')
+const afterVoice = await readMessages(composerSession)
+const voiceMessage = afterVoice.find((m) => m.blocks.some((b) => b.kind === 'audio'))
+const voiceBlock = voiceMessage?.blocks.find((b) => b.kind === 'audio')
+check(
+  '语音条落成一条用户消息，音频以 data URL 保存',
+  voiceMessage !== undefined &&
+    voiceMessage.role === 'user' &&
+    typeof voiceBlock?.payload.url === 'string' &&
+    voiceBlock.payload.url.startsWith('data:audio/'),
+  typeof voiceBlock?.payload.url === 'string' ? voiceBlock.payload.url.slice(0, 22) : 'missing',
+)
+check(
+  '语音条保存了实测时长（≥1 秒）',
+  typeof voiceBlock?.payload.durationMs === 'number' && voiceBlock.payload.durationMs >= 1000,
+  String(voiceBlock?.payload.durationMs),
+)
+check(
+  '语音条走与文本相同的一步发送链路（默认请求回复）',
+  afterVoice.filter((m) => m.role === 'assistant').length === assistantsBeforeVoice + 1,
+  `${assistantsBeforeVoice} → ${afterVoice.filter((m) => m.role === 'assistant').length}`,
+)
+const voiceUpstream = JSON.stringify(await lastUpstreamBody())
+check(
+  '语音条以占位描述进入上下文（不是空气泡）',
+  voiceUpstream.includes('[语音条 '),
+  '',
+)
+check(
+  '气泡上显示语音时长',
+  await evaluate(`document.querySelector('[data-testid="audio-duration"]') !== null`),
+  '',
+)
+await shot('shot-chat-voice.png')
+
+/* --- 取消录音：什么也不该留下 --- */
+await evaluate(`(() => { document.querySelector('[data-testid="quick-voice"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="voice-recording"]') !== null`, '再次进入录音态', 15000)
+await sleep(900)
+await evaluate(`(() => { document.querySelector('[data-testid="voice-cancel"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="voice-recording"]') === null`, '录音条消失')
+await sleep(900)
+const afterCancel = await readMessages(composerSession)
+check(
+  '取消录音不产生任何消息、也不残留输入区状态',
+  afterCancel.length === afterVoice.length,
+  `${afterVoice.length} → ${afterCancel.length}`,
+)
+
+/* ---------- 14. 控制台 ---------- */
 const errors = consoleLogs.filter((l) => l.startsWith('[error]') || l.startsWith('[exception]'))
 check('控制台无异常', errors.length === 0, errors.slice(0, 3).join(' | '))
 

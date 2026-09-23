@@ -15,6 +15,7 @@ import {
   type StudyRecord,
   type WishlistItem,
 } from '@shared/types'
+import { formatDuration } from '../lib/format'
 import { db } from './db'
 
 function nowId(prefix: string): string {
@@ -215,7 +216,11 @@ function chatSnapshot(message: ChatMessage): string {
         case 'text': return block.payload.text
         case 'html': return `[HTML]\n${block.payload.html}`
         case 'image': return `[图片] ${block.payload.alt?.trim() || '聊天图片'}`
-        case 'audio': return `[音频] ${block.payload.transcript?.trim() || '聊天音频'}`
+        // 时长是可选的（LLM 或外部来源给的音频可能没有），缺了就不硬编一个 0:00
+        case 'audio': {
+          const duration = block.payload.durationMs === undefined ? '' : ` ${formatDuration(block.payload.durationMs)}`
+          return `[音频${duration}] ${block.payload.transcript?.trim() || '聊天音频'}`
+        }
         case 'file': return `[文件] ${block.payload.name}`
         case 'tool-result': return `[工具结果] ${block.payload.toolName}${block.payload.summary === undefined ? '' : `：${block.payload.summary}`}`
         case 'widget': return `[组件] ${block.payload.title?.trim() || block.payload.source?.trim() || '未命名组件'}`

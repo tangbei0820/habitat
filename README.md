@@ -68,7 +68,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 
 | 脚本 | 覆盖 |
 | --- | --- |
-| `node web/scripts/verify-chat.mjs` | 聊天链路 / 消息对象操作 / 跨模块收录 / 会话置顶与设置 / **会话分组** / 消息块分发 / 分页 / 候选版本（107 项） |
+| `node web/scripts/verify-chat.mjs` | 聊天链路 / 消息对象操作 / 跨模块收录 / 会话置顶与设置 / 会话分组 / 消息块分发 / 分页 / 候选版本 / **输入区快捷栏与请求回复拆开**（132 项） |
 | `node web/scripts/verify-providers.mjs` | API 方案管理 UI（22 项） |
 | `node web/scripts/verify-diagnostics.mjs` | 诊断日志面板（36 项） |
 | `node web/scripts/verify-home.mjs` | Home 十模块 + 备份恢复（25 项，含备份 v6 的分组与旧版兼容） |
@@ -86,6 +86,9 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 - **后台进程在同一终端命令结束后会被回收**：起 mock / server 与执行验收脚本要写在**同一条命令**里；
   整条流水线较长时用「后台任务 + 输出落日志文件」再另开命令 tail，别硬塞进一条前台命令（会被超时杀掉且输出全丢）。
 - **`probe-nocturne-demo.ts` 依赖公网**，不并入常规回归 —— 它的定位是「风险 1 专项验证 + 换环境时的连通性体检」。
+- **`verify-chat.mjs` 的语音条断言要求无头 Edge 带假麦克风**：起浏览器时须加
+  `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`（`.workbuddy/run-front-verify.sh` 已带）。
+  缺了这两个开关，`getUserMedia` 拿不到流，录音相关的断言会全线失败 —— 那是环境问题，不是功能坏了。
 
 ## 文档
 

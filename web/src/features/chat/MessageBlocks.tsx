@@ -20,6 +20,7 @@ import type {
   TextBlock,
   ToolResultBlock,
 } from '@shared/types'
+import { formatDuration } from '../../lib/format'
 
 /** 已知的块类型（与 `MessageBlock` 联合一一对应；用于拦下「新版本写进来的块」） */
 const KNOWN_KINDS: ReadonlySet<string> = new Set<MessageBlock['kind']>([
@@ -58,7 +59,18 @@ function ImageBlockView({ payload }: { payload: ImageBlock['payload'] }) {
 function AudioBlockView({ payload }: { payload: AudioBlock['payload'] }) {
   return (
     <span className="flex flex-col gap-1">
-      <audio controls src={payload.url} className="w-full max-w-xs" />
+      <span className="flex items-center gap-2">
+        <audio controls src={payload.url} className="w-full max-w-xs" />
+        {payload.durationMs !== undefined && (
+          <span
+            data-testid="audio-duration"
+            className="shrink-0 text-xs"
+            style={{ color: 'var(--color-text-dim)' }}
+          >
+            {formatDuration(payload.durationMs)}
+          </span>
+        )}
+      </span>
       {payload.transcript !== undefined && (
         <span className="text-xs opacity-70">{payload.transcript}</span>
       )}

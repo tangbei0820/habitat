@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { LlmChatMessage } from '@shared/providers'
-import type { ChatMessage, ChatSession, MessageStatus } from '@shared/types'
+import type { ChatMessage, ChatSession, MessageBlock, MessageStatus } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
 import {
   ChatBubble,
@@ -11,6 +11,7 @@ import {
 } from '../../features/chat/ChatBubble'
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
 import { ChatSettingsSheet } from '../../features/chat/ChatSettingsSheet'
+import { Composer } from '../../features/chat/Composer'
 import {
   createMessageArtwork,
   createMessageBookmark,
@@ -37,6 +38,7 @@ import {
 } from '../../db/chat'
 import { ApiRequestError } from '../../lib/api'
 import { streamChat } from '../../lib/chatStream'
+import { formatDuration } from '../../lib/format'
 import { log } from '../../lib/log'
 
 /** 首屏只拉最近这么多条（§9 风险8：按时间分页，不全量读）；向上翻页也用它 */
@@ -64,13 +66,48 @@ function titleFrom(text: string): string {
  * 2. **撤回过的消息不进上下文**（SPEC §2.3.5）。这里是该语义的**唯一落点** ——
  *    刻意不放进 `messageText()`：那里的职责是「取纯文本投影」，与「这段该不该送出去」是两件事；
  *    混在一起会让所有复用它的地方（列表预览、版本登记）都被动地跟着改行为。
+ *
+ * 3. 语音条没有文本投影（`messageText()` 只取 text 块），直接送会变成**空气泡** ——
+ *    模型看到的是「上一条用户消息」后面什么都没有，答出来必然跑偏。
+ *    所以给它一句占位描述（`[语音条 0:03]`）：模型知道收到了语音，只是还听不见内容。
+ *    这是 SPEC §2.4.4 记录在案的缺口，等 ASR 接入后换成真实转写。
+ *    ⚠️ 只补语音条，**不动图片 / 文件** —— 那是既有行为，改它属于另一件事。
  */
 function historyUpTo(messages: ChatMessage[], upToIndex: number): LlmChatMessage[] {
   return messages
     .slice(0, upToIndex + 1)
     .filter((message) => message.recalledAt === null)
-    .map((message): LlmChatMessage => ({ role: message.role, content: messageText(message) }))
+    .map((message): LlmChatMessage => ({
+      role: message.role,
+      content: messageText(message) || voicePlaceholder(message),
+    }))
     .filter((message) => message.content !== '')
+}
+
+/** 语音条在上下文里的代表文本；非语音条返回空串（等于「无可入 prompt 的内容」） */
+function voicePlaceholder(message: ChatMessage): string {
+  const audio = message.blocks.find((block) => block.kind === 'audio')
+  if (audio === undefined || audio.kind !== 'audio') return ''
+  return `[语音条 ${formatDuration(audio.payload.durationMs ?? 0)}]`
+}
+
+/**
+ * 待回复消息条数（SPEC §2.4.3）：从末尾往回数连续的 `user` 消息，
+ * 撞到 `assistant` 就说明「已经有人接了」。
+ *
+ * 不加字段 —— 这是能从消息序列直接算出来的状态，多存一份就多一份要维护的一致性
+ * （撤回、删除、重发生成都会让它漂移）。
+ */
+function countUnreplied(messages: ChatMessage[]): number {
+  let count = 0
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (message.recalledAt !== null) continue
+    if (message.role === 'system' || message.role === 'tool') continue
+    if (message.role === 'assistant') return count
+    count += 1
+  }
+  return count
 }
 
 /** 破坏性操作统一走「先说清楚要动什么、再确认」——三个入口共用一份状态 */
@@ -311,27 +348,84 @@ export function ChatWindowPage() {
     setErrorText(failure)
   }
 
-  async function send(): Promise<void> {
-    const text = draft.trim()
-    if (text === '' || sending || sessionId === undefined) return
+  /**
+   * 落一条**用户消息**，并按模式决定要不要接着请求回复（SPEC §2.4.3）。
+   *
+   * 文本与语音条走同一条路 —— SPEC §2.4.4 明确要求语音条不另开链路。
+   * 差别只在 blocks 怎么来。
+   */
+  async function submitUserMessage(input: {
+    text: string
+    blocks?: MessageBlock[]
+    requestReply: boolean
+    /** 「只发送」时给用户的确认语；语音条有自己的一句 */
+    toast?: string
+  }): Promise<void> {
+    if (sessionId === undefined) return
 
     // 1. 用户消息先落库（本地权威，§6.2），不等模型
-    const userMessage = newMessage({ sessionId, role: 'user', text })
+    const userMessage = newMessage({
+      sessionId,
+      role: 'user',
+      text: input.text,
+      ...(input.blocks === undefined ? {} : { blocks: input.blocks }),
+    })
     await appendMessage(userMessage)
     setMessages((prev) => [...prev, userMessage])
-    setDraft('')
     setErrorText(null)
 
-    // 2. 首条消息顺便给会话起名（否则一直叫「新的对话」）
-    const isFirst = messages.length === 0
-    const title = isFirst ? titleFrom(text) : undefined
+    // 2. 首条消息顺便给会话起名（否则一直叫「新的对话」）。
+    //    语音条没有文本投影，`titleFrom('')` 会得到一个空标题 —— 那就别改，保住原标题
+    const isFirst = messagesRef.current.length === 0
+    const title = isFirst && input.text !== '' ? titleFrom(input.text) : undefined
     await touchSession(sessionId, title)
     if (title !== undefined) {
       setSession((prev) => (prev === null || prev === undefined ? prev : { ...prev, title }))
     }
 
+    if (!input.requestReply) {
+      if (input.toast !== undefined) showToast(input.toast)
+      return
+    }
+
     // 3. 历史由前端组装随请求送出（服务端不存聊天记录）
-    await runGeneration(historyUpTo([...messages, userMessage], messages.length), null)
+    await runGeneration(historyUpTo([...messagesRef.current, userMessage], messagesRef.current.length), null)
+  }
+
+  /** 「发送」= 发送并请求回复（SPEC §2.4.3 的默认行为） */
+  async function send(text: string, options: { requestReply: boolean }): Promise<void> {
+    if (sending) return
+    // 先清输入框：内容已经交给下面这条链路了，留在框里会让人以为没发出去
+    setDraft('')
+    await submitUserMessage({
+      text,
+      requestReply: options.requestReply,
+      // 让「只发送」有明确回声：否则点了发送却什么都没发生，看起来像坏了
+      toast: options.requestReply ? undefined : '已发送，未请求回复',
+    })
+  }
+
+  /**
+   * 「请求回复」：把截止到当前**全部**消息的历史送出，走与普通发送完全相同的生成链路。
+   *
+   * 一次请求处理的是整批未回复消息（SPEC §2.4.3）—— 用户连发三条后点一下就够了，
+   * 不需要点三次。逐条补回复属于主动行为，P2 再说。
+   */
+  async function requestReply(): Promise<void> {
+    if (sending || sessionId === undefined) return
+    const list = messagesRef.current
+    if (list.length === 0) return
+    await runGeneration(historyUpTo(list, list.length - 1), null)
+  }
+
+  /** 语音条（SPEC §2.4.4）：与文本消息同一套发送规则，只是块是音频 */
+  async function sendVoice(dataUrl: string, durationMs: number): Promise<void> {
+    if (sending) return
+    await submitUserMessage({
+      text: '',
+      blocks: [{ kind: 'audio', payload: { url: dataUrl, durationMs }, order: 0 }],
+      requestReply: true,
+    })
   }
 
   /** 重发：这一轮没拿到回复，按原样再跑一次（历史截止到那条用户消息） */
@@ -629,7 +723,7 @@ export function ChatWindowPage() {
     [actions, selectedIds, editingId, session?.bubbleMode],
   )
 
-  const canSend = draft.trim() !== '' && !sending
+  const unrepliedCount = useMemo(() => countUnreplied(messages), [messages])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -765,54 +859,31 @@ export function ChatWindowPage() {
           </button>
         </div>
       ) : (
-        <div
-          className="safe-bottom flex shrink-0 items-end gap-2 border-t px-3 py-3"
-          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
-        >
-          <textarea
-            data-testid="composer"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={1}
-            placeholder="输入消息…"
-            className="max-h-32 flex-1 resize-none rounded-lg border px-3 py-2 text-sm outline-none"
-            style={{
-              borderColor: 'var(--color-border)',
-              backgroundColor: 'var(--color-bg)',
-              color: 'var(--color-text)',
-            }}
-            onKeyDown={(e) => {
-              // isComposing：中文输入法选词时的回车不能当发送（否则一句话被切两半）
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault()
-                void send()
-              }
-            }}
-          />
-          {sending ? (
-            <button
-              type="button"
-              onClick={() => abortRef.current?.abort()}
-              className="rounded-full px-4 py-2 text-sm"
-              style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text)' }}
+        <>
+          {/* 待回复提示条（SPEC §2.4.3）：把「还有几条没被回复」摆到明面上。
+              只靠快捷栏那个数字，用户很容易根本没注意到自己按了「只发送」 */}
+          {unrepliedCount > 0 && (
+            <div
+              data-testid="unreplied-hint"
+              className="flex shrink-0 items-center gap-3 px-3 pt-2"
             >
-              停止
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void send()}
-              disabled={!canSend}
-              className="rounded-full px-4 py-2 text-sm disabled:opacity-40"
-              style={{
-                backgroundColor: 'var(--color-primary)',
-                color: 'var(--color-primary-contrast)',
-              }}
-            >
-              发送
-            </button>
+              <span className="flex-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+                {unrepliedCount} 条消息还没请求回复
+              </span>
+            </div>
           )}
-        </div>
+          <Composer
+            draft={draft}
+            onDraftChange={setDraft}
+            sending={sending}
+            unrepliedCount={unrepliedCount}
+            onSend={(text, options) => void send(text, options)}
+            onRequestReply={() => void requestReply()}
+            onSendVoice={(dataUrl, durationMs) => void sendVoice(dataUrl, durationMs)}
+            onAbort={() => abortRef.current?.abort()}
+            onError={setErrorText}
+          />
+        </>
       )}
 
       {toast !== null && (

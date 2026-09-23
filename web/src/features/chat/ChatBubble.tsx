@@ -265,12 +265,15 @@ export function ChatBubble({
               </span>
             ) : (
               <>
-                {isUser ? (
-                  <span className="whitespace-pre-wrap">{text}</span>
-                ) : (
-                  // AI 侧走块分发：一条消息体内可能是文字 + 图片 + 工具结果任意组合（§6.2 可扩展块）
-                  <MessageBlocks blocks={message.blocks} />
-                )}
+                {/*
+                  两侧**都走块分发**（§6.2）。
+                  原先用户侧是 `<span>{messageText(message)}</span>` —— 那等于「用户只能发纯文本」这条
+                  假设被写死在渲染里：语音条（`audio` 块）与图片会被画成**空气泡**，
+                  数据明明在库里、上下文里也有占位描述，界面上却什么都没显示。
+                  `TextBlockView` 本身就是 `whitespace-pre-wrap break-words`，
+                  比原来的 `whitespace-pre-wrap` 只多一个断词，所以这不是「能力补齐」，是**把分叉去掉**。
+                */}
+                <MessageBlocks blocks={message.blocks} />
                 {isStreaming && (
                   <span className="ml-0.5 animate-pulse" style={{ opacity: 0.7 }}>
                     {text === '' ? '…' : '▍'}
