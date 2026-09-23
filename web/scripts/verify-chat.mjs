@@ -351,7 +351,7 @@ const dbInfo = await evaluate(`(async () => {
 })()`)
 const dbState = JSON.parse(dbInfo)
 // ⚠️ 只比「升到了 v9」分不出「v9 的 stores 写错了」，所以顺带验这次迁移该带来的东西
-check('Dexie 当前为 v9（IndexedDB 版本 90）', dbState.version === 90, dbInfo)
+check('Dexie 当前为 v10（IndexedDB 版本 100）', dbState.version === 100, dbInfo)
 check(
   'v3 的三元复合索引已建出',
   Array.isArray(dbState.indexes) && dbState.indexes.includes('[sessionId+createdAt+id]'),
@@ -1264,7 +1264,7 @@ check(
     savedSettings.session?.updatedAt === 2000,
   JSON.stringify(savedSettings),
 )
-check('会话设置不牵动 schema（v9 由主屏 Widget 带来）', savedSettings.version === 90, String(savedSettings.version))
+check('会话设置不牵动 schema（v10 由收藏分类与相册带来）', savedSettings.version === 100, String(savedSettings.version))
 
 const appliedSettings = await evaluate(`(() => {
   const area = document.querySelector('[data-testid="chat-message-area"]')
@@ -1360,11 +1360,11 @@ await waitFor(`document.querySelector('[data-testid="session-row-group-a"]') !==
 
 /* 12.10.1 创建分组 */
 await evaluate(`(() => { document.querySelector('[data-testid="create-group"]').click(); return 'ok' })()`)
-await waitFor(`document.querySelector('[data-testid="group-name-input"]') !== null`, '分组命名弹层打开')
-const emptyNameDisabled = await evaluate(`document.querySelector('[data-testid="group-name-save"]').disabled`)
+await waitFor(`document.querySelector('[data-testid="name-sheet-input"]') !== null`, '分组命名弹层打开')
+const emptyNameDisabled = await evaluate(`document.querySelector('[data-testid="name-sheet-save"]').disabled`)
 check('分组名为空时不能保存', emptyNameDisabled === true, String(emptyNameDisabled))
-await setField('[data-testid="group-name-input"]', '工作')
-await evaluate(`(() => { document.querySelector('[data-testid="group-name-save"]').click(); return 'ok' })()`)
+await setField('[data-testid="name-sheet-input"]', '工作')
+await evaluate(`(() => { document.querySelector('[data-testid="name-sheet-save"]').click(); return 'ok' })()`)
 await waitFor(`document.body.innerText.includes('已创建分组「工作」')`, '创建分组反馈')
 const workGroup = await waitGroupNamed('工作')
 check('创建分组后列表出现「工作」分区', workGroup !== '', JSON.stringify(await listGroups()))
@@ -1472,19 +1472,19 @@ check(
 /* 12.10.8 重命名分组 */
 await waitToastGone()
 await evaluate(`(() => { document.querySelector('[data-testid="create-group"]').click(); return 'ok' })()`)
-await waitFor(`document.querySelector('[data-testid="group-name-input"]') !== null`, '再次打开分组命名弹层')
-await setField('[data-testid="group-name-input"]', '归档')
-await evaluate(`(() => { document.querySelector('[data-testid="group-name-save"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="name-sheet-input"]') !== null`, '再次打开分组命名弹层')
+await setField('[data-testid="name-sheet-input"]', '归档')
+await evaluate(`(() => { document.querySelector('[data-testid="name-sheet-save"]').click(); return 'ok' })()`)
 const archiveGroup = await waitGroupNamed('归档')
 
 await waitToastGone()
 await openGroupMenu(workGroup)
 await menuAction('rename-group')
-await waitFor(`document.querySelector('[data-testid="group-name-input"]') !== null`, '重命名弹层打开')
-const namePrefill = await evaluate(`document.querySelector('[data-testid="group-name-input"]').value`)
+await waitFor(`document.querySelector('[data-testid="name-sheet-input"]') !== null`, '重命名弹层打开')
+const namePrefill = await evaluate(`document.querySelector('[data-testid="name-sheet-input"]').value`)
 check('重命名弹层预填当前名称', namePrefill === '工作', String(namePrefill))
-await setField('[data-testid="group-name-input"]', '生活')
-await evaluate(`(() => { document.querySelector('[data-testid="group-name-save"]').click(); return 'ok' })()`)
+await setField('[data-testid="name-sheet-input"]', '生活')
+await evaluate(`(() => { document.querySelector('[data-testid="name-sheet-save"]').click(); return 'ok' })()`)
 await waitFor(`document.querySelector('[data-testid="group-name-${workGroup}"]').innerText.trim() === '生活'`, '分区标题更新')
 const renamedGroup = await readGroup(workGroup)
 check('重命名落库', renamedGroup?.name === '生活', JSON.stringify(renamedGroup))
@@ -1535,9 +1535,9 @@ await waitFor(`document.body.innerText.includes('已删除分组')`, '空分组�
 /* 12.10.11 脏引用兜底：groupId 指向不存在的分组时，会话不能消失 */
 await waitToastGone()
 await evaluate(`(() => { document.querySelector('[data-testid="create-group"]').click(); return 'ok' })()`)
-await waitFor(`document.querySelector('[data-testid="group-name-input"]') !== null`, '重建一个分组用于兜底验收')
-await setField('[data-testid="group-name-input"]', '临时')
-await evaluate(`(() => { document.querySelector('[data-testid="group-name-save"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="name-sheet-input"]') !== null`, '重建一个分组用于兜底验收')
+await setField('[data-testid="name-sheet-input"]', '临时')
+await evaluate(`(() => { document.querySelector('[data-testid="name-sheet-save"]').click(); return 'ok' })()`)
 const lonelyGroup = await waitGroupNamed('临时')
 
 await evaluate(`(async () => {

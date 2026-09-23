@@ -3,6 +3,7 @@ import {
   type Artwork,
   type ArtworkCategory,
   type Bookmark,
+  type BookmarkCategory,
   type ChatMessage,
   type CountdownDay,
   type Diary,
@@ -10,6 +11,7 @@ import {
   type HomeWidgetKind,
   type Moment,
   type Photo,
+  type PhotoCollection,
   type PhotoMime,
   type ReadingNote,
   type ReadingStatus,
@@ -197,6 +199,7 @@ export async function createExternalBookmark(title: string, href: string, note: 
     targetId,
     title: requiredText(title, '收藏名称'),
     note: note.trim() === '' ? null : note.trim(),
+    categoryId: null,
     createdAt: at,
     updatedAt: at,
   }
@@ -274,6 +277,7 @@ export async function createMessageBookmark(message: ChatMessage): Promise<Bookm
     targetId: message.id,
     title: chatEntryTitle(message, snapshot),
     note: snapshot,
+    categoryId: null,
     sourceId: message.id,
     sessionId: message.sessionId,
     metadata: chatSourceMetadata(message),
@@ -291,6 +295,101 @@ export async function createMessageBookmark(message: ChatMessage): Promise<Bookm
 
 export async function deleteBookmark(id: string): Promise<void> {
   await db.bookmarks.delete(id)
+}
+
+/* ------------------------------------------------------------------ *
+ * 分类：收藏分类（SPEC §3.5.4）与相册（§3.7.3）
+ *
+ * 两组是**同构**的：创建 / 改名 / 删除 / 设置归属各一套，语义完全对齐
+ * （单归属、删分类不删条目、归属字段一定有值）。改其中一组时请对照另一组 ——
+ * 它们没有抽成泛型工厂，是因为真正不同的那部分（从属表与字段名）无法参数化，
+ * 能省下的只有几个几行的函数，换来的是为一处 spread 加类型断言的代价。
+ * ------------------------------------------------------------------ */
+
+export const CATEGORY_NAME_MAX = 30
+
+/**
+ * 名称归一化：与分组名同一套规则（trim + 非空 + 30 字上限）。
+ * 刻意**不查重名** —— 与 `createSessionGroup` 同样的取舍：两个「工作」总比
+ * 「建不出来但不说为什么」可接受。
+ */
+function normalizeCategoryName(name: string, label: string): string {
+  const trimmed = name.trim()
+  if (trimmed === '') throw new Error(`${label}名称不能为空`)
+  if (trimmed.length > CATEGORY_NAME_MAX) {
+    throw new Error(`${label}名称不能超过 ${CATEGORY_NAME_MAX} 字`)
+  }
+  return trimmed
+}
+
+export async function listBookmarkCategories(): Promise<BookmarkCategory[]> {
+  return db.bookmarkCategories.orderBy('createdAt').toArray()
+}
+
+export async function createBookmarkCategory(name: string): Promise<BookmarkCategory> {
+  const now = Date.now()
+  const item: BookmarkCategory = {
+    id: nowId('bookmark-category'),
+    type: 'bookmark-category',
+    name: normalizeCategoryName(name, '分类'),
+    createdAt: now,
+    updatedAt: now,
+  }
+  await db.bookmarkCategories.add(item)
+  return item
+}
+
+/** 改名的 `updatedAt` 跟上：分类本身就是被编辑的对象（收藏条目不跟，理由同 `setBookmarkCategory`） */
+export async function renameBookmarkCategory(
+  id: string,
+  name: string,
+): Promise<BookmarkCategory | null> {
+  const category = await db.bookmarkCategories.get(id)
+  if (category === undefined) return null
+  const next: BookmarkCategory = {
+    ...category,
+    name: normalizeCategoryName(name, '分类'),
+    updatedAt: Date.now(),
+  }
+  await db.bookmarkCategories.put(next)
+  return next
+}
+
+/**
+ * 删除分类：**只删分类，不删收藏** —— 类内收藏的 `categoryId` 在同一事务里置回 `null`。
+ * 返回被移出的条数（确认语要说清影响了几条）。做法与 `deleteSessionGroup` 一致：
+ * 分两步写会留下「收藏指向一个已不存在的分类」的中间态。
+ */
+export async function deleteBookmarkCategory(id: string): Promise<number> {
+  return db.transaction('rw', db.bookmarkCategories, db.bookmarks, async () => {
+    const affected = await db.bookmarks
+      .where('categoryId')
+      .equals(id)
+      .modify((bookmark: Bookmark) => {
+        bookmark.categoryId = null
+      })
+    await db.bookmarkCategories.delete(id)
+    return affected
+  })
+}
+
+/**
+ * 把收藏移入 / 移出分类，`categoryId` 传 `null` 即移出。
+ * 与分组一致**不刷新 `updatedAt`** —— 换个收纳位置不代表这条收藏又被看过一次。
+ */
+export async function setBookmarkCategory(
+  bookmarkId: string,
+  categoryId: string | null,
+): Promise<Bookmark | null> {
+  const bookmark = await db.bookmarks.get(bookmarkId)
+  if (bookmark === undefined) return null
+  if (categoryId !== null && (await db.bookmarkCategories.get(categoryId)) === undefined) {
+    // 不校验就会写下「指向不存在分类」的引用：那条收藏哪个筛选里都看不到
+    throw new Error('目标分类不存在或已被删除')
+  }
+  const next: Bookmark = { ...bookmark, categoryId }
+  await db.bookmarks.put(next)
+  return next
 }
 
 const ARTWORK_CATEGORIES: readonly ArtworkCategory[] = ['writing', 'visual', 'audio', 'other']
@@ -429,6 +528,7 @@ export async function createPhoto(input: {
     mimeType: input.mimeType as PhotoMime,
     sizeBytes: input.sizeBytes,
     takenAt: requiredDate(input.takenAt),
+    collectionId: null,
     createdAt: at,
     updatedAt: at,
   }
@@ -500,6 +600,7 @@ export async function createMessagePhotos(message: ChatMessage): Promise<Message
       mimeType: loaded.mimeType,
       sizeBytes: loaded.sizeBytes,
       takenAt: localDateKey(message.createdAt),
+      collectionId: null,
       sourceId: message.id,
       sessionId: message.sessionId,
       metadata: chatSourceMetadata(message, { sourceBlockKind: 'image', sourceBlockOrder: block.order }),
@@ -527,6 +628,70 @@ export async function createMessagePhotos(message: ChatMessage): Promise<Message
 
 export async function deletePhoto(id: string): Promise<void> {
   await db.photos.delete(id)
+}
+
+export async function listPhotoCollections(): Promise<PhotoCollection[]> {
+  return db.photoCollections.orderBy('createdAt').toArray()
+}
+
+export async function createPhotoCollection(name: string): Promise<PhotoCollection> {
+  const now = Date.now()
+  const item: PhotoCollection = {
+    id: nowId('photo-collection'),
+    type: 'photo-collection',
+    name: normalizeCategoryName(name, '相册'),
+    createdAt: now,
+    updatedAt: now,
+  }
+  await db.photoCollections.add(item)
+  return item
+}
+
+export async function renamePhotoCollection(
+  id: string,
+  name: string,
+): Promise<PhotoCollection | null> {
+  const collection = await db.photoCollections.get(id)
+  if (collection === undefined) return null
+  const next: PhotoCollection = {
+    ...collection,
+    name: normalizeCategoryName(name, '相册'),
+    updatedAt: Date.now(),
+  }
+  await db.photoCollections.put(next)
+  return next
+}
+
+/** 删除相册：**只删相册，不删照片** —— 册内照片的 `collectionId` 在同一事务里置回 `null`。 */
+export async function deletePhotoCollection(id: string): Promise<number> {
+  return db.transaction('rw', db.photoCollections, db.photos, async () => {
+    const affected = await db.photos
+      .where('collectionId')
+      .equals(id)
+      .modify((photo: Photo) => {
+        photo.collectionId = null
+      })
+    await db.photoCollections.delete(id)
+    return affected
+  })
+}
+
+/**
+ * 把照片移入 / 移出相册，`collectionId` 传 `null` 即移出（**照片本身仍在**，
+ * 与 `deletePhoto` 是两件事，SPEC §3.7.3）。
+ */
+export async function setPhotoCollection(
+  photoId: string,
+  collectionId: string | null,
+): Promise<Photo | null> {
+  const photo = await db.photos.get(photoId)
+  if (photo === undefined) return null
+  if (collectionId !== null && (await db.photoCollections.get(collectionId)) === undefined) {
+    throw new Error('目标相册不存在或已被删除')
+  }
+  const next: Photo = { ...photo, collectionId }
+  await db.photos.put(next)
+  return next
 }
 
 const READING_STATUSES: readonly ReadingStatus[] = ['want', 'reading', 'finished']

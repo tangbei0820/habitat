@@ -16,7 +16,9 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { ChatSession, SessionGroup } from '@shared/types'
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
+import { NameSheet } from '../../components/NameSheet'
 import {
+  SESSION_GROUP_NAME_MAX,
   createSession,
   createSessionGroup,
   deleteSession,
@@ -28,7 +30,6 @@ import {
   setSessionGroupCollapsed,
   setSessionPinned,
 } from '../../db/chat'
-import { GroupNameSheet } from '../../features/chat/GroupNameSheet'
 import { log } from '../../lib/log'
 
 /** 当前打开的是哪个弹出层（会话行菜单 / 分组菜单 / 移入分组的选组菜单） */
@@ -472,9 +473,12 @@ export function ChatListPage() {
       />
 
       {nameSheet !== null && (
-        <GroupNameSheet
+        <NameSheet
           title={nameSheet.mode === 'create' ? '新建分组' : '重命名分组'}
+          fieldLabel="分组名称"
+          hint="删分组不会删除会话，组内会话会回到未分组"
           initialName={nameSheet.mode === 'create' ? '' : nameSheet.initialName}
+          maxLength={SESSION_GROUP_NAME_MAX}
           saving={saving}
           onClose={() => setNameSheet(null)}
           onSubmit={submitGroupName}

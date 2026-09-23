@@ -162,15 +162,31 @@ interface SessionGroup extends BaseObject {
 | `WishlistItem` | `wishlist` | `title`, `status: 'open' \| 'done'`, `completedAt` |
 | `CountdownDay` | `countdowns` | `title`, `targetDate`（本地 `YYYY-MM-DD`） |
 | `Diary` | `diaries` | `title`, `content`（纯文本）, `entryDate` |
-| `Bookmark` | `bookmarks` | `targetType`, `targetId`, `title`, `note` |
+| `Bookmark` | `bookmarks` | `targetType`, `targetId`, `title`, `note`, `categoryId` |
 | `Artwork` | `artworks` | `title`, `category`, `description`, `externalUrl` |
-| `Photo` | `photos` | `title`, `caption`, `imageDataUrl`, `mimeType`, `sizeBytes`, `takenAt` |
+| `Photo` | `photos` | `title`, `caption`, `imageDataUrl`, `mimeType`, `sizeBytes`, `takenAt`, `collectionId` |
 | `ReadingNote` | `readingNotes` | `bookTitle`, `author`, `status`, `note` |
 | `MusicTrack` | `musicTracks` | `title`, `artist`, `note`, `externalUrl` |
 | `StudyRecord` | `studyRecords` | `subject`, `note`, `studiedOn`, `durationMinutes` |
 
+另有**两张分类表**（不是生活数据本身，是收纳容器）：
+
+| 实体 | 表 | 关键字段 | 依据 |
+|---|---|---|---|
+| `BookmarkCategory` | `bookmarkCategories` | `name`（≤30 字） | SPEC §3.5.4 |
+| `PhotoCollection` | `photoCollections` | `name`（≤30 字） | SPEC §3.7.3 |
+
+两张表**结构同构但各自独立**：分类数据本来就是各模块独立的（收藏的分类不出现在相册的筛选条里），
+合并成一张带 `scope` 的表只会多一个分支，省不下真正不同的那部分（从属表与归属字段名都不一样）。
+⚠️ `BookmarkCategory` 与 `ArtworkCategory` 名字相近但不是一回事：后者是作品内建的四种类型
+（字面量联合，不可增删），前者是可以随时新建 / 改名 / 删除的实体。
+
 约定：
 
+- **分类是单归属**：`categoryId` / `collectionId` 为 `null` 即「未分类」；一个条目最多属于一个分类。
+  多维度标记交给后续的**标签**，不让分类兼任（SPEC §3.5.4 / §3.7.3）。
+- **归属字段一定有值**：老数据在迁移里补 `null`，导入的旧备份也在导入时补 `null` —— 不留 `undefined`。
+- **未分类是兜底区**：`null` 与「指向已不存在分类」的脏引用都归到未分类（同会话分组的做法）。
 - **纯日期一律存本地字符串**（`YYYY-MM-DD`），避免纯日期被时区偏移成前一天。
 - **时长统一存分钟**，展示层不再反复换算。
 - 未接入富文本沙箱前，正文一律**纯文本**，不引入 HTML 旁路。
@@ -183,6 +199,8 @@ interface SessionGroup extends BaseObject {
 | 作品 → 来源内容 | `BaseObject.sourceId` / `sessionId` | 本体尽量**引用原始对象**，必要时存稳定快照（SPEC §3.6.3） |
 | 相册 → 来源消息 | `BaseObject.sourceId` / `sessionId` | 保留原图 + 来源 + 时间 + 发送方 / 生成方（SPEC §4.4） |
 | 主屏 Widget → 被展示内容 | `HomeWidget.kind` + `refId`（本地表 `homeWidgets`） | **只存引用、不复制数据**（SPEC §1.4）；唯一索引 `&kind` 从数据层保证**每种 Widget 至多一条**；`refId` 失效时渲染层不渲染，删实体时同事务清引用 |
+| 收藏 → 分类 | `Bookmark.categoryId`（本地表 `bookmarkCategories`） | 单归属；删分类**不删收藏**，同事务把类内 `categoryId` 置 `null`（SPEC §3.5.4） |
+| 照片 → 相册 | `Photo.collectionId`（本地表 `photoCollections`） | 单归属；删相册**不删照片**，同事务把册内 `collectionId` 置 `null`（SPEC §3.7.3）。⚠️ 「移出相册」只置空归属，与「删除照片」是两件事 |
 
 `BookmarkTargetType` 的合法取值集中在 `shared/types.ts`。新增来源类型时**只加这一个枚举**，
 `Bookmark` 表结构不动 —— 这正是选 `targetType + targetId` 而不是给每类内容建关联表的原因。
@@ -212,6 +230,7 @@ interface SessionGroup extends BaseObject {
 | v7 | 70 | 读书 / 音乐 / 学习（第四批） |
 | v8 | 80 | `sessions` 加 `groupId` 索引 + `sessionGroups` 表（会话分组，T-018）。**本版是首个带 `upgrade()` 回调的迁移**：给所有老会话补 `groupId: null` |
 | v9 | 90 | 新增 `homeWidgets` 表（主屏 Widget，T-020）。纯新增表，**不需要 `upgrade()` 回调** —— 它对留言板 / 倒数日只是多了一条引用，没动那两张表的任何字段。`&kind` 是唯一索引 |
+| v10 | 100 | `bookmarks` 加 `categoryId` 索引 + `bookmarkCategories` 表；`photos` 加 `collectionId` 索引 + `photoCollections` 表（收藏分类与相册，T-021）。**带 `upgrade()` 回调**：给老收藏补 `categoryId: null`、老照片补 `collectionId: null`（同 v8 的理由 —— 不让「归属字段一定有值」只活在读取方的记忆里） |
 
 Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画版本（`verify-chat.mjs`）。
 **每次升版都要在 `db.ts` 的版本注释里写清「为什么」**；只写「加了张表」等于没写。
@@ -231,7 +250,7 @@ Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画
 | v5 | + 读书 / 音乐 / 学习 |
 | v6 | + 会话分组（T-018）；旧版导入时分组按空处理，会话 `groupId` 补成 `null` |
 | v7 | + 主屏 Widget（T-020）；旧版导入时主屏回到「一张 Widget 都没有」 |
-
+| v8 | + 收藏分类与相册（T-021）；旧版导入时两张分类表按空处理，收藏 `categoryId` / 照片 `collectionId` 补成 `null`（落进「未分类」） |
 > ⚠️ v7 导入时**必须按 `kind` 去重**：`&kind` 是唯一索引，手改过的备份（例如两条 `board`）会让
 > `bulkAdd` 抛 `ConstraintError`，导致**整份备份一个字都导不进去**。保留 `createdAt` 最早的那条，
 > 与「先上主屏的在前」的排序语义一致。

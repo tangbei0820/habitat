@@ -226,12 +226,25 @@ export type BookmarkTargetType =
   | 'music-track'
   | 'study-record'
 
+/**
+ * 收藏分类（SPEC §3.5.4）：用户自建的**收纳**维度，**单归属**。
+ *
+ * ⚠️ 与 `ArtworkCategory` 不是一回事：那个是作品内建的四种类型（字面量联合，不可增删），
+ * 这个是可以随时新建 / 改名 / 删除的独立实体。多维度标记交给后续的「标签」，不让分类兼任。
+ */
+export interface BookmarkCategory extends BaseObject {
+  type: 'bookmark-category'
+  name: string
+}
+
 export interface Bookmark extends BaseObject {
   type: 'bookmark'
   targetType: BookmarkTargetType
   targetId: string
   title: string
   note: string | null
+  /** 所属分类；`null` = 未分类。指向已不存在的分类时按未分类处理（SPEC §3.5.4 兜底区） */
+  categoryId: string | null
 }
 
 export type ArtworkCategory = 'writing' | 'visual' | 'audio' | 'other'
@@ -247,6 +260,12 @@ export interface Artwork extends BaseObject {
 export const MAX_PHOTO_BYTES = 3 * 1024 * 1024
 export type PhotoMime = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
 
+/** 分类相册（SPEC §3.7.3）：与收藏分类同构，同样**单归属**；界面文案叫「相册」。 */
+export interface PhotoCollection extends BaseObject {
+  type: 'photo-collection'
+  name: string
+}
+
 /** Phase 2 先以内联 data URL 保存，确保 IndexedDB 与 JSON 备份都能原样恢复。 */
 export interface Photo extends BaseObject {
   type: 'photo'
@@ -256,6 +275,8 @@ export interface Photo extends BaseObject {
   mimeType: PhotoMime
   sizeBytes: number
   takenAt: string
+  /** 所属相册；`null` = 未分类。指向已不存在的相册时按未分类处理（SPEC §3.7.3 兜底区） */
+  collectionId: string | null
 }
 
 export type ReadingStatus = 'want' | 'reading' | 'finished'

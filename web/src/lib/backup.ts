@@ -8,6 +8,7 @@
 import type {
   Artwork,
   Bookmark,
+  BookmarkCategory,
   ChatMessage,
   ChatSession,
   CountdownDay,
@@ -16,6 +17,7 @@ import type {
   Moment,
   MusicTrack,
   Photo,
+  PhotoCollection,
   ReadingNote,
   StudyRecord,
   SessionGroup,
@@ -25,7 +27,7 @@ import { MAX_PHOTO_BYTES } from '@shared/types'
 import { db } from '../db/db'
 
 export const BACKUP_FORMAT = 'habitat-backup'
-export const BACKUP_VERSION = 7
+export const BACKUP_VERSION = 8
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -39,8 +41,10 @@ export interface HabitatBackup {
   countdowns: CountdownDay[]
   diaries: Diary[]
   bookmarks: Bookmark[]
+  bookmarkCategories: BookmarkCategory[]
   artworks: Artwork[]
   photos: Photo[]
+  photoCollections: PhotoCollection[]
   readingNotes: ReadingNote[]
   musicTracks: MusicTrack[]
   studyRecords: StudyRecord[]
@@ -56,8 +60,10 @@ export interface BackupCounts {
   countdowns: number
   diaries: number
   bookmarks: number
+  bookmarkCategories: number
   artworks: number
   photos: number
+  photoCollections: number
   readingNotes: number
   musicTracks: number
   studyRecords: number
@@ -65,7 +71,7 @@ export interface BackupCounts {
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, sessionGroups, messages, moments, wishlist, countdowns, diaries, bookmarks, artworks, photos, readingNotes, musicTracks, studyRecords, homeWidgets] = await Promise.all([
+  const [sessions, sessionGroups, messages, moments, wishlist, countdowns, diaries, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, musicTracks, studyRecords, homeWidgets] = await Promise.all([
     db.sessions.toArray(),
     db.sessionGroups.toArray(),
     db.messages.toArray(),
@@ -74,8 +80,10 @@ export async function exportAll(): Promise<HabitatBackup> {
     db.countdowns.toArray(),
     db.diaries.toArray(),
     db.bookmarks.toArray(),
+    db.bookmarkCategories.toArray(),
     db.artworks.toArray(),
     db.photos.toArray(),
+    db.photoCollections.toArray(),
     db.readingNotes.toArray(),
     db.musicTracks.toArray(),
     db.studyRecords.toArray(),
@@ -93,8 +101,10 @@ export async function exportAll(): Promise<HabitatBackup> {
     countdowns,
     diaries,
     bookmarks,
+    bookmarkCategories,
     artworks,
     photos,
+    photoCollections,
     readingNotes,
     musicTracks,
     studyRecords,
@@ -148,6 +158,29 @@ function looksLikeHomeWidget(value: unknown): value is HomeWidget {
     typeof value.id === 'string' &&
     value.type === 'home-widget' &&
     (value.kind === 'board' || value.kind === 'countdown')
+  )
+}
+
+/**
+ * 分类与相册（SPEC §3.5.4 / §3.7.3）只校验「标识 + 名称」：条目上的归属引用不在这里管 ——
+ * 同 `looksLikeHomeWidget` 的理由，导入语义是「回到备份那一刻」，
+ * 指向已不存在分类的脏引用由筛选条的「未分类」兜底区消化。
+ */
+function looksLikeBookmarkCategory(value: unknown): value is BookmarkCategory {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    value.type === 'bookmark-category' &&
+    typeof value.name === 'string'
+  )
+}
+
+function looksLikePhotoCollection(value: unknown): value is PhotoCollection {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    value.type === 'photo-collection' &&
+    typeof value.name === 'string'
   )
 }
 
@@ -321,7 +354,14 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：diaries / bookmarks 必须是数组')
   }
   const diaries = diariesRaw.filter(looksLikeDiary)
-  const bookmarks = bookmarksRaw.filter(looksLikeBookmark)
+  // v10 之前没有分类字段；补成 null 让它落进「未分类」——
+  // 留成 undefined 会让筛选条漏掉这批旧数据（它们哪个筛选里都不出现）
+  const bookmarks = bookmarksRaw
+    .filter(looksLikeBookmark)
+    .map((bookmark) => ({
+      ...bookmark,
+      categoryId: typeof bookmark.categoryId === 'string' ? bookmark.categoryId : null,
+    }))
   if (diaries.length !== diariesRaw.length || bookmarks.length !== bookmarksRaw.length) {
     throw new Error('备份内容损坏：存在无法识别的日记或收藏')
   }
@@ -333,7 +373,12 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：artworks / photos 必须是数组')
   }
   const artworks = artworksRaw.filter(looksLikeArtwork)
-  const photos = photosRaw.filter(looksLikePhoto)
+  const photos = photosRaw
+    .filter(looksLikePhoto)
+    .map((photo) => ({
+      ...photo,
+      collectionId: typeof photo.collectionId === 'string' ? photo.collectionId : null,
+    }))
   if (artworks.length !== artworksRaw.length || photos.length !== photosRaw.length) {
     throw new Error('备份内容损坏：存在无法识别的作品或照片')
   }
@@ -388,7 +433,22 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   }
   const homeWidgets = [...homeWidgetsByKind.values()]
 
-  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks, db.artworks, db.photos, db.readingNotes, db.musicTracks, db.studyRecords, db.homeWidgets], async () => {
+  // v8 新增收藏分类与相册；旧版导入时按空处理，条目全落进「未分类」。
+  const bookmarkCategoriesRaw = version >= 8 ? raw.bookmarkCategories : []
+  const photoCollectionsRaw = version >= 8 ? raw.photoCollections : []
+  if (!Array.isArray(bookmarkCategoriesRaw) || !Array.isArray(photoCollectionsRaw)) {
+    throw new Error('备份内容损坏：bookmarkCategories / photoCollections 必须是数组')
+  }
+  const bookmarkCategories = bookmarkCategoriesRaw.filter(looksLikeBookmarkCategory)
+  const photoCollections = photoCollectionsRaw.filter(looksLikePhotoCollection)
+  if (
+    bookmarkCategories.length !== bookmarkCategoriesRaw.length ||
+    photoCollections.length !== photoCollectionsRaw.length
+  ) {
+    throw new Error('备份内容损坏：存在无法识别的分类或相册')
+  }
+
+  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks, db.bookmarkCategories, db.artworks, db.photos, db.photoCollections, db.readingNotes, db.musicTracks, db.studyRecords, db.homeWidgets], async () => {
     await db.sessions.clear()
     await db.sessionGroups.clear()
     await db.messages.clear()
@@ -397,8 +457,10 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.countdowns.clear()
     await db.diaries.clear()
     await db.bookmarks.clear()
+    await db.bookmarkCategories.clear()
     await db.artworks.clear()
     await db.photos.clear()
+    await db.photoCollections.clear()
     await db.readingNotes.clear()
     await db.musicTracks.clear()
     await db.studyRecords.clear()
@@ -411,8 +473,10 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.countdowns.bulkAdd(countdowns)
     await db.diaries.bulkAdd(diaries)
     await db.bookmarks.bulkAdd(bookmarks)
+    await db.bookmarkCategories.bulkAdd(bookmarkCategories)
     await db.artworks.bulkAdd(artworks)
     await db.photos.bulkAdd(photos)
+    await db.photoCollections.bulkAdd(photoCollections)
     await db.readingNotes.bulkAdd(readingNotes)
     await db.musicTracks.bulkAdd(musicTracks)
     await db.studyRecords.bulkAdd(studyRecords)
@@ -427,8 +491,10 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     countdowns: countdowns.length,
     diaries: diaries.length,
     bookmarks: bookmarks.length,
+    bookmarkCategories: bookmarkCategories.length,
     artworks: artworks.length,
     photos: photos.length,
+    photoCollections: photoCollections.length,
     readingNotes: readingNotes.length,
     musicTracks: musicTracks.length,
     studyRecords: studyRecords.length,

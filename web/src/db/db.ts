@@ -2,6 +2,7 @@ import Dexie, { type Table } from 'dexie'
 import type {
   Artwork,
   Bookmark,
+  BookmarkCategory,
   ChatMessage,
   ChatSession,
   CountdownDay,
@@ -9,6 +10,7 @@ import type {
   HomeWidget,
   Moment,
   Photo,
+  PhotoCollection,
   ReadingNote,
   MusicTrack,
   SessionGroup,
@@ -33,6 +35,8 @@ import type {
  *     就只存在于读取方的记忆里，任何忘记兜底的新读取点都会让会话从列表里凭空消失。
  * v9：主屏 Widget（SPEC §5.2）。纯新增表，旧数据原样保留，不需要 upgrade 回调 ——
  *     它对留言板 / 倒数日只是「多了一条引用」，没有动那两张表的任何字段。
+ * v10：收藏分类 + 相册（SPEC §3.5.4 / §3.7.3）。新增两张分类表，`bookmarks` / `photos`
+ *     各加一个归属字段（老数据在 upgrade 里补 `null`，同 v8 的做法）。
  */
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
@@ -43,8 +47,10 @@ export class HabitatDb extends Dexie {
   countdowns!: Table<CountdownDay, string>
   diaries!: Table<Diary, string>
   bookmarks!: Table<Bookmark, string>
+  bookmarkCategories!: Table<BookmarkCategory, string>
   artworks!: Table<Artwork, string>
   photos!: Table<Photo, string>
+  photoCollections!: Table<PhotoCollection, string>
   readingNotes!: Table<ReadingNote, string>
   musicTracks!: Table<MusicTrack, string>
   studyRecords!: Table<StudyRecord, string>
@@ -155,6 +161,46 @@ export class HabitatDb extends Dexie {
       studyRecords: 'id, studiedOn, createdAt, updatedAt',
       homeWidgets: 'id, &kind, createdAt',
     })
+    // v10：收藏分类 + 相册（SPEC §3.5.4 / §3.7.3）。新增两张分类表，`bookmarks` 与 `photos`
+    // 各加一个归属索引（按分类取条目是筛选条的主要读法，不做索引就得全表拉回来再在内存里筛）。
+    // 两张表用各自的实体名而不是合成一张「分类表」：分类数据本来就是各模块独立的，
+    // 合并只会多出一个 `scope` 分支，却省不下真正不同的那部分（从属表与字段名都不一样）。
+    // ⚠️ 与 v8 同类：老收藏 / 老照片没有归属字段，upgrade 里统一补成 `null`。
+    // 不靠读取方把 undefined 当 null 容忍 —— 那样「归属字段一定有值」这条不变量
+    // 就只活在读取方的记忆里，筛选条会因此漏掉一批本该落在「未分类」里的旧数据。
+    this.version(10)
+      .stores({
+        sessions: 'id, updatedAt, pinnedAt, archivedAt, groupId',
+        sessionGroups: 'id, createdAt',
+        messages: 'id, sessionId, createdAt, [sessionId+createdAt+id]',
+        moments: 'id, createdAt, author',
+        wishlist: 'id, status, createdAt, updatedAt',
+        countdowns: 'id, targetDate, createdAt',
+        diaries: 'id, entryDate, createdAt, updatedAt',
+        bookmarks: 'id, targetType, targetId, createdAt, categoryId, &[targetType+targetId]',
+        bookmarkCategories: 'id, createdAt',
+        artworks: 'id, category, createdAt, updatedAt',
+        photos: 'id, takenAt, createdAt, collectionId',
+        photoCollections: 'id, createdAt',
+        readingNotes: 'id, status, createdAt, updatedAt',
+        musicTracks: 'id, createdAt, updatedAt',
+        studyRecords: 'id, studiedOn, createdAt, updatedAt',
+        homeWidgets: 'id, &kind, createdAt',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('bookmarks')
+          .toCollection()
+          .modify((bookmark: Bookmark) => {
+            if (bookmark.categoryId === undefined) bookmark.categoryId = null
+          })
+        await tx
+          .table('photos')
+          .toCollection()
+          .modify((photo: Photo) => {
+            if (photo.collectionId === undefined) photo.collectionId = null
+          })
+      })
   }
 }
 
