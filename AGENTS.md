@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar ⚠️ **实测线上跑的是 nginx/1.18.0，不是 Caddy**（T-022），选型待北北确认                      |
-| 当前阶段 | **Phase 3B Eventide 施工中**：切片一状态底座已完成（真实 Eventide sidecar + Node Provider + SQLite 宿主持久化 + API，T-023）｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022），不阻塞后续功能施工｜UX P0 与 P1 均已收口 |
+| 当前阶段 | **Phase 3B Eventide 施工中**：切片一状态底座（T-023）+ 切片二聊天前 tick / 状态卡注入（T-024）已完成｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022），不阻塞后续功能施工｜UX P0 与 P1 均已收口 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -169,7 +169,7 @@ habitat/
 - Phase 1 Chat MVP：✅ 完成
 - Phase 2 Home 基础数据链：✅ 完成
 - Phase 3A 长期记忆：🚧 一半（客户端链路已验，自部署实例未接）｜**暂停中**，不阻塞 UX 收口
-- Phase 3B Eventide：🚧 切片一完成（状态内核 / 持久化 / API），上下文注入与主动行为未开始
+- Phase 3B Eventide：🚧 切片一、二完成（状态底座 + 聊天上下文注入），互动结算与主动行为未开始
 - Phase 4 Life：未开始
 - Phase 5 高级能力：未开始
 - Phase 6 打磨：未开始
@@ -215,8 +215,10 @@ habitat/
 
 - ✅ 切片一「状态内核底座」：Eventide 固定到 commit `5d8bef9`，以独立 FastAPI sidecar 运行；sidecar 无状态，
   Node 持有 `body_state_snapshot` 唯一快照并通过 `StateProvider` 推进
-- ✅ 已有 `/api/health/state`、`GET /api/state`、`POST /api/state/tick`；真实全链探针 16/16
-- ⏭ 下一切片：把 Eventide 状态卡接入聊天上下文组装；Nocturne 继续采用可降级边界，不能让记忆未配置阻塞状态卡
+- ✅ 已有 `/api/health/state`、`GET /api/state`、`POST /api/state/tick`；真实全链探针 19/19
+- ✅ 切片二「聊天上下文注入」：每轮聊天前 tick，状态卡插在 persona system 指令之后；不回传前端、不改写历史；
+  未配置 / 空卡 / sidecar 不可达均降级继续聊天；自动 tick 已串行化且时间单调（T-024）
+- ⏭ 下一切片：互动结算（回复完成后生成/写回 delta）；不提前做事件抽取、梦境或主动唤醒
 
 ### 当前产品状态
 
@@ -229,7 +231,7 @@ habitat/
 
 ### 下一步
 
-1. 🔵 **进行中 · Phase 3B Eventide**：下一切片做「聊天前 tick + 状态卡注入上下文」，并验证未配置 / 不可达时的降级行为；不提前做事件抽取、主动唤醒或梦境
+1. 🔵 **进行中 · Phase 3B Eventide**：下一切片做互动结算（回复完成后按消息窗口生成结算结果并安全写回）；不提前做事件抽取、主动唤醒或梦境
 2. ⏸ **部署前关卡 · Phase 3A 自部署 Nocturne**：服务器上开启 `api_token`、验证内网 `/mcp`、重跑 `probe-nocturne-live.ts`；详见 `docs/DEPLOYMENT.md` §3
 3. 之后再进入 Eventide 互动结算 → 事件抽取 / 调度 → BudgetGuard 与主动行为；P2 的 AI 自主日记 / 留言依赖这条链路
 

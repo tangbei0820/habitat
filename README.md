@@ -76,7 +76,8 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆链路、read-before-write、诊断留痕（24 项） |
 | `npx tsx scripts/probe-nocturne-demo.ts` | **公网**（Nocturne 官方只读 Demo） | 真实 Streamable HTTP 握手 / 工具清单 / `system://boot`（25 项） |
 | `MCP_NOCTURNE_URL=… npx tsx scripts/probe-nocturne-live.ts` | **自己部署的实例** + 反代已转发 `/mcp` | 反向代理 / Bearer Token（含「不带 Token 再握一次」对照）/ `X-Namespace` / 工具面 / 只读纪律（⛔ 当前受阻，见 `docs/MEMORY.md`） |
-| `npm run probe:eventide` | Eventide sidecar :8234；可选 `PROBE_SERVER` | 真实 Eventide revision / 建态 / 时间推进 / SQLite 恢复 / 故障降级；配置 server 时共 16 项 |
+| `npm run probe:eventide` | Eventide sidecar :8234；可选 `PROBE_SERVER` | 真实 Eventide revision / 建态 / 时间推进 / 并发串行 / SQLite 恢复 / 故障降级；配置 server 时共 19 项 |
+| `npm run probe:chat-context` | mock OpenAI + server；注入态另需 Eventide | 读取 mock 收到的真实报文，验证状态卡顺序 / 历史不变 / 持久化；注入 7 项、降级 3 项 |
 
 > `probe-nocturne-live.ts` 读 `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`（也可写进 `server/.env`），
 > 默认**不打印** `system://boot` 正文（那是本人记忆），要看加 `NOCTURNE_PROBE_PREVIEW=1`。

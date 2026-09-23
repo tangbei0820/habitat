@@ -77,7 +77,7 @@ const { profiles: seedProfiles, problems } = loadProfiles()
 const importedProfiles = importProfiles(seedProfiles)
 const llmRegistry = new LlmRegistry()
 registerProviderRoutes(app, llmRegistry)
-registerChatRoutes(app, llmRegistry)
+registerChatRoutes(app, llmRegistry, stateProvider)
 if (!envFileLoaded) app.log.info('未发现 server/.env，按进程环境变量运行')
 for (const problem of problems) app.log.warn({ problem }, 'LLM 方案配置被跳过')
 if (importedProfiles > 0) {

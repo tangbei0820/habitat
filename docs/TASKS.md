@@ -1143,3 +1143,35 @@
 - `state` 是 Eventide 自己的可往返 JSON，habitat 不复制其内部字段；未来 UI 只消费 `payload`，上下文只消费 `stateCard`。
 - 单人格先固定一行；若未来多 AI，再把 `primary` 升为 persona id，不能在当前阶段预造多租户模型。
 - 下一切片只做**聊天前 tick + 状态卡注入上下文**及降级验收；Nocturne 未配置 / 不可达不得阻塞 Eventide 状态卡。
+
+---
+
+### T-024 · 2026-09-24 · Phase 3B 切片二：聊天前 tick + Eventide 状态卡注入
+
+**范围**：把 T-023 的状态底座接入现有 `POST /api/chat`；只做聊天前推进与隐藏上下文注入。
+不做世界书 / Nocturne 召回、互动结算、事件抽取、梦境、主动唤醒或任何 UI。
+
+**实现口径**
+
+1. 新增 `context/chat-context.ts` 作为 Phase 3 上下文组装的唯一入口。已有 system/persona 指令保持在最前，
+   Eventide 卡以 `role=system, name=eventide_state` 插在其后、第一条真实对话前；后续世界书 / 记忆从这里继续拼，不散落到路由。
+2. 状态卡只送上游模型：不进入 SSE、不回写前端 Dexie，也不原地修改请求的 `messages` 数组。
+3. 每轮聊天前 tick，把当前时刻同时作为 `now` 与 `lastCounterpartMessageAt`——这一轮用户刚发来消息，等待压力在此刻归零；
+   真正的离线等待推进留给后续 scheduler 使用服务端持久化的最后互动时间。
+4. **降级优先**：未配置、空状态卡、sidecar 不可达都按原始历史继续聊天；不可达会写一条服务端 warning，错误不静默，
+   但状态增强不成为聊天单点故障。
+5. 自动 tick 暴露出 T-023 原本的并发窗口：两个聊天可能同时读旧快照再互相覆盖。本轮在 Provider 内加串行队列，
+   且 `effectiveNow = max(请求时间, settledAt)`，保证 SQLite 与 Eventide 内部时间都不倒退。sidecar 超时从 10 秒收紧为 3 秒，
+   同机服务异常时不让每轮聊天长时间空等。
+
+**验收（全部读取 mock LLM 收到的真实请求体，不只测内部函数）**
+
+- Eventide 正常：**7/7**——SSE 完成、恰好一张卡、system 角色、真实 `<ephemeral_state>`、
+  `persona → 状态卡 → 对话` 顺序、原始历史逐项未改、聊天前快照已持久化
+- 配置存在但 sidecar 掉线：**3/3**——SSE 仍完成、无伪状态卡、原始历史原样送达；服务端日志留可读 `ECONNREFUSED`
+- Eventide 完全未配置：**3/3**——同样无阻塞、无伪卡、历史不变
+- Eventide 底座回归扩为 **19/19**：新增并发 tick 不覆盖、旧时间不回退、内部 `last_tick_at` 不回退
+- 两端 `typecheck`、前端生产构建、`git diff --check` 通过
+
+**下一步**：Phase 3B 互动结算。回复完成后用本轮消息窗口生成结构化 settlement，校验 / 归一化后写回状态；
+结算失败必须与本轮回复解耦，不能把已经生成成功的聊天作废。

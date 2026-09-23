@@ -16,7 +16,8 @@ interface SidecarTickResponse {
   payload: Record<string, unknown>
 }
 
-const DEFAULT_TIMEOUT_MS = 10_000
+// 同机 sidecar 正常是毫秒级；挂起时不能让每轮聊天跟着空等十几秒。
+const DEFAULT_TIMEOUT_MS = 3_000
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -52,6 +53,8 @@ function parseTickResponse(value: unknown): SidecarTickResponse {
 export class EventideStateProvider implements StateProvider {
   private lastError: string | null = null
   private lastCheckedAt = 0
+  /** 两轮聊天同时到达时，避免都读到同一份旧快照后互相覆盖。 */
+  private tickQueue: Promise<void> = Promise.resolve()
 
   constructor(
     private readonly baseUrl: string,
@@ -62,17 +65,25 @@ export class EventideStateProvider implements StateProvider {
     return getBodyStateSnapshot()
   }
 
-  async tick(now: Date, options: StateTickOptions = {}): Promise<BodyStateSnapshot> {
+  tick(now: Date, options: StateTickOptions = {}): Promise<BodyStateSnapshot> {
     if (Number.isNaN(now.getTime())) {
-      throw new ProviderError(ErrorCodes.BadRequest, 'Eventide tick 的 now 不是有效时间')
+      return Promise.reject(new ProviderError(ErrorCodes.BadRequest, 'Eventide tick 的 now 不是有效时间'))
     }
+    const pending = this.tickQueue.then(() => this.performTick(now, options))
+    // 无论这一轮成功还是失败，后面的 tick 都能继续；调用方仍拿到原始 pending 的结果。
+    this.tickQueue = pending.then(() => undefined, () => undefined)
+    return pending
+  }
+
+  private async performTick(now: Date, options: StateTickOptions): Promise<BodyStateSnapshot> {
     const previous = this.current()
+    const effectiveNow = new Date(Math.max(now.getTime(), previous?.settledAt ?? 0))
     const raw = await this.request('/v1/tick', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         state: previous?.state ?? null,
-        now: now.toISOString(),
+        now: effectiveNow.toISOString(),
         last_counterpart_message_at: options.lastCounterpartMessageAt?.toISOString() ?? null,
       }),
     })
@@ -81,7 +92,7 @@ export class EventideStateProvider implements StateProvider {
       state: response.state,
       stateCard: response.state_card,
       payload: response.payload,
-      settledAt: now.getTime(),
+      settledAt: effectiveNow.getTime(),
     }
     saveBodyStateSnapshot(snapshot)
     return snapshot

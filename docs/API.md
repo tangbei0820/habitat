@@ -193,10 +193,19 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 
 ### `POST /api/chat`（SSE）
 
-服务端只做三件事：**校验 → 转发 LLM 流 → 记账**。
+服务端链路：**校验 → 组装隐藏上下文 → 转发 LLM 流 → 记账**。
 
 > ⚠️ 按 §6.2，`ChatMessage` 归属**本地**（前端 Dexie），服务端**不落聊天记录** —— 所以历史每轮都由前端组装后送来。
-> 完整上下文组装（世界书 + Eventide 状态卡 + Nocturne 召回）在 Phase 3 接入，届时在服务端侧插入，本接口形态不变。
+> Phase 3B 已接入 Eventide 状态卡；世界书与 Nocturne 召回后续从同一服务端组装入口加入，
+> 本接口形态不变。前端仍只提交本地聊天历史。
+
+**Eventide 注入规则**：
+
+- 每轮聊天在连接 LLM 前先 tick；当前用户消息视作“对方刚发言”，传给 Eventide 的最后互动时间为当前时刻
+- 状态卡以 `{ role: "system", name: "eventide_state" }` 插在**已有 system/persona 指令之后、第一条对话之前**
+- 状态卡只发给上游模型，不进入 SSE、不回写前端消息，也不改写请求里的历史数组
+- Eventide 未配置、返回空卡或暂时不可达时，记录服务端警告并按原始历史继续聊天；状态增强不能成为聊天单点故障
+- 同一进程内的 tick 串行执行，且推进时间不允许倒退，避免并发聊天互相覆盖状态
 
 请求：
 
@@ -434,6 +443,6 @@ Eventide 作为**无状态 Python sidecar**运行；habitat-server 持有并持�
 ## 待实现（按阶段）
 
 - Phase 3A 剩余：**自部署 Nocturne 实例**的 Token / Namespace / 反代链路验证（客户端代码已用官方只读 Demo 验通，见 `docs/TASKS.md` T-013）
-- Phase 3B 剩余：状态卡注入聊天上下文、互动结算、事件抽取、主动唤醒 / 独处时光与 BudgetGuard
+- Phase 3B 剩余：互动结算、事件抽取、主动唤醒 / 独处时光与 BudgetGuard
 - Phase 4：Life 统计 / 账本 / 通知
 - 诊断日志的留存策略（表只增不减，目前没有清空 / 归档入口）

@@ -1,11 +1,11 @@
 /**
- * 聊天流路由（技术方案 §7.2① Phase 1 极简版）
+ * 聊天流路由（技术方案 §7.2①）
  *
- * 服务端只做三件事：**校验 → 转发 LLM 流 → 记账**。
+ * Phase 3B 起：**校验 → 组装上下文（Eventide）→ 转发 LLM 流 → 记账**。
  *
  * 完整的上下文组装是 [世界书(恒定) + Eventide 状态卡 + Nocturne 召回 + 历史窗口]，
  * 其中历史窗口由前端随请求送来（§6.2：ChatMessage 归属本地，服务端不落聊天记录），
- * 其余三项按 Phase 3 接入 —— 届时在本文件组装环节往 messages 前插入即可，接口形态不变。
+ * Eventide 已接入；世界书与 Nocturne 仍待后续从 `context/chat-context.ts` 同一入口加入，接口形态不变。
  *
  * ⚠️ 为什么用 `reply.hijack()`：Fastify 要等 handler 返回才发响应头，
  * 而流式必须**立刻**把头刷出去，否则前端要空等整段生成完。
@@ -20,7 +20,8 @@ import type {
   ChatStreamRequest,
   ChatUsagePayload,
 } from '@shared/events'
-import type { LlmChatMessage, LlmRole, LlmStreamChunk, LlmUsage } from '@shared/providers'
+import type { LlmChatMessage, LlmRole, LlmStreamChunk, LlmUsage, StateProvider } from '@shared/providers'
+import { assembleChatContext } from '../context/chat-context.js'
 import { recordUsage } from '../db/usage.js'
 import { ProviderError } from '../providers/errors.js'
 import type { LlmRegistry } from '../providers/registry.js'
@@ -98,7 +99,7 @@ function writeFrame(res: ServerResponse, event: string, data: unknown): void {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 }
 
-export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry): void {
+export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, state: StateProvider | null): void {
   app.post('/api/chat', async (request, reply): Promise<void> => {
     // —— 写响应头之前的失败都还能返回结构化 JSON（走统一错误处理器）——
     const body = parseBody(request.body)
@@ -115,13 +116,18 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry):
     const provider = registry.provider(profile.id)
     const model = body.model ?? provider.defaultModel
 
+    const context = await assembleChatContext(body.messages, state)
+    if (context.eventide === 'unavailable') {
+      request.log.warn({ error: context.error }, 'Eventide 状态卡不可用，本轮按原始聊天上下文降级')
+    }
+
     // —— 关键一步：**先取第一个 chunk 再写响应头** ——
     // streamChat 是 async generator，函数体要到第一次 next 才执行；
     // 密钥没配、上游不可达、鉴权被拒这类错误都在这一步暴露。
     // 好处：它们能在写响应头之前抛出 → 走统一错误处理器，返回结构化 4xx/5xx；
     // 否则前端就得多一条「HTTP 200 但流里带错误事件」的分支。
     const controller = new AbortController()
-    const iterator = provider.streamChat(body.messages, {
+    const iterator = provider.streamChat(context.messages, {
       model,
       ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
       ...(body.maxTokens === undefined ? {} : { maxTokens: body.maxTokens }),

@@ -52,6 +52,15 @@ try {
     Date.parse(String(reloaded.current()?.state.last_tick_at)) === later.getTime(),
   )
 
+  console.log('\n=== 3B. 并发串行与时间单调 ===')
+  const third = new Date('2026-09-23T03:00:00.000Z')
+  const fourth = new Date('2026-09-23T04:00:00.000Z')
+  await Promise.all([reloaded.tick(third), reloaded.tick(fourth)])
+  check('并发 tick 不互相覆盖', reloaded.current()?.settledAt === fourth.getTime())
+  const rewind = await reloaded.tick(new Date('2026-09-23T01:00:00.000Z'))
+  check('旧时间请求不会让 settledAt 倒退', rewind.settledAt === fourth.getTime())
+  check('Eventide 内部 last_tick_at 同样不倒退', Date.parse(String(rewind.state.last_tick_at)) === fourth.getTime())
+
   console.log('\n=== 4. 故障不静默 ===')
   const broken = new EventideStateProvider('http://127.0.0.1:1', 500)
   const brokenHealth = await broken.health()
