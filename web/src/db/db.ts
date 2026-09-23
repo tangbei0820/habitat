@@ -6,6 +6,7 @@ import type {
   ChatSession,
   CountdownDay,
   Diary,
+  HomeWidget,
   Moment,
   Photo,
   ReadingNote,
@@ -30,6 +31,8 @@ import type {
  *     唯一的**真迁移**在这里：老会话没有 `groupId` 字段，upgrade 里统一补成 `null`。
  *     不靠「读的时候把 undefined 当 null 容忍」—— 那样「会话一定有 groupId」这条不变量
  *     就只存在于读取方的记忆里，任何忘记兜底的新读取点都会让会话从列表里凭空消失。
+ * v9：主屏 Widget（SPEC §5.2）。纯新增表，旧数据原样保留，不需要 upgrade 回调 ——
+ *     它对留言板 / 倒数日只是「多了一条引用」，没有动那两张表的任何字段。
  */
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
@@ -45,6 +48,7 @@ export class HabitatDb extends Dexie {
   readingNotes!: Table<ReadingNote, string>
   musicTracks!: Table<MusicTrack, string>
   studyRecords!: Table<StudyRecord, string>
+  homeWidgets!: Table<HomeWidget, string>
 
   constructor() {
     super('habitat-db')
@@ -132,6 +136,25 @@ export class HabitatDb extends Dexie {
             if (session.groupId === undefined) session.groupId = null
           })
       })
+    // v9：主屏 Widget。`&kind` 是**唯一索引** —— 把「每种 Widget 全屏最多一个」（SPEC §1.4）
+    // 这条不变量交给 schema，而不是靠每个写入点自己记得先查一次：
+    // 漏掉一处，主屏上就会出现两张倒数日卡片，而这种 bug 只在「换一个上主屏」时才显形。
+    this.version(9).stores({
+      sessions: 'id, updatedAt, pinnedAt, archivedAt, groupId',
+      sessionGroups: 'id, createdAt',
+      messages: 'id, sessionId, createdAt, [sessionId+createdAt+id]',
+      moments: 'id, createdAt, author',
+      wishlist: 'id, status, createdAt, updatedAt',
+      countdowns: 'id, targetDate, createdAt',
+      diaries: 'id, entryDate, createdAt, updatedAt',
+      bookmarks: 'id, targetType, targetId, createdAt, &[targetType+targetId]',
+      artworks: 'id, category, createdAt, updatedAt',
+      photos: 'id, takenAt, createdAt',
+      readingNotes: 'id, status, createdAt, updatedAt',
+      musicTracks: 'id, createdAt, updatedAt',
+      studyRecords: 'id, studiedOn, createdAt, updatedAt',
+      homeWidgets: 'id, &kind, createdAt',
+    })
   }
 }
 

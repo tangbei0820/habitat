@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { greetingByHour } from '../../features/home/welcome'
 import { HOME_MODULES } from '../../features/home/modules'
+import { HomeWidgets } from '../../features/home/HomeWidgets'
 
 export function HomePage() {
   const greeting = greetingByHour(new Date().getHours())
@@ -15,7 +16,10 @@ export function HomePage() {
         </p>
       </header>
 
-      <ul className="flex flex-col gap-2">
+      {/* 主屏 Widget 区：问候语之下、功能入口之上（SPEC §1.4）；一张都没有时它自己什么都不渲染 */}
+      <HomeWidgets />
+
+      <ul className="flex flex-col gap-2" data-testid="home-entries">
         {HOME_MODULES.map((mod) => (
           <li key={mod.key}>
             <Link

@@ -182,6 +182,7 @@ interface SessionGroup extends BaseObject {
 | 收藏 → 任意内容 | `Bookmark.targetType + targetId` | 唯一复合索引 `&[targetType+targetId]` **从数据层**阻止同一目标重复收藏 |
 | 作品 → 来源内容 | `BaseObject.sourceId` / `sessionId` | 本体尽量**引用原始对象**，必要时存稳定快照（SPEC §3.6.3） |
 | 相册 → 来源消息 | `BaseObject.sourceId` / `sessionId` | 保留原图 + 来源 + 时间 + 发送方 / 生成方（SPEC §4.4） |
+| 主屏 Widget → 被展示内容 | `HomeWidget.kind` + `refId`（本地表 `homeWidgets`） | **只存引用、不复制数据**（SPEC §1.4）；唯一索引 `&kind` 从数据层保证**每种 Widget 至多一条**；`refId` 失效时渲染层不渲染，删实体时同事务清引用 |
 
 `BookmarkTargetType` 的合法取值集中在 `shared/types.ts`。新增来源类型时**只加这一个枚举**，
 `Bookmark` 表结构不动 —— 这正是选 `targetType + targetId` 而不是给每类内容建关联表的原因。
@@ -210,6 +211,7 @@ interface SessionGroup extends BaseObject {
 | v6 | 60 | 作品 / 相册（第三批） |
 | v7 | 70 | 读书 / 音乐 / 学习（第四批） |
 | v8 | 80 | `sessions` 加 `groupId` 索引 + `sessionGroups` 表（会话分组，T-018）。**本版是首个带 `upgrade()` 回调的迁移**：给所有老会话补 `groupId: null` |
+| v9 | 90 | 新增 `homeWidgets` 表（主屏 Widget，T-020）。纯新增表，**不需要 `upgrade()` 回调** —— 它对留言板 / 倒数日只是多了一条引用，没动那两张表的任何字段。`&kind` 是唯一索引 |
 
 Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画版本（`verify-chat.mjs`）。
 **每次升版都要在 `db.ts` 的版本注释里写清「为什么」**；只写「加了张表」等于没写。
@@ -228,6 +230,11 @@ Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画
 | v4 | + 作品 / 相册 |
 | v5 | + 读书 / 音乐 / 学习 |
 | v6 | + 会话分组（T-018）；旧版导入时分组按空处理，会话 `groupId` 补成 `null` |
+| v7 | + 主屏 Widget（T-020）；旧版导入时主屏回到「一张 Widget 都没有」 |
+
+> ⚠️ v7 导入时**必须按 `kind` 去重**：`&kind` 是唯一索引，手改过的备份（例如两条 `board`）会让
+> `bulkAdd` 抛 `ConstraintError`，导致**整份备份一个字都导不进去**。保留 `createdAt` 最早的那条，
+> 与「先上主屏的在前」的排序语义一致。
 
 > **P1 第一批（T-019，输入区快捷栏 + 请求回复拆开 + 语音条）零 schema 改动** ——
 > `sessionGroups` 与 Dexie v8 保持不动，备份格式也停在 v6。原因：

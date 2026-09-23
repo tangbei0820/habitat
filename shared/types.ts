@@ -183,6 +183,26 @@ export interface CountdownDay extends BaseObject {
   targetDate: string
 }
 
+/** 主屏 Widget 的形态（SPEC §5.2 首批两种） */
+export type HomeWidgetKind = 'board' | 'countdown'
+
+/**
+ * 主屏 Widget（SPEC §1.4 / §5.2）：**只存引用，不复制被展示的数据** ——
+ * 卡片内容始终从 `moments` / `countdowns` 实时读。
+ *
+ * 每种 `kind` 全表最多一条（由 Dexie `&kind` 唯一索引兜住）：
+ * 「换一个倒数日上主屏」是**改 `refId`**，不是再加一条。
+ *
+ * 刻意不设 `order`：v0.1 至多两个 Widget，先后按 `createdAt` 定就够；
+ * 等真做拖拽编排（§5.1）时再加，不留没有生产者的字段。
+ */
+export interface HomeWidget extends BaseObject {
+  type: 'home-widget'
+  kind: HomeWidgetKind
+  /** 引用目标：留言板 Widget 不指向单条记录（恒为 `null`），倒数日 Widget 指向 `CountdownDay.id` */
+  refId: string | null
+}
+
 /** 日记按本地日期归档；正文先存纯文本，避免在没有富文本沙箱前引入 HTML。 */
 export interface Diary extends BaseObject {
   type: 'diary'

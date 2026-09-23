@@ -1,20 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { CountdownDay } from '@shared/types'
-import { createCountdown, deleteCountdown, listCountdowns } from '../../db/home'
-
-function dayDistance(targetDate: string): number {
-  const [year, month, day] = targetDate.split('-').map(Number)
-  const target = new Date(year, month - 1, day)
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  return Math.round((target.getTime() - today.getTime()) / 86_400_000)
-}
-
-function distanceLabel(days: number): string {
-  if (days === 0) return '就是今天'
-  if (days > 0) return `还有 ${String(days)} 天`
-  return `已过 ${String(Math.abs(days))} 天`
-}
+import {
+  createCountdown,
+  deleteCountdown,
+  listCountdowns,
+  listHomeWidgets,
+  putHomeWidget,
+  removeHomeWidget,
+} from '../../db/home'
+import { dayDistance, distanceLabel } from './countdownDays'
 
 export function CountdownModule() {
   const [items, setItems] = useState<CountdownDay[]>([])
@@ -23,9 +17,14 @@ export function CountdownModule() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  /** 当前在主屏上的那一个（`null` = 没有任何倒数日上了主屏） */
+  const [onHomeId, setOnHomeId] = useState<string | null>(null)
 
   async function refresh(): Promise<void> {
-    setItems(await listCountdowns())
+    // 列表与「谁在主屏」一起读：分开读会出现「刚点完上主屏、按钮还是旧状态」的闪一下
+    const [nextItems, widgets] = await Promise.all([listCountdowns(), listHomeWidgets()])
+    setItems(nextItems)
+    setOnHomeId(widgets.find((widget) => widget.kind === 'countdown')?.refId ?? null)
   }
 
   useEffect(() => {
@@ -55,6 +54,21 @@ export function CountdownModule() {
     await refresh()
   }
 
+  /**
+   * 上主屏 / 从主屏撤下（SPEC §3.3.2）。
+   * 换一个倒数日上主屏是**改引用**（`putHomeWidget` 内部处理），不会留下两张卡片。
+   */
+  async function toggleHome(item: CountdownDay): Promise<void> {
+    try {
+      if (onHomeId === item.id) await removeHomeWidget('countdown')
+      else await putHomeWidget('countdown', item.id)
+      setError(null)
+      await refresh()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return (
     <div className="space-y-4">
       <form onSubmit={(event) => void submit(event)} className="grid gap-2 rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
@@ -70,14 +84,32 @@ export function CountdownModule() {
         <ul className="space-y-2">
           {items.map((item) => {
             const days = dayDistance(item.targetDate)
+            const isOnHome = onHomeId === item.id
             return (
-              <li key={item.id} className="flex items-center gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
-                <div className="min-w-0 flex-1">
-                  <p className="break-words text-sm font-medium">{item.title}</p>
-                  <p className="mt-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>{item.targetDate}</p>
+              <li key={item.id} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-medium">{item.title}</p>
+                    <p className="mt-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>{item.targetDate}</p>
+                  </div>
+                  <strong className="shrink-0 text-sm" style={{ color: days < 0 ? 'var(--color-text-dim)' : 'var(--color-primary)' }}>{distanceLabel(days)}</strong>
                 </div>
-                <strong className="shrink-0 text-sm" style={{ color: days < 0 ? 'var(--color-text-dim)' : 'var(--color-primary)' }}>{distanceLabel(days)}</strong>
-                <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} className="shrink-0 text-xs" style={{ color: deleting === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deleting === item.id ? '确认？' : '删除'}</button>
+                <div className="mt-3 flex items-center justify-end gap-3 text-xs">
+                  <button
+                    type="button"
+                    data-testid="countdown-home-toggle"
+                    data-countdown-id={item.id}
+                    data-on-home={isOnHome ? 'true' : 'false'}
+                    aria-pressed={isOnHome}
+                    title={isOnHome ? '点击从主屏撤下' : '放到主屏作为 Widget'}
+                    onClick={() => void toggleHome(item)}
+                    className="shrink-0"
+                    style={{ color: isOnHome ? 'var(--color-primary)' : 'var(--color-text-dim)' }}
+                  >
+                    {isOnHome ? '✓ 已在主屏' : '上主屏'}
+                  </button>
+                  <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} className="shrink-0" style={{ color: deleting === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deleting === item.id ? '确认？' : '删除'}</button>
+                </div>
               </li>
             )
           })}

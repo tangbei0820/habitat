@@ -331,22 +331,27 @@ const dbInfo = await evaluate(`(async () => {
     req.onsuccess = () => {
       const db = req.result
       try {
+        const widgetStore = db.transaction('homeWidgets').objectStore('homeWidgets')
         res({
           stores: Array.from(db.objectStoreNames),
           indexes: Array.from(db.transaction('messages').objectStore('messages').indexNames),
           sessionIndexes: Array.from(db.transaction('sessions').objectStore('sessions').indexNames),
+          // ⚠️ kind 上的 & 前缀（唯一索引）到底生效没有，只能从 index 对象上读 ——
+          //    光看索引名 / 数索引个数都分不出来，而这条唯一性正是「每种 Widget 至多一张」的保证所在（SPEC §1.4）
+          //    （注意本段整体是一个模板字符串：**注释里也不能出现反引号**，否则模板会在这里被提前闭合）
+          widgetKindUnique: widgetStore.index('kind').unique,
         })
       } finally {
         db.close()
       }
     }
-    req.onerror = () => res({ stores: [], indexes: [], sessionIndexes: [] })
+    req.onerror = () => res({ stores: [], indexes: [], sessionIndexes: [], widgetKindUnique: false })
   })
   return JSON.stringify({ version: target.version ?? null, ...read })
 })()`)
 const dbState = JSON.parse(dbInfo)
-// ⚠️ 只比「升到了 v8」分不出「v8 的 stores 写错了」，所以顺带验这次迁移该带来的东西
-check('Dexie 当前为 v8（IndexedDB 版本 80）', dbState.version === 80, dbInfo)
+// ⚠️ 只比「升到了 v9」分不出「v9 的 stores 写错了」，所以顺带验这次迁移该带来的东西
+check('Dexie 当前为 v9（IndexedDB 版本 90）', dbState.version === 90, dbInfo)
 check(
   'v3 的三元复合索引已建出',
   Array.isArray(dbState.indexes) && dbState.indexes.includes('[sessionId+createdAt+id]'),
@@ -359,6 +364,11 @@ check(
     Array.isArray(dbState.stores) &&
     dbState.stores.includes('sessionGroups'),
   JSON.stringify({ stores: dbState.stores, sessionIndexes: dbState.sessionIndexes }),
+)
+check(
+  'v9 带来 homeWidgets 表，且 kind 是唯一索引',
+  Array.isArray(dbState.stores) && dbState.stores.includes('homeWidgets') && dbState.widgetKindUnique === true,
+  JSON.stringify({ stores: dbState.stores, widgetKindUnique: dbState.widgetKindUnique }),
 )
 
 /* ---------- 8. 虚拟列表：注入 200 条后只看可见区 ---------- */
@@ -1254,7 +1264,7 @@ check(
     savedSettings.session?.updatedAt === 2000,
   JSON.stringify(savedSettings),
 )
-check('会话设置不牵动 schema（v8 由分组迁移带来）', savedSettings.version === 80, String(savedSettings.version))
+check('会话设置不牵动 schema（v9 由主屏 Widget 带来）', savedSettings.version === 90, String(savedSettings.version))
 
 const appliedSettings = await evaluate(`(() => {
   const area = document.querySelector('[data-testid="chat-message-area"]')

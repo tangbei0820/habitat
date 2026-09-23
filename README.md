@@ -68,10 +68,10 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 
 | 脚本 | 覆盖 |
 | --- | --- |
-| `node web/scripts/verify-chat.mjs` | 聊天链路 / 消息对象操作 / 跨模块收录 / 会话置顶与设置 / 会话分组 / 消息块分发 / 分页 / 候选版本 / **输入区快捷栏与请求回复拆开**（134 项） |
+| `node web/scripts/verify-chat.mjs` | 聊天链路 / 消息对象操作 / 跨模块收录 / 会话置顶与设置 / 会话分组 / 消息块分发 / 分页 / 候选版本 / **输入区快捷栏与请求回复拆开**（135 项） |
 | `node web/scripts/verify-providers.mjs` | API 方案管理 UI（22 项） |
 | `node web/scripts/verify-diagnostics.mjs` | 诊断日志面板（36 项） |
-| `node web/scripts/verify-home.mjs` | Home 十模块 + 备份恢复（25 项，含备份 v6 的分组与旧版兼容） |
+| `node web/scripts/verify-home.mjs` | Home 十模块 + **主屏 Widget** + 备份恢复（46 项，含备份 v7 的分组 / Widget 与旧版兼容） |
 
 各脚本的**准确前置条件**写在**各自文件头的注释**里，跑之前先看一眼。
 

@@ -12,6 +12,7 @@ import type {
   ChatSession,
   CountdownDay,
   Diary,
+  HomeWidget,
   Moment,
   MusicTrack,
   Photo,
@@ -24,7 +25,7 @@ import { MAX_PHOTO_BYTES } from '@shared/types'
 import { db } from '../db/db'
 
 export const BACKUP_FORMAT = 'habitat-backup'
-export const BACKUP_VERSION = 6
+export const BACKUP_VERSION = 7
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -43,6 +44,7 @@ export interface HabitatBackup {
   readingNotes: ReadingNote[]
   musicTracks: MusicTrack[]
   studyRecords: StudyRecord[]
+  homeWidgets: HomeWidget[]
 }
 
 export interface BackupCounts {
@@ -59,10 +61,11 @@ export interface BackupCounts {
   readingNotes: number
   musicTracks: number
   studyRecords: number
+  homeWidgets: number
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, sessionGroups, messages, moments, wishlist, countdowns, diaries, bookmarks, artworks, photos, readingNotes, musicTracks, studyRecords] = await Promise.all([
+  const [sessions, sessionGroups, messages, moments, wishlist, countdowns, diaries, bookmarks, artworks, photos, readingNotes, musicTracks, studyRecords, homeWidgets] = await Promise.all([
     db.sessions.toArray(),
     db.sessionGroups.toArray(),
     db.messages.toArray(),
@@ -76,6 +79,7 @@ export async function exportAll(): Promise<HabitatBackup> {
     db.readingNotes.toArray(),
     db.musicTracks.toArray(),
     db.studyRecords.toArray(),
+    db.homeWidgets.toArray(),
   ])
   return {
     format: BACKUP_FORMAT,
@@ -94,6 +98,7 @@ export async function exportAll(): Promise<HabitatBackup> {
     readingNotes,
     musicTracks,
     studyRecords,
+    homeWidgets,
   }
 }
 
@@ -129,6 +134,20 @@ function looksLikeSessionGroup(value: unknown): value is SessionGroup {
     typeof value.id === 'string' &&
     value.type === 'session-group' &&
     typeof value.name === 'string'
+  )
+}
+
+/**
+ * Widget 只校验「标识 + 形态」：`refId` 指向谁不在这里管 ——
+ * 导入语义是「回到备份那一刻」，备份里指向一个已被删掉的倒数日就该原样写回去，
+ * 由 `listHomeWidgetViews` 按引用有效性决定不渲染（SPEC §1.4），而不是在这里悄悄丢掉。
+ */
+function looksLikeHomeWidget(value: unknown): value is HomeWidget {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    value.type === 'home-widget' &&
+    (value.kind === 'board' || value.kind === 'countdown')
   )
 }
 
@@ -345,7 +364,31 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：存在无法识别的分组')
   }
 
-  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks, db.artworks, db.photos, db.readingNotes, db.musicTracks, db.studyRecords], async () => {
+  // v7 新增主屏 Widget；旧版导入时按空处理，主屏回到「一张 Widget 都没有」。
+  // ⚠️ `&kind` 是唯一索引：这里**必须先按 kind 去重**，否则手改过的备份（例如两个 board）
+  //    会让 bulkAdd 抛 ConstraintError，导致整份备份一个字都导不进去。
+  //    保留 `createdAt` 最早的那条 —— 与「先上主屏的在前」的排序语义一致。
+  const homeWidgetsRaw = version >= 7 ? raw.homeWidgets : []
+  if (!Array.isArray(homeWidgetsRaw)) {
+    throw new Error('备份内容损坏：homeWidgets 必须是数组')
+  }
+  const homeWidgetsAll = homeWidgetsRaw.filter(looksLikeHomeWidget)
+  if (homeWidgetsAll.length !== homeWidgetsRaw.length) {
+    throw new Error('备份内容损坏：存在无法识别的主屏 Widget')
+  }
+  const homeWidgetsByKind = new Map<string, HomeWidget>()
+  for (const widget of [...homeWidgetsAll].sort((a, b) => Number(a.createdAt) - Number(b.createdAt))) {
+    if (!homeWidgetsByKind.has(widget.kind)) {
+      // `refId` 归一化：非字符串一律当 null，免得一个手改出来的数字一路流到 `db.countdowns.get()`
+      homeWidgetsByKind.set(widget.kind, {
+        ...widget,
+        refId: typeof widget.refId === 'string' ? widget.refId : null,
+      })
+    }
+  }
+  const homeWidgets = [...homeWidgetsByKind.values()]
+
+  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks, db.artworks, db.photos, db.readingNotes, db.musicTracks, db.studyRecords, db.homeWidgets], async () => {
     await db.sessions.clear()
     await db.sessionGroups.clear()
     await db.messages.clear()
@@ -359,6 +402,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.readingNotes.clear()
     await db.musicTracks.clear()
     await db.studyRecords.clear()
+    await db.homeWidgets.clear()
     await db.sessions.bulkAdd(sessions)
     await db.sessionGroups.bulkAdd(sessionGroups)
     await db.messages.bulkAdd(messages)
@@ -372,6 +416,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.readingNotes.bulkAdd(readingNotes)
     await db.musicTracks.bulkAdd(musicTracks)
     await db.studyRecords.bulkAdd(studyRecords)
+    await db.homeWidgets.bulkAdd(homeWidgets)
   })
   return {
     sessions: sessions.length,
@@ -387,5 +432,6 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     readingNotes: readingNotes.length,
     musicTracks: musicTracks.length,
     studyRecords: studyRecords.length,
+    homeWidgets: homeWidgets.length,
   }
 }

@@ -6,6 +6,8 @@ import {
   type ChatMessage,
   type CountdownDay,
   type Diary,
+  type HomeWidget,
+  type HomeWidgetKind,
   type Moment,
   type Photo,
   type PhotoMime,
@@ -110,8 +112,20 @@ export async function createCountdown(title: string, targetDate: string): Promis
   return item
 }
 
+/**
+ * 删倒数日时**必须顺手清掉指向它的主屏 Widget**（SPEC §1.4 / §3.3.2）：
+ * 否则主屏上会留一张写着不存在日子的卡片。放在同一个事务里，
+ * 避免「日删掉了、删除 widget 那步失败」留下半个状态。
+ *
+ * 这是**两层兜底的第一层**：渲染层对失效引用也有兜底（`listHomeWidgetViews`），
+ * 那一层防的是别的来源（例如导入的备份里带着指向不存在实体的引用）。
+ */
 export async function deleteCountdown(id: string): Promise<void> {
-  await db.countdowns.delete(id)
+  await db.transaction('rw', [db.countdowns, db.homeWidgets], async () => {
+    await db.countdowns.delete(id)
+    const widget = await db.homeWidgets.where('kind').equals('countdown').first()
+    if (widget !== undefined && widget.refId === id) await db.homeWidgets.delete(widget.id)
+  })
 }
 
 function requiredDate(value: string): string {
@@ -601,4 +615,91 @@ export async function updateStudyRecord(id: string, subject: string, note: strin
 
 export async function deleteStudyRecord(id: string): Promise<void> {
   await db.studyRecords.delete(id)
+}
+
+/* ---------- 主屏 Widget（SPEC §1.4 / §5.2） ---------- */
+
+/** 留言板 Widget 展示的条数：主屏卡片放不下更多，也不该抢走功能入口的注意力 */
+export const HOME_WIDGET_BOARD_LIMIT = 3
+
+/**
+ * 主屏上一张**已经装配好**的 Widget 卡片。
+ *
+ * 让仓储层直接给出「要展示的数据」，而不是让页面自己再查一遍：
+ * 「引用是否还有效」这个判断必须收在一处 —— 否则每个渲染点都要记得处理
+ * 「倒数日已被删除」，漏一处主屏上就会冒出一张空白卡片。
+ */
+export type HomeWidgetView =
+  | { kind: 'board'; id: string; createdAt: number; notes: Moment[] }
+  | { kind: 'countdown'; id: string; createdAt: number; day: CountdownDay }
+
+/** 主屏 Widget 用的「最近 N 条」；留言板模块页仍用全量 `listMoments()` */
+async function recentMoments(limit: number): Promise<Moment[]> {
+  return db.moments.orderBy('createdAt').reverse().limit(limit).toArray()
+}
+
+/** 按「上主屏的先后」返回（`createdAt` 升序）：先放的在前面，位置不随点选跳动 */
+export async function listHomeWidgets(): Promise<HomeWidget[]> {
+  return db.homeWidgets.orderBy('createdAt').toArray()
+}
+
+/**
+ * 装配主屏 Widget。**失效引用在这里被滤掉、不往下传**：
+ * - 倒数日 Widget 的 `refId` 为 `null`（脏数据）
+ * - `refId` 指向的倒数日已经不存在（删除路径已清，但导入的备份可能带来脏引用，§1.4）
+ *
+ * 留言板 Widget 天然不会失效 —— 它引用的是「留言」这一类，不是某一条。
+ */
+export async function listHomeWidgetViews(): Promise<HomeWidgetView[]> {
+  const widgets = await listHomeWidgets()
+  const views: HomeWidgetView[] = []
+  for (const widget of widgets) {
+    if (widget.kind === 'board') {
+      views.push({
+        kind: 'board',
+        id: widget.id,
+        createdAt: widget.createdAt,
+        notes: await recentMoments(HOME_WIDGET_BOARD_LIMIT),
+      })
+      continue
+    }
+    if (widget.refId === null) continue
+    const day = await db.countdowns.get(widget.refId)
+    if (day === undefined) continue
+    views.push({ kind: 'countdown', id: widget.id, createdAt: widget.createdAt, day })
+  }
+  return views
+}
+
+/**
+ * 把某类 Widget 送上主屏（已存在时是**改它引用的对象**）。
+ *
+ * 唯一性虽由 `&kind` 唯一索引兜底，这里仍先查再写 —— 「已存在」时要走的是改引用，
+ * 撞唯一索引抛异常不是可接受的路径。
+ *
+ * ⚠️ 改 `refId` 时**不动 `createdAt`**：位置语义是「这张卡片在主屏上的位置」，
+ *    换一个倒数日来展示不该让它跳到队尾。
+ */
+export async function putHomeWidget(kind: HomeWidgetKind, refId: string | null): Promise<void> {
+  const existing = await db.homeWidgets.where('kind').equals(kind).first()
+  if (existing === undefined) {
+    const at = Date.now()
+    await db.homeWidgets.add({
+      id: nowId('widget'),
+      type: 'home-widget',
+      kind,
+      refId,
+      createdAt: at,
+      updatedAt: at,
+    })
+    return
+  }
+  // 引用没变就一个字都不写：否则每次进页面顺手点一下都会刷新 `updatedAt`
+  if (existing.refId === refId) return
+  await db.homeWidgets.update(existing.id, { refId, updatedAt: Date.now() })
+}
+
+export async function removeHomeWidget(kind: HomeWidgetKind): Promise<void> {
+  const existing = await db.homeWidgets.where('kind').equals(kind).first()
+  if (existing !== undefined) await db.homeWidgets.delete(existing.id)
 }

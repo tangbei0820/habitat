@@ -1,5 +1,5 @@
 /**
- * Phase 2 Home 完整验收：十个生活模块 + Dexie v7 持久化。
+ * Phase 2 Home 完整验收：十个生活模块 + 主屏 Widget + Dexie v9 持久化 / 备份 v7。
  * 前置：vite + 无头 Edge CDP；用 Node >= 22 运行（需全局 WebSocket）。
  * 请使用隔离的浏览器 profile：验收最后会导入一份空 v1 备份来验兼容性。
  */
@@ -104,6 +104,38 @@ function check(label, ok, detail = '') {
 
 await send('Runtime.enable')
 await send('Page.enable')
+
+/**
+ * ⚠️ 开场先清空本地库。
+ *
+ * 无头浏览器的 profile 是复用的，而脚本只在**正常跑到最后**时才靠导入空备份重置数据 ——
+ * 上一轮若中途异常退出（`waitFor` 超时直接抛错），残留就会带到下一轮：
+ * 「重复收藏被拒」「初始为空」这类断言会莫名其妙地失败，而且是**代码没改、上一次却是过的**
+ * 那种失败，排查时最浪费时间。T-018 已经吃过一次「拿数据残留当断言前提」的亏。
+ */
+await navigate('/home', '留言板')
+await evaluate(`(async () => {
+  const stores = ['sessions', 'sessionGroups', 'messages', 'moments', 'wishlist', 'countdowns',
+    'diaries', 'bookmarks', 'artworks', 'photos', 'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets']
+  const db = await new Promise((resolve, reject) => {
+    const request = indexedDB.open('habitat-db')
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  for (const name of stores) {
+    if (!db.objectStoreNames.contains(name)) continue
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(name, 'readwrite')
+      const request = tx.objectStore(name).clear()
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    })
+  }
+  db.close()
+  return true
+})()`)
+await send('Page.reload')
+await sleep(800)
 
 await navigate('/home', '留言板')
 const homeText = await evaluate('document.body.innerText')
@@ -262,6 +294,206 @@ await send('Page.reload'); await sleep(500)
 await waitFor(`document.body.innerText.includes('共 60 分钟') && document.body.innerText.includes('备份边界')`, '学习记录刷新保留')
 check('学习记录新增、编辑、汇总并跨刷新保留', true)
 
+/* ---------- 主屏 Widget（SPEC §1.4 / §3.2.2 / §3.3.2） ---------- */
+
+/** 点某一行里的「上主屏 / 已在主屏」——按钮文案随状态变，所以按行的 testid 找按钮 */
+const toggleCountdownHome = (rowText) => evaluate(`(() => {
+  const row = [...document.querySelectorAll('li')].find((el) => el.innerText.includes(${JSON.stringify(rowText)}))
+  const button = row?.querySelector('[data-testid="countdown-home-toggle"]')
+  if (!button) return false
+  button.click()
+  return true
+})()`)
+
+/** ⚠️ 必须按行文本查状态：页面上有多个倒数日，`[data-on-home="false"]` 那种全局选择器
+ *  会被「本来就没上主屏」的那一条瞬间命中，等出一个假通过。 */
+const countdownHomeState = (rowText) => evaluate(`(() => {
+  const row = [...document.querySelectorAll('li')].find((el) => el.innerText.includes(${JSON.stringify(rowText)}))
+  return row?.querySelector('[data-testid="countdown-home-toggle"]')?.getAttribute('data-on-home') ?? null
+})()`)
+
+/** 点某一行里的按钮（按文案精确匹配）——两步确认的删除也走它 */
+const clickInRow = (rowText, buttonText) => evaluate(`(() => {
+  const row = [...document.querySelectorAll('li')].find((el) => el.innerText.includes(${JSON.stringify(rowText)}))
+  const button = [...(row?.querySelectorAll('button') ?? [])].find((b) => b.textContent.trim() === ${JSON.stringify(buttonText)})
+  if (!button) return false
+  button.click()
+  return true
+})()`)
+
+/** 直接读库里的 Widget 记录：断言「记录真的被清掉」不能只看界面（界面消失可能是渲染层兜底） */
+const readHomeWidgets = () => evaluate(`(async () => {
+  const db = await new Promise((resolve, reject) => {
+    const request = indexedDB.open('habitat-db')
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  const rows = await new Promise((resolve, reject) => {
+    const request = db.transaction('homeWidgets').objectStore('homeWidgets').getAll()
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  db.close()
+  return rows.map((row) => ({ id: row.id, kind: row.kind, refId: row.refId, createdAt: row.createdAt }))
+})()`)
+
+/** 绕过界面直接改库：用来造「导入的备份里带着脏引用」这种只在数据层才出现的状态 */
+const writeRawHomeWidget = (op, value) => evaluate(`(async () => {
+  const db = await new Promise((resolve, reject) => {
+    const request = indexedDB.open('habitat-db')
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  await new Promise((resolve, reject) => {
+    const store = db.transaction('homeWidgets', 'readwrite').objectStore('homeWidgets')
+    const request = ${JSON.stringify(op)} === 'put' ? store.put(${JSON.stringify(value)}) : store.delete(${JSON.stringify(value)})
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error)
+  })
+  db.close()
+  return true
+})()`)
+
+await navigate('/home', '留言板')
+await sleep(400)
+check('没有 Widget 时主屏不渲染 Widget 区', (await evaluate(`document.querySelector('[data-testid="home-widgets"]') === null`)) === true)
+check('此时库里也没有 Widget 记录', (await readHomeWidgets()).length === 0)
+
+await navigate('/home/countdown', '新倒数日')
+await setValue('#countdown-title', '相识纪念日')
+await setValue('input[type="date"]', '2030-01-01')
+await clickButton('添加')
+await waitFor(`document.body.innerText.includes('相识纪念日')`, '倒数日「相识纪念日」落地')
+await setValue('#countdown-title', '旅行出发日')
+await setValue('input[type="date"]', '2027-06-01')
+await clickButton('添加')
+await waitFor(`document.body.innerText.includes('旅行出发日')`, '倒数日「旅行出发日」落地')
+await toggleCountdownHome('旅行出发日')
+await waitFor(`(() => { const row = [...document.querySelectorAll('li')].find((el) => el.innerText.includes('旅行出发日')); return row?.querySelector('[data-testid="countdown-home-toggle"]')?.getAttribute('data-on-home') === 'true' })()`, '「旅行出发日」上主屏')
+check('倒数日可发送到主屏', (await countdownHomeState('旅行出发日')) === 'true')
+
+await navigate('/home', '留言板')
+await waitFor(`document.querySelector('[data-testid="home-widget-countdown"]') !== null`, '主屏出现倒数日 Widget')
+const widgetLayout = await evaluate(`(() => {
+  const section = document.querySelector('[data-testid="home-widgets"]')
+  const header = document.querySelector('header')
+  const entries = document.querySelector('[data-testid="home-entries"]')
+  const card = document.querySelector('[data-testid="home-widget-countdown"]')
+  if (!section || !header || !entries || !card) return null
+  // compareDocumentPosition 的 DOCUMENT_POSITION_FOLLOWING 位：b 是否在 a 之后
+  const after = (a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+  return {
+    inSection: section.contains(card),
+    afterHeader: after(header, section),
+    beforeEntries: after(section, entries),
+    text: card.innerText,
+    href: card.getAttribute('href'),
+  }
+})()`)
+check('主屏 Widget 区在问候语之下、功能入口之上', widgetLayout !== null && widgetLayout.inSection && widgetLayout.afterHeader && widgetLayout.beforeEntries, JSON.stringify(widgetLayout))
+check('倒数日 Widget 展示名称 / 日期 / 剩余天数', widgetLayout !== null && widgetLayout.text.includes('旅行出发日') && widgetLayout.text.includes('2027-06-01') && /还有 \d+ 天/.test(widgetLayout.text), JSON.stringify(widgetLayout?.text))
+check('倒数日 Widget 指向倒数日模块页', widgetLayout?.href === '/home/countdown', String(widgetLayout?.href))
+await evaluate(`document.querySelector('[data-testid="home-widget-countdown"]').click()`)
+await waitFor(`location.pathname === '/home/countdown'`, '点 Widget 进入模块页')
+check('点 Widget 可快捷进入模块页', true)
+
+// 换一个倒数日上主屏：应当是「改引用」，而不是多出一张卡片
+const widgetsBeforeSwitch = await readHomeWidgets()
+await toggleCountdownHome('相识纪念日')
+await waitFor(`(() => { const row = [...document.querySelectorAll('li')].find((el) => el.innerText.includes('相识纪念日')); return row?.querySelector('[data-testid="countdown-home-toggle"]')?.getAttribute('data-on-home') === 'true' })()`, '「相识纪念日」上主屏')
+await navigate('/home', '留言板')
+await waitFor(`document.querySelector('[data-testid="home-widget-countdown"]')?.innerText.includes('相识纪念日') === true`, 'Widget 内容换成新的那个')
+const widgetsAfterSwitch = await readHomeWidgets()
+check(
+  '换一个倒数日上主屏：只有一张卡片，内容跟着换',
+  (await evaluate(`document.querySelectorAll('[data-testid="home-widget-countdown"]').length`)) === 1 &&
+    widgetsAfterSwitch.length === 1 &&
+    widgetsAfterSwitch[0].refId !== widgetsBeforeSwitch[0].refId,
+  JSON.stringify({ before: widgetsBeforeSwitch, after: widgetsAfterSwitch }),
+)
+check(
+  '换引用不改上主屏时间（卡片位置不跳）',
+  widgetsAfterSwitch[0].createdAt === widgetsBeforeSwitch[0].createdAt,
+  `${String(widgetsBeforeSwitch[0].createdAt)} → ${String(widgetsAfterSwitch[0].createdAt)}`,
+)
+
+await navigate('/home/board', '留下一句话')
+await setValue('#board-draft', '今天也一起吃了饭。')
+await clickButton('留言')
+await waitFor(`document.body.innerText.includes('今天也一起吃了饭')`, '留言落地')
+await evaluate(`document.querySelector('[data-testid="board-home-toggle"]').click()`)
+await waitFor(`document.querySelector('[data-testid="board-home-toggle"]')?.getAttribute('data-on-home') === 'true'`, '留言板上主屏')
+
+await navigate('/home', '留言板')
+await waitFor(`document.querySelector('[data-testid="home-widget-board"]') !== null`, '主屏出现留言板 Widget')
+const twoWidgets = await evaluate(`(() => {
+  const section = document.querySelector('[data-testid="home-widgets"]')
+  if (!section) return null
+  return {
+    order: [...section.children].map((el) => el.getAttribute('data-testid')),
+    boardText: document.querySelector('[data-testid="home-widget-board"]')?.innerText ?? '',
+    boardHref: document.querySelector('[data-testid="home-widget-board"] a')?.getAttribute('href') ?? null,
+  }
+})()`)
+check('两张 Widget 按上主屏的先后排列（先倒数日、后留言板）', twoWidgets !== null && twoWidgets.order.join(',') === 'home-widget-countdown,home-widget-board', JSON.stringify(twoWidgets?.order))
+check('留言板 Widget 展示最近留言并带快捷入口', twoWidgets !== null && twoWidgets.boardText.includes('今天也一起吃了饭') && twoWidgets.boardHref === '/home/board', JSON.stringify({ text: twoWidgets?.boardText, href: twoWidgets?.boardHref }))
+
+await send('Page.reload')
+await sleep(600)
+await waitFor(`document.querySelectorAll('[data-testid="home-widgets"] > *').length === 2`, '刷新后两张 Widget 都在')
+check('主屏 Widget 跨刷新保留', true)
+
+// 删掉正被引用的倒数日：卡片要跟着没，而且**记录本身**也要被清掉
+await navigate('/home/countdown', '新倒数日')
+await clickInRow('相识纪念日', '删除')
+await sleep(250)
+await clickInRow('相识纪念日', '确认？')
+await waitFor(`!document.body.innerText.includes('相识纪念日')`, '「相识纪念日」已删除')
+const rowsAfterDelete = await readHomeWidgets()
+check('删掉正被引用的倒数日时，指向它的 Widget 记录被一并清掉', rowsAfterDelete.length === 1 && rowsAfterDelete.every((row) => row.kind === 'board'), JSON.stringify(rowsAfterDelete))
+await navigate('/home', '留言板')
+await waitFor(`document.querySelector('[data-testid="home-widget-board"]') !== null`, '留言板 Widget 仍在')
+check('删掉倒数日不影响另一个 Widget', (await evaluate(`document.querySelectorAll('[data-testid="home-widgets"] > *').length`)) === 1)
+
+// 脏引用：库里留着一条指向不存在倒数日的 Widget（导入的备份会带来这种状态）
+await writeRawHomeWidget('put', {
+  id: 'dirty-widget', type: 'home-widget', kind: 'countdown', refId: 'no-such-countdown',
+  createdAt: Date.now(), updatedAt: Date.now(),
+})
+await navigate('/home', '留言板')
+await waitFor(`document.querySelector('[data-testid="home-widget-board"]') !== null`, '主屏渲染完成')
+const rowsWithDirty = await readHomeWidgets()
+check(
+  '指向不存在实体的脏引用不渲染，也不影响别的 Widget',
+  (await evaluate(`document.querySelectorAll('[data-testid="home-widget-countdown"]').length`)) === 0 &&
+    rowsWithDirty.some((row) => row.id === 'dirty-widget'),
+  JSON.stringify(rowsWithDirty),
+)
+await writeRawHomeWidget('delete', 'dirty-widget')
+
+// 撤下之后再放回来，验证删除 / 撤下不会把这条路堵死
+await navigate('/home/countdown', '新倒数日')
+await toggleCountdownHome('旅行出发日')
+await waitFor(`(() => { const row = [...document.querySelectorAll('li')].find((el) => el.innerText.includes('旅行出发日')); return row?.querySelector('[data-testid="countdown-home-toggle"]')?.getAttribute('data-on-home') === 'true' })()`, '「旅行出发日」重新上主屏')
+await navigate('/home', '留言板')
+await waitFor(`document.querySelectorAll('[data-testid="home-widgets"] > *').length === 2`, '删掉之后仍可重新上主屏')
+check('删掉倒数日之后仍可重新上主屏', true)
+
+await navigate('/home/board', '留下一句话')
+await evaluate(`document.querySelector('[data-testid="board-home-toggle"]').click()`)
+await waitFor(`document.querySelector('[data-testid="board-home-toggle"]')?.getAttribute('data-on-home') === 'false'`, '留言板已撤下')
+await navigate('/home', '留言板')
+await waitFor(`document.querySelectorAll('[data-testid="home-widgets"] > *').length === 1`, '只剩倒数日 Widget')
+check('撤下一张 Widget 不影响另一张', (await evaluate(`document.querySelector('[data-testid="home-widget-board"]') === null`)) === true)
+
+await navigate('/home/countdown', '新倒数日')
+await toggleCountdownHome('旅行出发日')
+await waitFor(`(() => { const row = [...document.querySelectorAll('li')].find((el) => el.innerText.includes('旅行出发日')); return row?.querySelector('[data-testid="countdown-home-toggle"]')?.getAttribute('data-on-home') === 'false' })()`, '倒数日已撤下')
+await navigate('/home', '留言板')
+await sleep(400)
+check('全部撤下后主屏 Widget 区消失', (await evaluate(`document.querySelector('[data-testid="home-widgets"]') === null`)) === true)
+check('主屏 Widget 记录已被清空', (await readHomeWidgets()).length === 0)
+
 const backupCheck = await evaluate(`(async () => {
   const backupModule = await import('/src/lib/backup.ts')
   const readBack = (store, id) => new Promise((resolve, reject) => {
@@ -274,12 +506,12 @@ const backupCheck = await evaluate(`(async () => {
     }
     request.onerror = () => reject(request.error)
   })
-  // v6 唯一的新东西是会话分组，所以先往库里塞一组「分组 + 归属」再导出
+  // 备份验收要盯住「最近新增的那部分内容」：会话分组（v6）与主屏 Widget（v7）都先在库里造出来再导出
   await new Promise((resolve, reject) => {
     const request = indexedDB.open('habitat-db')
     request.onsuccess = () => {
       const db = request.result
-      const tx = db.transaction(['sessions', 'sessionGroups'], 'readwrite')
+      const tx = db.transaction(['sessions', 'sessionGroups', 'homeWidgets'], 'readwrite')
       tx.objectStore('sessionGroups').put({
         id: 'verify-home-group', type: 'session-group', name: '备份验收分组',
         collapsed: true, createdAt: Date.now(), updatedAt: Date.now(),
@@ -288,6 +520,10 @@ const backupCheck = await evaluate(`(async () => {
         id: 'verify-home-session', type: 'chat-session', title: '备份验收会话', pinnedAt: null,
         groupId: 'verify-home-group', remark: null, background: null, bubbleMode: 'chat',
         archivedAt: null, createdAt: Date.now(), updatedAt: Date.now(),
+      })
+      tx.objectStore('homeWidgets').put({
+        id: 'verify-home-widget', type: 'home-widget', kind: 'board', refId: null,
+        createdAt: Date.now(), updatedAt: Date.now(),
       })
       tx.oncomplete = () => { db.close(); resolve('ok') }
       tx.onerror = () => { db.close(); reject(tx.error) }
@@ -299,6 +535,7 @@ const backupCheck = await evaluate(`(async () => {
   const restored = await backupModule.importAll(backup)
   const restoredGroupRow = await readBack('sessionGroups', 'verify-home-group')
   const restoredSessionRow = await readBack('sessions', 'verify-home-session')
+  const restoredWidgetRow = await readBack('homeWidgets', 'verify-home-widget')
   let unsafeBookmarkRejected = false
   let unsafePhotoRejected = false
   let unsafeMusicRejected = false
@@ -336,6 +573,11 @@ const backupCheck = await evaluate(`(async () => {
   } catch {
     unsafeMusicRejected = true
   }
+  const legacyV6 = await backupModule.importAll({
+    format: 'habitat-backup', version: 6, exportedAt: Date.now(),
+    sessions: [], sessionGroups: [], messages: [], moments: [], wishlist: [], countdowns: [],
+    diaries: [], bookmarks: [], artworks: [], photos: [], readingNotes: [], musicTracks: [], studyRecords: [],
+  })
   const legacyV5 = await backupModule.importAll({
     format: 'habitat-backup', version: 5, exportedAt: Date.now(),
     sessions: [{
@@ -393,11 +635,19 @@ const backupCheck = await evaluate(`(async () => {
     legacyV5Groups: legacyV5.sessionGroups,
     legacyV5SessionFound: legacyV5Session !== undefined,
     legacyV5SessionGroupId: legacyV5Session === undefined ? 'no-session' : legacyV5Session.groupId,
+    exportedWidgets: backup.homeWidgets.length,
+    restoredWidgets: restored.homeWidgets,
+    // ⚠️ 不能写成 restoredWidgetRow?.refId ?? 'missing' —— board Widget 的 refId 本来就是 null，
+    //    那个 ?? 会把要验的 null 一起吞掉，断言再也不可能失败
+    restoredWidgetFound: restoredWidgetRow !== undefined,
+    restoredWidgetKind: restoredWidgetRow === undefined ? 'no-row' : restoredWidgetRow.kind,
+    restoredWidgetRefId: restoredWidgetRow === undefined ? 'no-row' : restoredWidgetRow.refId,
+    legacyV6Widgets: legacyV6.homeWidgets,
   }
 })()`)
-check('备份 v6 覆盖十类 Home 数据并可整体恢复', backupCheck.version === 6 && backupCheck.exportedHome >= 9 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
+check('备份 v7 覆盖十类 Home 数据并可整体恢复', backupCheck.version === 7 && backupCheck.exportedHome >= 9 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
 check(
-  '备份 v6 带走会话分组与归属（含折叠状态）',
+  '备份 v7 带走会话分组与归属（含折叠状态）',
   backupCheck.exportedGroups === 1 &&
     backupCheck.restoredGroups === 1 &&
     backupCheck.restoredGroupName === '备份验收分组' &&
@@ -412,6 +662,21 @@ check(
   }),
 )
 check(
+  '备份 v7 带走主屏 Widget（引用原样保留）',
+  backupCheck.exportedWidgets === 1 &&
+    backupCheck.restoredWidgets === 1 &&
+    backupCheck.restoredWidgetFound === true &&
+    backupCheck.restoredWidgetKind === 'board' &&
+    backupCheck.restoredWidgetRefId === null,
+  JSON.stringify({
+    exported: backupCheck.exportedWidgets,
+    restored: backupCheck.restoredWidgets,
+    found: backupCheck.restoredWidgetFound,
+    kind: backupCheck.restoredWidgetKind,
+    refId: backupCheck.restoredWidgetRefId,
+  }),
+)
+check(
   '旧 v5 备份仍可导入：分组为空，会话补成未分组',
   backupCheck.legacyV5Groups === 0 &&
     backupCheck.legacyV5SessionFound === true &&
@@ -422,6 +687,7 @@ check(
     sessionGroupId: backupCheck.legacyV5SessionGroupId,
   }),
 )
+check('旧 v6 备份仍可导入：主屏回到「一张 Widget 都没有」', backupCheck.legacyV6Widgets === 0, String(backupCheck.legacyV6Widgets))
 check('备份导入拒绝非 HTTP(S) 的外部收藏', backupCheck.unsafeBookmarkRejected === true)
 check('备份导入拒绝 SVG 等非白名单图片', backupCheck.unsafePhotoRejected === true)
 check('备份导入拒绝音乐记录中的危险协议', backupCheck.unsafeMusicRejected === true)
@@ -437,7 +703,7 @@ const dbShape = await evaluate(`(async () => {
   db.close()
   return value
 })()`)
-check('Dexie 已升到 v8 且十张 Home 表齐全', dbShape.version === 80 && ['moments', 'wishlist', 'countdowns', 'diaries', 'bookmarks', 'artworks', 'photos', 'readingNotes', 'musicTracks', 'studyRecords'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
+check('Dexie 已升到 v9，十张 Home 表 + 主屏 Widget 表齐全', dbShape.version === 90 && ['moments', 'wishlist', 'countdowns', 'diaries', 'bookmarks', 'artworks', 'photos', 'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
 check('控制台无异常', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '))
 
 const passed = results.filter(Boolean).length
