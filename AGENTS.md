@@ -1,22 +1,38 @@
 # 栖息地（habitat）· AI 工作入口
 
-> **做任何任务前，先读本文件。除非任务明确涉及，否则不得主动读取 §2 中其他文档。** 它只放「去哪找、该干嘛、参考谁」的指针，**不复制正文**。  
-> 需要细节时再按文中指针去读对应文档 —— **不要一上来就通读技术方案**。
->只读取当前任务命中的章节，不得通读整个技术方案。
-> 文件分工：**本文件 = 地图**（每次必读，短）｜`docs/REFERENCES.md` = 外部参考项目库（仅在当前任务需要借鉴具体实现时查阅；仅查与当前任务直接相关的项目。）  
-> 任务完成后立即停止。不得自行扩展需求、重构无关代码、继续优化或执行下一阶段任务。若发现超出当前任务范围的问题，写进 `docs/TASKS.md` 的待优化清单，不擅自处理。
-> 最后更新：2026-09-22
+> **做任何任务前，先读本文件。** 本文件只负责告诉 Agent「当前项目状态、该读什么、该参考谁、做到哪里停止」，不复制其它文档正文。
+>
+> **上下文预算原则**：只读取当前任务直接相关的文档章节与代码，不得无目的通读整个项目、整个技术方案或整个参考库。
+>
+> **产品交互任务例外**：当任务涉及新增、重构或补全核心产品交互时，外部参考项目属于“设计输入”，不是只有遇到技术困难才查。
+> 此类任务必须先查看 `docs/PRODUCT_SPEC.md` 对应章节，再按 §4 指定的参考项目中挑选 **1–3 个最直接相关项目**，检查其 README / 截图 / 对应功能实现，提炼可借鉴的交互后再施工。
+>
+> **纯修 bug、补测试、改接口、改部署等不涉及产品交互的任务，不强制查 GitHub 参考项目。**
+>
+> 任务完成后立即停止。不得自行扩展需求、重构无关代码、继续优化或执行下一阶段任务。超出当前范围的问题统一写入 `docs/TASKS.md`。
+> 最后更新：2026-09-23
 
 ---
 
 ## 0. 怎么用这份文件
 
-固定动作，四步：
+固定动作：
 
-1. 读 **§1 速览**（项目现状）+ **§3 铁律**（不可违反）
-2. 到 **§4** 查你的任务 → 拿到「必读文档」+「参考项目」
-3. 动手前扫一眼 **§5** 的坑
-4. 收尾：**先按顺序追加 `docs/TASKS.md` 一条任务记录**（已完成 + 待优化），再回 **§6** 更新进度；干完一个 Phase 还要追加 `docs/CHANGELOG.md`
+1. 读 **§1 项目速览** + **§3 工作铁律**
+2. 到 **§4 按任务查**，确认本任务的：
+   - 产品定义
+   - 技术依据
+   - UI 依据
+   - 外部参考项目
+3. 若任务涉及 **产品交互新增 / 重构**：
+   - 先读 `docs/PRODUCT_SPEC.md` 对应章节
+   - 再从 §4 命中的参考项目中选择 1–3 个最相关项目实查
+   - 先总结“准备借鉴什么”，再开始实现
+4. 动手前扫一眼 **§5 高风险清单**
+5. 收尾：
+   - 先追加 `docs/TASKS.md`
+   - 更新本文件中的当前阶段
+   - 完成整个 Phase 时再更新 `docs/CHANGELOG.md`
 
 ---
 
@@ -41,7 +57,7 @@
 habitat/
 ├── AGENTS.md                    ← 本文件（AI 工作入口）
 ├── 栖息地初版技术方案分析.md      ← ★ 施工依据（唯一权威，v1.1）
-├── docs/                        ← 项目文档（UI_DESIGN / REFERENCES / 各专题）
+├── docs/                        ← 项目文档（PRODUCT_SPEC / UI_DESIGN / REFERENCES / 各专题）
 ├── shared/                      ← 前后端共享类型、Provider 接口、SSE 协议、错误码
 ├── web/                         ← React SPA（app/ pages/ features/ components/ db/ theme/ providers/ lib/）
 └── server/                      ← Fastify（routes/ context/ providers/ mcp/ jobs/ db/ lib/）
@@ -49,7 +65,7 @@ habitat/
 
 **边界铁律**：后端是唯一对外出口 —— 前端不直连 LLM / 不参与 MCP 握手 / 不直连 Nocturne、Eventide。
 
-**常用命令**（完整 SOP 见 `README.md`）：  
+**常用命令**（完整 SOP 与验收命令见 `README.md`）：
 `setup` 安装依赖 ｜ `dev:server` → :3000 ｜ `dev:web` → :5173（/api 已代理）｜ `typecheck` 两端类型检查 ｜ `build` 前端构建
 
 ---
@@ -59,20 +75,31 @@ habitat/
 | 文档                        | 管什么                                                                             | 什么时候读                                |
 | ------------------------- | ------------------------------------------------------------------------------- | ------------------------------------ |
 | `栖息地初版技术方案分析.md`          | **★ 施工依据**：架构 / 技术选型 / 数据模型 / Provider 设计 / 部署拓扑 / 风险对策                         | 需要架构决策或具体设计时，**按章节读**（见 §4）          |
+| `docs/PRODUCT_SPEC.md`    | **★ 产品行为权威**：功能定位 / 用户与 AI 权限 / 页面入口 / 操作路径 / 跨模块联动 / 已知偏差                      | 做任何产品交互、新功能、UX 重构前，**读对应章节**         |
 | `docs/UI_DESIGN.md`       | 视觉语言（色彩 / 字体 / 圆角 / 间距 / 动效 / Safe Area）                                        | 做任何 UI 前。⚠️ **内容待北北补充，补充前一律只做简单 UI** |
 | `docs/栖息地_UI参考资料_v1.0.md` | ChatGPT Mobile UI 参考 + 栖息地 UI 原则 / 首页方向 / 欢迎语料库 / **给 Coding Agent 的 10 条实现要求** | 做任何 UI 前，与 `UI_DESIGN.md` 一起读        |
 | `docs/REFERENCES.md`      | 外部参考项目库（本项目之外的 GitHub 项目）                                                       | §4 命中任务时按需查                          |
-| `docs/API.md`             | 接口约定                                                                            | 加 / 改接口时同步（现：健康 2 + 聊天 1 + 方案 9）          |
+| `docs/API.md`             | 接口约定                                                                            | 加 / 改接口时同步（现：健康 2 + 聊天 1 + 方案 9 + 诊断 1 + 记忆 6） |
 | `docs/DATA_MODEL.md`      | 数据模型                                                                            | 建模时（占位中，以技术方案 §6 为准）                 |
 | `docs/MCP.md`             | 工具层与 Gateway                                                                    | 动 MCP 时                              |
 | `docs/MEMORY.md`          | 记忆系统接入                                                                          | Phase 3A 时                           |
 | `docs/DEPLOYMENT.md`      | 部署                                                                              | 部署时（占位中）                             |
 | `docs/CHANGELOG.md`       | 变更记录（按 Phase，面向版本）                                                             | **每完成一个 Phase 追加**                   |
 | `docs/TASKS.md`           | **任务记录 + 待优化清单**（面向推进）｜所有「本次没做、以后要做」的问题都收敛在这 | **每次任务收尾必读必写**                      |
-| `README.md`               | 对外说明 + 本地启动 SOP                                                                 | 首次搭环境                                |
+| `README.md`               | 对外说明 + 本地启动 SOP + **本地验收命令**                                                  | 首次搭环境 / 跑验收前                        |
 
 > 原 `ARCHITECTURE.md` / `PROJECT_PLAN.md` / `UI.md` 三个纯占位文件已并入本表（内容均为「以技术方案为准」），不再单列。  
-> 其余多为占位，**真正的权威只有「技术方案」+「UI_DESIGN」两份**。
+> **权威分工：**
+>
+> - `PRODUCT_SPEC.md`：管 **做成什么、怎么使用**
+> - `栖息地初版技术方案分析.md`：管 **怎么实现**
+> - `UI_DESIGN.md`：管 **长什么样**
+> - `REFERENCES.md`：管 **外部项目有哪些值得借鉴**
+> - `TASKS.md`：管 **现在做到哪、还欠什么**
+> - `CHANGELOG.md`：管 **历史版本改过什么**
+>
+> **若产品交互定义与旧技术方案中的简化实现发生冲突，以 `PRODUCT_SPEC.md` 的产品行为为准**，再评估技术方案 / 数据结构需要如何同步调整；不允许为保留现有 CRUD 实现而反向缩减产品定义。
+> PRODUCT_SPEC 只定义目标行为，**不维护「未完成 / 已完成 / 优先级」状态**（状态一律记在本表最后一行的 `TASKS.md`，避免双写）。
 
 
 
@@ -89,29 +116,31 @@ habitat/
 7. **每个 Phase 独立验收 + 独立 git commit**
 8. **不 fork 参考项目** —— 外部项目只读研究 / 作为外部服务接入
 9. **引用第三方代码需标注原作者**
+10. **产品交互不得仅以 CRUD 可用作为完成标准** —— “能新增 / 保存 / 删除 / 展示”只代表数据链路可用；若 PRODUCT_SPEC 定义了更完整的真实使用流程，必须按产品定义验收。
+11. **参考项目只借鉴，不盲抄** —— 核心交互任务按 §4 实查 1–3 个项目，先提炼可借鉴点，再结合栖息地 PRODUCT_SPEC 实现；不得因为参考项目已有某设计就擅自改变本项目已确认的产品定义。
 
 ---
 
 ## 4. 按任务查（核心速查表）
 
-| 我要做…                   | 必读                                                        | 参考项目（详见 `docs/REFERENCES.md`）                                       |
+| 我要做… | 产品 / 技术必读 | 外部参考规则 |
 | ---------------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
-| Chat 页面 / 消息模型 / 流式    | 技术方案 §7.2① / §8 / §6.3；接口契约见 `docs/API.md`                | chatnest、the-house、Pando、CC Companion App                           |
-| 聊天消息建表（版本 / 多候选）       | 技术方案 §6.3 ✅ 已建好；「换一个 / 切回上一版」已接（`db/chat.ts` 的 `addVersion` / `selectCandidateVersion`） | —                                                                   |
-| 消息块渲染（`MessageBlock.kind`） | 技术方案 §6.2；载荷契约见 `shared/types.ts`，渲染分发见 `web/src/features/chat/MessageBlocks.tsx` | —                                                                   |
-| 多 Provider / API 方案管理  | 技术方案 §7.1 / §7.2① / §6.2（ApiProfile）                    | OmniRouter、VCPToolBox                                               |
-| MCP Gateway / 诊断日志     | 技术方案 §7.2② / §9 风险1                                       | amap-mcp-server、VCPToolBox                                          |
-| 长期记忆接入                 | 技术方案 §7.1 / §9 风险1·5                                      | nocturne_memory(已定)、Paramecium、Ombre-Brain、kiwi-mem                 |
-| 世界书 / 角色设定             | 技术方案 §6.2                                                 | character-card-spec-v2/v3、KI-CO                                     |
-| 状态系统 / 情绪              | 技术方案 §0.1-4 / §7.2③ / §9 风险4·6                            | Eventide(已定)、**Drivesoid**、Tidefall、jiwen                           |
-| 主动唤醒 / 独处时光            | 技术方案 §7.2③ / §9 风险6                                       | Headlong、AI Companion Runtime、WrenWen、astrbot_plugin_proactive_chat |
-| Home 生活模块              | 技术方案 §8                                                   | Journal、shared-page、dwell-on-something、memex                        |
-| Life 统计 / 账本 / 通知      | 技术方案 §6.2                                                 | Phosphene、WORKKK                                                    |
-| UI 页面 / 组件 / 主题 Tokens | 技术方案 §8 / `docs/UI_DESIGN.md` / `docs/栖息地_UI参考资料_v1.0.md` | —                                                                   |
-| 部署 / 反代 / SSE          | 技术方案 §4 / §9 风险2·3                                        | Ocean、AionsHome、Not Fade Away、cloud-and-island                      |
-| 导入导出 / 数据主权            | 技术方案 §9 风险7                                               | forge-reload、context-slim、chatgpt-exporter                          |
-| 语音 / TTS（Phase 5）      | 技术方案 §7.1                                                 | voice-mcp、GPT-SoVITS、Callhome                                       |
-| 感知（Phase 5+）           | —                                                         | Akari Pulse、gaze、cove-sensory-mcp                                   |
+| Chat 页面 / 消息交互 | `docs/PRODUCT_SPEC.md` §2 + 技术方案 §7.2① / §8 / §6.3 + `docs/API.md` | **核心交互新增或重构前必须实查 1–3 个**：chatnest、the-house、Pando、CC Companion App |
+| 消息块渲染 / 消息版本（多候选） | 技术方案 §6.2 / §6.3 + `shared/types.ts`（`MessageBlock` 可辨识联合） | —（实现层，渲染分发见 `web/src/features/chat/MessageBlocks.tsx`，版本见 `web/src/db/chat.ts`） |
+| 多 Provider / API 方案管理 | 技术方案 §7.1 / §7.2① / §6.2（ApiProfile）+ `docs/API.md` | OmniRouter、VCPToolBox |
+| MCP Gateway / 诊断日志 | 技术方案 §7.2② / §9 风险1 + `docs/MCP.md` | amap-mcp-server、VCPToolBox |
+| 世界书 / 角色设定 | `docs/PRODUCT_SPEC.md` §9.4 + 技术方案 §6.2 | character-card-spec-v2/v3、KI-CO |
+| Home 生活模块 | `docs/PRODUCT_SPEC.md` §3–5 + 技术方案 §8 | **每次只查当前正在施工的模块**：Journal、shared-page、dwell-on-something、memex |
+| 收藏 / 作品 / 相册跨模块联动 | `docs/PRODUCT_SPEC.md` §3.5–3.7 + §4 | 优先查看支持跨内容收纳、引用、归档的参考项目；只查与当前对象类型直接相关的项目 |
+| UI 页面 / 布局 / Widget | `docs/PRODUCT_SPEC.md` 对应模块 + 技术方案 §8 + `docs/UI_DESIGN.md` + `docs/栖息地_UI参考资料_v1.0.md` | 有明确产品参考时再查对应项目；不要遍历整个参考库 |
+| 长期记忆接入 | 技术方案 §7.1 / §9 风险1·5 + `docs/MEMORY.md` | Nocturne 为主；只有涉及实现取舍时再查 Paramecium / Ombre-Brain / kiwi-mem |
+| 状态系统 / 情绪 | `docs/PRODUCT_SPEC.md` 后续对应章节 + 技术方案 §0.1-4 / §7.2③ | Eventide 为主；需要设计行为模式时再查 Drivesoid / Tidefall / jiwen |
+| 主动唤醒 / 独处时光 | `docs/PRODUCT_SPEC.md` §9.5 + 技术方案 §7.2③ / §9 风险6 | 需要设计主动行为时实查 Headlong / AI Companion Runtime / WrenWen 等 |
+| Life 统计 / 账本 / 通知 | `docs/PRODUCT_SPEC.md` §9.2（待补）+ 技术方案 §6.2 | Phosphene、WORKKK |
+| 部署 / 反代 / SSE | 技术方案 §4 / §9 风险2·3 | 非产品交互任务，按需查：Ocean、AionsHome、Not Fade Away、cloud-and-island |
+| 导入导出 / 数据主权 | 技术方案 §9 风险7 | 非产品交互任务，按需查：forge-reload、context-slim、chatgpt-exporter |
+| 语音 / TTS（Phase 5） | `docs/PRODUCT_SPEC.md` §9.6（待补）+ 技术方案 §7.1 | voice-mcp、GPT-SoVITS、Callhome |
+| 感知（Phase 5+） | — | Akari Pulse、gaze、cove-sensory-mcp |
 
 ---
 

@@ -43,6 +43,50 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游（�
 
 服务端环境变量见 `server/.env.example`；把 `server/.env` 建起来即可（该文件已被 gitignore）。
 
+## 本地验收
+
+先起开发用的 mock 上游（不需要真实密钥 / 真实服务）：
+
+```bash
+npm --prefix server run dev:mock-mcp      # :3333  mock MCP server
+npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
+```
+
+### 服务端探针（在 `server/` 下执行）
+
+| 脚本 | 前置 | 覆盖 |
+| --- | --- | --- |
+| `npx tsx scripts/probe-mock.ts` | mock MCP :3333 | MCP 客户端连通自检（握手 + `tools/list`） |
+| `npx tsx scripts/probe-llm.ts` | mock 上游 :3334 | LLM 方案 / Adapter 全链（32 项） |
+| `npx tsx scripts/probe-providers.ts` | mock 上游 + server（自定 `HABITAT_DB_PATH`） | 方案 CRUD / 密钥进出 / 参数校验（52 项） |
+| `npx tsx scripts/probe-diagnostics.ts` | server（须与脚本用**同一个** `HABITAT_DB_PATH`） | 诊断查询端点（48 项） |
+| `npx tsx scripts/probe-diag-retention.ts` | **不需要 server**（自带一次性临时库，跑完自删） | 诊断日志保留策略（15 项） |
+| `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆链路、read-before-write、诊断留痕（24 项） |
+| `npx tsx scripts/probe-nocturne-demo.ts` | **公网**（Nocturne 官方只读 Demo） | 真实 Streamable HTTP 握手 / 工具清单 / `system://boot`（25 项） |
+
+### 端到端（前端，无头 Edge + CDP）
+
+| 脚本 | 覆盖 |
+| --- | --- |
+| `node web/scripts/verify-chat.mjs` | 聊天链路 / 消息块分发 / 分页 / 候选版本（36 项） |
+| `node web/scripts/verify-providers.mjs` | API 方案管理 UI（22 项） |
+| `node web/scripts/verify-diagnostics.mjs` | 诊断日志面板（36 项） |
+| `node web/scripts/verify-home.mjs` | Home 十模块 + 备份恢复（23 项） |
+
+各脚本的**准确前置条件**写在**各自文件头的注释**里，跑之前先看一眼。
+
+### ⚠️ 跑验收的硬前提
+
+- **`server` 必须 Node 20**（`better-sqlite3` ABI 绑定）；而 **`verify-diagnostics.mjs` 反过来必须 Node ≥ 22**
+  —— 它用内置 `WebSocket` 驱动 CDP、用内置 `node:sqlite` 写 fixture，刻意避开 `better-sqlite3`。
+- **务必换端口**（例如 server 3200 / vite 5274 / CDP 9333），**别复用正在跑的实例** ——
+  验收会重建数据库文件，在跑的进程会握着一个「幽灵文件」，读写全对不上。
+- **起 vite 要加 `--host 127.0.0.1`**：Windows 上 `localhost` 会解析到 `::1`，脚本用 `127.0.0.1` 连不上
+  （症状：`curl` 返回 `000`，而 vite 日志写着 listening）。
+- **后台进程在同一终端命令结束后会被回收**：起 mock / server 与执行验收脚本要写在**同一条命令**里；
+  整条流水线较长时用「后台任务 + 输出落日志文件」再另开命令 tail，别硬塞进一条前台命令（会被超时杀掉且输出全丢）。
+- **`probe-nocturne-demo.ts` 依赖公网**，不并入常规回归 —— 它的定位是「风险 1 专项验证 + 换环境时的连通性体检」。
+
 ## 文档
 
 全部文档的用途与阅读时机，见 **`AGENTS.md` §2 权威文档地图**。
