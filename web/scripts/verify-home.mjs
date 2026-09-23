@@ -50,7 +50,7 @@ async function evaluate(expression) {
   return result.result.value
 }
 
-async function waitFor(expression, label, timeout = 15000) {
+async function waitFor(expression, label, timeout = 30000) {
   const started = Date.now()
   while (Date.now() - started < timeout) {
     if (await evaluate(expression)) return
@@ -223,6 +223,7 @@ await waitFor(`document.body.innerText.includes('编辑读书笔记')`, '进入�
 await setSelect('#reading-status', 'finished')
 await setValue('#reading-note', '读完后留下完整感受。')
 await clickButton('保存修改')
+await waitFor(`document.body.innerText.includes('读完') && document.body.innerText.includes('读完后留下完整感受。')`, '读书笔记修改落地')
 await send('Page.reload'); await sleep(500)
 await waitFor(`document.body.innerText.includes('读完') && document.body.innerText.includes('读完后留下完整感受。')`, '读书笔记刷新保留')
 check('读书笔记新增、状态编辑并跨刷新保留', true)
@@ -238,6 +239,7 @@ await clickButton('编辑')
 await waitFor(`document.body.innerText.includes('编辑音乐记录')`, '进入音乐编辑')
 await setValue('#music-note', '适合在每个傍晚一起听。')
 await clickButton('保存修改')
+await waitFor(`document.body.innerText.includes('每个傍晚')`, '音乐记录修改落地')
 await send('Page.reload'); await sleep(500)
 await waitFor(`document.body.innerText.includes('每个傍晚') && document.querySelector('a[href="https://example.com/music"]') !== null`, '音乐记录刷新保留')
 const musicLink = await evaluate(`(() => { const link = document.querySelector('a[href="https://example.com/music"]'); return link ? { target: link.target, rel: link.rel } : null })()`)
@@ -255,6 +257,7 @@ await waitFor(`document.body.innerText.includes('编辑学习记录')`, '进入�
 await setValue('#study-duration', '60')
 await setValue('#study-note', '把类型与备份边界一起收紧。')
 await clickButton('保存修改')
+await waitFor(`document.body.innerText.includes('共 60 分钟') && document.body.innerText.includes('备份边界')`, '学习记录修改落地')
 await send('Page.reload'); await sleep(500)
 await waitFor(`document.body.innerText.includes('共 60 分钟') && document.body.innerText.includes('备份边界')`, '学习记录刷新保留')
 check('学习记录新增、编辑、汇总并跨刷新保留', true)

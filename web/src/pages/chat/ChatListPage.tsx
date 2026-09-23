@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { ChatSession } from '@shared/types'
-import { createSession, deleteSession, listSessions } from '../../db/chat'
+import { createSession, deleteSession, listSessions, setSessionPinned } from '../../db/chat'
 import { log } from '../../lib/log'
 
 export function ChatListPage() {
@@ -52,6 +52,18 @@ export function ChatListPage() {
     }
   }
 
+  async function togglePin(session: ChatSession): Promise<void> {
+    try {
+      const updated = await setSessionPinned(session.id, session.pinnedAt === null)
+      if (updated === null) throw new Error('会话不存在或已被删除')
+      setSessions(await listSessions())
+      setError(null)
+    } catch (err: unknown) {
+      log.error('更新会话置顶状态失败', err)
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return (
     <div className="px-4 py-4">
       <div className="mb-4 flex items-center justify-between">
@@ -90,16 +102,28 @@ export function ChatListPage() {
         {(sessions ?? []).map((s) => (
           <li
             key={s.id}
+            data-testid={`session-row-${s.id}`}
             className="flex items-center gap-2 rounded-lg border px-4 py-3"
             style={{
               borderColor: 'var(--color-border)',
-              backgroundColor: 'var(--color-surface)',
+              backgroundColor: s.pinnedAt === null ? 'var(--color-surface)' : 'var(--color-surface-alt)',
             }}
           >
-            <Link to={`/chat/${s.id}`} className="flex-1 truncate">
+            <Link to={`/chat/${s.id}`} data-testid={`session-title-${s.id}`} className="flex-1 truncate">
               {s.pinnedAt !== null && <span className="mr-1">📌</span>}
               {s.title}
             </Link>
+            <button
+              type="button"
+              data-testid={`pin-session-${s.id}`}
+              aria-label={s.pinnedAt === null ? `置顶会话：${s.title}` : `取消置顶会话：${s.title}`}
+              title={s.pinnedAt === null ? '置顶' : '取消置顶'}
+              className="shrink-0 px-1 text-xs"
+              style={{ color: s.pinnedAt === null ? 'var(--color-text-dim)' : 'var(--color-primary)' }}
+              onClick={() => void togglePin(s)}
+            >
+              {s.pinnedAt === null ? '置顶' : '取消置顶'}
+            </button>
             {confirmingId === s.id ? (
               <button
                 type="button"

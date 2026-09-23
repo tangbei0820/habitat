@@ -2,7 +2,7 @@
  * 聊天链路前端验收（无头 Edge + CDP 裸驱动）
  *
  * 覆盖：新建会话 → 发送 → 流式渲染 → 中止 → 刷新持久化 → 虚拟列表 → 消息块按 kind 分发 →
- *       分页加载 → 换一个 / 重发 → 消息对象操作 → 跨模块收录（收藏 / 作品 / 相册）→ 控制台异常。
+ *       分页加载 → 换一个 / 重发 → 消息对象操作 → 跨模块收录 → 会话置顶 / 聊天设置 → 控制台异常。
  *
  * ⚠️ 「撤回不进模型上下文」这类语义**没有别的验法**：只能读 mock 上游记下的真实报文
  *    （`GET /__last-body`）看客户端到底送了什么。UI 上把消息藏起来很容易，送没送出去才是关键。
@@ -383,6 +383,23 @@ async function seedMessages(sessionId, items) {
     for (const m of ${JSON.stringify(items)}) {
       store.put(Object.assign({ type: 'chat-message' }, m, { sessionId: ${JSON.stringify(sessionId)} }))
     }
+    await new Promise((res, rej) => { tx.oncomplete = () => res('ok'); tx.onerror = () => rej(tx.error) })
+    db.close()
+    return 'ok'
+  })()`)
+}
+
+/** 写入可控会话，专门验排序与设置，不受前面真实对话时间影响。 */
+async function seedSessions(items) {
+  return evaluate(`(async () => {
+    const db = await new Promise((res, rej) => {
+      const r = indexedDB.open('habitat-db')
+      r.onsuccess = () => res(r.result)
+      r.onerror = () => rej(r.error)
+    })
+    const tx = db.transaction('sessions', 'readwrite')
+    const store = tx.objectStore('sessions')
+    for (const item of ${JSON.stringify(items)}) store.put(item)
     await new Promise((res, rej) => { tx.oncomplete = () => res('ok'); tx.onerror = () => rej(tx.error) })
     db.close()
     return 'ok'
@@ -1059,19 +1076,137 @@ check(
 )
 
 await evaluate(`(() => { history.pushState({}, '', '/home/bookmarks'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
-await waitFor(`document.body.innerText.includes('值得长期留下的跨模块内容')`, '收藏中心显示消息快照')
+await waitFor(`document.querySelector('a[href*="message=flow-text"]') !== null`, '收藏中心显示消息来源')
 const bookmarkSourceLink = await evaluate(`document.querySelector('a[href*="message=flow-text"]')?.getAttribute('href') ?? null`)
 check('收藏中心可查看原聊天来源', bookmarkSourceLink?.includes(`/chat/${sessionFlow}`) === true, String(bookmarkSourceLink))
 
 await evaluate(`(() => { history.pushState({}, '', '/home/works'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
-await waitFor(`document.body.innerText.includes('[组件] 行程卡片')`, '作品中心显示组件快照')
+await waitFor(`document.querySelector('a[href*="message=flow-component"]') !== null`, '作品中心显示组件来源')
 const artworkSourceLink = await evaluate(`document.querySelector('a[href*="message=flow-component"]')?.getAttribute('href') ?? null`)
 check('作品中心可查看原聊天来源', artworkSourceLink?.includes(`/chat/${sessionFlow}`) === true, String(artworkSourceLink))
 
 await evaluate(`(() => { history.pushState({}, '', '/home/album'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
-await waitFor(`document.body.innerText.includes('一像素纪念照')`, '相册显示聊天图片')
+await waitFor(`document.querySelector('a[href*="message=flow-image"]') !== null`, '相册显示聊天图片来源')
 const photoSourceLink = await evaluate(`document.querySelector('a[href*="message=flow-image"]')?.getAttribute('href') ?? null`)
 check('相册可查看原聊天来源', photoSourceLink?.includes(`/chat/${sessionFlow}`) === true, String(photoSourceLink))
+
+/* 12.9 P0 第三批 A：会话置顶 + 聊天设置入口（零 schema） */
+await seedSessions([
+  {
+    id: 'pin-old', type: 'chat-session', title: '较早的验收会话', pinnedAt: null,
+    remark: null, background: null, bubbleMode: 'chat', archivedAt: null,
+    createdAt: 1000, updatedAt: 1000,
+  },
+  {
+    id: 'pin-new', type: 'chat-session', title: '较新的验收会话', pinnedAt: null,
+    remark: null, background: null, bubbleMode: 'chat', archivedAt: null,
+    createdAt: 2000, updatedAt: 2000,
+  },
+])
+await seedMessages('pin-new', [
+  seedMessage('settings-ai', 'assistant', [
+    { kind: 'text', order: 0, payload: { text: '设置模式验收消息' } },
+  ], { createdAt: 2100, updatedAt: 2100 }),
+])
+await evaluate(`(() => { history.pushState({}, '', '/chat'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="session-row-pin-old"]') !== null`, '置顶验收会话进入列表')
+
+const relativePinOrder = async () => evaluate(`(() => {
+  const ids = [...document.querySelectorAll('[data-testid^="session-row-"]')].map((el) => el.dataset.testid)
+  return { old: ids.indexOf('session-row-pin-old'), newer: ids.indexOf('session-row-pin-new'), first: ids[0] }
+})()`)
+const beforePinOrder = await relativePinOrder()
+check('普通会话保持消息活跃时间倒序', beforePinOrder.newer < beforePinOrder.old, JSON.stringify(beforePinOrder))
+
+await evaluate(`(() => { document.querySelector('[data-testid="pin-session-pin-old"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid^="session-row-"]')?.dataset.testid === 'session-row-pin-old'`, '置顶会话移到顶部')
+const pinnedState = await evaluate(`(async () => {
+  const db = await new Promise((res, rej) => { const r = indexedDB.open('habitat-db'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  const value = await new Promise((res, rej) => { const r = db.transaction('sessions').objectStore('sessions').get('pin-old'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  db.close(); return value
+})()`)
+check('置顶即时重排并持久化时间戳', typeof pinnedState?.pinnedAt === 'number' && pinnedState.updatedAt === 1000, JSON.stringify(pinnedState))
+
+await evaluate(`(() => { document.querySelector('[data-testid="pin-session-pin-old"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="pin-session-pin-old"]')?.textContent.trim() === '置顶'`, '取消置顶按钮恢复')
+const afterUnpinOrder = await relativePinOrder()
+const unpinnedState = await evaluate(`(async () => {
+  const db = await new Promise((res, rej) => { const r = indexedDB.open('habitat-db'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  const value = await new Promise((res, rej) => { const r = db.transaction('sessions').objectStore('sessions').get('pin-old'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  db.close(); return value
+})()`)
+check('取消置顶后回到原活跃顺序', afterUnpinOrder.newer < afterUnpinOrder.old && unpinnedState?.pinnedAt === null, JSON.stringify({ afterUnpinOrder, unpinnedState }))
+
+await evaluate(`(() => { history.pushState({}, '', '/chat/pin-new'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
+await waitFor(`document.body.innerText.includes('设置模式验收消息')`, '进入设置验收会话')
+const settingsEntry = await evaluate(`(() => ({
+  hasEntry: document.querySelector('[data-testid="chat-settings-open"]') !== null,
+  hasGroup: document.body.innerText.includes('会话分组'),
+}))()`)
+check('顶栏提供聊天设置入口且不混入会话分组', settingsEntry.hasEntry && !settingsEntry.hasGroup, JSON.stringify(settingsEntry))
+
+await evaluate(`(() => { document.querySelector('[data-testid="chat-settings-open"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="chat-settings-sheet"]') !== null`, '聊天设置面板打开')
+const defaultSettings = await evaluate(`(() => ({
+  remark: document.querySelector('[data-testid="chat-setting-remark"]')?.value,
+  background: document.querySelector('[data-testid="chat-setting-background"]')?.value,
+  bubbleMode: document.querySelector('[data-testid="chat-setting-bubble-mode"]')?.value,
+}))()`)
+check('聊天设置读取当前会话默认值', defaultSettings.remark === '' && defaultSettings.background === '' && defaultSettings.bubbleMode === 'chat', JSON.stringify(defaultSettings))
+
+await setTextarea('[data-testid="chat-setting-remark"]', '只属于这段对话的备注')
+await evaluate(`(() => {
+  const setSelect = (selector, value) => {
+    const el = document.querySelector(selector)
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set
+    setter.call(el, value)
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  setSelect('[data-testid="chat-setting-background"]', '#edf4f1')
+  setSelect('[data-testid="chat-setting-bubble-mode"]', 'native')
+  document.querySelector('[data-testid="chat-settings-save"]').click()
+  return 'ok'
+})()`)
+await waitFor(`document.body.innerText.includes('聊天设置已保存')`, '聊天设置保存反馈')
+
+const savedSettings = await evaluate(`(async () => {
+  const db = await new Promise((res, rej) => { const r = indexedDB.open('habitat-db'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  const tx = db.transaction('sessions')
+  const session = await new Promise((res, rej) => { const r = tx.objectStore('sessions').get('pin-new'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  const version = db.version
+  db.close()
+  return { session, version }
+})()`)
+check(
+  '会话设置持久化且不刷新消息活跃时间',
+  savedSettings.session?.remark === '只属于这段对话的备注' &&
+    savedSettings.session?.background === '#edf4f1' &&
+    savedSettings.session?.bubbleMode === 'native' &&
+    savedSettings.session?.updatedAt === 2000,
+  JSON.stringify(savedSettings),
+)
+check('本批保持 Dexie v7，不新增 schema', savedSettings.version === 70, String(savedSettings.version))
+
+const appliedSettings = await evaluate(`(() => {
+  const area = document.querySelector('[data-testid="chat-message-area"]')
+  const bubble = document.querySelector('[data-message-id="settings-ai"] [data-bubble-mode]')
+  return {
+    background: area ? getComputedStyle(area).backgroundColor : null,
+    bubbleMode: bubble?.dataset.bubbleMode ?? null,
+    bubbleBackground: bubble ? getComputedStyle(bubble).backgroundColor : null,
+  }
+})()`)
+check('会话背景保存后立即生效', appliedSettings.background === 'rgb(237, 244, 241)', JSON.stringify(appliedSettings))
+check('AI 原生气泡模式保存后立即生效', appliedSettings.bubbleMode === 'native' && appliedSettings.bubbleBackground === 'rgba(0, 0, 0, 0)', JSON.stringify(appliedSettings))
+
+await evaluate(`(() => { document.querySelector('[data-testid="chat-settings-open"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="chat-settings-sheet"]') !== null`, '重新打开聊天设置')
+const reopenedSettings = await evaluate(`(() => ({
+  remark: document.querySelector('[data-testid="chat-setting-remark"]')?.value,
+  background: document.querySelector('[data-testid="chat-setting-background"]')?.value,
+  bubbleMode: document.querySelector('[data-testid="chat-setting-bubble-mode"]')?.value,
+}))()`)
+check('重新打开设置可回读已保存值', reopenedSettings.remark === '只属于这段对话的备注' && reopenedSettings.background === '#edf4f1' && reopenedSettings.bubbleMode === 'native', JSON.stringify(reopenedSettings))
 
 await send('Emulation.clearDeviceMetricsOverride')
 

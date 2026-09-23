@@ -10,6 +10,7 @@ import {
   type ChatItem,
 } from '../../features/chat/ChatBubble'
 import { MessageActionSheet, type MessageAction } from '../../features/chat/MessageActionSheet'
+import { ChatSettingsSheet } from '../../features/chat/ChatSettingsSheet'
 import {
   createMessageArtwork,
   createMessageBookmark,
@@ -32,6 +33,7 @@ import {
   textBlock,
   touchSession,
   updateMessage,
+  updateSessionSettings,
 } from '../../db/chat'
 import { ApiRequestError } from '../../lib/api'
 import { streamChat } from '../../lib/chatStream'
@@ -95,6 +97,8 @@ export function ChatWindowPage() {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set())
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSaving, setSettingsSaving] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
   /**
@@ -128,6 +132,7 @@ export function ChatWindowPage() {
     setSelectMode(false)
     setSelectedIds(new Set())
     setPendingConfirm(null)
+    setSettingsOpen(false)
     let cancelled = false
     void (async () => {
       try {
@@ -564,6 +569,24 @@ export function ChatWindowPage() {
     }
   }
 
+  async function saveSettings(input: Parameters<typeof updateSessionSettings>[1]): Promise<void> {
+    if (sessionId === undefined) return
+    setSettingsSaving(true)
+    try {
+      const updated = await updateSessionSettings(sessionId, input)
+      if (updated === null) throw new Error('会话不存在或已被删除')
+      setSession(updated)
+      setSettingsOpen(false)
+      setErrorText(null)
+      showToast('聊天设置已保存')
+    } catch (err) {
+      log.error('保存聊天设置失败', err)
+      setErrorText(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSettingsSaving(false)
+    }
+  }
+
   const items = useMemo<ChatItem[]>(
     () =>
       messages.map((message, index) => ({
@@ -599,10 +622,11 @@ export function ChatWindowPage() {
         actions={actions}
         selected={selectedIds.has(item.message.id)}
         editing={editingId === item.message.id}
+        bubbleMode={session?.bubbleMode ?? 'chat'}
       />
     ),
     // actions 每次渲染都是新对象（刻意为之），所以这里等于「总是重渲」——正是我们要的
-    [actions, selectedIds, editingId],
+    [actions, selectedIds, editingId, session?.bubbleMode],
   )
 
   const canSend = draft.trim() !== '' && !sending
@@ -619,9 +643,24 @@ export function ChatWindowPage() {
         <h1 className="flex-1 truncate text-base font-semibold">
           {session === undefined ? '加载中…' : (session?.title ?? '会话不存在')}
         </h1>
+        <button
+          type="button"
+          data-testid="chat-settings-open"
+          aria-label="聊天设置"
+          disabled={session === undefined || session === null}
+          onClick={() => setSettingsOpen(true)}
+          className="rounded px-2 py-1 text-sm disabled:opacity-40"
+          style={{ color: 'var(--color-primary)' }}
+        >
+          设置
+        </button>
       </header>
 
-      <div className="relative min-h-0 flex-1">
+      <div
+        data-testid="chat-message-area"
+        className="relative min-h-0 flex-1"
+        style={{ backgroundColor: session?.background ?? 'transparent' }}
+      >
         <VirtualList
           items={items}
           getKey={itemKey}
@@ -784,6 +823,15 @@ export function ChatWindowPage() {
         >
           {toast}
         </div>
+      )}
+
+      {settingsOpen && session !== undefined && session !== null && (
+        <ChatSettingsSheet
+          session={session}
+          saving={settingsSaving}
+          onClose={() => setSettingsOpen(false)}
+          onSave={saveSettings}
+        />
       )}
 
       <MessageActionSheet

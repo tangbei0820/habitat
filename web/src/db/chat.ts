@@ -5,6 +5,7 @@
  * 二来以后加分页、导出、迁移时不用回头改页面。
  */
 import type {
+  BubbleMode,
   ChatMessage,
   ChatSession,
   MessageBlock,
@@ -117,6 +118,40 @@ export async function deleteSession(id: string): Promise<void> {
     await db.messages.where('sessionId').equals(id).delete()
     await db.sessions.delete(id)
   })
+}
+
+/** 置顶只写 `pinnedAt`，不刷新 `updatedAt`：取消置顶后仍回到原本的消息活跃顺序。 */
+export async function setSessionPinned(id: string, pinned: boolean): Promise<ChatSession | null> {
+  const session = await db.sessions.get(id)
+  if (session === undefined) return null
+  const next: ChatSession = { ...session, pinnedAt: pinned ? Date.now() : null }
+  await db.sessions.put(next)
+  return next
+}
+
+export interface ChatSessionSettingsInput {
+  remark: string | null
+  background: string | null
+  bubbleMode: BubbleMode
+}
+
+/** 会话设置不代表新消息活动，因此保留原 `updatedAt`，避免保存设置后会话莫名跳位。 */
+export async function updateSessionSettings(
+  id: string,
+  input: ChatSessionSettingsInput,
+): Promise<ChatSession | null> {
+  const session = await db.sessions.get(id)
+  if (session === undefined) return null
+  const remark = input.remark?.trim() || null
+  if (remark !== null && remark.length > 500) throw new Error('会话备注不能超过 500 字')
+  const next: ChatSession = {
+    ...session,
+    remark,
+    background: input.background,
+    bubbleMode: input.bubbleMode,
+  }
+  await db.sessions.put(next)
+  return next
 }
 
 export async function countMessages(sessionId: string): Promise<number> {

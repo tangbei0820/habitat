@@ -13,7 +13,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
-import type { ChatMessage } from '@shared/types'
+import type { BubbleMode, ChatMessage } from '@shared/types'
 import { MessageBlocks } from './MessageBlocks'
 
 /** 长按判定时长：短了会和「点一下」打架，长了会让人觉得没反应 */
@@ -81,6 +81,7 @@ export function ChatBubble({
   actions,
   selected,
   editing,
+  bubbleMode,
 }: {
   item: ChatItem
   actions: BubbleActions
@@ -88,6 +89,7 @@ export function ChatBubble({
   selected: boolean
   /** 是否正在内联编辑这一条 */
   editing: boolean
+  bubbleMode: BubbleMode
 }) {
   const { message, text } = item
   const isUser = message.role === 'user'
@@ -168,6 +170,7 @@ export function ChatBubble({
     if (actions.selectMode) actions.onToggleSelect(message.id)
   }
 
+  const nativeAssistant = bubbleMode === 'native' && !isUser && !isRecalled
   const bubbleStyle = isRecalled
     ? {
         backgroundColor: 'transparent',
@@ -175,9 +178,9 @@ export function ChatBubble({
         border: '1px dashed var(--color-border)',
       }
     : {
-        backgroundColor: isUser ? 'var(--color-primary)' : 'var(--color-surface)',
+        backgroundColor: isUser ? 'var(--color-primary)' : nativeAssistant ? 'transparent' : 'var(--color-surface)',
         color: isUser ? 'var(--color-primary-contrast)' : 'var(--color-text)',
-        border: isUser ? 'none' : '1px solid var(--color-border)',
+        border: isUser || nativeAssistant ? 'none' : '1px solid var(--color-border)',
       }
 
   return (
@@ -203,7 +206,8 @@ export function ChatBubble({
         )}
         <div className={`flex min-w-0 flex-1 ${isUser ? 'justify-end' : 'justify-start'}`}>
           <div
-            className={`break-words rounded-2xl px-3 py-2 text-sm ${editing ? 'w-full' : 'max-w-[82%]'}`}
+            data-bubble-mode={bubbleMode}
+            className={`break-words rounded-2xl px-3 py-2 text-sm ${editing ? 'w-full' : nativeAssistant ? 'max-w-full' : 'max-w-[82%]'}`}
             style={bubbleStyle}
             onPointerDown={startPress}
             onPointerMove={movePress}
