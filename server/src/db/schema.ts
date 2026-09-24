@@ -42,6 +42,8 @@ export const usageRecord = sqliteTable('usage_record', {
   totalTokens: integer('total_tokens').notNull().default(0),
   /** 费用（分）。Phase 4 按当时的 PriceSnapshot 回填 */
   cost: integer('cost'),
+  /** 计算本条费用时使用的不可变价格快照；null 表示尚未定价。 */
+  priceSnapshotId: text('price_snapshot_id'),
   /** 本地时区 YYYY-MM-DD —— 账本按天聚合必须与用户看到的「今天」一致，不能用 UTC */
   dayKey: text('day_key').notNull(),
   at: integer('at').notNull(),
@@ -49,6 +51,29 @@ export const usageRecord = sqliteTable('usage_record', {
 
 export type UsageRecordRow = typeof usageRecord.$inferSelect
 export type NewUsageRecord = typeof usageRecord.$inferInsert
+
+/** provider + model 的不可变价格版本；改价只追加，不更新历史。 */
+export const priceSnapshot = sqliteTable('price_snapshot', {
+  id: text('id').primaryKey(),
+  provider: text('provider').notNull(),
+  model: text('model').notNull(),
+  promptCentsPerMillion: integer('prompt_cents_per_million').notNull(),
+  completionCentsPerMillion: integer('completion_cents_per_million').notNull(),
+  validFrom: integer('valid_from').notNull(),
+  createdAt: integer('created_at').notNull(),
+})
+
+/** 浏览器 Web Push 订阅；endpoint 唯一，密钥只用于推送协议。 */
+export const pushSubscription = sqliteTable('push_subscription', {
+  id: text('id').primaryKey(),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+  lastSuccessAt: integer('last_success_at'),
+  lastError: text('last_error'),
+})
 
 /**
  * ApiProfile（§6.2 / §7.1）：LLM 方案。**服务端 SQLite 是权威源**。

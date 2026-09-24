@@ -560,6 +560,75 @@ export interface WalletTransactionRecord {
   createdAt: number
 }
 
+/* ---------- Phase 4 Life：价格、统计、通知与运行可视化 ---------- */
+
+export interface PriceSnapshotRecord {
+  id: string
+  provider: string
+  model: string
+  promptCentsPerMillion: number
+  completionCentsPerMillion: number
+  validFrom: number
+  createdAt: number
+}
+
+export interface LifeDaySummary {
+  dayKey: string
+  eventCount: number
+  failedEventCount: number
+  apiCalls: number
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  pricedCostCents: number
+  unpricedCalls: number
+}
+
+export interface UsageBreakdown {
+  key: string
+  calls: number
+  totalTokens: number
+  pricedCostCents: number
+  unpricedCalls: number
+}
+
+export interface LifeMonthSummary {
+  month: string
+  timeZone: string
+  days: LifeDaySummary[]
+  totals: Omit<LifeDaySummary, 'dayKey'>
+}
+
+export interface LifeLedgerView {
+  summary: LifeMonthSummary
+  byService: UsageBreakdown[]
+  byModel: UsageBreakdown[]
+  priceSnapshots: PriceSnapshotRecord[]
+  wallet: WalletSummary
+  walletTransactions: WalletTransactionRecord[]
+}
+
+export interface LifeRuntimeView {
+  server: ServerHealth
+  eventide: StateProviderHealth
+  /** Life 只消费 UI payload，不下发 Eventide 往返 state 或隐藏状态卡。 */
+  bodyState: { payload: Record<string, unknown>; settledAt: number } | null
+  mcp: McpHealth
+  automation: {
+    policy: AutomationPolicy
+    runtime: AutomationRuntimeState
+    runs: AutomationRunRecord[]
+  }
+}
+
+export interface PushStatus {
+  supported: boolean
+  configured: boolean
+  publicKey: string | null
+  subscriptionCount: number
+  lastError: string | null
+}
+
 /* ---------- MCP 诊断日志（§7.2②「逐请求可回放」的查询侧） ---------- */
 
 /** 'out' = Gateway→Server 请求；'in' = Server→Gateway 响应 / 通知 */

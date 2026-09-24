@@ -19,6 +19,7 @@ import type { LlmRegistry } from '../providers/registry.js'
 import { BudgetGuard } from '../lib/budget-guard.js'
 import { parseJsonText, runBackgroundLlm } from '../lib/llm-call.js'
 import { localClock } from '../lib/time-window.js'
+import { sendWebPush } from './push.js'
 
 export interface AutomationActionResult {
   kind: AutomationKind | 'event'
@@ -128,6 +129,9 @@ export class AutomationService {
       }], 'proactive-wake', { model, temperature: 0.8, maxTokens: 300, timeZone: getAutomationPolicy().timeZone })
       if (result.text === '') throw new Error('主动唤醒模型返回空正文')
       const notice = createNotification('wake', '小栖发来一条消息', result.text, { runId })
+      void sendWebPush(notice).catch((error: unknown) => {
+        this.logger.warn({ err: error }, 'Web Push 发送失败，站内通知已保留')
+      })
       markWakeSent(now.getTime())
       finishAutomationRun(runId, 'completed', null, result.usageRecordId, now.getTime())
       appendEventLog('automation.wake.completed', { usageRecordId: result.usageRecordId }, notice.id, now.getTime())

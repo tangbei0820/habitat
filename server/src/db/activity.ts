@@ -1,7 +1,7 @@
 /** EventLog、通知收件箱与 AI 私有独处记录。 */
 import { randomUUID } from 'node:crypto'
 import type { EventLogRecord, NotificationKind, NotificationRecord, SolitudeEntry } from '@shared/types.js'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, isNull } from 'drizzle-orm'
 import { dayKeyOf } from './usage.js'
 import { db } from './index.js'
 import { eventLog, notification, solitudeEntry } from './schema.js'
@@ -75,6 +75,10 @@ export function listNotifications(limit = 50): NotificationRecord[] {
 
 export function markNotificationRead(id: string, readAt = Date.now()): boolean {
   return db.update(notification).set({ readAt }).where(eq(notification.id, id)).run().changes > 0
+}
+
+export function markAllNotificationsRead(readAt = Date.now()): number {
+  return db.update(notification).set({ readAt }).where(isNull(notification.readAt)).run().changes
 }
 
 export function createSolitudeEntry(

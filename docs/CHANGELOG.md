@@ -590,3 +590,13 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 新增 EventLog、通知底座、自动化策略 / 运行记录，以及余额与不可变流水同事务的钱包；Phase 4 可直接消费这些事实源。
 - 补全 `PRODUCT_SPEC §9.5`、API / 数据模型 / README / AGENTS；全链探针 21/21，Eventide 回归 19/19。
 - 验收发现并修复梦境时区暗坑：不能用 UTC `toISOString()` 判断本地夜间窗口，现按策略 IANA 时区传递显式 offset。
+
+### Phase 4 · Life 数据可见（T-026）—— **完成**
+
+- `/life` 从占位页升级为月历、账本、通知、运行四视图；移动端简单 UI 使用现有 Design Tokens。
+- 月历只聚合 EventLog / UsageRecord，可按日期下钻；费用同时展示已定价金额与未定价次数，不用 0 元掩盖缺价。
+- 新增不可变 PriceSnapshot 与 `usage_record.price_snapshot_id`：新价格可补齐未定价历史，但不重算已绑定快照的旧账。
+- 钱包余额与不可变流水进入账本；历史 API 方案删除后仍按原 `profileId` 保留真实用量。
+- 通知中心支持单条 / 全部已读；新增 Service Worker + VAPID Web Push，未配置 / 不支持 / 拒绝授权时安全退回站内收件箱。
+- 运行页聚合 habitat-server、Eventide、MCP、当前状态与主动任务，明确区分正常 / 异常 / 未配置。
+- 全链探针 16/16，真实浏览器 Life 验收 15/15，Phase 3B 回归 21/21；类型检查、构建与差异检查通过。

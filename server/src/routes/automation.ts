@@ -12,6 +12,7 @@ import {
   listEventLogs,
   listNotifications,
   listSolitudeEntries,
+  markAllNotificationsRead,
   markNotificationRead,
 } from '../db/activity.js'
 import { getWallet, listWalletTransactions, transactWallet } from '../db/wallet.js'
@@ -130,6 +131,7 @@ export function registerAutomationRoutes(app: FastifyInstance, service: Automati
   app.get('/api/notifications', async (request) => ({
     notifications: listNotifications(limitOf((request.query as Record<string, unknown>).limit, 50, 200)),
   }))
+  app.patch('/api/notifications/read-all', async () => ({ updated: markAllNotificationsRead() }))
   app.patch('/api/notifications/:id/read', async (request) => {
     const { id } = request.params as { id: string }
     if (!markNotificationRead(id)) throw new RequestError(ErrorCodes.NotFound, `通知 '${id}' 不存在`)

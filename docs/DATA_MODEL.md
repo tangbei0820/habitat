@@ -292,5 +292,18 @@ Node 收到完整成功响应后才覆盖这行。sidecar 重启不会丢周期�
 | `wallet` | 当前余额缓存 | 只能与流水在同一事务更新，余额不得小于 0 |
 | `wallet_transaction` | 不可变钱包流水 | 每次变化保留 delta、变化后余额、原因与可选来源引用 |
 
-费用预算读取 `usage_record.cost`。Phase 4 的价格快照尚未落地前，存在 `cost=null` 的调用就视为
-“费用不可计算”；若用户启用了费用上限，BudgetGuard 会安全拒绝后续调用，而不是按 0 元放行。
+费用预算读取 `usage_record.cost`。存在 `cost=null` 的调用就视为“费用不可计算”；若用户启用了费用上限，
+BudgetGuard 会安全拒绝后续调用，而不是按 0 元放行。
+
+## 10. Phase 4 Life（服务端 SQLite）
+
+| 表 / 字段 | 权威内容 | 关键不变量 |
+|---|---|---|
+| `price_snapshot` | provider + model 的输入 / 输出每百万 Token 分价、生效时间 | **只追加**；同一有效期以后创建的版本供新调用采用 |
+| `usage_record.price_snapshot_id` | 本次费用采用的价格版本 | null = 未定价；一旦绑定不因以后改价重算 |
+| `push_subscription` | 浏览器 endpoint 与协议密钥、最近成功 / 错误 | 失效 endpoint（404/410）自动删除；推送失败不删除站内通知 |
+
+Life 月历与账本是查询模型，不复制事实表：月历按 `event_log.day_key` + `usage_record.day_key` 聚合；钱包仍读
+`wallet` / `wallet_transaction`；运行页聚合现有健康端点、`body_state_snapshot` 与 `automation_*`。
+价格快照新增后只回填 `price_snapshot_id IS NULL` 且调用时间在有效期内的记录。历史方案若已删除，已有费用仍按
+`profile_id` 与绑定快照保留；无法识别 provider 的老未定价记录继续明确显示未定价，不猜测归属。

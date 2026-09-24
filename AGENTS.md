@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar ⚠️ **实测线上跑的是 nginx/1.18.0，不是 Caddy**（T-022），选型待北北确认                      |
-| 当前阶段 | **Phase 3B Eventide 已完成**（T-023~T-025）：状态、结算、事件、梦境、BudgetGuard、主动唤醒、独处、通知底座与钱包｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022）｜下一阶段 Phase 4 Life |
+| 当前阶段 | **Phase 4 Life 已完成**（T-026）：月历、用量 / 钱包账本、不可变价格快照、通知中心、Web Push 与运行状态｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022）｜下一阶段 Phase 5 高级能力 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -170,7 +170,7 @@ habitat/
 - Phase 2 Home 基础数据链：✅ 完成
 - Phase 3A 长期记忆：🚧 一半（客户端链路已验，自部署实例未接）｜**暂停中**，不阻塞 UX 收口
 - Phase 3B Eventide：✅ 完成（状态 + 互动结算 + 事件 / 梦境 + BudgetGuard + 唤醒 / 独处 + 钱包）
-- Phase 4 Life：未开始
+- Phase 4 Life：✅ 完成（月历 / 账本 / 通知 / 运行 + PriceSnapshot / Web Push）
 - Phase 5 高级能力：未开始
 - Phase 6 打磨：未开始
 
@@ -179,7 +179,7 @@ habitat/
 
 ### 当前施工点
 
-**Phase 3B Eventide 已收口**；T-022 的 Nocturne 生产验真仍是部署前关卡，不阻塞进入 Phase 4。
+**Phase 4 Life 已收口**；T-022 的 Nocturne 生产验真仍是部署前关卡，不阻塞进入 Phase 5。
 
 - ✅ **第一批「消息对象操作」**：编辑（保留原版本，与「换一个」共用一套版本导航）/ 撤回（留痕、不进模型上下文、可恢复）/ 删除 / 多选批量删 / 复制，统一进「长按 + 右键 + `⋯`」同一个菜单
 - ✅ **第二批「跨模块内容流转」**：消息 → 收藏、消息 / 组件 → 作品、聊天图片 → 相册；三类条目保留来源与快照
@@ -233,7 +233,7 @@ habitat/
 
 ### 下一步
 
-1. 🔵 **下一阶段 · Phase 4 Life**：把现有 EventLog / UsageRecord / 通知 / 钱包 / 运行态做成可理解的月历、账本、通知中心与状态页；补价格快照与 Web Push
+1. 🔵 **下一阶段 · Phase 5 高级能力**：按明确切片施工 TTS / 语音 / 图片 / HTML / Mini Terminal 等能力，开工前先补对应 PRODUCT_SPEC
 2. ⏸ **部署前关卡 · Phase 3A 自部署 Nocturne**：服务器上开启 `api_token`、验证内网 `/mcp`、重跑 `probe-nocturne-live.ts`；详见 `docs/DEPLOYMENT.md` §3
 3. PRODUCT_SPEC P2 的 AI 自主日记 / 留言现在已有主动行为底座，但应按各自权限模型单独施工，不能直接把独处记录冒充成日记或留言
 

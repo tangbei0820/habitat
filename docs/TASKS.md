@@ -97,7 +97,7 @@
 - [ ] **mock MCP 的 GET / DELETE 分支取错 session id** —— `mock-server.ts` 的 POST 分支正确地读 `req.headers['mcp-session-id']`，但 GET / DELETE 分支读的是 `url.searchParams.get('sessionId')`；官方 SDK 明确是**发 header**（见 `node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js:427`）。后果：SSE 流与显式关会话两条路径必然 400（目前 Gateway 没用到，所以没暴露）。→ 统一改读 header。
 - [x] ~~**`ApiProfile` 的权威存储还在环境变量**~~ —— 已改（T-005）：权威源换成**服务端 SQLite**（`api_profile` / `api_secret` 两表），`HABITAT_LLM_PROFILES` 降级为**首次种子**（仅在表为空时导入一次）。`LlmRegistry` 对外接口一字未改，调用方无感。
   > ⚠️ **这是对 §6.2 的有意偏离**：§6.2 写 `ApiProfile` 应「本地（前端 Dexie）+ 服务端同步副本」。理由：只有服务端能真正发起调用，双写只会引入一致性问题（两份数据谁赢、离线改了怎么办），而方案管理是低频操作、离线时也无法「测试连接」。→ 若日后真需要离线查看方案，再补本地只读副本。
-- [ ] **删除方案会让历史 `usage_record` 的 `profile_id` 变成孤儿** —— 账本按方案聚合时会出现「已删除方案」这类条目。→ Phase 4 做账本时定：保留显示（钱确实花了）还是改用软删除。
+- [x] **删除方案后的历史 `usage_record.profile_id` 保留显示** —— T-026 已定：钱确实花过，不能随方案删除；已有费用与价格快照继续可追溯，无法识别 provider 的旧未定价记录保持“未定价”，不猜测补价。
 - [ ] **方案列表没有排序入口** —— `sort_order` 字段已建（且删除时故意不重排，避免全表 UPDATE），但只能按创建顺序追加。方案不多时无感。
 - [ ] **`ApiProfilePublic.hasKey` 现在是冗余字段** —— 可由 `keySource !== 'missing'` 完全推导。保留是为了不破坏既有契约（切片一的脚本与文档都在用）。
 - [ ] **`LlmRegistry` 每次调用都读 DB** —— 本地 SQLite 是微秒级、方案改动低频，暂无影响。若日后出现「每次请求都枚举方案」的路径（如多方案自动路由），再评估加一层缓存。
@@ -1217,3 +1217,44 @@
 
 **Phase 3B 至此完成。下一阶段**：Phase 4 Life 只消费本轮已经建立的服务端事实源，做月历统计、账本、
 通知中心与运行状态；补 PriceSnapshot 后费用闸门才从“安全不可计算”升级为准确金额。
+
+---
+
+### T-026 · 2026-09-24 · Phase 4 Life：月历、账本、通知与运行状态
+
+**范围**：一次收完 Phase 4。把 Phase 3B 已有的 EventLog / UsageRecord / 通知 / 钱包 / 自动化运行态做成
+`/life` 四视图；新增不可变 PriceSnapshot 与尽力而为的 Web Push。不施工 Phase 5 高级消息能力。
+
+**参考输入（只实查 2 个）**
+
+- Phosphene：借“余额是摘要、每次变化都能追到不可改写流水；纠错追加校正记录”的账本表达
+- WORKKK：借“先给一眼可读的当前状态，再下钻最近活动”的监控层级；不引入它的商店 / 游戏机制与视觉
+
+**产品与数据口径**
+
+1. 补全 `PRODUCT_SPEC §9.2`：Life 分月历 / 账本 / 通知 / 运行；所有统计只读服务端事实源，不反查聊天库。
+2. 月历按用户时区展示事件、失败、API、Token、已定价费用与未定价数；日期可下钻到原始 EventLog / UsageRecord。
+3. `price_snapshot` 只追加，`usage_record.price_snapshot_id` 固化历史价格来源；新快照只补价尚未定价的有效期记录，
+   后续改价不重算历史。费用按“分 / 百万 Token”计算并向上取整。
+4. 删除 API 方案不删除历史用量；账本继续展示旧 `profileId`。无法确定 provider 的旧未定价记录不猜价。
+5. Web Push 必须浏览器支持 + 安全上下文 + 用户授权 + 服务端 VAPID 配置；任何条件不满足都回落站内通知。
+   Push 失败不回滚 notification，404 / 410 订阅自动清理。
+6. 运行页明确区分正常 / 异常 / 未配置；“立即检查”仍走原调度器与 BudgetGuard，不开后门。
+
+**落地**
+
+- 新增 Life 月 / 日 / 账本 / 运行聚合 API，价格快照 API，Web Push 状态 / 订阅 API，通知“全部已读”
+- 新增 `price_snapshot`、`push_subscription`，并给 `usage_record` 补 `price_snapshot_id`；老库以缺列补齐演进
+- `/life` 落地四视图：月历与日期明细、服务 / 模型费用与钱包流水、通知收件箱 / Push、状态 / 最近运行
+- Service Worker 接收 Push 并把点击带回通知页；VAPID 通过环境变量配置，默认安全关闭
+
+**验收（全部实跑）**
+
+- `probe:phase4`：**16/16**，覆盖未定价、历史补价、改价不重算、钱包 / 防透支、月历 / 日期下钻、
+  通知全部已读、运行聚合、非法参数与 VAPID 未配置降级
+- `verify-life.mjs`：**15/15**，覆盖四视图真实浏览器导航、移动端无横向溢出、价格 / 钱包入口、
+  通知降级、依赖未配置识别、运行状态与控制台零异常
+- Phase 3B 全链回归：**21/21**，确认 UsageRecord 定价与 Web Push 挂接未破坏聊天、主动行为、通知及钱包
+- 两端 typecheck、前端生产构建、`git diff --check` 通过
+
+**Phase 4 至此完成。下一阶段**：Phase 5 高级能力须按明确切片开工；T-022 Nocturne 生产验真仍作为部署前关卡保留。

@@ -1,0 +1,98 @@
+import type {
+  LifeLedgerView,
+  LifeMonthSummary,
+  LifeRuntimeView,
+  NotificationRecord,
+  PriceSnapshotRecord,
+  PushStatus,
+} from '@shared/types'
+import { fetchJson } from '../../lib/api'
+
+const jsonHeaders = { 'content-type': 'application/json' }
+
+export interface LifeDayDetail {
+  events: Array<{
+    id: number
+    eventType: string
+    dayKey: string
+    hourKey: string
+    metricsJson: Record<string, unknown>
+    refId: string | null
+    at: number
+  }>
+  usage: Array<{
+    id: number
+    profileId: string
+    service: string
+    model: string
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+    cost: number | null
+    priceSnapshotId: string | null
+    dayKey: string
+    at: number
+  }>
+}
+
+export function loadLifeMonth(month: string): Promise<LifeMonthSummary> {
+  return fetchJson(`/api/life/month?month=${encodeURIComponent(month)}`)
+}
+
+export function loadLifeDay(dayKey: string): Promise<LifeDayDetail> {
+  return fetchJson(`/api/life/day/${encodeURIComponent(dayKey)}`)
+}
+
+export function loadLifeLedger(month: string): Promise<LifeLedgerView> {
+  return fetchJson(`/api/life/ledger?month=${encodeURIComponent(month)}`)
+}
+
+export function loadNotifications(): Promise<NotificationRecord[]> {
+  return fetchJson<{ notifications: NotificationRecord[] }>('/api/notifications?limit=200')
+    .then((result) => result.notifications)
+}
+
+export function markNotificationRead(id: string): Promise<void> {
+  return fetchJson(`/api/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' }).then(() => undefined)
+}
+
+export function markAllNotificationsRead(): Promise<number> {
+  return fetchJson<{ updated: number }>('/api/notifications/read-all', { method: 'PATCH' })
+    .then((result) => result.updated)
+}
+
+export function loadLifeRuntime(): Promise<LifeRuntimeView> {
+  return fetchJson('/api/life/runtime')
+}
+
+export function runAutomationCheck(): Promise<unknown> {
+  return fetchJson('/api/automation/check', { method: 'POST', headers: jsonHeaders, body: '{}' })
+}
+
+export function addWalletTransaction(delta: number, reason: string): Promise<void> {
+  return fetchJson('/api/wallet/transactions', {
+    method: 'POST', headers: jsonHeaders, body: JSON.stringify({ delta, reason }),
+  }).then(() => undefined)
+}
+
+export function addPriceSnapshot(input: Omit<PriceSnapshotRecord, 'id' | 'createdAt'>): Promise<{ repriced: number }> {
+  return fetchJson<{ snapshot: PriceSnapshotRecord; repriced: number }>('/api/prices', {
+    method: 'POST', headers: jsonHeaders, body: JSON.stringify(input),
+  })
+}
+
+export function loadPushStatus(): Promise<PushStatus> {
+  return fetchJson('/api/push/status')
+}
+
+export function savePushSubscription(subscription: PushSubscriptionJSON): Promise<void> {
+  return fetchJson('/api/push/subscription', {
+    method: 'PUT', headers: jsonHeaders, body: JSON.stringify(subscription),
+  }).then(() => undefined)
+}
+
+export function deletePushSubscription(endpoint: string): Promise<void> {
+  return fetchJson('/api/push/subscription', {
+    method: 'DELETE', headers: jsonHeaders, body: JSON.stringify({ endpoint }),
+  }).then(() => undefined)
+}

@@ -47,12 +47,41 @@ CREATE TABLE IF NOT EXISTS usage_record (
   completion_tokens INTEGER NOT NULL DEFAULT 0,
   total_tokens INTEGER NOT NULL DEFAULT 0,
   cost INTEGER,
+  price_snapshot_id TEXT,
   day_key TEXT NOT NULL,
   at INTEGER NOT NULL
 )
 `)
+const usageColumns = sqlite.pragma('table_info(usage_record)') as Array<{ name: string }>
+if (!usageColumns.some((col) => col.name === 'price_snapshot_id')) {
+  sqlite.exec('ALTER TABLE usage_record ADD COLUMN price_snapshot_id TEXT')
+}
 sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_usage_record_day ON usage_record (day_key)`)
 sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_usage_record_profile ON usage_record (profile_id, at)`)
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_usage_record_price ON usage_record (price_snapshot_id)`)
+
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS price_snapshot (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  prompt_cents_per_million INTEGER NOT NULL,
+  completion_cents_per_million INTEGER NOT NULL,
+  valid_from INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_price_snapshot_lookup ON price_snapshot (provider, model, valid_from DESC);
+CREATE TABLE IF NOT EXISTS push_subscription (
+  id TEXT PRIMARY KEY,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  last_success_at INTEGER,
+  last_error TEXT
+);
+`)
 
 // LLM 方案（Phase 1 切片三）。密钥独立成表，见 schema.ts 的说明
 sqlite.exec(`

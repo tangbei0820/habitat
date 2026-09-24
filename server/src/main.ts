@@ -20,6 +20,7 @@ import { registerProviderRoutes } from './routes/providers.js'
 import { registerMemoryRoutes } from './routes/memory.js'
 import { registerStateRoutes } from './routes/state.js'
 import { registerAutomationRoutes } from './routes/automation.js'
+import { registerLifeRoutes } from './routes/life.js'
 import { AutomationService, startAutomationScheduler } from './services/automation.js'
 
 const app = Fastify({
@@ -84,6 +85,7 @@ registerProviderRoutes(app, llmRegistry)
 registerChatRoutes(app, llmRegistry, stateProvider)
 const automationService = new AutomationService(llmRegistry, stateProvider, memoryProvider, app.log)
 registerAutomationRoutes(app, automationService)
+registerLifeRoutes(app, gateway, stateProvider)
 const stopAutomationScheduler = startAutomationScheduler(automationService, app.log)
 if (!envFileLoaded) app.log.info('未发现 server/.env，按进程环境变量运行')
 for (const problem of problems) app.log.warn({ problem }, 'LLM 方案配置被跳过')

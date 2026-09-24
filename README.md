@@ -79,6 +79,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npm run probe:eventide` | Eventide sidecar :8234；可选 `PROBE_SERVER` | 真实 Eventide revision / 建态 / 时间推进 / 并发串行 / SQLite 恢复 / 故障降级；配置 server 时共 19 项 |
 | `npm run probe:chat-context` | mock OpenAI + server；注入态另需 Eventide | 读取 mock 收到的真实报文，验证状态卡顺序 / 历史不变 / 持久化；注入 7 项、降级 3 项 |
 | `npm run probe:phase3b` | Eventide + mock OpenAI + 使用隔离 DB 的 server | Phase 3B 全链：结算 / 事件 / 梦境 / BudgetGuard / 唤醒 / 独处 / 通知 / 钱包（21 项） |
+| `npm run probe:phase4` | mock OpenAI + 使用隔离 DB 的 server | Phase 4 全链：月历 / 补价 / 历史价格 / 钱包 / 通知 / 运行 / Push 降级（16 项） |
 
 > `probe-nocturne-live.ts` 读 `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`（也可写进 `server/.env`），
 > 默认**不打印** `system://boot` 正文（那是本人记忆），要看加 `NOCTURNE_PROBE_PREVIEW=1`。
@@ -92,6 +93,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `node web/scripts/verify-providers.mjs` | API 方案管理 UI（22 项） |
 | `node web/scripts/verify-diagnostics.mjs` | 诊断日志面板（36 项） |
 | `node web/scripts/verify-home.mjs` | Home 十模块 + **主屏 Widget** + **收藏分类 / 相册分类** + 备份恢复（75 项，含备份 v8 的分类归属与旧版兼容） |
+| `node web/scripts/verify-life.mjs` | Life 四视图、移动端布局、价格 / 钱包入口、Push 降级、运行状态（15 项） |
 
 各脚本的**准确前置条件**写在**各自文件头的注释**里，跑之前先看一眼。
 

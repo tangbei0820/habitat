@@ -464,6 +464,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 |---|---|
 | `GET /api/notifications?limit=` | 主动唤醒先进入服务端通知收件箱，不伪造前端 Dexie 聊天消息 |
 | `PATCH /api/notifications/:id/read` | 标记通知已读 |
+| `PATCH /api/notifications/read-all` | 原子标记全部未读通知为已读，返回 `updated` 数量 |
 | `GET /api/solitude?limit=` | AI 私有的独处记录；梦卡以 `metadata.kind="dream"` 区分 |
 
 调度器默认每分钟检查。Eventide 状态即使主动总开关关闭也可推进；真正的 wake / solitude / dream
@@ -477,8 +478,29 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | `GET /api/wallet/transactions?limit=` | 不可变流水，最新在前 |
 | `POST /api/wallet/transactions` | `{ delta, reason, refType?, refId? }`；余额不足时拒绝，不允许无流水改余额 |
 
+## Phase 4 已实现（Life）
+
+| 接口 | 说明 |
+|---|---|
+| `GET /api/life/month?month=YYYY-MM` | 用户时区月历摘要：事件 / 失败 / 调用 / Token / 已定价费用 / 未定价数 |
+| `GET /api/life/day/:dayKey` | 日期下钻；返回当天 EventLog 与 UsageRecord，不反查聊天库 |
+| `GET /api/life/ledger?month=YYYY-MM` | 用量总计、按服务 / 模型聚合、价格快照、钱包与最近流水 |
+| `GET /api/life/runtime` | 聚合 server、Eventide、MCP、当前状态、主动策略 / 运行态 / 最近任务 |
+| `GET /api/prices` | 全部不可变 PriceSnapshot，按生效时间倒序 |
+| `POST /api/prices` | 新增 `{ provider, model, promptCentsPerMillion, completionCentsPerMillion, validFrom }` |
+| `GET /api/push/status` | VAPID 是否配置、公钥、订阅数与最近错误 |
+| `PUT /api/push/subscription` | 保存浏览器 `PushSubscription`；VAPID 未配置时拒绝 |
+| `DELETE /api/push/subscription` | 按 endpoint 取消订阅 |
+
+价格单位是**分 / 百万 Token**。每条 UsageRecord 在写入时绑定当时适用的最新快照，费用按分向上取整；
+新增快照会给符合有效期、仍为 `cost=null` 的历史调用补价，但不会重算已经绑定快照的历史。没有匹配价格时
+继续明确显示“未定价”，BudgetGuard 的费用上限保持 fail-closed。
+
+Web Push 仅是站内通知的尽力而为副本：VAPID 环境变量不完整时接口明确返回 `configured=false`；Push 失败
+不回滚通知，404 / 410 的失效订阅会自动清除。
+
 ## 待实现（按阶段）
 
 - Phase 3A 剩余：**自部署 Nocturne 实例**的 Token / Namespace / 反代链路验证（客户端代码已用官方只读 Demo 验通，见 `docs/TASKS.md` T-013）
-- Phase 4：Life 页面把现有 EventLog / UsageRecord / 通知 / 钱包权威数据可视化，并补价格快照与 Web Push
+- Phase 5：TTS / 语音 / 图片 / HTML / Mini Terminal 等高级能力
 - 诊断日志的留存策略（表只增不减，目前没有清空 / 归档入口）
