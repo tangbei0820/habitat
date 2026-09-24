@@ -24,6 +24,12 @@
  *
  *   `NOCTURNE_SHOW_SECRET=1` 才会把密钥路径完整打印（默认打码，防截图/贴日志时外泄）。
  *   退出码非 0 只在**握手失败**时给出（工具面对不上不算「脚本失败」，那是事实）。
+ *
+ * ⚠️ 与 `probe-nocturne-tools-standalone.mjs` 的分工（**别装错**）：
+ *   本文件（.ts）要 habitat 仓库 + tsx，适合**开发机**；
+ *   `.mjs` 那个是**零依赖单文件**，适合「服务器上还没有仓库」的场合 ——
+ *   Node 18+ 直接 `node probe-nocturne-tools-standalone.mjs` 就能跑，什么都不用装。
+ *   两者输出口径一致（同一份对照表），随便用哪个都行。
  */
 import '../src/lib/env.js'
 
