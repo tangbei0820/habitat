@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { IconChevronRight, IconLeaf, QixiIcon } from '../../components/qixi/Icons'
 import { greetingByHour } from '../../features/home/welcome'
 import { HOME_MODULES } from '../../features/home/modules'
 import { HomeWidgets } from '../../features/home/HomeWidgets'
@@ -9,7 +10,9 @@ export function HomePage() {
   return (
     <div className="px-4 py-6">
       <header className="mb-6 text-center">
-        <div className="mb-2 text-4xl">🌿</div>
+        <div className="mb-2 flex justify-center" style={{ color: 'var(--color-primary)' }}>
+          <IconLeaf size={36} />
+        </div>
         <h1 className="text-xl font-semibold">栖息地</h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--color-text-dim)' }}>
           {greeting}
@@ -30,9 +33,9 @@ export function HomePage() {
                 backgroundColor: 'var(--color-surface)',
               }}
             >
-              <span>{mod.icon}</span>
+              <QixiIcon name={mod.icon} size={18} style={{ color: 'var(--color-primary)' }} />
               <span className="flex-1">{mod.name}</span>
-              <span style={{ color: 'var(--color-text-dim)' }}>›</span>
+              <IconChevronRight size={16} style={{ color: 'var(--color-text-dim)' }} />
             </Link>
           </li>
         ))}

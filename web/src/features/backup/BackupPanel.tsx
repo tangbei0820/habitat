@@ -10,6 +10,7 @@
  * 两条都刻意留在这里、不弹全局弹窗 —— 备份是低频动作，弹窗只会变成噪音。
  */
 import { useEffect, useRef, useState } from 'react'
+import { IconAlert } from '../../components/qixi/Icons'
 import { downloadBackup, exportAll, importAll, readLastExportAt } from '../../lib/backup'
 import { db } from '../../db/db'
 import { runLegacyUpload } from '../../db/legacy-upload'
@@ -222,8 +223,12 @@ export function BackupPanel() {
       )}
 
       {message !== null && (
-        <p className="mt-3 text-xs" style={{ color: isError ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>
-          {isError ? '⚠️ ' : ''}{message}
+        <p
+          className="mt-3 flex items-center gap-1.5 text-xs"
+          style={{ color: isError ? 'var(--color-danger)' : 'var(--color-text-dim)' }}
+        >
+          {isError && <IconAlert size={13} />}
+          <span>{message}</span>
         </p>
       )}
     </section>

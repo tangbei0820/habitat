@@ -19,3 +19,19 @@ export function formatDuration(ms: number): string {
   const seconds = totalSeconds % 60
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
+
+/**
+ * 时间戳 → 相对时间（「刚刚 / 12 分钟前 / 3 小时前 / 2 天前」）。
+ *
+ * 超过 30 天不再说「多少天前」—— 那个数字对人已经没有意义，直接给日期。
+ * 未来时间（时钟回拨）按「刚刚」处理，不在界面上出现「-5 分钟前」。
+ */
+export function formatRelativeTime(ts: number, now: number = Date.now()): string {
+  const diff = now - ts
+  if (!Number.isFinite(diff) || diff < 60_000) return '刚刚'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
+  const days = Math.floor(diff / 86_400_000)
+  if (days <= 30) return `${days} 天前`
+  return new Date(ts).toLocaleDateString('zh-CN')
+}

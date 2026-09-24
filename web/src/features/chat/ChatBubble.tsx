@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { BubbleMode, ChatMessage } from '@shared/types'
+import { IconCheck } from '../../components/qixi/Icons'
 import { MessageAvatar } from './MessageAvatar'
 import { MessageBlocks } from './MessageBlocks'
 
@@ -205,7 +206,7 @@ export function ChatBubble({
               color: 'var(--color-primary-contrast)',
             }}
           >
-            {selected ? '✓' : ''}
+            {selected ? <IconCheck size={11} /> : null}
           </span>
         )}
         {/*

@@ -15,6 +15,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
+import { IconMic, IconSmile } from '../../components/qixi/Icons'
 import { formatDuration } from '../../lib/format'
 import { log } from '../../lib/log'
 import { useOnlineStatus } from '../offline/useOnlineStatus'
@@ -424,7 +425,7 @@ export function Composer({
               className="rounded px-2 py-1 text-base disabled:opacity-40"
               style={{ color: 'var(--color-text)' }}
             >
-              🎤
+              <IconMic size={18} />
             </button>
             <button
               type="button"
@@ -435,7 +436,7 @@ export function Composer({
               className="rounded px-2 py-1 text-base"
               style={{ color: 'var(--color-text)' }}
             >
-              😀
+              <IconSmile size={18} />
             </button>
             <button
               type="button"

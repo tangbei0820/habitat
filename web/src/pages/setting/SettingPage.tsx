@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { McpHealth, ServerHealth } from '@shared/types'
+import { IconAlert, IconCheck, IconMoon, IconSun } from '../../components/qixi/Icons'
 import { useTheme } from '../../theme/useTheme'
 import { BackupPanel } from '../../features/backup/BackupPanel'
 import { DiagnosticPanel } from '../../features/diagnostics/DiagnosticPanel'
@@ -61,10 +62,11 @@ export function SettingPage() {
           <button
             type="button"
             onClick={toggle}
-            className="rounded-full border px-4 py-1 text-sm"
+            className="flex items-center gap-1.5 rounded-full border px-4 py-1 text-sm"
             style={{ borderColor: 'var(--color-border)' }}
           >
-            {mode === 'dark' ? '🌙 深色' : '☀️ 浅色'}
+            {mode === 'dark' ? <IconMoon size={14} /> : <IconSun size={14} />}
+            {mode === 'dark' ? '深色' : '浅色'}
           </button>
         </div>
       </section>
@@ -79,14 +81,16 @@ export function SettingPage() {
           系统状态
         </h2>
         {server.data && (
-          <p className="text-sm">
-            ● habitat-server：正常（{new Date(server.data.time).toLocaleTimeString()}）
+          <p className="flex items-center gap-1.5 text-sm">
+            <IconCheck size={13} style={{ color: 'var(--color-primary)' }} />
+            <span>habitat-server：正常（{new Date(server.data.time).toLocaleTimeString()}）</span>
           </p>
         )}
         {server.error !== null && (
-          <p className="text-sm" style={{ color: 'var(--color-danger)' }}>
-            ⚠️ 后端不可达：{server.error}
-            <button type="button" className="ml-2 underline" onClick={server.retry}>
+          <p className="flex flex-wrap items-center gap-1.5 text-sm" style={{ color: 'var(--color-danger)' }}>
+            <IconAlert size={14} />
+            <span>后端不可达：{server.error}</span>
+            <button type="button" className="underline" onClick={server.retry}>
               重试
             </button>
           </p>
@@ -96,18 +100,26 @@ export function SettingPage() {
           MCP 工具网关
         </h3>
         {mcp.data?.servers.map((s) => (
-          <div key={s.serverId} className="mb-1 text-sm">
-            {s.state === 'ready' ? '●' : '⚠️'} {s.serverId}（{s.state}
-            {s.toolCount > 0 ? `，${s.toolCount} 个工具` : ''}）
+          <div key={s.serverId} className="mb-1 flex flex-wrap items-center gap-1.5 text-sm">
+            {s.state === 'ready' ? (
+              <IconCheck size={13} style={{ color: 'var(--color-primary)' }} />
+            ) : (
+              <IconAlert size={13} style={{ color: 'var(--color-danger)' }} />
+            )}
+            <span>
+              {s.serverId}（{s.state}
+              {s.toolCount > 0 ? `，${s.toolCount} 个工具` : ''}）
+            </span>
             {s.lastError !== null && (
               <span style={{ color: 'var(--color-danger)' }}> — {s.lastError}</span>
             )}
           </div>
         ))}
         {mcp.error !== null && (
-          <p className="text-sm" style={{ color: 'var(--color-danger)' }}>
-            ⚠️ MCP 健康检查失败：{mcp.error}
-            <button type="button" className="ml-2 underline" onClick={mcp.retry}>
+          <p className="flex flex-wrap items-center gap-1.5 text-sm" style={{ color: 'var(--color-danger)' }}>
+            <IconAlert size={14} />
+            <span>MCP 健康检查失败：{mcp.error}</span>
+            <button type="button" className="underline" onClick={mcp.retry}>
               重试
             </button>
           </p>

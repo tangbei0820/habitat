@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import type { McpDiagnosticEntry } from '@shared/types'
+import { IconAlert, IconChevronLeft, IconChevronRight } from '../../components/qixi/Icons'
 import { ApiRequestError } from '../../lib/api'
 import { listMcpDiagnostics } from '../../lib/diagnostics'
 import { log } from '../../lib/log'
@@ -44,9 +45,10 @@ function formatAt(at: number): string {
   )
 }
 
+/** 方向文案。**箭头不在这里**：它是图标，由视图层按 `direction` 选 SVG */
 function describeDir(direction: McpDiagnosticEntry['direction']): string {
   // out = Gateway→Server 请求；in = Server→Gateway 响应
-  return direction === 'out' ? '→ 请求' : '← 响应'
+  return direction === 'out' ? '请求' : '响应'
 }
 
 interface DiagnosticPanelProps {
@@ -212,9 +214,10 @@ export function DiagnosticPanel({ serverIds = [] }: DiagnosticPanelProps) {
       )}
 
       {error !== null && (
-        <p className="text-xs" style={{ color: 'var(--color-danger)' }}>
-          ⚠️ 读取失败：{error}
-          <button type="button" className="ml-2 underline" onClick={() => setReloadTick((t) => t + 1)}>
+        <p className="flex flex-wrap items-center gap-1.5 text-xs" style={{ color: 'var(--color-danger)' }}>
+          <IconAlert size={13} />
+          <span>读取失败：{error}</span>
+          <button type="button" className="underline" onClick={() => setReloadTick((t) => t + 1)}>
             重试
           </button>
         </p>
@@ -238,7 +241,17 @@ export function DiagnosticPanel({ serverIds = [] }: DiagnosticPanelProps) {
                 <span className="font-mono" style={{ color: 'var(--color-text-dim)' }}>
                   {formatAt(entry.at)}
                 </span>
-                <span style={{ color: 'var(--color-text-dim)' }}>{describeDir(entry.direction)}</span>
+                <span
+                  className="flex items-center gap-1"
+                  style={{ color: 'var(--color-text-dim)' }}
+                >
+                  {entry.direction === 'out' ? (
+                    <IconChevronRight size={13} />
+                  ) : (
+                    <IconChevronLeft size={13} />
+                  )}
+                  {describeDir(entry.direction)}
+                </span>
                 <span>{METHOD_LABELS[entry.method] ?? entry.method}</span>
                 <span className="font-mono" style={{ color: 'var(--color-text-dim)' }}>
                   {entry.method}

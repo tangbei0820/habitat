@@ -6,8 +6,9 @@
  * - **删除用两步确认**而不用 `window.confirm` —— 原生弹窗会阻塞页面、在无头浏览器里还得额外处理，
  *   而「点一次变『确认删除？』」既够拦住误触，又能被自动化验收直接驱动
  */
-import { useState, type ReactNode } from 'react'
+import { useState, type ComponentType, type ReactNode } from 'react'
 import type { ApiKeySource, ApiProfileCreateInput, ApiProfilePublic, LlmProbeResult } from '@shared/types'
+import { IconAlert, IconCheck, IconClose, IconKey, type IconProps } from '../../components/qixi/Icons'
 import { ProviderForm } from './ProviderForm'
 import { useProviders } from './useProviders'
 import { useOnlineStatus } from '../offline/useOnlineStatus'
@@ -18,12 +19,17 @@ const SECTION_STYLE = {
   backgroundColor: 'var(--color-surface)',
 } as const
 
-/** 凭据状态的用户可见文案。用 `keySource` 而不是 `hasKey`，才能把「无需密钥」与「已配好」分开说 */
-const KEY_TEXT: Record<ApiKeySource, string> = {
-  stored: '🔑 密钥已保存',
-  env: '🔑 密钥来自环境变量',
-  missing: '⚠️ 缺密钥，现在调不通',
-  'not-required': '无需密钥',
+/**
+ * 凭据状态的用户可见文案。用 `keySource` 而不是 `hasKey`，才能把「无需密钥」与「已配好」分开说。
+ *
+ * ⚠️ 图标与文字分开存：拼进字符串（`'🔑 ' + 文案`）就没法换成 SVG，
+ * 而验收脚本是对着**文字**断言的 —— 图标跟着文字一起变会连带把断言搞挂。
+ */
+const KEY_TEXT: Record<ApiKeySource, { text: string; Icon: ComponentType<IconProps> | null }> = {
+  stored: { text: '密钥已保存', Icon: IconKey },
+  env: { text: '密钥来自环境变量', Icon: IconKey },
+  missing: { text: '缺密钥，现在调不通', Icon: IconAlert },
+  'not-required': { text: '无需密钥', Icon: null },
 }
 
 interface RowButtonProps {
@@ -51,10 +57,11 @@ function RowButton({ children, onClick, disabled = false, danger = false }: RowB
   )
 }
 
+/** 探测结果文案。**只返回文字**：成功 / 失败的图标由视图层按 `ok` 选（不再往字符串里拼 ✓/✗） */
 function probeText(probe: LlmProbeResult): string {
-  if (!probe.ok) return `✗ ${probe.error ?? '未知原因'}`
+  if (!probe.ok) return probe.error ?? '未知原因'
   const models = probe.sampleModels.length > 0 ? ` · ${probe.sampleModels.join(' / ')}` : ''
-  return `✓ 连接正常（${probe.latencyMs}ms，${probe.modelCount} 个模型）${models}`
+  return `连接正常（${probe.latencyMs}ms，${probe.modelCount} 个模型）${models}`
 }
 
 interface ProviderRowProps {
@@ -90,6 +97,7 @@ function ProviderRow({
 }: ProviderRowProps) {
   /** 「测试连接」要打后端探测上游，离线时必然失败 —— 直接禁掉，别让用户白点 */
   const online = useOnlineStatus()
+  const keyView = KEY_TEXT[profile.keySource]
   return (
     <li className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)' }}>
       <div className="flex items-center gap-2">
@@ -110,20 +118,24 @@ function ProviderRow({
         模型：{profile.modelMap.chat ?? '（未指定）'}
       </p>
       <p
-        className="text-xs"
+        className="flex items-center gap-1.5 text-xs"
         style={{ color: profile.keySource === 'missing' ? 'var(--color-danger)' : 'var(--color-text-dim)' }}
       >
-        {KEY_TEXT[profile.keySource]}
+        {keyView.Icon !== null && <keyView.Icon size={13} />}
+        {keyView.text}
         {profile.keySource === 'env' && profile.keyRef !== '' && (
           <span>（{profile.keyRef}）</span>
         )}
       </p>
       {probe !== undefined && (
         <p
-          className="mt-1 text-xs"
+          className="mt-1 flex items-center gap-1.5 text-xs"
+          data-testid="provider-probe"
+          data-probe-ok={String(probe.ok)}
           style={{ color: probe.ok ? 'var(--color-primary)' : 'var(--color-danger)' }}
         >
-          {probeText(probe)}
+          {probe.ok ? <IconCheck size={13} /> : <IconClose size={13} />}
+          <span>{probeText(probe)}</span>
         </p>
       )}
 
@@ -193,8 +205,9 @@ export function ProviderSettings() {
       </div>
 
       {ctrl.error !== null && (
-        <p className="mb-2 text-sm" style={{ color: 'var(--color-danger)' }}>
-          ⚠️ {ctrl.error}
+        <p className="mb-2 flex items-center gap-1.5 text-sm" style={{ color: 'var(--color-danger)' }}>
+          <IconAlert size={14} />
+          <span>{ctrl.error}</span>
         </p>
       )}
 

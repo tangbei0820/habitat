@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { IconChevronRight, IconMail, IconTimer } from '../../components/qixi/Icons'
 import { listHomeWidgetViews, type HomeWidgetView } from '../../db/home'
 import { dayDistance, distanceLabel } from './countdownDays'
 
@@ -15,9 +16,17 @@ function BoardWidget({ view }: { view: BoardView }) {
   return (
     <section data-testid="home-widget-board" className="rounded-xl border p-4" style={cardStyle()}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">💌 留言板</span>
-        <Link to="/home/board" className="shrink-0 text-xs" style={{ color: 'var(--color-primary)' }}>
-          查看全部 ›
+        <span className="flex items-center gap-1.5 text-sm font-medium">
+          <IconMail size={15} style={{ color: 'var(--color-primary)' }} />
+          留言板
+        </span>
+        <Link
+          to="/home/board"
+          className="flex shrink-0 items-center gap-0.5 text-xs"
+          style={{ color: 'var(--color-primary)' }}
+        >
+          查看全部
+          <IconChevronRight size={13} />
         </Link>
       </div>
       {view.notes.length === 0 ? (
@@ -45,7 +54,7 @@ function CountdownWidget({ view }: { view: CountdownView }) {
   const days = dayDistance(view.day.targetDate)
   return (
     <Link to="/home/countdown" data-testid="home-widget-countdown" className="flex items-center gap-3 rounded-xl border p-4" style={cardStyle()}>
-      <span aria-hidden>⏳</span>
+      <IconTimer size={20} style={{ color: 'var(--color-primary)' }} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{view.day.title}</span>
         <span className="mt-1 block text-xs" style={{ color: 'var(--color-text-dim)' }}>{view.day.targetDate}</span>

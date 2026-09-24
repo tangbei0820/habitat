@@ -6,11 +6,13 @@
  * 「模块元数据里悄悄长出一份能力清单」—— 那会立刻变成第二份真相。
  */
 import type { CapabilityAutonomy, CapabilityModule } from '@shared/capabilities'
+import type { IconName } from '../../components/qixi/Icons'
 
 export interface CapabilityModuleMeta {
   key: CapabilityModule
   name: string
-  icon: string
+  /** 图标名（见 components/qixi/Icons.tsx 的 QIXI_ICONS），不存 emoji */
+  icon: IconName
   /**
    * 该模块对应的「应用」位置。
    * `null` = 前端暂时没有可进入的页面 —— 此时卡片**不可点**，
@@ -26,32 +28,32 @@ export const CAPABILITY_MODULES: readonly CapabilityModuleMeta[] = [
   {
     key: 'memory',
     name: '记忆',
-    icon: '🧠',
+    icon: 'brain',
     launch: null,
     noPageHint: '暂无界面 · 由小栖在对话里自主读用',
   },
   {
     key: 'state',
     name: '状态',
-    icon: '🌡',
+    icon: 'thermometer',
     launch: { to: '/life?tab=runtime', label: '查看状态' },
   },
   {
     key: 'diary',
     name: '日记',
-    icon: '📔',
+    icon: 'journal',
     launch: { to: '/home/diary', label: '打开日记' },
   },
   {
     key: 'board',
     name: '留言板',
-    icon: '💌',
+    icon: 'mail',
     launch: { to: '/home/board', label: '打开留言板' },
   },
   {
     key: 'tools',
     name: '工具',
-    icon: '🧰',
+    icon: 'toolbox',
     launch: null,
     noPageHint: '暂无界面 · 调用结果在聊天里以工具卡片出现',
   },

@@ -783,3 +783,93 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 回归：home 77/77、chat 148/148、providers 22/22、llm 16/16、export 17/17、offline 38/38、diagnostics 36/36
   —— **零失败**（说明"换配色"确实没碰坏任何既有行为）。
 - 两端 typecheck 通过。
+
+### UI 换装 · 第 2 批：换外壳 + 界面 emoji 全量换 SVG（T-040）
+
+**目标**：把"外壳"（底栏 / 进门 / 页面进出）换成原型的形态，同时把界面上的 emoji 图标**全部**换成
+线框 SVG。本批**不动对话页内部**（那是第 3 批）。
+
+**web · 底栏改成浮起胶囊**
+
+- `app/BottomNav.tsx` 重写：贴底一条 → **浮起玻璃胶囊**（`.bottom-nav`，`bottom: 14px` + `backdrop-blur`）。
+- 五个 Tab 定稿：**对话 / 家 / 大脑 / 生活 / 设置**（旧版是英文标签）。
+- 图标换线框 SVG，且**选中态用实心、未选中用线** —— 位置信息由**形状**承载而不是颜色，
+  这一点在色弱/强光下更稳。数据只存**图标名**（`IconName`），渲染走 `<QixiIcon name="…" />` 查表。
+- ⚠️ **`--bottom-nav-height` 必须重算**：胶囊是浮起的，只算 `offsetHeight` 会被"悬空的那段"盖住内容。
+  现在发布 `nav.offsetHeight + parseFloat(getComputedStyle(nav).bottom)`；安全区用
+  `margin-bottom: env(...)` 表达而**不并进 `calc()`** —— 否则 JS 读到的是算完的复合值，没法拆。
+  第 1 批那条"待重算"的遗留（见 T-039 遗留）就此关闭。
+
+**web · 进门：欢迎页**
+
+- 新增 `app/entry.ts`：`hasEntered()` / `markEntered()`（标记存 `sessionStorage`，读写都包 try/catch ——
+  无痕模式下 `sessionStorage` 会直接抛）。`app/entry.ts` 与 `WelcomePage` 一起把"进门"这件事收在一处。
+- 新增 `pages/welcome/WelcomePage.tsx`：雨幕 + 大号时间 + 问候 + 竖排手账句 + 小栖最近一条消息叠卡 + 进入按钮。
+- 路由：`/` → 本次会话没进过则 `/welcome`，进过则 `/chat`；`/welcome` 可直达（不是"只有被拦才存在"）。
+- **接的是真数据**：最近消息来自 `listSessions` / `listMessagesPage`；**没有就是空态**（"还没有聊过天 ——
+  进去说第一句话吧"）。原型上写的是"2 条未读"，那是占位，**不搬**。
+- 欢迎页**不显示底栏**（`AppShell` 里按路径判断），否则"还没进门就有门牌"。
+
+**web · 页面进出：滑入**
+
+- 新增 `components/qixi/useSlideIn.ts`：只在 `useNavigationType() === 'PUSH'` 时返回 `.slide-in`。
+- ⚠️ **为什么不用 View Transitions**：`react-router-dom` 6.30 还不支持 `viewTransition` 属性。
+  更要紧的是**只让前进动画**：后退/直达（刷新、手输网址、收藏）**不放动画**。
+  若为了播"退出动画"去拦截后退，遇到快速连点 / 刷新 / 深链容易**卡在半路**。
+- ⚠️ **网址必须是真的**：原型用 `.screens` 把所有页面绝对定位叠起来切 `is-active` ——
+  照搬会让刷新、前进后退、加书签全失效。这里 `.slide-in` **只做动画**，地址仍是 `/home/diary`。
+- `AppShell` 的 `main` 用 `overflow-x: clip`（**不是 `hidden`**）：`hidden` 会创建滚动容器，
+  把滑入过程中的 `sticky/fixed` 一起带偏。
+
+**web · emoji → SVG（全量）**
+
+- `components/qixi/Icons.tsx` 从 32 个补到 **48 个**：新增 `IconMail / IconBookmark / IconPalette /
+  IconMusic / IconPencil / IconThermometer / IconToolbox / IconAlert / IconBlock / IconClose / IconFile /
+  IconKey / IconPin / IconChevronDown / IconLeaf / IconSmile` + `IconJournal`（日记专用），
+  并加 `QIXI_ICONS` 字典与 `QixiIcon` / `IconName`。**认不出的名字返回 `null`**，不会炸页面。
+- 数据层不再存 emoji：`features/home/modules.ts` 与 `features/llm/capabilityModules.ts` 的 `icon`
+  字段由 `string` 收敛为 `IconName`（`mail / timer / heart / journal / bookmark / palette / image /
+  book / music / pencil` 与 `brain / thermometer / journal / mail / toolbox`）——
+  名字可序列化、进备份安全，也不会把 React 组件写进数据。
+- 逐处替换（**界面图标，非文案**）：`HomePage`（🌿 → `IconLeaf`、`›` → `IconChevronRight`）、
+  `CapabilityModuleCard`、`EventConfirmCard`（`SETTLED_LABEL` 改成 `{ Icon, text, color }` 结构；
+  **被拒绝用中性色不用红**）、`MessageBlocks`（📄 / ✅ / ⚠️）、`HomeWidgets`、`ProviderSettings`
+  （`✓/✗` → `IconCheck`/`IconClose`，并补 `data-probe-ok` 属性供断言）、`BackupPanel`、
+  `ChatListPage`（📌 / ▸ / ▾）、`ChatBubble`（✓）、`BoardModule` / `CountdownModule` / `WishlistModule`、
+  `Composer`（🎤 / 😀）、`SettingPage`（🌙 / ☀️ / ● ）、`DiagnosticPanel`（`→/←` 改成
+  方向文字 + `IconChevronRight/Left`）。
+- **刻意保留的两类 emoji**：① 输入框的**表情选择器**（那是用户要发出去的内容，不是界面）；
+  ② 代码注释里的 ⚠️（不是界面）。`˚ ༘♡ ⋆｡˚` 这类**文字里的装饰字符**同样保留。
+
+**web · 顺手修的两个真问题**
+
+1. **日记和音乐撞了同一个图标**：原型里的 `IconNote` 其实是**音符**，而 `modules.ts` 给日记用的也是
+   `note` → 两个入口长得一模一样。新增 `IconJournal`（笔记本 + 书签带 + 横线），
+   日记（`modules.ts`）与"日记本"能力卡（`capabilityModules.ts`）都改用 `journal`。
+2. **验收脚本两处"隐性耦合"，第 2 批才暴露**（都不是产品 bug，是测试写法问题 —— 但不修就会出现假红/假绿）：
+   - `verify-offline` / `verify-export` 原先导航到**根路径**再等聊天列表，而根路径现在会先落欢迎页
+     → 必超时。已改为**直达 `/chat`**。⚠️ 更要紧的是：`verify-export` 那轮**能过**，
+     纯粹是因为上游 `verify-shell` 恰好留下了"已进入"标记 —— 属于**依赖脚本执行顺序的假绿**，
+     单跑或换顺序就现原形。
+   - `verify-offline` 的挂载判据里混了英文 `"Chat"`（底栏还是英文标签时代的残留）。
+     底栏换中文后该串消失 → 超时。已统一成与 `verify-chat` / `verify-export` 同口径的「新建」。
+   - 于是 `docs/UI_DESIGN.md` §4 补了一条铁律：**验收脚本一律直达目标路径，别碰根路径**。
+
+**刻意不做的**
+
+- 原型里的"2 条未读""Rainy Mood, Pt.2""69 天"等**占位数据一律不搬**，没数据就空态。
+- `data-testid` **一个没删**（344 处验收依赖）；靠**文案**断言的少数几条逐个改成读属性/读新文案
+  （`verify-providers` 改读 `data-probe-ok`，`verify-diagnostics` 改读 `请求/响应` 文字）。
+
+**验收**
+
+- 新增 `web/scripts/verify-shell.mjs`（**31 条**）：底栏是 `nav` 语义 + 5 个真 `<a href>` + 顺序与中文标签；
+  胶囊形态（圆角 > 20 / 有 `backdrop-filter` / `bottom > 0`）；5 个图标都是 SVG；
+  **选中 = 实心 + `currentColor` + `stroke: none`**、未选中 = 线；`--bottom-nav-height` === 高度 + 悬空值；
+  宽屏下不撑满（≤ 430px）；进门三态（根路径首访 → `/welcome`、进过后 → `/chat`、`/welcome` 直达）；
+  欢迎页有雨幕/叠卡/时间/进入按钮、**不显示底栏**、最近消息是真数据或诚实空态；
+  子页面用真网址 + 前进时播 `slide-in-right` + 直达时不播；**各页 `innerText` 不再含 emoji**
+  （用 `Extended_Pictographic` 判，装饰字符 `♡` 白名单放行）。
+- 全量回归：home 77/77、chat 148/148、providers 24/24、llm 16/16、tokens 24/24、**shell 31/31**、
+  export 17/17、offline 38/38、diagnostics 36/36（共 **411 项**）—— **零失败**。
+- 两端 typecheck 通过。

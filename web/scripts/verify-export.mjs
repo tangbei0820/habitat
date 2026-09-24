@@ -127,7 +127,10 @@ await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: OUT
 await sleep(600)
 consoleLogs.length = 0
 
-await send('Page.navigate', { url: APP })
+// ⚠️ 直达 /chat：根路径在「本次会话还没进过」时会先落到欢迎页，等不到聊天列表。
+//    以前这里导航到根路径能过，是因为上游 verify-shell 恰好留下了「已进入」标记 ——
+//    那属于隐性依赖脚本执行顺序，单跑或换顺序就会挂。
+await send('Page.navigate', { url: `${APP}/chat` })
 await waitFor('document.body.innerText.includes("新建")', '聊天列表挂载')
 // 本条验收要证明「从未做过全量备份」时的初始状态；不能继承人工使用或上一轮验收留下的设备级时间戳。
 await evaluate(`localStorage.removeItem('habitat:last-export-at')`)

@@ -25,6 +25,7 @@ import type {
   WidgetBlock,
 } from '@shared/types'
 import { useState } from 'react'
+import { IconAlert, IconCheck, IconFile } from '../../components/qixi/Icons'
 import { formatDuration } from '../../lib/format'
 import { EventConfirmCard } from './EventConfirmCard'
 
@@ -98,7 +99,9 @@ function FileBlockView({ payload }: { payload: FileBlock['payload'] }) {
       className="flex w-full max-w-xs items-center gap-2 rounded-lg border px-2 py-1.5 text-xs no-underline"
       style={{ borderColor: 'var(--color-border)', color: 'inherit' }}
     >
-      <span aria-hidden>📄</span>
+      <span className="shrink-0" style={{ color: 'var(--color-text-dim)' }}>
+        <IconFile size={15} />
+      </span>
       <span className="min-w-0 flex-1 truncate">{payload.name}</span>
       {payload.size !== undefined && (
         <span className="shrink-0 opacity-60">{formatBytes(payload.size)}</span>
@@ -138,10 +141,15 @@ function ToolResultBlockView({ payload }: { payload: ToolResultBlock['payload'] 
       className="w-full rounded-lg border px-2 py-1.5 text-xs"
       style={{ borderColor: 'var(--color-border)' }}
     >
-      <summary className="cursor-pointer select-none">
-        <span aria-hidden>{payload.ok ? '✅' : '⚠️'}</span> {title}
-        <span className="ml-1 opacity-70">{payload.ok ? '已完成' : '未完成'}</span>
-        {payload.summary !== undefined && <span className="ml-1 opacity-70">· {payload.summary}</span>}
+      <summary className="flex cursor-pointer select-none items-center gap-1">
+        {payload.ok ? (
+          <IconCheck size={14} style={{ color: 'var(--color-primary)' }} />
+        ) : (
+          <IconAlert size={14} style={{ color: 'var(--color-danger)' }} />
+        )}
+        <span>{title}</span>
+        <span className="opacity-70">{payload.ok ? '已完成' : '未完成'}</span>
+        {payload.summary !== undefined && <span className="opacity-70">· {payload.summary}</span>}
       </summary>
       {detail !== '' && (
         <pre

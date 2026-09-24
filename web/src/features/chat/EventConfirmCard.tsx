@@ -13,15 +13,20 @@
  * 3. **拒绝与失败要分开显示**。`denied` 是「北北说不」，`failed` 是「北北说好但它没做成」——
  *    前者是决定，后者是故障，混成一句话会让北北以为是自己点错了。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
 import type { RuntimeEvent } from '@shared/types'
+import { IconAlert, IconBlock, IconCheck, IconNote, type IconProps } from '../../components/qixi/Icons'
 import { decideEvent, getEvent } from '../../db/events'
 
 /** 状态 → 展示。`pending` 不在表里（它有独立的按钮区）。 */
-const SETTLED_LABEL: Record<Exclude<RuntimeEvent['status'], 'pending'>, { icon: string; text: string }> = {
-  approved: { icon: '✅', text: '你已允许' },
-  denied: { icon: '⛔', text: '你已拒绝' },
-  failed: { icon: '⚠️', text: '允许了，但没能完成' },
+const SETTLED_LABEL: Record<
+  Exclude<RuntimeEvent['status'], 'pending'>,
+  { Icon: ComponentType<IconProps>; text: string; color: string }
+> = {
+  // 拒绝用中性色而不是红色：那是北北的选择，不是出错
+  approved: { Icon: IconCheck, text: '你已允许', color: 'var(--color-primary)' },
+  denied: { Icon: IconBlock, text: '你已拒绝', color: 'var(--color-text-dim)' },
+  failed: { Icon: IconAlert, text: '允许了，但没能完成', color: 'var(--color-danger)' },
 }
 
 export function EventConfirmCard({
@@ -67,6 +72,10 @@ export function EventConfirmCard({
     }
   }
 
+  /** 已决状态的展示（图标组件 + 颜色）；`pending` 或还没拉到时为 null */
+  const settled = event !== null && event.status !== 'pending' ? SETTLED_LABEL[event.status] : null
+  const settledResult = event !== null && event.status !== 'pending' ? event.result : null
+
   const title = event?.title ?? fallbackTitle
   const pending = event !== null && event.status === 'pending'
 
@@ -81,8 +90,9 @@ export function EventConfirmCard({
         backgroundColor: 'var(--color-surface)',
       }}
     >
-      <p className="font-medium">
-        <span aria-hidden>📝</span> {title}
+      <p className="flex items-center gap-1.5 font-medium">
+        <IconNote size={15} />
+        {title}
       </p>
       {event !== null && event.detail !== '' && (
         <p className="mt-1 whitespace-pre-wrap break-words opacity-70">{event.detail}</p>
@@ -114,10 +124,11 @@ export function EventConfirmCard({
         </>
       )}
 
-      {event !== null && event.status !== 'pending' && (
-        <p className="mt-2 opacity-70">
-          <span aria-hidden>{SETTLED_LABEL[event.status].icon}</span> {SETTLED_LABEL[event.status].text}
-          {event.result !== null && ` · ${event.result}`}
+      {settled !== null && (
+        <p className="mt-2 flex items-center gap-1.5 opacity-70">
+          <settled.Icon size={14} style={{ color: settled.color }} />
+          {settled.text}
+          {settledResult !== null && ` · ${settledResult}`}
         </p>
       )}
 

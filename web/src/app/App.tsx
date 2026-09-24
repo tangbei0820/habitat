@@ -5,6 +5,7 @@ import {
   RouterProvider,
 } from 'react-router-dom'
 import { AppShell } from './AppShell'
+import { hasEntered, WELCOME_PATH } from './entry'
 import { hydrateDb } from '../db/db'
 import { runLegacyUpload } from '../db/legacy-upload'
 import { log } from '../lib/log'
@@ -15,6 +16,17 @@ import { HomeModulePage } from '../pages/home/HomeModulePage'
 import { LifePage } from '../pages/life/LifePage'
 import { LlmPage } from '../pages/llm/LlmPage'
 import { SettingPage } from '../pages/setting/SettingPage'
+import { WelcomePage } from '../pages/welcome/WelcomePage'
+
+/**
+ * 根路径分流（SPEC §9.8.2）：本次会话还没进过 → 先看欢迎页；进过了 → 直接到对话。
+ *
+ * ⚠️ 判断放在**渲染时同步读**（`sessionStorage`），不走 state：
+ * 走 state 会先渲染一帧「对话」再跳走，用户看到闪一下。
+ */
+function EntryRedirect() {
+  return <Navigate to={hasEntered() ? '/chat' : WELCOME_PATH} replace />
+}
 
 function HydrationGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading')
@@ -70,7 +82,8 @@ const router = createBrowserRouter(
         </HydrationGate>
       ),
       children: [
-        { path: '/', element: <Navigate to="/chat" replace /> },
+        { path: '/', element: <EntryRedirect /> },
+        { path: WELCOME_PATH, element: <WelcomePage /> },
         { path: '/chat', element: <ChatListPage /> },
         { path: '/chat/:sessionId', element: <ChatWindowPage /> },
         { path: '/home', element: <HomePage /> },

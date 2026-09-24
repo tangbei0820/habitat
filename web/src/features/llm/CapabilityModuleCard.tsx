@@ -7,6 +7,7 @@
  */
 import { Link } from 'react-router-dom'
 import type { CapabilitySnapshot } from '@shared/capabilities'
+import { IconChevronRight, QixiIcon } from '../../components/qixi/Icons'
 import { AUTONOMY_LABELS, type CapabilityModuleMeta } from './capabilityModules'
 
 /** 小状态点：可用 / 不可用。纯装饰，语义由旁边的文字承担（不让颜色独自说话） */
@@ -71,13 +72,17 @@ export function CapabilityModuleCard({
   const inner = (
     <>
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">
-          <span aria-hidden className="mr-1.5">{meta.icon}</span>
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+          <QixiIcon name={meta.icon} size={17} style={{ color: 'var(--color-primary)' }} />
           {meta.name}
         </h2>
         {launch !== null ? (
-          <span className="shrink-0 text-xs" style={{ color: 'var(--color-primary)' }}>
-            {launch.label} ›
+          <span
+            className="flex shrink-0 items-center gap-0.5 text-xs"
+            style={{ color: 'var(--color-primary)' }}
+          >
+            {launch.label}
+            <IconChevronRight size={13} />
           </span>
         ) : (
           <span className="shrink-0 text-right text-xs" style={{ color: 'var(--color-text-dim)' }}>

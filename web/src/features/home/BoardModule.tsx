@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { Moment } from '@shared/types'
+import { IconCheck } from '../../components/qixi/Icons'
 import {
   createMoment,
   deleteMoment,
@@ -99,7 +100,10 @@ export function BoardModule() {
           className="shrink-0"
           style={{ color: onHome ? 'var(--color-primary)' : 'var(--color-text-dim)' }}
         >
-          {onHome ? '✓ 已在主屏' : '放到主屏'}
+          <span className="flex items-center gap-1">
+            {onHome && <IconCheck size={13} />}
+            {onHome ? '已在主屏' : '放到主屏'}
+          </span>
         </button>
       </div>
 

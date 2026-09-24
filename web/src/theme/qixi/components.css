@@ -160,7 +160,15 @@ body {
   position: absolute;
   left: 16px;
   right: 16px;
-  bottom: calc(14px + env(safe-area-inset-bottom));
+  bottom: 14px;
+  /*
+    Safe Area 用 margin 而不是塞进 bottom 的 calc 里：
+    JS 要读 `getComputedStyle(nav).bottom` 来算页面底部避让，
+    若底部距离里混着 env()，JS 读到的就是「已含安全区」的值，
+    而 AppShell 又加一次安全区 —— 真机上会凭空多出一条空白。
+    拆开后：bottom 恒为 14px（可读），安全区只由 margin 承担。
+  */
+  margin-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 40;
   display: flex;
   align-items: center;
@@ -656,6 +664,21 @@ body {
    ⚠️ 换装第 2 批接上：**网址不变**，只是视觉上滑进来
    ============================================================ */
 
+/*
+  ⚠️ 只做**进场**，不做退场。真路由下「返回」是浏览器的行为，拦它去做退场动画
+  会在「快速连点 / 刷新 / 深链」时卡住（页面在等一个永远不会来的 transitionend）。
+  进场动画已经足够表达「这里是新开的一层」。
+  （`.sub-layer` 那套双向滑入留给将来真要做的全屏栈；当前真路由用不上。）
+*/
+.slide-in {
+  animation: slide-in-right 320ms var(--ease-out) both;
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(103%); }
+  to { transform: translateX(0); }
+}
+
 .sub-layer {
   position: absolute;
   inset: 0;
@@ -737,7 +760,8 @@ body {
   .msg-row,
   .dot.pulse,
   .typing-dots span,
-  .breath-circle.breathing {
+  .breath-circle.breathing,
+  .slide-in {
     animation: none !important;
   }
   .rise { opacity: 1; transform: none; }

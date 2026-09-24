@@ -1971,3 +1971,79 @@ AI 不能替北北确认（工具层硬编码 `decider='companion'`，模型传�
 - ⏳ `--bottom-nav-height` 仍按「贴底一条」的旧模型算（4rem）。第 2 批把底栏换成**浮起胶囊**后
   要重新量一次占位高度，否则内容会被胶囊盖住
 - ⚠️ 本批**只换配色**：底栏还是旧的（emoji 图标 + 英文标签），页面布局一律未动
+
+---
+
+### T-040 · 2026-09-25 · UI 换装第 2 批：换外壳 + 界面 emoji 全量换 SVG —— **完成**
+
+**背景**：接着第 1 批（T-039 地基）往下做。北北这次一并提了「**把 emoji 图标都替换成 svg 图案**」，
+所以本批 = 换外壳（原计划内容）+ emoji 清零（追加）。
+
+**边界**：本批**不动对话页内部**（气泡、消息块、思维链都留到第 3 批）。换的是"外壳"——
+底栏长什么样、进门走哪一步、子页面怎么进出。
+
+**本批交付**
+
+| 项 | 文件 | 说明 |
+| --- | --- | --- |
+| 胶囊底栏 | `web/src/app/BottomNav.tsx` | 贴底一条 → **浮起玻璃胶囊**；五 Tab 定稿 **对话/家/大脑/生活/设置**（旧版英文标签） |
+| 占位高度重算 | 同上 + `theme/qixi/components.css` | `--bottom-nav-height` = 胶囊高 + **悬空值**；安全区走 `margin-bottom: env(...)` |
+| 进门标记 | `web/src/app/entry.ts`（新） | `hasEntered()` / `markEntered()`，存 `sessionStorage`，读写都包 `try/catch` |
+| 欢迎页 | `web/src/pages/welcome/WelcomePage.tsx`（新） | 雨幕 + 大号时间 + 问候 + 竖排手账句 + 小栖最近一条消息叠卡 + 进入按钮；**接真数据** |
+| 路由 | `web/src/app/App.tsx` | `/` → 没进过则 `/welcome`、进过则 `/chat`；`/welcome` 可直达 |
+| 滑入 | `web/src/components/qixi/useSlideIn.ts`（新） | 只在 `PUSH` 时挂 `.slide-in`；后退 / 直达不播 |
+| 图标补到 48 个 | `web/src/components/qixi/Icons.tsx` | 新增 16 个静态标记 + `IconJournal`；加 `QIXI_ICONS` 字典与 `IconName` |
+| 图标名收敛 | `features/home/modules.ts`、`features/llm/capabilityModules.ts` | `icon: string` → `icon: IconName`（数据层只存**名字**） |
+| 外壳验收 | `web/scripts/verify-shell.mjs`（新，**31 条**） | 见下 |
+
+**三个必须讲清的技术决定**
+
+1. **不用 View Transitions，用 CSS 关键帧。** 一是 `react-router-dom` 6.30 还不支持 `viewTransition` 属性；
+   二是更要紧的 —— 只让**前进**放动画。若为了播"退出动画"去拦截后退，遇到快速连点 / 刷新 / 深链很容易**卡在半路**。
+   现在的规则很硬：`PUSH` 才播，`POP`/`REPLACE` 一律不播。
+2. **网址必须是真的。** 原型用 `.screens` / `.screen` 把所有页面绝对定位叠起来、靠 JS 切 `is-active`。
+   栖息地照搬会让刷新、前进后退、加书签**全部失效**。所以 `.slide-in` **只做动画**，
+   地址仍是 `/home/diary` 这种真网址。这条在第 1 批就写进 `UI_DESIGN.md` §4 了，本批是**落地**。
+3. **`overflow-x: clip` 而不是 `hidden`。** `hidden` 会创建滚动容器，把滑入过程中的 `sticky/fixed` 一起带偏；
+   `clip` 不创建，只裁切。
+
+**emoji 清零的口径**（三类，只有第一类要换）
+
+| 类别 | 例子 | 处置 |
+| --- | --- | --- |
+| 界面图标 | 底栏、模块入口、`› ▸ ▾ ✓ ✗ 📌 📄 ✅ ⚠️ 🎤 😀 🌙 ☀️ ●` | ✅ **全换 SVG** |
+| 用户要发出去的内容 | 输入框的**表情选择器** | ❌ 保留 —— 那不是界面，是用户的内容 |
+| 代码注释 | `// ⚠️ 注意…`、`˚ ༘♡ ⋆｡˚` 装饰字符 | ❌ 保留 —— 不进界面 |
+
+**顺手修掉的两个真问题**
+
+1. **日记和音乐撞了同一个图标**：原型里的 `IconNote` 画的是**音符**，而 `modules.ts` 给日记也用了 `note`
+   → 两个入口长得一模一样。新增 `IconJournal`（笔记本 + 书签带 + 横线），日记与"日记本"能力卡都改用它。
+2. **验收脚本两处隐性耦合**（不是产品 bug，是测试写法 —— 但不修就会出现**假绿**）：
+   - `verify-offline` / `verify-export` 原先导航到**根路径**再等聊天列表；根路径现在会先落欢迎页 → 必超时。
+     已改为**直达 `/chat`**。⚠️ `verify-export` 上一轮**是过的**，纯粹因为上游 `verify-shell` 恰好留下了
+     "已进入"标记 —— **依赖脚本执行顺序的假绿**，单跑就现原形。
+   - `verify-offline` 的挂载判据里混着英文 `"Chat"`（底栏还是英文标签时代的残留）。底栏换中文后该串消失 → 超时。
+     已统一成与 `verify-chat` / `verify-export` 同口径的「新建」。
+   - 教训已写进 `docs/UI_DESIGN.md` §4：**验收脚本一律直达目标路径，别碰根路径**。
+
+**验收（全部实跑）**
+
+| 项 | 结果 |
+| --- | --- |
+| `verify-shell.mjs`（新增，31 条） | **31/31** |
+| home / chat / providers / llm / tokens / export / offline / diagnostics | **全部通过，共 411 项** |
+| 两端 typecheck | 通过 |
+
+`verify-shell.mjs` 盯六个面：① 底栏语义与结构（`nav` + 5 个真 `<a href>` + 顺序 + 中文标签）
+② 胶囊形态（圆角 / `backdrop-filter` / `bottom > 0` / 宽屏不撑满）③ 图标是 SVG 且**选中 = 实心**
+④ `--bottom-nav-height` === 胶囊高 + 悬空值 ⑤ 进门三态（首访 / 进过后 / 直达 `/welcome`）
+⑥ 子页面**真网址** + 前进播动画 / 直达不播 + **各页文本不含 emoji**（`Extended_Pictographic` 判定）。
+
+**遗留**
+
+- ⏳ 第 3~6 批未开始（见 `docs/UI_DESIGN.md` §5）
+- ⏳ 翻译层仍是过渡产物；本批做到的外壳部分已开始换新名，其余页面照旧
+- ⏳ `verify-shell` 里"宽屏不撑满"目前断言 ≤ 430px —— 桌面端要不要给手机壳仍是**另一件事**，未决
+- ⚠️ 底栏标签已由英文改中文：**再写新验收时不要按英文串找 Tab**
+- ⚠️ 本机**测不了**的仍然是老三样：Nocturne 真记忆、手机装 PWA、Web Push

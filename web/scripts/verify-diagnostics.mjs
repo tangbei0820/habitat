@@ -295,7 +295,8 @@ try {
   )
   check(
     '每行标出请求 / 响应方向与协议方法',
-    firstRows.every((t) => (t.includes('→ 请求') || t.includes('← 响应')) && t.includes('tools/')),
+    // 方向文字之外的**箭头**是 SVG 图标（换装第 2 批），不再按 `→` `←` 字符断言
+    firstRows.every((t) => (t.includes('请求') || t.includes('响应')) && t.includes('tools/')),
     firstRows[0]?.replace(/\n/g, ' ⏎ ') ?? '',
   )
   check(

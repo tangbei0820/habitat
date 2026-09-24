@@ -164,7 +164,14 @@ async function rowInfo(profileName) {
     const li = [...document.querySelectorAll('li')]
       .find((l) => l.textContent.includes(${JSON.stringify(profileName)}))
     if (!li) return null
-    return { text: li.innerText, buttons: [...li.querySelectorAll('button')].map((b) => b.textContent.trim()) }
+    const probe = li.querySelector('[data-testid="provider-probe"]')
+    return {
+      text: li.innerText,
+      buttons: [...li.querySelectorAll('button')].map((b) => b.textContent.trim()),
+      // ⚠️ 探测成败从**属性**读，不从 ✓ / ✗ 符号读：
+      // 符号是装饰，UI 换装时会被换成 SVG 图标，按符号断言等于把测试焊在样式上。
+      probeOk: probe === null ? null : probe.getAttribute('data-probe-ok') === 'true',
+    }
   })()`)
 }
 
@@ -219,15 +226,16 @@ check('未填密钥 → 文案提示无需密钥', created !== null && created.t
 /* ---------- 3. 无密钥时探测：mock 上游必然 401 ---------- */
 await clickRowButton(PROFILE_NAME, '测试连接')
 await waitFor(
-  `[...document.querySelectorAll('li')].some((l) => l.textContent.includes('验收方案') && /[✓✗]/.test(l.textContent))`,
+  `[...document.querySelectorAll('li')].some((l) => l.textContent.includes('验收方案') && l.querySelector('[data-testid="provider-probe"]') !== null)`,
   '探测结果回填',
   20000,
 )
 const probeFail = await rowInfo(PROFILE_NAME)
+check('无密钥探测 → 结果为「失败」', probeFail !== null && probeFail.probeOk === false, JSON.stringify(probeFail?.probeOk ?? null))
 check(
   '无密钥探测 → 显示失败原因（401）',
-  probeFail !== null && probeFail.text.includes('✗') && probeFail.text.includes('401'),
-  probeFail?.text.split('\n').find((l) => l.includes('✗')) ?? '',
+  probeFail !== null && probeFail.text.includes('401'),
+  probeFail?.text.replace(/\n/g, ' ⏎ ') ?? '',
 )
 
 /* ---------- 4. 编辑：改名 + 填密钥 ---------- */
@@ -253,9 +261,14 @@ await waitFor(
 )
 const probeOk = await rowInfo(RENAMED)
 check(
+  '有密钥探测 → 结果为「成功」',
+  probeOk !== null && probeOk.probeOk === true,
+  JSON.stringify(probeOk?.probeOk ?? null),
+)
+check(
   '有密钥探测 → 连接正常且带模型样本',
-  probeOk !== null && probeOk.text.includes('✓ 连接正常') && probeOk.text.includes('mock-chat'),
-  probeOk?.text.split('\n').find((l) => l.includes('✓')) ?? '',
+  probeOk !== null && probeOk.text.includes('连接正常') && probeOk.text.includes('mock-chat'),
+  probeOk?.text.replace(/\n/g, ' ⏎ ') ?? '',
 )
 await shot('shot-providers-list.png')
 

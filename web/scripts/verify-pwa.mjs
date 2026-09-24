@@ -181,6 +181,8 @@ await send('Network.emulateNetworkConditions', {
 check('浏览器已进入断网状态', (await evaluate('navigator.onLine')) === false)
 
 await send('Page.reload')
+// 断网重载落在哪一页取决于本次会话有没有进过：根路径 = 应用 start_url，
+// 首次会话会先显示欢迎页，进过则重定向到 /chat。两者都属于「外壳」，这里只要求非白屏。
 const shellLoaded = await waitFor('document.querySelector("#root")?.children.length > 0', '断网后应用外壳加载', 25000)
   .then(() => true)
   .catch(() => false)

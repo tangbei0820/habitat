@@ -161,8 +161,13 @@ consoleLogs.recovered.length = 0
 
 try {
   /* ---------- 一、联网基线 ---------- */
-  await send('Page.navigate', { url: APP })
-  await waitFor('document.body.innerText.includes("新建") && document.body.innerText.includes("Chat")', '聊天列表挂载')
+  // ⚠️ 两个坑，都踩过：
+  //    ① 别导航到根路径 —— 本次会话还没进过会先落到欢迎页，永远等不到聊天列表。
+  //    ② 别在这里找英文 "Chat" —— 那是底栏还是「英文标签」时代的残留；第 2 批底栏已换中文
+  //       （对话 / 家 / 大脑 / 生活 / 设置），英文串消失会让这条等待一直超时。
+  //    统一以「新建」为聊天列表已挂载的信号（与 verify-chat / verify-export 同一口径）。
+  await send('Page.navigate', { url: `${APP}/chat` })
+  await waitFor('document.body.innerText.includes("新建")', '聊天列表挂载')
 
   check('联网时不显示离线横幅', (await evaluate('document.querySelector(\'[data-testid="offline-banner"]\') === null')))
 
@@ -277,9 +282,9 @@ try {
   // 只要「出现了就一定是禁用的」，就不会出现「点了才报错」
   check('离线时「测试连接」不可点（出现即禁用）', testDisabled === true || testDisabled === 'absent', String(testDisabled))
 
-  // ⚠️ 到达判据别写成 body.innerText.includes('生活') —— 底栏那一栏叫「Life」，
-  //    而「生活」只出现在 LifePage 的 h1 里，看似能用，但页面标题字号大、渲染慢，
-  //    更稳的是直接看路由。运行视图同理，用 query 参数判，别靠文本。
+  // ⚠️ 到达判据别写成 body.innerText.includes('生活') —— 「生活」是**底栏标签**（第 2 批起，
+  //    以前叫「Life」），所以它其实哪一页都在，写成存在性判断会恒真；而 LifePage 的 h1 也用这四个字，
+  //    页面标题字号大、渲染慢，同样不稳。更稳的是直接看路由。运行视图同理，用 query 参数判，别靠文本。
   await clickSelector('a[href="/life"]')
   await waitFor('location.pathname === "/life"', 'Life 页打开')
   await clickText('运行')

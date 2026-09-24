@@ -17,6 +17,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { ChatSession, SessionGroup } from '@shared/types'
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
 import { NameSheet } from '../../components/NameSheet'
+import { IconChevronDown, IconChevronRight, IconPin } from '../../components/qixi/Icons'
 import {
   SESSION_GROUP_NAME_MAX,
   createSession,
@@ -306,9 +307,15 @@ export function ChatListPage() {
           backgroundColor: s.pinnedAt === null ? 'var(--color-surface)' : 'var(--color-surface-alt)',
         }}
       >
-        <Link to={`/chat/${s.id}`} data-testid={`session-title-${s.id}`} className="flex-1 truncate">
-          {s.pinnedAt !== null && <span className="mr-1">📌</span>}
-          {s.title}
+        <Link
+          to={`/chat/${s.id}`}
+          data-testid={`session-title-${s.id}`}
+          className="flex min-w-0 flex-1 items-center gap-1"
+        >
+          {s.pinnedAt !== null && (
+            <IconPin size={13} className="shrink-0" style={{ color: 'var(--color-primary)' }} />
+          )}
+          <span className="truncate">{s.title}</span>
         </Link>
         {confirmingId === s.id ? (
           <button
@@ -407,7 +414,11 @@ export function ChatListPage() {
                 style={{ color: 'var(--color-text)' }}
                 onClick={() => void toggleGroupCollapsed(group)}
               >
-                <span aria-hidden="true">{group.collapsed ? '▸' : '▾'}</span>
+                {group.collapsed ? (
+                  <IconChevronRight size={14} className="shrink-0" />
+                ) : (
+                  <IconChevronDown size={14} className="shrink-0" />
+                )}
                 <span data-testid={`group-name-${group.id}`} className="truncate">{group.name}</span>
                 <span
                   data-testid={`group-count-${group.id}`}

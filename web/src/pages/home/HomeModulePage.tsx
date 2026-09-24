@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
+import { useSlideIn } from '../../components/qixi/useSlideIn'
 import { homeModuleName } from '../../features/home/modules'
 import { BoardModule } from '../../features/home/BoardModule'
 import { CountdownModule } from '../../features/home/CountdownModule'
@@ -39,9 +40,12 @@ function moduleContent(module: string | undefined, name: string) {
 export function HomeModulePage() {
   const { module } = useParams<{ module: string }>()
   const name = homeModuleName(module)
+  const slide = useSlideIn()
 
   return (
-    <div className="px-4 py-6">
+    // key={module}：换模块时强制重挂，进场动画才会重播
+    // （同一个组件实例改 class 不会重放 animation）
+    <div key={module} className={`px-4 py-6 ${slide}`}>
       <Link to="/home" className="text-sm" style={{ color: 'var(--color-primary)' }}>
         ‹ 返回首页
       </Link>

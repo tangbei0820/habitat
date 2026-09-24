@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { WishlistItem } from '@shared/types'
 import { createWishlistItem, deleteWishlistItem, listWishlist, toggleWishlistItem } from '../../db/home'
+import { IconCheck } from '../../components/qixi/Icons'
 
 export function WishlistModule() {
   const [items, setItems] = useState<WishlistItem[]>([])
@@ -58,7 +59,7 @@ export function WishlistModule() {
         <ul className="space-y-2">
           {items.map((item) => (
             <li key={item.id} className="flex items-center gap-3 rounded-lg border p-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
-              <button type="button" aria-label={item.status === 'done' ? '标记为未完成' : '标记为已完成'} onClick={() => void toggle(item.id)} className="grid h-7 w-7 shrink-0 place-items-center rounded-full border" style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}>{item.status === 'done' ? '✓' : ''}</button>
+              <button type="button" aria-label={item.status === 'done' ? '标记为未完成' : '标记为已完成'} onClick={() => void toggle(item.id)} className="grid h-7 w-7 shrink-0 place-items-center rounded-full border" style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}>{item.status === 'done' ? <IconCheck size={15} /> : null}</button>
               <span className={`min-w-0 flex-1 break-words text-sm ${item.status === 'done' ? 'line-through opacity-60' : ''}`}>{item.title}</span>
               <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} className="shrink-0 text-xs" style={{ color: deleting === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deleting === item.id ? '确认删除？' : '删除'}</button>
             </li>

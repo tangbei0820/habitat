@@ -9,6 +9,7 @@ import {
   removeHomeWidget,
 } from '../../db/home'
 import { dayDistance, distanceLabel } from './countdownDays'
+import { IconCheck } from '../../components/qixi/Icons'
 
 export function CountdownModule() {
   const [items, setItems] = useState<CountdownDay[]>([])
@@ -106,7 +107,10 @@ export function CountdownModule() {
                     className="shrink-0"
                     style={{ color: isOnHome ? 'var(--color-primary)' : 'var(--color-text-dim)' }}
                   >
-                    {isOnHome ? '✓ 已在主屏' : '上主屏'}
+                    <span className="flex items-center gap-1">
+                      {isOnHome && <IconCheck size={13} />}
+                      {isOnHome ? '已在主屏' : '上主屏'}
+                    </span>
                   </button>
                   <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} className="shrink-0" style={{ color: deleting === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deleting === item.id ? '确认？' : '删除'}</button>
                 </div>
