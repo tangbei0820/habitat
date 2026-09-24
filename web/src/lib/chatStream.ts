@@ -10,12 +10,20 @@ import type {
   ChatDonePayload,
   ChatErrorPayload,
   ChatStreamRequest,
+  ChatToolCallPayload,
   ChatUsagePayload,
 } from '@shared/events'
 import { ApiRequestError, assertOnline } from './api'
 
 export interface ChatStreamHandlers {
   onDelta?: (delta: ChatDeltaPayload) => void
+  /**
+   * AI 自主发起的一次工具调用**已执行完**（成功或失败都会来一帧）。
+   *
+   * ⚠️ 只有结果，没有「开始执行」—— 半截参数对界面没有意义（见 `ChatToolCallPayload` 注释）。
+   * 收到即表示「这件事已经发生了」，界面上应当留痕（落一条 `role='tool'` 消息）而不是只弹提示。
+   */
+  onToolCall?: (call: ChatToolCallPayload) => void
   onUsage?: (usage: ChatUsagePayload) => void
   onDone?: (done: ChatDonePayload) => void
   /**
@@ -51,6 +59,9 @@ function dispatchFrame(raw: string, handlers: ChatStreamHandlers): void {
   switch (event) {
     case 'chat-delta':
       handlers.onDelta?.(payload as ChatDeltaPayload)
+      break
+    case 'tool-call':
+      handlers.onToolCall?.(payload as ChatToolCallPayload)
       break
     case 'chat-usage':
       handlers.onUsage?.(payload as ChatUsagePayload)

@@ -2,10 +2,12 @@
  * 聊天流路由（技术方案 §7.2①）
  *
  * Phase 3B 起：**校验 → 组装上下文（Eventide）→ 转发 LLM 流 → 记账**。
+ * Phase 6.5 起：**工具调用闭环** —— 把能力注册表绑成的工具交给模型，收它的
+ * `tool_calls`、执行、把结果回灌，再让它接着说（见下方「工具调用循环」）。
  *
- * 完整的上下文组装是 [世界书(恒定) + Eventide 状态卡 + Nocturne 召回 + 历史窗口]，
- * 其中历史窗口由前端随请求送来（§6.2：ChatMessage 归属本地，服务端不落聊天记录），
- * Eventide 已接入；世界书与 Nocturne 仍待后续从 `context/chat-context.ts` 同一入口加入，接口形态不变。
+ * 完整的上下文组装是 [人格/世界书(前端带来) + 运行规则 + 能力清单 + 世界书(恒定) +
+ * Eventide 状态卡 + Nocturne 召回 + 历史窗口]，其中历史窗口由前端随请求送来
+ * （§6.2：ChatMessage 归属本地，服务端不落聊天记录）。
  *
  * ⚠️ 为什么用 `reply.hijack()`：Fastify 要等 handler 返回才发响应头，
  * 而流式必须**立刻**把头刷出去，否则前端要空等整段生成完。
@@ -18,13 +20,25 @@ import type {
   ChatDonePayload,
   ChatErrorPayload,
   ChatStreamRequest,
+  ChatToolCallPayload,
   ChatUsagePayload,
 } from '@shared/events'
-import type { LlmChatMessage, LlmRole, LlmStreamChunk, LlmUsage, StateProvider } from '@shared/providers'
+import type {
+  LlmChatMessage,
+  LlmRole,
+  LlmStreamChunk,
+  LlmToolCall,
+  LlmUsage,
+  MemoryProvider,
+  StateProvider,
+} from '@shared/providers'
+import type { CapabilityService } from '../capabilities/registry.js'
+import { buildBoundTools, executeTool, toLlmTools, type BoundTool, type ToolRuntime } from '../capabilities/tools.js'
 import { assembleChatContext } from '../context/chat-context.js'
 import { finishAutomationRun, getAutomationPolicy, noteCounterpartActivity } from '../db/automation.js'
 import { recordUsage } from '../db/usage.js'
 import { BudgetGuard } from '../lib/budget-guard.js'
+import { ToolCallAccumulator } from '../lib/tool-call-accumulator.js'
 import { ProviderError } from '../providers/errors.js'
 import type { LlmRegistry } from '../providers/registry.js'
 import { settleChatInteraction } from '../services/settlement.js'
@@ -33,6 +47,16 @@ const ROLES: readonly LlmRole[] = ['system', 'user', 'assistant', 'tool']
 
 /** 前端每轮都会把历史整段送来，故要有上限兜底（超了必然是调用方出了错） */
 const MAX_MESSAGES = 200
+
+/**
+ * 一轮对话里最多允许**几轮工具执行**。
+ *
+ * 为什么必须有上限：模型可能陷入「调工具 → 看结果 → 再调同样的工具」的循环，
+ * 每轮都是真金白银的 token。到顶后停止续跑 —— 此时已有内容照常返回，
+ * 只是不再给它继续调的机会（宁可少做，不可失控）。
+ */
+const MAX_TOOL_ROUNDS = 3
+
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null
@@ -102,7 +126,68 @@ function writeFrame(res: ServerResponse, event: string, data: unknown): void {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 }
 
-export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, state: StateProvider | null): void {
+interface ToolCallOutcome {
+  /** 进 `role='tool'` 消息的正文（给模型） */
+  text: string
+  /** 发给前端的帧（给人） */
+  payload: ChatToolCallPayload
+}
+
+/**
+ * 执行一次模型发起的工具调用，产出「给模型的正文」与「给人的卡片帧」两份。
+ *
+ * 两份**必须来自同一次执行**：分开走两条路迟早会出现「卡片说成功、模型看到失败」
+ * 这种自相矛盾 —— 那正是本 Phase 要修的病，不能在新代码里重现。
+ */
+async function runToolCall(
+  call: LlmToolCall,
+  tools: readonly BoundTool[],
+  runtime: ToolRuntime,
+): Promise<ToolCallOutcome> {
+  const tool = tools.find((candidate) => candidate.name === call.name)
+  if (tool === undefined) {
+    // 模型调了一个不在**本轮清单**里的工具：多半是它按历史印象记错了。
+    // 必须明确告诉它「现在没有这个」—— 静默失败会让它以为自己调过了。
+    const available = tools.map((candidate) => candidate.name).join('、')
+    const text = `工具 ${call.name} 不在当前可用清单中，本次未执行。可用工具：${available === '' ? '（无）' : available}`
+    return {
+      text,
+      payload: {
+        id: call.id,
+        name: call.name,
+        capabilityId: 'unknown',
+        label: call.name,
+        source: '系统',
+        ok: false,
+        summary: '该工具当前不可用',
+        detail: text,
+      },
+    }
+  }
+
+  const outcome = await executeTool(tool, call, runtime)
+  return {
+    text: outcome.text,
+    payload: {
+      id: call.id,
+      name: tool.name,
+      capabilityId: tool.capabilityId,
+      label: tool.label,
+      source: tool.source,
+      ok: outcome.ok,
+      summary: outcome.summary,
+      ...(outcome.detail === undefined ? {} : { detail: outcome.detail }),
+    },
+  }
+}
+
+export function registerChatRoutes(
+  app: FastifyInstance,
+  registry: LlmRegistry,
+  state: StateProvider | null,
+  memory: MemoryProvider | null,
+  capabilities: CapabilityService,
+): void {
   app.post('/api/chat', async (request, reply): Promise<void> => {
     // —— 写响应头之前的失败都还能返回结构化 JSON（走统一错误处理器）——
     const body = parseBody(request.body)
@@ -123,11 +208,14 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, 
     noteCounterpartActivity(counterpartAt.getTime())
     const latestUserText = [...body.messages].reverse().find((message) => message.role === 'user')?.content ?? ''
     const policy = getAutomationPolicy()
-    const context = await assembleChatContext(body.messages, state, counterpartAt, {
+    // 能力快照与 LLM 页面卡片、tool schemas 是同一份数据 —— 三方共用，不可能对不上
+    const capabilitySnapshot = await capabilities.snapshot(counterpartAt)
+    const context = await assembleChatContext(body.messages, state, capabilitySnapshot, counterpartAt, {
       lastCounterpartMessageAt: counterpartAt,
       counterpartText: latestUserText,
       triggerWords: policy.triggerWords,
       timeZone: policy.timeZone,
+      memory,
     })
     if (context.eventide === 'unavailable') {
       request.log.warn({ error: context.error }, 'Eventide 状态卡不可用，本轮按原始聊天上下文降级')
@@ -138,18 +226,34 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, 
     }
     const chatRunId = budget.reservationId
 
+    // —— 工具装配：**从能力快照生成**，不是写死的清单 ——
+    // 快照里 `enabled=false` 的能力（Nocturne 没配、Phase 未实施）压根不会出现在这里，
+    // 于是模型根本看不到它，也就不会去调一个不存在的东西 —— 这是「不伪造能力」的最后一道。
+    const boundTools = buildBoundTools(capabilitySnapshot)
+    const llmTools = toLlmTools(boundTools)
+    const toolRuntime: ToolRuntime = { memory, state, capabilities }
+
     // —— 关键一步：**先取第一个 chunk 再写响应头** ——
     // streamChat 是 async generator，函数体要到第一次 next 才执行；
     // 密钥没配、上游不可达、鉴权被拒这类错误都在这一步暴露。
     // 好处：它们能在写响应头之前抛出 → 走统一错误处理器，返回结构化 4xx/5xx；
     // 否则前端就得多一条「HTTP 200 但流里带错误事件」的分支。
+    //
+    // ⚠️ 只有**第一轮**享受这个待遇。后续轮次（工具执行完之后续跑）响应头早已发出，
+    // 那里的失败只能走 `chat-error` 事件 —— 见循环内的注释。
     const controller = new AbortController()
-    const iterator = provider.streamChat(context.messages, {
+    const streamOptions = {
       model,
       ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
       ...(body.maxTokens === undefined ? {} : { maxTokens: body.maxTokens }),
+      ...(llmTools.length === 0 ? {} : { tools: llmTools }),
       signal: controller.signal,
-    })[Symbol.asyncIterator]()
+    }
+
+    // 送给模型的对话。会随工具执行**变长**（追加 assistant 的 tool_calls 与 tool 结果），
+    // 所以是可变的局部变量，而不是直接复用 `context.messages`。
+    let conversation = context.messages
+    let iterator = provider.streamChat(conversation, streamOptions)[Symbol.asyncIterator]()
 
     let step: IteratorResult<LlmStreamChunk>
     try {
@@ -181,29 +285,91 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, 
       }
     })
 
-    let usage: LlmUsage | null = null
+    // 跨轮累加：usage 要合计（每次续跑都是**真实发生**的上游调用，都花钱），
+    // 正文要合计（结算是按整轮回复算的）。finishReason 取最后一轮。
+    const totals = { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
     let finishReason: string | null = null
     let assistantText = ''
+    let toolRounds = 0
 
+    /* ------------------------------------------------------------------ 工具调用循环
+     *
+     * 一轮 = 「流一段 → 若模型要调工具就执行、把结果回灌 → 再流一段」。
+     * 循环退出的三种情况：
+     *   · 模型没再要工具（正常收口）
+     *   · 达到 `MAX_TOOL_ROUNDS`（防打转，见常量注释）
+     *   · 客户端断开 / 上游报错（走 catch）
+     *
+     * ⚠️ 为什么**不能**把 `delta.toolCalls` 直接转发给前端：
+     * 上游按 index 分片下发参数，转发出去的是半截 JSON —— 前端既不能展示也不能用。
+     * 本层的做法是攒齐 → 执行 → 只把**执行结果**（`tool-call` 帧）发给前端。
+     */
     try {
-      while (step.done !== true) {
-        const chunk = step.value
-        if (chunk.type === 'delta') {
-          // toolCall 增量 Phase 3 才用；本层不转发，免得前端拿到半截参数
-          const payload: ChatDeltaPayload = {
-            ...(chunk.delta.content === undefined ? {} : { content: chunk.delta.content }),
-            ...(chunk.delta.reasoning === undefined ? {} : { reasoning: chunk.delta.reasoning }),
+      for (;;) {
+        const accumulator = new ToolCallAccumulator()
+        let roundText = ''
+        let roundUsage: LlmUsage | null = null
+
+        while (step.done !== true) {
+          const chunk = step.value
+          if (chunk.type === 'delta') {
+            const { content, reasoning, toolCalls } = chunk.delta
+            if (content !== undefined || reasoning !== undefined) {
+              const payload: ChatDeltaPayload = {
+                ...(content === undefined ? {} : { content }),
+                ...(reasoning === undefined ? {} : { reasoning }),
+              }
+              writeFrame(res, 'chat-delta', payload)
+            }
+            if (content !== undefined) roundText += content
+            if (toolCalls !== undefined) accumulator.push(toolCalls)
+          } else if (chunk.type === 'usage') {
+            roundUsage = chunk.usage
+          } else {
+            finishReason = chunk.finishReason
           }
-          if (payload.content !== undefined || payload.reasoning !== undefined) {
-            writeFrame(res, 'chat-delta', payload)
-          }
-          if (chunk.delta.content !== undefined) assistantText += chunk.delta.content
-        } else if (chunk.type === 'usage') {
-          usage = chunk.usage
-        } else {
-          finishReason = chunk.finishReason
+          if (clientGone) break
+          step = await iterator.next()
+        }
+
+        assistantText += roundText
+        if (roundUsage !== null) {
+          totals.promptTokens += roundUsage.promptTokens
+          totals.completionTokens += roundUsage.completionTokens
+          totals.totalTokens += roundUsage.totalTokens
         }
         if (clientGone) break
+
+        const calls = accumulator.finish()
+        if (calls.length === 0) break
+
+        // 1. assistant 的 tool_calls 必须**原样回传**给上游：紧接着的 role='tool' 消息
+        //    在协议上依赖它，少了它多数上游会直接 400（见 LlmChatMessage.toolCalls 注释）
+        conversation = [...conversation, { role: 'assistant', content: roundText, toolCalls: calls }]
+
+        // 2. 逐个执行并把结果回灌。**失败也回灌** —— 模型得知道刚才那次没成功
+        for (const call of calls) {
+          const outcome = await runToolCall(call, boundTools, toolRuntime)
+          conversation = [
+            ...conversation,
+            { role: 'tool', toolCallId: call.id, name: call.name, content: outcome.text },
+          ]
+          if (!clientGone) writeFrame(res, 'tool-call', outcome.payload)
+        }
+
+        toolRounds += 1
+        if (toolRounds >= MAX_TOOL_ROUNDS) {
+          request.log.warn(
+            { profileId: profile.id, model, toolRounds, tools: calls.map((call) => call.name) },
+            '工具调用达到轮次上限，停止续跑（防打转）',
+          )
+          break
+        }
+        if (clientGone) break
+
+        // 3. 带着工具结果再流一轮。这里的失败已经是「响应头发出之后」，
+        //    只能作为 chat-error 事件回传（与上面的 catch 同一处置）
+        iterator = provider.streamChat(conversation, streamOptions)[Symbol.asyncIterator]()
         step = await iterator.next()
       }
     } catch (err) {
@@ -226,9 +392,9 @@ export function registerChatRoutes(app: FastifyInstance, registry: LlmRegistry, 
     const usagePayload: ChatUsagePayload = {
       profileId: profile.id,
       model,
-      promptTokens: usage?.promptTokens ?? 0,
-      completionTokens: usage?.completionTokens ?? 0,
-      totalTokens: usage?.totalTokens ?? 0,
+      promptTokens: totals.promptTokens,
+      completionTokens: totals.completionTokens,
+      totalTokens: totals.totalTokens,
     }
     let usageRecordId: number | null = null
     try {

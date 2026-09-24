@@ -46,6 +46,34 @@ export interface ChatDeltaPayload {
   reasoning?: string
 }
 
+/**
+ * `tool-call`：**AI 自主发起**的一次工具调用的结果（Phase 6.5，每调用一次发一帧）。
+ *
+ * 与 `role='tool'` 消息的分工：这帧是**即时播报**（流没结束也要让用户看到卡），
+ * 消息是**落库留存**（刷新后卡片还在）。前端收到它时应同时做这两件事。
+ *
+ * ⚠️ 这里**只带给人看的字段**：工具原始返回值（可能巨大、可能含路径与 token）
+ * 不进这帧 —— 它只进模型上下文（`role='tool'` 消息）。界面上要展开的是 `detail`，
+ * 由服务端裁剪好后给出。
+ */
+export interface ChatToolCallPayload {
+  /** 上游给的调用 id；前端只用来去重，不参与协议回传（回传由服务端在同一轮内完成） */
+  id: string
+  /** 内建工具名（如 `memory_search`），不是 MCP 实例的工具名 */
+  name: string
+  /** 归属能力（如 `memory.search`），用于卡片点进详情页 */
+  capabilityId: string
+  /** 面向用户的短名（如「搜索记忆」） */
+  label: string
+  /** 展示来源（如 `Nocturne`） */
+  source: string
+  ok: boolean
+  /** 一句话结果，已裁剪 */
+  summary: string
+  /** 可折叠详情，已裁剪；失败时是给用户看的错误说明 */
+  detail?: string
+}
+
 /** `chat-usage`：上游末包用量（在 `chat-done` 之前到达） */
 export interface ChatUsagePayload extends LlmUsage {
   profileId: string

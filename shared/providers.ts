@@ -16,6 +16,14 @@ export interface ToolGateway {
 
 export type LlmRole = 'system' | 'user' | 'assistant' | 'tool'
 
+/** 模型发起的一次工具调用（增量累积完之后的形态） */
+export interface LlmToolCall {
+  id: string
+  name: string
+  /** 参数是 JSON 字符串 —— 上游协议本来就以字符串分片下发，这里不做二次解析 */
+  arguments: string
+}
+
 /** 送进模型的一条消息：只保留协议真正需要的字段（业务侧的 ChatMessage 另有一套） */
 export interface LlmChatMessage {
   role: LlmRole
@@ -23,6 +31,13 @@ export interface LlmChatMessage {
   name?: string
   /** role='tool' 时对应哪次调用 */
   toolCallId?: string
+  /**
+   * role='assistant' 且本轮发起了工具调用时**必须原样回传**。
+   *
+   * 少了它，紧随其后的 `role='tool'` 消息在上游看来就是「凭空出现」——
+   * 多数上游会直接 400（OpenAI 协议要求 tool 消息前面必须有对应的 assistant.tool_calls）。
+   */
+  toolCalls?: LlmToolCall[]
 }
 
 /** 流式增量：一个 chunk 里可能同时带正文与思维链 */
@@ -31,14 +46,20 @@ export interface LlmStreamDelta {
   content?: string
   /** 思维链增量（DeepSeek-R1 等以 `reasoning_content` 回传） */
   reasoning?: string
-  /** 工具调用增量（Phase 3 用，本层只原样透传，不做聚合） */
-  toolCall?: {
+  /**
+   * 工具调用增量（Phase 6.5 起由 `routes/chat.ts` 聚合后执行）。**本层只原样透传，不做聚合。**
+   *
+   * 是数组而不是单个：上游允许在一个 chunk 里下发改多个并行调用
+   * （OpenAI 的 parallel tool calls 就是这么走的）。只取第一个会**静默丢掉**其余调用 ——
+   * 模型以为调了、实际没执行，正是本 Phase 要根治的那类「自相矛盾」。
+   */
+  toolCalls?: Array<{
     index: number
     id?: string
     name?: string
     /** 参数是分片到达的字符串，需调用方自行拼接 */
     argumentsDelta?: string
-  }
+  }>
 }
 
 export interface LlmUsage {

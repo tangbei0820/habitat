@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import type { ChatToolCallPayload } from '@shared/events'
 import type { LlmChatMessage } from '@shared/providers'
 import type { ChatMessage, ChatSession, MessageBlock, MessageStatus, ToolResultBlock } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
@@ -314,6 +315,9 @@ export function ChatWindowPage() {
             if (delta.reasoning !== undefined) reasoning += delta.reasoning
             void flushDraft()
           },
+          onToolCall: (call) => {
+            void appendToolCall(call)
+          },
           onError: (err) => {
             failure = err.message
           },
@@ -540,6 +544,39 @@ export function ChatWindowPage() {
     if (sessionId === undefined) return
     const message = newMessage({ sessionId, role: 'tool', blocks: [block] })
     await appendMessage(message); setMessages((prev) => [...prev, message]); await touchSession(sessionId)
+  }
+
+  /**
+   * AI **自主发起**的一次工具调用（Phase 6.5）：与 Mini Terminal 的手动调用同一种块，
+   * 区别是它由服务端的 `tool-call` 帧驱动，用户没点任何东西。
+   *
+   * ⚠️ 已知的呈现局限（P1 处理，已记 TASKS）：卡片总是排在当轮助手气泡**之后**。
+   * 模型若在工具调用**之后**又说了话，那段话会被并进同一个气泡、显示在卡片上方，
+   * 顺序与真实发生的时间相反。要修得把「一次回复」拆成多段气泡，属于消息模型改动，
+   * 不在本轮范围。
+   */
+  async function appendToolCall(call: ChatToolCallPayload): Promise<void> {
+    if (sessionId === undefined) return
+    const block: ToolResultBlock = {
+      kind: 'tool-result',
+      payload: {
+        toolName: call.name,
+        ok: call.ok,
+        summary: call.summary,
+        source: call.source,
+        label: call.label,
+        ...(call.detail === undefined ? {} : { result: call.detail }),
+      },
+      order: 0,
+    }
+    const message = newMessage({ sessionId, role: 'tool', blocks: [block] })
+    try {
+      await appendMessage(message)
+      setMessages((prev) => [...prev, message])
+    } catch (err) {
+      // 卡片没落库不该把回复本身作废（正文还在流）；但必须留痕，不能静默
+      log.error('工具调用卡片落库失败', err)
+    }
   }
 
   /** 重发：这一轮没拿到回复，按原样再跑一次（历史截止到那条用户消息） */

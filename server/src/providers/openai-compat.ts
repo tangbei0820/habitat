@@ -79,19 +79,22 @@ function toStreamChunks(payload: unknown): LlmStreamChunk[] {
       if (content !== undefined && content !== '') delta.content = content
       if (reasoning !== undefined && reasoning !== '') delta.reasoning = reasoning
 
-      const calls = Array.isArray(rawDelta.tool_calls) ? rawDelta.tool_calls : []
-      const call = calls.find(isRecord)
-      if (call) {
-        const fn = isRecord(call.function) ? call.function : {}
-        const id = asString(call.id)
-        const name = asString(fn.name)
-        const args = asString(fn.arguments)
-        delta.toolCall = {
-          index: asNumber(call.index) ?? 0,
-          ...(id === undefined ? {} : { id }),
-          ...(name === undefined ? {} : { name }),
-          ...(args === undefined ? {} : { argumentsDelta: args }),
-        }
+      // 一个 chunk 里可能有**多个**并行调用，逐个收下 —— 只取第一个会静默丢掉其余
+      // （见 `LlmStreamDelta.toolCalls` 注释）。分片聚合由 `lib/tool-call-accumulator.ts` 负责。
+      const calls = Array.isArray(rawDelta.tool_calls) ? rawDelta.tool_calls.filter(isRecord) : []
+      if (calls.length > 0) {
+        delta.toolCalls = calls.map((call) => {
+          const fn = isRecord(call.function) ? call.function : {}
+          const id = asString(call.id)
+          const name = asString(fn.name)
+          const args = asString(fn.arguments)
+          return {
+            index: asNumber(call.index) ?? 0,
+            ...(id === undefined ? {} : { id }),
+            ...(name === undefined ? {} : { name }),
+            ...(args === undefined ? {} : { argumentsDelta: args }),
+          }
+        })
       }
       if (Object.keys(delta).length > 0) events.push({ type: 'delta', delta })
     }
@@ -306,6 +309,18 @@ export class OpenAICompatProvider implements LLMProvider, TTSProvider, Transcrip
         content: message.content,
         ...(message.name === undefined ? {} : { name: message.name }),
         ...(message.toolCallId === undefined ? {} : { tool_call_id: message.toolCallId }),
+        // assistant 发起过的工具调用**必须原样回传**（snake_case 是上游协议的形状）。
+        // 少了这一行，紧随其后的 role='tool' 消息在协议上就是「凭空出现」，
+        // OpenAI / DeepSeek 会直接 400 —— 工具循环第二轮必然失败。
+        ...(message.toolCalls === undefined
+          ? {}
+          : {
+              tool_calls: message.toolCalls.map((call) => ({
+                id: call.id,
+                type: 'function',
+                function: { name: call.name, arguments: call.arguments },
+              })),
+            }),
       })),
       stream: true,
       // 让上游在末包回 usage，账本（§6.2 UsageRecord）才有 token 可记。

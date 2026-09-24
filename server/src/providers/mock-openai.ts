@@ -2,9 +2,10 @@
  * 开发用 mock「OpenAI 兼容」上游（技术方案 §9 风险1 的同款思路：先验客户端代码，再排真实链路）。
  *
  * 零额外运行时依赖：node:http。独立进程 `npm run dev:mock-openai`，默认 :3334。
- * 覆盖两条真实世界最常见的分支：
+ * 覆盖三条真实世界最常见的分支：
  * - 无 `Authorization` → 401（验证 ProviderUnauthorized 的映射）
  * - `stream: true` → 逐块 SSE（验证增量解析、思维链、usage、[DONE] 收口）
+ * - **`[[tool]]` 标记 → 下发 tool_calls**（Phase 6.5：验证工具调用闭环与协议一致性）
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 
@@ -97,11 +98,65 @@ async function handleStream(
   res.end()
 }
 
+/* ---------------------------------------------------------------- 工具调用场景（Phase 6.5） */
+
+/**
+ * 触发标记：`[[tool]]` 调清单里的第一个工具，`[[tool:名字]]` 指定工具。
+ *
+ * 之所以要**显式标记**而不是「只要有 tools 就调」：Phase 6.5 起每轮聊天都会带上
+ * tools 参数，若按后者实现，所有既有验收脚本（期望普通文本回复）都会被带偏。
+ */
+const TOOL_MARKER = /\[\[tool(?::([A-Za-z_][A-Za-z0-9_]*))?\]\]/
+
+interface ToolScenario {
+  name: string
+  args: Record<string, unknown>
+}
+
+function messagesOf(body: Record<string, unknown>): Record<string, unknown>[] {
+  return Array.isArray(body.messages) ? body.messages.filter(isRecord) : []
+}
+
+function toolScenario(body: Record<string, unknown>): ToolScenario | null {
+  const tools = Array.isArray(body.tools) ? body.tools.filter(isRecord) : []
+  if (tools.length === 0) return null
+  const messages = messagesOf(body)
+  // 已经出现过工具结果 = 这是**续跑轮**，必须收口，否则会无限循环调工具
+  if (messages.some((message) => message.role === 'tool')) return null
+  const lastUser = [...messages].reverse().find((message) => message.role === 'user')
+  const text = typeof lastUser?.content === 'string' ? lastUser.content : ''
+  const match = TOOL_MARKER.exec(text)
+  if (match === null) return null
+
+  const first = tools[0]
+  const fn = first !== undefined && isRecord(first.function) ? first.function : {}
+  const fallback = typeof fn.name === 'string' ? fn.name : ''
+  const name = match[1] ?? fallback
+  if (name === '') return null
+  // 参数按工具名给：不认识的工具照样发一个空对象 —— 这样能覆盖「模型调了不存在的工具」那条路
+  return { name, args: name === 'memory_search' ? { query: '北北' } : {} }
+}
+
+/**
+ * 续跑轮的回复：**引用工具返回的内容**。
+ *
+ * 这是「AI 知道刚刚发生了工具调用」这条验收的可观测证据 ——
+ * 若服务端没把 tool 结果回灌进上下文，这里读到的就是空，回复会退化成占位文案。
+ */
+function toolFollowUpReply(body: Record<string, unknown>): string[] | null {
+  const toolMessages = messagesOf(body).filter((message) => message.role === 'tool')
+  if (toolMessages.length === 0) return null
+  const last = toolMessages[toolMessages.length - 1]
+  const content = last !== undefined && typeof last.content === 'string' ? last.content : ''
+  const failed = content.includes('执行失败') || content.includes('未执行')
+  return [
+    `（mock 续跑）我看到了工具返回：${content.slice(0, 60).replace(/\s+/g, ' ')}`,
+    failed ? '，这次没成功，我换个办法。' : '，我用它来回答你。',
+  ]
+}
+
 function backgroundReply(body: Record<string, unknown>): string[] | null {
-  const messages = Array.isArray(body.messages) ? body.messages : []
-  const names = messages
-    .filter(isRecord)
-    .map((message) => typeof message.name === 'string' ? message.name : '')
+  const names = messagesOf(body).map((message) => (typeof message.name === 'string' ? message.name : ''))
   if (names.includes('eventide_settlement')) {
     return [JSON.stringify({
       settlement_reason: 'mock 结算：本轮为普通延续。',
@@ -123,6 +178,78 @@ function backgroundReply(body: Record<string, unknown>): string[] | null {
   if (names.includes('solitude_reflection')) return ['我安静地整理了一下今天的感受，', '把想记住的温柔片段放在心里。']
   return null
 }
+
+/**
+ * 协议一致性校验：`role='tool'` 消息必须**紧跟**在带 `tool_calls` 的 assistant 消息之后，
+ * 且自身带 `tool_call_id`。
+ *
+ * 真实上游（OpenAI / DeepSeek）对这条是硬性 400。mock 也照做 ——
+ * 一个只在真上游才炸的协议缺陷，本地放过等于没有验收（§9 风险1 的同款思路：
+ * 客户端代码必须在**会拒绝你的**上游面前验过）。
+ */
+function protocolViolation(messages: Record<string, unknown>[]): string | null {
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index]
+    if (message === undefined || message.role !== 'tool') continue
+    const previous = messages[index - 1]
+    if (
+      previous === undefined ||
+      previous.role !== 'assistant' ||
+      !Array.isArray(previous.tool_calls) ||
+      previous.tool_calls.length === 0
+    ) {
+      return `messages[${index}] 是 tool 消息，但它前面不是带 tool_calls 的 assistant 消息`
+    }
+    if (typeof message.tool_call_id !== 'string' || message.tool_call_id === '') {
+      return `messages[${index}] 缺少 tool_call_id`
+    }
+  }
+  return null
+}
+
+/** 逐块下发一次 `tool_calls`：先给 id 与 name，再把参数切碎分片发（模拟真实上游） */
+async function handleToolCallStream(res: ServerResponse, model: string, scenario: ToolScenario): Promise<void> {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  })
+
+  await sendEvent(res, { choices: [{ index: 0, delta: { content: '我先查一下。' }, finish_reason: null }] })
+  await sendEvent(res, {
+    choices: [
+      {
+        index: 0,
+        delta: { tool_calls: [{ index: 0, id: 'call_mock_1', type: 'function', function: { name: scenario.name, arguments: '' } }] },
+        finish_reason: null,
+      },
+    ],
+  })
+  // 参数故意切成三段，且切点落在 JSON 中间（`{"qu` / `ery":` / `"北北"}`）——
+  // 调用方若在分片中途就尝试解析，这里必炸
+  const serialized = JSON.stringify(scenario.args)
+  const third = Math.max(1, Math.ceil(serialized.length / 3))
+  for (let i = 0; i < serialized.length; i += third) {
+    await sendEvent(res, {
+      choices: [
+        {
+          index: 0,
+          delta: { tool_calls: [{ index: 0, function: { arguments: serialized.slice(i, i + third) } }] },
+          finish_reason: null,
+        },
+      ],
+    })
+  }
+  await sendEvent(res, {
+    choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+    usage: { prompt_tokens: 21, completion_tokens: 7, total_tokens: 28 },
+    model,
+  })
+  await sendRaw(res, 'data: [DONE]\n\n')
+  res.end()
+}
+
 
 const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
   void (async () => {
@@ -162,7 +289,26 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
       // 记下真实报文，供验收脚本用 GET /__last-body 断言客户端发了什么
       lastChatBody = record
       const model = typeof record.model === 'string' ? record.model : 'mock-chat-small'
+
+      // 协议一致性：tool 消息前必须有带 tool_calls 的 assistant（真实上游会 400，这里也照做）
+      const violation = protocolViolation(messagesOf(record))
+      if (violation !== null) {
+        writeJson(res, 400, openAiError(400, violation))
+        return
+      }
+
       if (record.stream === true) {
+        const scenario = toolScenario(record)
+        if (scenario !== null) {
+          await handleToolCallStream(res, model, scenario)
+          return
+        }
+        // 续跑轮（上下文里已有工具结果）优先于后台任务分支：两者不会同时出现
+        const followUp = toolFollowUpReply(record)
+        if (followUp !== null) {
+          await handleStream(res, model, followUp, [])
+          return
+        }
         const background = backgroundReply(record)
         await handleStream(res, model, background ?? REPLY_PIECES, background === null ? REASONING_PIECES : [])
         return

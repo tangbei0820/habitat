@@ -94,7 +94,20 @@ export interface FileBlock {
 /** 工具调用结果（Phase 3 起由 MCP Gateway 产出） */
 export interface ToolResultBlock {
   kind: 'tool-result'
-  payload: { toolName: string; ok: boolean; summary?: string; result?: unknown }
+  /**
+   * `source` / `label` 是 Phase 6.5 新增的**展示元数据**（都是可选的，旧数据不受影响）：
+   * 卡片要显示「✅ Nocturne · 搜索记忆」这种来源+动作，而不是内部工具名 `memory_search` ——
+   * 工具名是适配层的实现细节，不该出现在用户界面上。
+   */
+  payload: {
+    toolName: string
+    ok: boolean
+    summary?: string
+    /** 可折叠详情（服务端已裁剪）；字符串直接按原文显示，不当 JSON 再序列化一遍 */
+    result?: unknown
+    source?: string
+    label?: string
+  }
   order: number
 }
 

@@ -17,6 +17,7 @@
     "probe:phase3b": "tsx scripts/probe-phase3b.ts",
     "probe:phase4": "tsx scripts/probe-phase4.ts",
     "probe:phase5": "tsx scripts/probe-phase5.ts",
+    "probe:ai-runtime": "tsx scripts/probe-ai-runtime.ts",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js"
   },

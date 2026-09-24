@@ -193,16 +193,26 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 
 ### `POST /api/chat`（SSE）
 
-服务端链路：**校验 → 组装隐藏上下文 → 转发 LLM 流 → 记账**。
+服务端链路：**校验 → 组装隐藏上下文 → 转发 LLM 流 →（有工具调用就执行并续跑）→ 记账**。
 
 > ⚠️ 按 §6.2，`ChatMessage` 归属**本地**（前端 Dexie），服务端**不落聊天记录** —— 所以历史每轮都由前端组装后送来。
-> Phase 3B 已接入 Eventide 状态卡；世界书与 Nocturne 召回后续从同一服务端组装入口加入，
-> 本接口形态不变。前端仍只提交本地聊天历史。
+> Phase 3B 已接入 Eventide 状态卡；**Phase 6.5 起服务端自己构造 system 段**
+> （规则 + 能力清单 + 记忆 + 状态卡），能力清单由 Capability Registry 生成，
+> 详见 `docs/AI_RUNTIME.md`。本接口形态不变，前端仍只提交本地聊天历史。
+
+**服务端注入的 system 段**（顺序固定，插在已有 persona 之后、第一条对话之前）：
+
+| name | 何时注入 | 内容 |
+| --- | --- | --- |
+| `runtime_rules` | 每轮 | 恒定三条规则（以能力清单为准 / 已执行的调用是既成事实 / 直接调用而不是嘴上说） |
+| `runtime_capabilities` | 每轮 | **当前真实可用**的能力清单（Registry 生成，绝不写死） |
+| `nocturne_memory` | 仅会话开头一次 | 长期记忆全文（超过 16 000 字截断并标注） |
+| `eventide_state` | 每轮 | Eventide 状态卡 |
 
 **Eventide 注入规则**：
 
 - 每轮聊天在连接 LLM 前先 tick；当前用户消息视作“对方刚发言”，传给 Eventide 的最后互动时间为当前时刻
-- 状态卡以 `{ role: "system", name: "eventide_state" }` 插在**已有 system/persona 指令之后、第一条对话之前**
+- 状态卡插在**已有 system/persona 指令之后、第一条对话之前**
 - 状态卡只发给上游模型，不进入 SSE、不回写前端消息，也不改写请求里的历史数组
 - Eventide 未配置、返回空卡或暂时不可达时，记录服务端警告并按原始历史继续聊天；状态增强不能成为聊天单点故障
 - 同一进程内的 tick 串行执行，且推进时间不允许倒退，避免并发聊天互相覆盖状态
@@ -226,11 +236,40 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 | event | data | 说明 |
 | --- | --- | --- |
 | `chat-delta` | `{ content?, reasoning? }` | 正文 / 思维链增量，可能只带其一 |
-| `chat-usage` | `{ profileId, model, promptTokens, completionTokens, totalTokens }` | 上游末包用量 |
+| `tool-call` | `ChatToolCallPayload` | **AI 自主发起**的一次工具调用**已执行完**（见下） |
+| `chat-usage` | `{ profileId, model, promptTokens, completionTokens, totalTokens }` | 上游末包用量（多轮工具调用时是**合计**） |
 | `chat-done` | `{ finishReason, usage, usageRecordId }` | 正常收口；`usageRecordId` 为 UsageRecord 主键 |
 | `chat-error` | `{ code, message }` | **流开始之后**才出现的故障（空闲超时、传输中断） |
 
-**两类错误的分界**：服务端**先取到上游第一个 chunk 才写响应头**，所以密钥没配、方案不存在、上游不可达、鉴权被拒这些都在写头之前抛出，走统一 `ApiError` + 4xx/5xx：
+#### 工具调用（Phase 6.5）
+
+服务端从能力快照生成 `tools` 交给模型；模型要调工具时，服务端**攒齐分片的参数 → 执行 → 回灌结果 → 再流一轮**，
+最多 3 轮（防打转）。每执行完一次工具发一帧：
+
+```jsonc
+{
+  "id": "call_abc",           // 上游给的调用 id
+  "name": "memory_search",    // 内建工具名（不是 MCP 实例的工具名）
+  "capabilityId": "memory.search",
+  "label": "搜索记忆",         // 面向用户的短名
+  "source": "Nocturne",       // 展示来源
+  "ok": true,
+  "summary": "按「散步」检索到记忆",
+  "detail": "…"               // 可折叠详情，**服务端已裁剪**；失败时是给用户看的错误说明
+}
+```
+
+三条纪律：
+
+- **只发结果，不发「开始执行」**：上游按 index 分片下发参数，中间态是半截 JSON，对界面没有意义
+- **帧里不带工具原始返回值**：原始返回只进模型上下文（`role='tool'` 消息）；界面上要展开的是裁剪后的 `detail`
+- **失败不抛异常**：降级成 `ok:false` 的一次调用结果回灌给模型 —— 它得知道刚才没成功才能决定下一步
+
+> ⚠️ 工具调用**不会**以 `role='tool'` 消息出现在请求里：前端拿到的是 `tool-call` 帧，
+> 它负责落一条本地消息（刷新后卡片还在）。服务端在同一轮内自己维护含 `tool_calls` 的对话副本。
+
+**两类错误的分界**：服务端**先取到上游第一个 chunk 才写响应头**，所以密钥没配、方案不存在、上游不可达、鉴权被拒这些都在写头之前抛出，走统一 `ApiError` + 4xx/5xx。
+⚠️ 多轮工具调用中，**第二轮起**的上游故障已经在响应头之后，只能走 `chat-error` 事件。
 
 | 情况 | 状态码 | code |
 | --- | --- | --- |
@@ -257,8 +296,52 @@ profile_id / service / model / prompt_tokens / completion_tokens / total_tokens 
 
 - 上游没回 usage 时按 0 落一条 —— 保证「这轮发生过」有据可查
 - 这一轮**没跑成**（上游报错）则不记：`UsageRecord` 记的是消耗，不是尝试
+- **发生了工具调用的一轮，各轮次的 token 合计成一条记录** —— 一次用户请求算一次调用；
+  多轮工具续跑都发生在同一次请求内，拆成多条会让「API 调用次数」这一列失真
 - `cost` 需配合 PriceSnapshot（价格版本化）才能算，Phase 4 账本落地时回填
 - `day_key` 是**本地时区**的 `YYYY-MM-DD`（按天聚合必须与用户看到的「今天」一致，不能用 UTC）
+
+## Phase 6.5 已实现（AI 运行时 · 能力面）
+
+### `GET /api/capabilities`
+
+LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI 到底有什么能力**的入口。
+返回的是与 system context、tool schemas **完全同一份**运行时快照。
+
+无参数、**只读**（刻意没有写端点：能力可用性由服务端按依赖真实情况判定，
+提供一个「手动改成可用」的开关会立刻把这份快照变成谎言）。
+
+```json
+{
+  "capabilities": [
+    {
+      "id": "memory.search",
+      "module": "memory",
+      "label": "搜索记忆",
+      "summary": "按关键词在长期记忆里检索",
+      "modelHint": "按关键词在长期记忆中检索。需要想起某个具体的人、事或片段时调用，比整篇读取更省。",
+      "enabled": true,
+      "autonomy": "autonomous",
+      "toolName": "memory_search"
+    },
+    {
+      "id": "diary.create",
+      "module": "diary",
+      "label": "写日记",
+      "summary": "写一篇只有小栖自己能看的日记",
+      "modelHint": "…",
+      "enabled": false,
+      "autonomy": "unavailable",
+      "reason": "AI 私有日记的权威存储尚未迁到服务端（P1）"
+    }
+  ]
+}
+```
+
+- `enabled=false` 时 **`reason` 必填** —— 不许静默降级，用户有权知道「为什么不能用」
+- `enabled=true` 且绑定工具的能力，**必有 `toolName`**（否则模型无从调用）
+- `autonomy`：`autonomous` / `confirm` / `user-only` / `unavailable`
+
 
 ## Phase 1 已实现（切片五 · 诊断日志查询）
 

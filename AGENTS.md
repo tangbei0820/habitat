@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：**宿主 nginx 1.18.0** + habitat-server + Nocturne / Ombre Brain（容器 nginx）+ eventide-sidecar；Caddy 仅为早期方案记录                      |
-| 当前阶段 | **Phase 6 已完成**（T-028~T-030 / T-032 / T-033）；动画 / 过渡效果留给后续 UI 专项｜Phase 3A 记忆链路与生产鉴权已完成真机 **26/26**（T-034） |
+| 当前阶段 | **Phase 6.5 · AI Runtime Integration 进行中（P0 已完成，T-035）** —— 能力注册 / 运行时上下文 / 工具绑定 / 工具调用闭环已落地；P1（Event Inbox、日记权限、日记留言板 Tool）与 P2（LLM App Launcher、头像开关）未开始｜Phase 6 已完成（T-028~T-030 / T-032 / T-033）；Phase 3A 记忆链路与生产鉴权已完成真机 **26/26**（T-034） |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -160,6 +160,8 @@ habitat/
 | 8  | 长聊天性能                    | §9-8。虚拟滚动，Phase 1 就引入                          |
 | 9  | iOS PWA 推送受限             | §9-9。通知中心为底座                                   |
 | 10 | 范围蔓延                     | §9-10。严格按 Phase 交付                             |
+| 11 | **模型声称自己会 / 不会某种能力** | Phase 6.5。能力一律由 `shared/capabilities.ts` + 运行时快照生成，**不许写死文案**；改能力面只动一处。排查 → `docs/AI_RUNTIME.md` |
+| 12 | **工具调用循环烧 token**      | Phase 6.5。`MAX_TOOL_ROUNDS` 硬上限（3 轮）；工具失败降级成结果而不是抛异常，避免模型反复重试 |
 
 ---
 

@@ -82,6 +82,12 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npm run probe:phase3b` | Eventide + mock OpenAI + 使用隔离 DB 的 server | Phase 3B 全链：结算 / 事件 / 梦境 / BudgetGuard / 唤醒 / 独处 / 通知 / 钱包（21 项） |
 | `npm run probe:phase4` | mock OpenAI + 使用隔离 DB 的 server | Phase 4 全链：月历 / 补价 / 历史价格 / 钱包 / 通知 / 运行 / Push 降级（16 项） |
 | `npm run probe:phase5` | mock OpenAI + 使用隔离 DB 的 server | Phase 5 媒体 / 工具 API：ASR、视觉描述、图片生成、TTS 音频流、上传大小与 MIME 拒绝、无 MCP 空态与非法工具调用（8 项） |
+| `npm run probe:ai-runtime` | mock MCP + mock OpenAI + 使用隔离 DB 的 server | **Phase 6.5 AI 运行时**：能力快照 / 工具绑定白名单 / **工具调用闭环（成功与失败）** / `tool_calls` 协议回传 / `tools_list` 自我认知 / 状态摘要可读 / 不出现 `[object Object]`（49 项） |
+
+> `probe-ai-runtime.ts` 的前两节**不需要服务**（分片累加器、状态可读化、绑定白名单是纯逻辑），
+> 后面才打 HTTP —— 所以哪怕 server 没起，也能先看纯逻辑那部分过不过。
+> 它的 mock 上游场景由消息里的 `[[tool]]` / `[[tool:名字]]` 触发，**不写标记就是普通聊天**，
+> 所以既有脚本不受影响。
 
 > `probe-nocturne-live.ts` 读 `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`（也可写进 `server/.env`），
 > 默认**不打印**记忆正文（那是本人记忆），要看加 `NOCTURNE_PROBE_PREVIEW=1`。

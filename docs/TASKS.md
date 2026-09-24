@@ -95,6 +95,7 @@
 - [x] ~~**`--bottom-nav-height` 是估的 4rem**~~ —— 已修（T-008）：`BottomNav` 用 `ResizeObserver` 实测自身高度后写回 `--bottom-nav-height`，改图标 / 字号自动跟随，不再需要手动同步。
 - [x] ~~**思维链整段存进 `metadata.reasoning`，无长度上限**~~ —— 已修（T-008）：`db/chat.ts` 加 `capReasoning()` / `REASONING_LIMIT = 32000`，超限保留头尾并插入截断说明（头尾各半 —— 开头是推理起点、结尾是结论，中间最适合丢）。写入路径（`addVersion`、流式草稿、收尾定性）统一走它。
 - [ ] **验收脚本的断言绑定了 mock 的固定回复文案** —— 改 `mock-openai.ts` 的回复就要同步改 `web/scripts/verify-chat.mjs` 的断言。→ 让 mock 回显请求内容，断言改成检查回显。
+- [ ] **`probe-llm.ts` / `probe-providers.ts` 的「模型列表」断言是既存失败的**（T-035 发现，未修）—— 两支都断言 `models.length === 3`，而 `mock-openai.ts` 的 `MODELS` 早已长到 **7 个**（相机 / 语音 / 图像等槽位加进来时没同步）。**与本轮改动无关**（`MODELS` 与这两个脚本都不在 T-035 的改动面内），但它意味着这两支其实一直没真绿过 —— 「全绿」的印象是假的。→ 断言应改为「包含 `mock-chat-small` 且数量与 mock 声明一致」，或干脆由 mock 暴露 `/__models` 让脚本对齐，别再硬编码数字。
 - [x] ~~**`verify-home.mjs` 对机器负载敏感**~~ —— 已修（T-032）：仅把 `Page.navigate` 后的页面就绪等待放宽到 60s；普通交互断言仍保留 30s，避免真回归被整体长超时掩盖。流水线继续串行，README 已同步。
 - [ ] **CDP 验收脚本有两条「流水线级」约束，目前靠注释口头传承** —— ① `Runtime.enable` 会把**上一个会话**的 console 消息重放一遍，不清桶的话「控制台零异常」会被上游脚本的报错污染成假红；② 新建会话后「路由变了 ≠ 输入框已挂载」，`setValue` 会**静默**返回 `'missing'`，后面白等 30s 才超时、且报错完全指不到原因。两条都已写进 `verify-export.mjs` / `verify-offline.mjs` 的注释。→ 写到第三个脚本时该把 `waitFor` / `setValue` / 清桶抽成 `web/scripts/lib/` 的公共 helper。
 - [ ] **`probe-nocturne-live.ts` 默认不打印 boot 正文** —— 那是本人记忆，默认只打印字数（要看得加 `NOCTURNE_PROBE_PREVIEW=1`）。代价是排查「召回内容对不对」时得多敲一个环境变量。→ 保持现状；若日后要做召回质量评估，应改成写文件而不是打屏。
@@ -1573,3 +1574,75 @@ breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delt
 | Habitat `probe-nocturne-live.ts` | **26/26**；包含无 Token 拒绝；实际工具调用仅 `breath` / `trace` |
 
 **结论**：T-022 的安全阻塞已结清，Phase 3A 完成。Habitat 将来部署到同机时，从 root-only 凭据文件注入 `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`，不得复制进仓库。
+
+---
+
+### T-035 · 2026-09-24 · Phase 6.5 · AI Runtime Integration（P0）—— **完成**
+
+**范围**：北北定义的「把已存在但各自为政的能力接成一套 AI 真正能理解、调用、接收事件的系统」。
+本轮只做 P0 五项，P1（Event Inbox / 日记权限 / 日记留言板 Tool）与 P2（LLM App Launcher / 头像开关）未开始。
+
+**根因（先定位再动手）**
+
+「工具调用成功，但模型下一轮说『我没有调用外部工具的能力』」**不是模型嘴硬**，是它的上下文里确实没有：
+
+1. `routes/chat.ts` 从来不传 `tools` 参数 → 模型不知道自己有工具
+2. 同一文件**明确丢弃**响应里的 `delta.toolCall`（注释写着「本层不转发」）
+3. 服务端**完全不构造 system prompt**，人格/能力说明全靠前端塞进 `messages`
+4. 能成功的「工具调用」是用户从 Mini Terminal 手动发起的，从没人告诉过模型它有这能力
+
+**与 PRODUCT_SPEC §9.7 的关系**：该节原文是「AI 自主工具调用暂不启用，需先有可暂停的逐次授权 + 风险分级」。
+本轮**不是绕过它**，而是把它要的准入闸门建出来（`autonomy` 分级 + 只读/写分离），
+写类能力在确认卡协议落地前**一律不绑给模型**（闸门朝「关」）。
+
+**落地**
+
+| 层 | 文件 | 内容 |
+| --- | --- | --- |
+| 声明（静态） | `shared/capabilities.ts` | 12 项能力定义 + `autonomy` 四级 + 工具绑定（内建名 ≠ MCP 工具名） |
+| 判定（运行时） | `server/src/capabilities/registry.ts` | 依赖就绪判定 + 记忆探测 60s 缓存；缺能力必给 `reason` |
+| 绑定与执行 | `server/src/capabilities/tools.ts` | 只收 `enabled` 且 `autonomous` 的；失败降级成 `ok:false` 而不抛 |
+| 分片累加 | `server/src/lib/tool-call-accumulator.ts` | 按 index 分桶、参数原样拼接、无 name 的分片丢弃 |
+| 运行时上下文 | `server/src/context/runtime-context.ts` | 规则段 + 能力段（**由 Registry 生成，不许写死**） |
+| 上下文组装 | `server/src/context/chat-context.ts` | 固定顺序：人格 → 规则 → 能力 → 记忆 → 状态卡 → 历史 |
+| 状态可读化 | `shared/state-summary.ts` | `raw → normalized → human-readable`，杜绝 `[object Object]` |
+| 工具循环 | `server/src/routes/chat.ts` | 传 tools → 攒分片 → 执行 → 回灌 → 续跑（≤3 轮） |
+| 能力面 | `server/src/routes/capabilities.ts` | `GET /api/capabilities`，只读，与另两方同一份快照 |
+| 前端 | `web/src/lib/chatStream.ts`、`pages/chat/ChatWindowPage.tsx`、`features/chat/MessageBlocks.tsx` | `tool-call` 帧 → 落一条 `role='tool'` 消息；卡片显示「✅ Nocturne · 搜索记忆 已完成」 |
+| mock | `server/src/providers/mock-openai.ts` | 加 `[[tool]]` 触发工具调用 + **协议一致性 400 校验** |
+
+**顺手修的真 bug**
+
+1. **`openai-compat.ts` 从不序列化 `toolCalls`** —— `LlmChatMessage.toolCalls` 定义了但发不出去。
+   `role='tool'` 消息在协议上依赖前一条带 `tool_calls` 的 assistant，真实 OpenAI / DeepSeek 会直接 400，
+   工具循环第二轮必然失败。本地 mock 加了同样的 400 校验才把它拦下来（否则上线才炸）。
+2. **`openai-compat.ts` 每 chunk 只取第一个 tool call**（`calls.find(isRecord)`）——
+   OpenAI 的 parallel tool calls 会静默丢调用。改成收下整个数组，`LlmStreamDelta.toolCall` → `toolCalls`。
+
+**验收（全部实跑）**
+
+| 项 | 结果 |
+| --- | --- |
+| `probe-ai-runtime.ts`（新增） | **49/49**（记忆链路 + Eventide 都在时） |
+| `probe-chat-context.ts`（按新契约更新断言） | 注入态 **12/12**、降级态 **3/3** |
+| `probe-memory.ts` | **21/21** |
+| `probe-mock.ts` | **5/5** |
+| 前端全套回归 | chat **140/140**、providers **22/22**、home **75/75**、export **17/17**、offline **38/38**、diagnostics **36/36**（零失败） |
+| 两端 typecheck | 通过 |
+
+`probe-ai-runtime.ts` 覆盖：分片累加器边界（乱序 / 并行 / 残缺）· 状态可读化不出现 `[object Object]` ·
+只绑真可用的能力 · 能力快照不许静默降级 · **工具调用闭环（成功与失败两条路）** ·
+**上游报文里 `tool_calls` 确实原样回传** · `tools_list` 自我认知 · `state_read` 摘要可读 · 普通聊天不受影响。
+
+⚠️ `probe-chat-context.ts` 的断言**必须跟着改**：它原先断言「persona → 状态卡 → 对话」这种**绝对下标**，
+而本轮在状态卡之前插入了规则段与能力清单段（设计变更，不是回归）。
+现在改成「按名字认出注入段、只看剩下那部分」，并补了两条：顺序正确、
+**能力清单里不含任何未启用的能力**（不伪造）。
+
+**遗留（不在本轮范围，已记录不顺手处理）**
+
+- ⏳ `shared/state-summary.ts` 的 `FIELD_LABELS` 词典**未与真实 Eventide 的键集核对过**（键名不符时自动回退原键名）
+- ⏳ 工具卡片总排在助手气泡之后；模型若在工具调用后又说话，顺序会相反 → 需把一次回复拆成多段气泡
+- ⏳ `docs/PRODUCT_SPEC.md` §9.7 需要随本层落地而订正（本轮未改产品规格正文）
+- ⏳ P1：Event Inbox、`diary_access_request` 流转、日记/留言板迁服务端（Dexie v11 + 备份格式升级）
+- ⏳ P2：LLM 页面 App Launcher、Chat 头像开关

@@ -3,6 +3,7 @@ import { envFileLoaded } from './lib/env.js'
 import cors from '@fastify/cors'
 import Fastify from 'fastify'
 import type { ApiError, ErrorCode } from '@shared/errors'
+import { CapabilityService } from './capabilities/registry.js'
 import { closeDb } from './db/index.js'
 import { importProfiles } from './db/profiles.js'
 import { pruneMcpDiagnostics } from './db/diagnostics.js'
@@ -13,6 +14,7 @@ import { ProviderError } from './providers/errors.js'
 import { LlmRegistry, loadProfiles } from './providers/registry.js'
 import { NOCTURNE_TOOLS, NocturneMemoryProvider } from './providers/nocturne-memory.js'
 import { loadEventideStateProvider } from './providers/eventide-state.js'
+import { registerCapabilityRoutes } from './routes/capabilities.js'
 import { registerChatRoutes } from './routes/chat.js'
 import { registerDiagnosticRoutes } from './routes/diagnostics.js'
 import { registerHealthRoutes } from './routes/health.js'
@@ -76,10 +78,13 @@ const mcpConfigs = loadMcpRegistry()
 const gateway = new McpGateway(mcpConfigs, app.log)
 const memoryProvider = new NocturneMemoryProvider(gateway)
 const stateProvider = loadEventideStateProvider()
+// 能力面：静态声明（shared/capabilities.ts）+ 运行时依赖探测，合成 AI「现在真能做什么」的快照
+const capabilityService = new CapabilityService(gateway, memoryProvider, stateProvider)
 registerHealthRoutes(app, gateway, stateProvider)
 registerDiagnosticRoutes(app)
 registerMemoryRoutes(app, memoryProvider)
 registerStateRoutes(app, stateProvider)
+registerCapabilityRoutes(app, capabilityService)
 
 // LLM 方案：**服务端 SQLite 是权威源**（见 db/profiles.ts）。
 // 环境变量 HABITAT_LLM_PROFILES 仅作**首次种子**：从未导入过时一次性导入，之后改 .env 不再生效
@@ -87,7 +92,7 @@ const { profiles: seedProfiles, problems } = loadProfiles()
 const importedProfiles = importProfiles(seedProfiles)
 const llmRegistry = new LlmRegistry()
 registerProviderRoutes(app, llmRegistry)
-registerChatRoutes(app, llmRegistry, stateProvider)
+registerChatRoutes(app, llmRegistry, stateProvider, memoryProvider, capabilityService)
 registerMediaRoutes(app, llmRegistry)
 registerToolRoutes(app, gateway)
 const automationService = new AutomationService(llmRegistry, stateProvider, memoryProvider, app.log)

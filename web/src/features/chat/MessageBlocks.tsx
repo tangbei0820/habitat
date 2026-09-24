@@ -110,21 +110,32 @@ function FileBlockView({ payload }: { payload: FileBlock['payload'] }) {
 function ToolResultBlockView({ payload }: { payload: ToolResultBlock['payload'] }) {
   let detail = ''
   if (payload.result !== undefined) {
-    try {
-      detail = JSON.stringify(payload.result, null, 2) ?? String(payload.result)
-    } catch {
-      // 结构里若有循环引用，JSON.stringify 会抛；退化成可读字符串而不是让渲染失败
-      detail = String(payload.result)
+    // 字符串已经是给用户读的文本（服务端裁剪过），直接显示 ——
+    // 再走一遍 JSON.stringify 会把它包成带引号的 `"……"`，纯属自找难看
+    if (typeof payload.result === 'string') detail = payload.result
+    else {
+      try {
+        detail = JSON.stringify(payload.result, null, 2) ?? String(payload.result)
+      } catch {
+        // 结构里若有循环引用，JSON.stringify 会抛；退化成可读字符串而不是让渲染失败
+        detail = String(payload.result)
+      }
     }
   }
+  // 优先显示「来源 · 动作」（如 Nocturne · 搜索记忆）；没有元数据时退回内部工具名
+  const title =
+    payload.source !== undefined && payload.label !== undefined
+      ? `${payload.source} · ${payload.label}`
+      : `工具 ${payload.toolName}`
   return (
     <details
       className="w-full rounded-lg border px-2 py-1.5 text-xs"
       style={{ borderColor: 'var(--color-border)' }}
     >
       <summary className="cursor-pointer select-none">
-        <span aria-hidden>{payload.ok ? '✅' : '⚠️'}</span> 工具 {payload.toolName}
-        {payload.summary !== undefined && <span className="ml-1 opacity-70">{payload.summary}</span>}
+        <span aria-hidden>{payload.ok ? '✅' : '⚠️'}</span> {title}
+        <span className="ml-1 opacity-70">{payload.ok ? '已完成' : '未完成'}</span>
+        {payload.summary !== undefined && <span className="ml-1 opacity-70">· {payload.summary}</span>}
       </summary>
       {detail !== '' && (
         <pre
