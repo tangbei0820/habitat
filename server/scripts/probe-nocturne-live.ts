@@ -14,9 +14,14 @@
  *   全程只调读工具，并用记录型包装断言「实际发出的调用」确实落在读工具内。
  *
  * 用法（三项也可先写进 `server/.env`，脚本自己会读；真实环境变量优先于 .env）：
- *   cd server && MCP_NOCTURNE_URL=https://beiyan.cc/mcp \
- *     MCP_NOCTURNE_TOKEN=xxx MCP_NOCTURNE_NAMESPACE=habitat \
+ *   cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<32位密钥>' \
+ *     MCP_NOCTURNE_NAMESPACE=habitat \
  *     npx tsx scripts/probe-nocturne-live.ts
+ *
+ * ⚠️ 地址是**加密钥的那条**（`/mcp-<密钥>`），不是公开的 `/mcp` —— 后者被 nginx 特意 404 掉了。
+ *    本脚本假设的工具名（read_memory / search_memory / …）取自**官方 Demo**；
+ *    若自部署实例是别的血统（例如 Ombre Brain 的 breath / hold / trace …），
+ *    §6 起会整段失败 —— **那属于「工具面对不上」，先跑 `probe-nocturne-tools.ts` 拿真实工具面**。
  *
  * `NOCTURNE_PROBE_PREVIEW=1` 才会打印 boot 正文前 80 字 —— 默认不打印，那是你本人的记忆内容。
  * 退出码非 0 表示有断言失败。标 ⚠️ 的是**警告**（部署事实，不算我们代码的错）。
@@ -124,9 +129,12 @@ function headersFor(withToken: boolean): Record<string, string> {
 function diagnose(message: string): string[] {
   const hints: string[] = []
   if (/\b404\b/.test(message)) {
-    hints.push('HTTP 404 —— 反代没有为 MCP 这个路径配 location，请求根本没进到 Nocturne。')
-    hints.push('  先在服务器上验内网：curl -i http://127.0.0.1:<nocturne端口>/mcp')
-    hints.push('  内网通、外网 404 → 就是反代缺 /mcp 的转发（nginx 会用自己的 404 页顶回来）。')
+    hints.push('HTTP 404 —— 别急着去服务器改 nginx：这个实例的 /mcp 是**故意**被封的')
+    hints.push('  （加固片段 `location = /mcp { return 404; }`），访问控制靠**秘密路径**而不是 Bearer Token。')
+    hints.push('  → 要走的地址是 /mcp-<32位十六进制>，不是 /mcp。')
+    hints.push('  ① 先确认 MCP_NOCTURNE_URL 里带了密钥段（见 docs/MEMORY.md「秘密路径」一节）；')
+    hints.push('  ② 带密钥仍 404 → 密钥可能已被更换，按同节步骤换一个。')
+    hints.push('  绕开反代验内网：curl -i http://127.0.0.1:8000/mcp -X POST -H "Content-Type: application/json" ...')
   }
   if (/\b401\b|\b403\b/.test(message)) {
     hints.push('HTTP 401/403 —— 鉴权被拒：核对 MCP_NOCTURNE_TOKEN 对不对、有没有过期。')

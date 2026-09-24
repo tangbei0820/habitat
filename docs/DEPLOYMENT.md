@@ -67,14 +67,43 @@
 
 **结论**：最外层 nginx 对绝大多数路径是**通配转发到后端**的；唯独 `/mcp`（含尾斜杠）被**单独拦下**，连后端都没碰到。
 
-因此「补 `/mcp` 转发」的正确做法不是「新增一条 location」，而是**找到那条把 `/mcp` 挡在外面的规则，改掉它**（或在其上方补一条转发）。
+⚠️ **2026-09-24 更正 —— 「单独拦下」这件事是对的，但原因判错了。**
+那条规则**不是别人误加的，是 2026-09-13 部署时自己加的**：当时对 MCP 做了加固，
+`location = /mcp { return 404; }` 封锁公开路径，另开一条**秘密路径**转发到容器：
+
+```nginx
+location = /mcp { return 404; }
+
+location = /mcp-<32位十六进制密钥> {
+    proxy_pass http://127.0.0.1:8000/mcp;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+```
+
+证据在北北本机：`MCP接入说明_Nocturne.md` 与本仓库以外那份 `.mcp_hardening.json`（均 2026-09-13）。
+
+→ **所以修法不是「改掉那条规则」，而是「用秘密路径访问」**：
+`MCP_NOCTURNE_URL=https://beiyan.cc/mcp-<密钥>`。**不需要动服务器任何配置。**
+（本节下面的 §3.2 路径 B 只在「换密钥 / 重建实例」时才需要照着改。）
 
 ### 🔴 同时发现：该实例当前**没有任何鉴权**
 
 不带任何凭据即可 `200` 访问 `/dashboard`、`/health`、`/api/*`，且响应带 `access-control-allow-origin: *`。
 dashboard 页面中可静态枚举出约 30 个接口（含 `/api/buckets`、`/api/search`、`/api/config`、`/api/import/upload`；后者的写语义**未实测**，仅按名称推断）。
 
-**这意味着记忆库当前对公网敞开。** 开放 `/mcp` 之前必须先补鉴权 —— 否则等于把一个**含写工具**（7 个工具）的 MCP 端点直接挂上公网。
+**这意味着记忆库当前对公网敞开。** 而且 MCP 那条**秘密路径本身就在公网上**（见 §2 更正框）——
+它只提供「知道密钥才能进」这一层保护，**没有第二道鉴权**。所以在补上 `api_token` 之前，
+相当于把一个**含写工具**的 MCP 端点挂在公网上，仅靠路径保密。
 
 > Nocturne 的鉴权开关：`config.json` 里的 `api_token`（compose 中 `./config.json:/app/config.json` 挂载）。
 > 启用后，**除 `/health` 外所有 `/api/` 与 `/mcp`、`/sse` 端点均需 `Authorization: Bearer <token>`**。
@@ -89,6 +118,11 @@ dashboard 页面中可静态枚举出约 30 个接口（含 `/api/buckets`、`/a
 > 而公网暴露意味着把一个**含写工具（7 个）的 MCP 端点**挂上互联网，**不推荐**，除非确有跨机需求。
 > 且本机 Node 20 连公网 `beiyan.cc` 会被 `ECONNRESET`（见 §4），**本地开发连远程这条路暂时也走不通** ——
 > 开公网的实际收益有限。
+
+> ℹ️ **2026-09-24 更正**：公网 `/mcp` **早就按「秘密路径」的方式开好了**（2026-09-13 加固，见 §2 更正框），
+> 既有的入口是 `https://beiyan.cc/mcp-<密钥>`，**不需要再动 nginx**。
+> 下面 **3.1（内网直连）仍是生产形态的推荐做法**；**3.2（公网暴露）改为备查** ——
+> 只在「重建实例 / 换密钥 / 加固丢失」时才照着做，且**目标是加回秘密路径，不是敞开 `/mcp`**。
 
 ### 3.1 路径 A：内网直连（**推荐 · 生产形态**）
 
@@ -114,18 +148,52 @@ curl -i -X POST http://127.0.0.1:8233/mcp -H 'Content-Type: application/json' \
 
 拿到 `200` + `mcp-session-id` 响应头 = **链路通，Phase 3B 的记忆侧即可收口**，把该地址填进 habitat-server 的 `MCP_NOCTURNE_URL`。
 
-### 3.2 路径 B：公网暴露 `/mcp`（**不推荐**，确有跨机需求才做）
+### 3.2 路径 B：公网暴露 —— **改为「秘密路径」而不是敞开 `/mcp`**（备查）
 
-需要动宿主机 nginx。目标不是「新增一条 location」，而是**先找出那条把 `/mcp` 单独挡在外面的规则，删掉或取代它**：
+> ⚠️ **2026-09-24 更正**：这段原先写的是「找出那条挡住 `/mcp` 的规则并**删掉它**」。**那是错的** ——
+> 那条规则是 2026-09-13 **有意**加的加固，删掉等于把**含写工具的 MCP 端点**敞开给公网。
+> **正确目标是「加回 / 维持秘密路径」**，公开的 `/mcp` 应该继续 404。
+> 现网已经就是这样（见 §2 更正框），本节仅在**重建实例 / 换密钥 / 加固丢失**时使用。
 
 ```bash
-# 第一步：找出来（多半就在这一条命令的输出里）
+# 第一步：看清现状
 sudo grep -rn -i "mcp" /etc/nginx/
 ```
 
-若找到形如 `location ~ ^/mcp/?$ { return 404; }` 或内容为空的 `location /mcp { }` → **直接删掉它**，
-`/mcp` 就会落回通配转发。**但通配那条没有反缓冲指令**，所以建议显式补上下面这段
-（`proxy_pass` 的目标**与现有 `/api/` 那条保持一致**，即 Nocturne 在宿主侧实际可达的地址/端口，待实测填入）：
+判读方式：
+
+| 看到什么 | 含义 | 怎么做 |
+| --- | --- | --- |
+| `location = /mcp { return 404; }` **且**有 `location = /mcp-<密钥>` | ✅ 加固完好 | **什么都不用做**，客户端用秘密路径 |
+| 只有 `return 404;`，没有秘密路径那条 | 加固只剩一半 | 按下面第二段补上秘密路径 |
+| 什么都没有（`/mcp` 落回通配 `location /`） | 加固丢了 | **先补 `return 404;`，再补秘密路径** |
+| 形如 `location /mcp { }` 且内容为空 | 半吊子配置 | 用下面第二段**整段取代** |
+
+**换密钥 / 新建秘密路径**（密钥形态：`mcp-` + 32 位小写十六进制）：
+
+```nginx
+location = /mcp { return 404; }
+
+location = /mcp-<新密钥> {
+    proxy_pass http://127.0.0.1:<NOCTURNE_宿主端口>/mcp;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    # Streamable HTTP（MCP）—— 反缓冲指令缺一不可，否则「握手能过、事件不推」
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+```
+
+改完 `sudo nginx -t && sudo systemctl reload nginx`（reload 不断流，别用 restart）。
+`<NOCTURNE_宿主端口>` 与现有 `/api/` 那条保持一致（当前是 `8000`）。
 
 ```nginx
     # Streamable HTTP（MCP）—— 反缓冲指令缺一不可，否则「握手能过、事件不推」
@@ -184,18 +252,33 @@ sudo grep -rn -i "mcp" /etc/nginx/
 
 ---
 
-## 5. 待确认项
+## 5. 待确认项（2026-09-24 按新认识重排）
 
-**路径 A（内网直连）需要的：**
+**① 公网连得上吗 —— 唯一需要北北先做的一步：**
 
-- [ ] **`curl -i -X POST http://127.0.0.1:<NGINX_PORT>/mcp` 内网通不通** —— 这一条是**关键分水岭**：
-  内网通 → 链路已通，`/mcp` 的公网 404 与 Phase 3B 无关，直接收口；
-  内网也 404 → 说明**容器内那层 nginx 没有 `/mcp`**（可能版本较老；上游新版 `frontend/nginx.conf` 是有的）
-  → 需在服务器上查容器内配置：`docker exec <nginx容器> cat /etc/nginx/conf.d/default.conf`
+- [ ] 用**秘密路径**跑一次工具面侦察：
+      `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' npx tsx scripts/probe-nocturne-tools.ts`
+  - ⚠️ 本机 Node 20 可能因 TLS 分界线报 `ECONNRESET`（见 §4）→ 换 Node 22 跑，或直接在服务器上跑。
+  - ✅ 通了 → ① 完成，接着看 ②。
+- [ ] 宿主机 nginx 的加固是否还在：`sudo grep -rn -i "mcp" /etc/nginx/`（判读表见 §3.2）
+
+**② 工具面对不对得上 —— 比 ① 更关键（这才是真正的拦路虎）：**
+
+- [ ] 自部署实例**实际暴露哪些工具、参数与必填是什么** —— 就是 ① 那条命令的输出。
+      已知部署记录（2026-09-13）称其为 **Ombre Brain v1.30.0**，工具名是
+      `breath` / `hold` / `trace` / `wander` / `wander_mark` / `drive` / `undercurrent` / `trail_delta` / `trail_family`，
+      与适配层写死的 `read_memory` / `search_memory` / `create_memory` / `update_memory` / `delete_memory` **可能完全不同**。
+- [ ] 若确实不一致 → **适配层要重写**（`server/src/providers/nocturne-memory.ts`），
+      并且要先定一个设计问题：`MemoryProvider` 的 `update` / `delete` 在新数据模型下还成不成立
+      （见 `docs/MEMORY.md`「自部署实例的工具面」）。
+
+**③ 鉴权 —— 安全项，仍未处理：**
+
+- [ ] `config.json` 里 `api_token` 当前是空还是有值。
+      `/dashboard`、`/health`、`/api/*` 目前**无凭据即 200**，记忆库对公网敞开（T-022 风险 1）。
+- [ ] 启用后 dashboard 的输入体验。
+
+**④ 生产形态（真正部署时才需要）：**
+
 - [ ] `NGINX_PORT` 的实际取值（compose 默认 80）
-- [ ] `config.json` 里 `api_token` 当前是空还是有值；启用后 dashboard 的输入体验
-
-**路径 B（公网暴露，不推荐）才需要的：**
-
-- [ ] 宿主机 nginx 里把 `/mcp` 挡住的那条规则**长什么样**（`sudo grep -rn -i "mcp" /etc/nginx/`）
-- [ ] 宿主机 nginx 的 `proxy_pass` 目标是哪个地址/端口（照 `/api/` 那条抄）
+- [ ] 内网直连地址（`http://127.0.0.1:<端口>/mcp`）—— 生产 `MCP_NOCTURNE_URL` 指向它，不走公网 TLS

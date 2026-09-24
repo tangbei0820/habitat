@@ -1,7 +1,11 @@
 # MEMORY · 记忆系统接入
 
-状态：**Phase 3A 施工中**。本地 mock 全链探针 24/24；客户端代码已用官方只读 Demo 打真实 server 验真（25/25，见 `docs/TASKS.md` T-013）；
-**自部署实例已体检但未接**（T-022，2026-09-23）—— 进程活着、443 证书正常，但 **`/mcp` 被最外层 nginx 单独挡在门外**，链路仍不通，另有**鉴权缺失**待处理。
+状态：**Phase 3A 施工中**。本地 mock 全链探针 24/24；客户端代码已用官方只读 Demo 打真实 server 验真（25/25，见 `docs/TASKS.md` T-013）。
+
+自部署实例（2026-09-24 更正）：
+- ✅ 进程、证书、DNS 都好；**`/mcp` 的 404 不是故障，是当初有意加固**（T-022 误判为反代缺陷）→ 真正入口是**秘密路径**，见下「入口地址」。
+- ⛔ 另有一个**比反代更前置**的拦路虎：适配层**写死**的工具名（取自官方 Demo）与该实例**实际工具面**可能完全对不上 → 见下「自部署实例的工具面」。
+- 🔴 **鉴权缺失**仍未处理（`/health`、`/dashboard`、`/api/*` 无凭据 200），见 T-022 风险 1。
 
 对接对象：已部署的 Nocturne（MCP，SSE / Streamable HTTP）。
 职责边界：世界书 = 永远注入的设定；Nocturne = 按需召回的经历；AI 日记 = AI 自己的生活记录。
@@ -13,6 +17,84 @@
   `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`
   （多 AI 共用同一实例时用 namespace 隔离；单人格留空）。
 - **前端永不直连 Nocturne** —— 只走 `server` 的 `/api/memory/*`。
+
+## 入口地址：秘密路径（**不是** `/mcp`）
+
+⚠️ **`https://beiyan.cc/mcp` 返回 404 是「设计如此」，不是反代坏了。**
+
+部署时对 MCP 做了一层加固：公开的 `/mcp` 一律 404，**只有知道一串密钥的人才能进**。
+访问控制就是「路径 = 密码」，所以这个实例**不需要** Bearer Token（`MCP_NOCTURNE_TOKEN` 留空）。
+
+| 项 | 值 |
+| --- | --- |
+| 公开路径 | `https://beiyan.cc/mcp` → **404**（nginx：`location = /mcp { return 404; }`） |
+| **实际入口** | `https://beiyan.cc/mcp-<32位十六进制密钥>` → nginx 改写成 `/mcp` 转给容器 |
+| 配置证据 | 北北本机 `MCP接入说明_Nocturne.md` + `.mcp_hardening.json`（均为 2026-09-13，后者含 nginx 片段原文） |
+| 密钥形态 | `mcp-` + 32 位小写十六进制；**完整值不进仓库**（写在 `server/.env`，该文件已被 .gitignore） |
+
+所以服务端配置就一行：
+
+```bash
+# server/.env
+MCP_NOCTURNE_URL=https://beiyan.cc/mcp-<密钥>
+MCP_NOCTURNE_TOKEN=        # 留空 —— 访问控制走秘密路径，不走 Bearer
+```
+
+**在服务器上确认加固是否还在**：
+
+```bash
+sudo grep -rn "location.*mcp" /etc/nginx/sites-enabled/
+```
+
+- 看到 `location = /mcp { return 404; }` **且**有 `location = /mcp-<密钥>` → 加固还在，填秘密路径即可，**不用动服务器**。
+- 只看到 `location /` → 加固被后来的配置覆盖了，按 `docs/DEPLOYMENT.md` §3 重新加回去。
+
+**换密钥**：把 `location = /mcp-旧密钥 {` 改成新密钥（`proxy_pass` 那行不动）→ `sudo nginx -t && sudo systemctl reload nginx`，旧 URL 立刻 404。
+
+> 为什么用秘密路径而不是 Bearer / Basic Auth：秘密路径对客户端**零要求**（只填 URL），兼容性最好；
+> 部分客户端遇到 401 会误触发 OAuth 流程而连不上。两者可叠加，不冲突。
+
+## 自部署实例的工具面 —— 比反代更前置的拦路虎（2026-09-24 发现）
+
+**适配层假设的工具名源自「官方只读 Demo」，而北北部署的是另一个血统。**
+
+| 来源 | serverInfo | 工具名 |
+| --- | --- | --- |
+| 官方只读 Demo（T-013 实测 · `misaligned.top`） | `Nocturne Memory Interface` v1.26.0 | `read_memory` / `search_memory` / `create_memory` / `update_memory` / `delete_memory` / `add_alias` / `manage_triggers` |
+| **北北自部署实例**（部署记录 2026-09-13） | 自称 **Ombre Brain v1.30.0** | `breath` / `hold` / `trace` / `wander` / `wander_mark` / `drive` / `undercurrent` / `trail_delta` / `trail_family` |
+
+`server/src/providers/nocturne-memory.ts` 把 5 个工具名**写死**在代码里。若实例工具面确如上表第二行：
+
+- 链路修通之后，`recall()` / `search()` 会直接报 `MCP_TOOL_CALL_FAILED`（工具不存在）；
+- **这不是「改几个字符串」** —— 数据模型都不一样：
+  适配层假设的是 **URI 树**（`system://boot`、`parent_uri`、`old_string`/`new_string` 补丁、read-before-update），
+  实例实际是 **记忆抽屉 + 关键词轨迹 + Trail 家族 + 九维驱动**（`hold` 用 `kind` 区分 memory/feel/writing/unresolved/window/letter）。
+
+**先拿一手事实，再谈怎么改** —— 侦察脚本（**不假设任何工具名**，且**不调用任何工具**）：
+
+```bash
+cd server
+MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' npx tsx scripts/probe-nocturne-tools.ts
+```
+
+它会打印 serverInfo / 会话 id / 能力声明，以及**每个工具的名字 + 说明 + 参数 + 必填**，
+并把「适配层写死的 5 个名字」与「实例真实有的名字」逐条对照。
+（`NOCTURNE_SHOW_SECRET=1` 才会完整打印密钥路径，默认打码，防截图外泄。）
+
+拿到输出后的**大致**映射（**待实例 schema 确认**）：
+
+| 适配层方法 | 现在期望的工具 | 若是 Ombre Brain 血统，大概对应 |
+| --- | --- | --- |
+| `recall()` → `read('system://boot')` | `read_memory` | `breath`（「把记忆取回来」，语义最接近） |
+| `search(query)` | `search_memory` | `trace`（关键词搜索） |
+| `read(uri)` | `read_memory` | `wander`（按 `mode` 翻阅，**没有 URI 概念**） |
+| `create(input)` | `create_memory` | `hold`（写记忆） |
+| `update(input)` | `update_memory` | ❓ 可能无直接对应 |
+| `delete(uri)` | `delete_memory` | ❓ 可能无直接对应 |
+
+⚠️ 最后两行是**真问题**：若实例没有「原地编辑 / 删除」语义，那 `MemoryProvider` 接口本身
+（`shared/providers.ts` 里的 `update` / `delete`）要不要保留就得**重新界定** ——
+那是设计决策，不是适配层内部能自行消化的。→ 待侦察结果出来后再定。
 
 ## 已验证的真实协议事实（T-013 · 2026-09-23）
 
@@ -40,14 +122,22 @@
 | --- | --- | --- |
 | 客户端代码（打**真实** server，只读） | `cd server && npx tsx scripts/probe-nocturne-demo.ts` | 25/25 |
 | 本地全链（mock，**含写路径**） | 起 `dev:mock-mcp` + `dev:server` 后 `npx tsx scripts/probe-memory.ts` | 24/24 |
-| **自部署实例**（Token / Namespace / 反代） | `cd server && MCP_NOCTURNE_URL=https://beiyan.cc/mcp MCP_NOCTURNE_TOKEN=… npx tsx scripts/probe-nocturne-live.ts` | ⛔ **受阻**（见下） |
+| **自部署实例 · 工具面**（不假设工具名，只读） | `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' npx tsx scripts/probe-nocturne-tools.ts` | ⏳ **待北北实跑**（本沙箱连不上外网） |
+| **自部署实例 · 全链**（反代 / Namespace / 工具调用） | `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' MCP_NOCTURNE_NAMESPACE=habitat npx tsx scripts/probe-nocturne-live.ts` | ⛔ **受阻** —— 它假设的是**官方**工具名；实例对不上会从 §6 起整段失败。**先跑上一行拿真实工具面** |
 
-⚠️ 第 1、3 条依赖公网可达，属**专项验证**（换环境时当连通性体检用），不并入常规回归。
-⚠️ 第 3 条**必须先修好反代**（见下），否则它只会如实报一个 404 加一句「反代缺 location」。
+⚠️ 后两条的地址是**加密钥的那条**（`/mcp-<密钥>`），不是公开的 `/mcp` —— 后者被 nginx 特意 404 掉了（见「入口地址」）。
+⚠️ 第 1、4 条依赖公网可达，属**专项验证**（换环境时当连通性体检用），不并入常规回归。
+⚠️ **本机 Node 20 带 SNI 连 `beiyan.cc` 会 `ECONNRESET`**（见文末 T-022 风险 2）—— 所以后两条在**本机**可能连不上，
+   属已知的本地环境限制，不是配置错；端到端联调放服务器上做。
 
 ## 自部署实例体检（T-022 · 2026-09-23）
 
-**目标**：`https://beiyan.cc`（阿里云 ECS `120.27.247.75`）。**结论：进程都好，卡在反代。**
+> ⚠️ **2026-09-24 更正**：本节原结论「卡在反代、需去服务器删掉挡住 `/mcp` 的那条规则」**是误判**。
+> T-022 探的是**公开路径** `/mcp`，而那条 404 是当初**有意**加的加固（见上文「入口地址」）。
+> 真正入口是秘密路径 `/mcp-<密钥>`。本节其余实测数据（DNS / TLS / 进程 / 两种 404 来源不同）
+> **仍然有效且有价值**，只是「修法」要从「删规则」改成「改用秘密路径」。
+
+**目标**：`https://beiyan.cc`（阿里云 ECS `120.27.247.75`）。原结论：进程都好，卡在反代。（见上方更正）
 
 | 段 | 结论 |
 | --- | --- |
@@ -66,7 +156,11 @@
 | `/mcp`、`/mcp/` | 404 **HTML 162 字节** | **nginx 默认 404 页** —— 与上面**不是同一个东西**在回话 |
 
 结论：最外层 nginx 对绝大多数路径是**通配转发到后端**的，**唯独 `/mcp` 被单独拦下**，连后端都没碰到。
-所以「补 `/mcp` 转发」的正确做法不是新增一条 location，而是**找到那条把它挡在外面的规则并删掉/取代**。
+
+⭐ **2026-09-24 更正**：那条规则**不是 bug，是有意加固** ——
+`location = /mcp { return 404; }` 配一条 `location = /mcp-<密钥> { proxy_pass .../mcp; }`。
+所以**不需要去服务器删任何东西**，改用秘密路径即可（见上文「入口地址」）。
+T-022 当时没看到那份加固记录（`.mcp_hardening.json`），才把「故意的 404」当成了「缺 location」。
 
 ⭐ 另一条重要事实：Nocturne **上游默认配置已经把 `/mcp` 配好了**（`frontend/nginx.conf` 里 `location /mcp`
 → `backend:8233/mcp`，且 `proxy_buffering off` / `proxy_http_version 1.1` / `proxy_read_timeout 86400s` /
@@ -79,6 +173,12 @@
 表现为「握手过了但事件不推 / 连接假死」。location 里至少要带上 `proxy_buffering off`、`proxy_cache off`、
 `proxy_http_version 1.1`、加大 `proxy_read_timeout`、`chunked_transfer_encoding off`、`add_header X-Accel-Buffering no`。
 （上游 `frontend/nginx.conf` 里那一段可以**直接照抄**，见 `docs/DEPLOYMENT.md` §3。）
+
+> ℹ️ 本节的「待北北在服务器上补」是 T-022 的错误前提。加固片段里那 11 行**已经带了**
+> `proxy_buffering off` / `proxy_cache off` / `proxy_http_version 1.1` / `proxy_read_timeout 3600s` /
+> `proxy_send_timeout 3600s`，即「补」这件事在 2026-09-13 就做完了；
+> 仅缺 `chunked_transfer_encoding off` 与 `add_header X-Accel-Buffering no`（当前实测不缺，先不加）。
+> 留着这段是因为**换密钥 / 重建实例**时仍要照这个标准写 location。
 
 ### 两个未结风险
 
