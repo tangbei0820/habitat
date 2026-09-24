@@ -1,0 +1,66 @@
+/**
+ * LLM 页面（小栖档案）的模块目录 —— 能力的「分组 + 启动目标」。
+ *
+ * 这里**只描述外观与去向**，不描述「有哪些能力、能不能用」：
+ * 那些一律来自 `GET /api/capabilities`。两张表分开，是为了避免
+ * 「模块元数据里悄悄长出一份能力清单」—— 那会立刻变成第二份真相。
+ */
+import type { CapabilityAutonomy, CapabilityModule } from '@shared/capabilities'
+
+export interface CapabilityModuleMeta {
+  key: CapabilityModule
+  name: string
+  icon: string
+  /**
+   * 该模块对应的「应用」位置。
+   * `null` = 前端暂时没有可进入的页面 —— 此时卡片**不可点**，
+   * 并用 `noPageHint` 说清这件事发生在哪儿（不做假入口，SPEC §9.1.1）。
+   */
+  launch: { to: string; label: string } | null
+  /** 没有界面时的说明；有界面时不使用 */
+  noPageHint?: string
+}
+
+/** 顺序即页面上的顺序：先「小栖自己用」的，再「你们共用的」 */
+export const CAPABILITY_MODULES: readonly CapabilityModuleMeta[] = [
+  {
+    key: 'memory',
+    name: '记忆',
+    icon: '🧠',
+    launch: null,
+    noPageHint: '暂无界面 · 由小栖在对话里自主读用',
+  },
+  {
+    key: 'state',
+    name: '状态',
+    icon: '🌡',
+    launch: { to: '/life?tab=runtime', label: '查看状态' },
+  },
+  {
+    key: 'diary',
+    name: '日记',
+    icon: '📔',
+    launch: { to: '/home/diary', label: '打开日记' },
+  },
+  {
+    key: 'board',
+    name: '留言板',
+    icon: '💌',
+    launch: { to: '/home/board', label: '打开留言板' },
+  },
+  {
+    key: 'tools',
+    name: '工具',
+    icon: '🧰',
+    launch: null,
+    noPageHint: '暂无界面 · 调用结果在聊天里以工具卡片出现',
+  },
+]
+
+/** 自主级别的**面向用户**说法。别把内部枚举名直接显示给用户。 */
+export const AUTONOMY_LABELS: Record<CapabilityAutonomy, string> = {
+  autonomous: '小栖自主使用',
+  confirm: '需你确认后执行',
+  'user-only': '只有你能发起',
+  unavailable: '暂不可用',
+}

@@ -676,3 +676,61 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - Habitat 生产客户端全链 **26/26**：无 Token 拒绝、Namespace、9 工具工具面、`breath` / `trace` 两条只读调用均通过，未触碰写工具。
 
 **Phase 3A 至此完成。**
+
+### Phase 6.5 · AI Runtime Integration（T-035 ~ T-038）—— **完成**
+
+把「Nocturne / Eventide / MCP 与内置工具 / 日记 / 留言板」接成一套 AI **真正能认知、调用、并接收结果**的能力系统。
+分四批交付，**P2 只动呈现层，执行层在前三批就定稿了**。
+
+**修掉的根因（T-035 · P0）**
+
+在引入之前，模型说「我没有调用外部工具的能力」是**诚实的** —— 它的上下文里确实没有这条信息：
+服务端从来不传 `tools`、明确丢弃响应里的 `tool_calls`、完全不构造 system prompt，
+而唯一能成功的「工具调用」是用户从 Mini Terminal 手动发起的（模型只看到一条结果消息）。
+本层把**声明与事实对齐**，而不是劝模型相信自己会什么。
+
+- **三方共用一份快照**：声明（`shared/capabilities.ts`）→ 判定（`capabilities/registry.ts`，带依赖探测缓存）→
+  绑定执行（`capabilities/tools.ts`）。system context、tool schemas、前端档案页消费的**是同一份**。
+- `autonomy` 四级（`autonomous` / `confirm` / `user-only` / `unavailable`）不是装饰，是**准入闸门**。
+- 上下文按固定顺序注入：人格 → 规则 → 能力 → 记忆 → 事件 → 状态 → 历史；**任一段失败只少一段，不阻塞回复**。
+- 状态可读化（`shared/state-summary.ts`）放在 shared，保证**AI 读到的与界面看到的是同一份事实**。
+- 顺手修两个「本地没事、上线才炸」的 bug：`openai-compat.ts` **从不序列化 `toolCalls`**
+  （`role='tool'` 消息依赖前一条带 `tool_calls` 的 assistant，真实上游直接 400）、
+  以及**每 chunk 只取第一个 tool call**（OpenAI parallel tool calls 会静默丢调用）。
+
+**共同生活数据迁服务端（T-036 · P1 前置）**
+
+- 日记 / 留言板权威存储从浏览器 Dexie 迁到服务端 SQLite —— 不搬的话，AI 只能对着假数据演戏。
+- **`author` 就是权限位**：`user` 的永远可读可改；`companion` 的只有 `visibility='open'` 才给用户看正文。
+  迁移上来的旧日记一律标 `author='user'` —— **搬家不能顺手把用户的权夺走**。
+- 搬迁挂**启动期**而不是 Dexie 升级回调：`stores()` 是跨版本累加的，**「新版本不声明某张表」删不掉它**；
+  升级回调一辈子只跑一次，挂启动期才每次收敛。
+
+**事件收件箱 + 挂起式确认（T-037 · P1）**
+
+- `confirm` 级工具**不在流里等按钮**（SSE 单向、无回传、刷新即废、服务端不存聊天记录），
+  改为**挂起**：只建待确认事件、**不执行**，用户点了才真写，结果下一轮经事件段注入模型。
+- ⚠️ **挂起算 `ok: true`**，且回灌必须明说「**还没有执行**」—— 否则模型要么重试（用户收到一串重复确认卡），
+  要么宣称「我写好了」。
+- 收件箱是**双向**的，且两个方向权限检查**方向相反**：`tool_confirm` 由**用户**决定（AI 发起）、
+  `diary_access_request` 由 **AI** 决定（用户发起）。谁都不能替对方点。
+- 新增路由是 `/api/inbox` 而**不是** `/api/events` —— 后者已被 Eventide 状态流水占用，撞名会让 Fastify 直接启动失败。
+
+**界面呈现（T-038 · P2）**
+
+- `/llm` 从占位页改成**小栖档案（App Launcher）**：按模块分组的能力卡片，内容**全部**来自 `GET /api/capabilities`。
+- **不做假入口**：日记 / 留言板 / 状态三张卡可点（进 Home / Home / Life 运行）；
+  记忆与工具还没有页面，标「暂无界面」并说明它发生在哪儿，**整张卡不可点**。
+- **「有页面」与「现在可用」是两个独立事实**：日记页在 AI 写不了日记时照样存在。
+- Chat 气泡两侧加头像（小栖左 / 用户右），开关是**全局显示偏好**（localStorage，不落 Dexie、不进备份格式）。
+- 按铁律**先补 `PRODUCT_SPEC` §9.1 产品行为再施工**（原文是「待补」）。
+
+**验收（全部实跑）**
+
+- 服务端：`probe-ai-runtime` 50/50、`probe-diary` 40/40、`probe-event-inbox` 66/66、`probe-chat-context` 注入 12/12 + 降级 3/3、`probe-memory` 21/21。
+- 前端：`verify-llm` 16/16（新增）、`verify-chat` 148/148（新增 8 条头像断言）、
+  home 77/77、providers 22/22、export 17/17、offline 38/38、diagnostics 36/36。
+- 两端 typecheck 通过。**全程零 schema 改动之外的结构变更**：仅 T-036 带来 Dexie v11 / 备份 v9；P0 / P1 / P2 均无新增前端表。
+
+**Phase 6.5 至此完成。** 未做的（`memory.write`、确认卡过期/撤回、工具卡片顺序、记忆与工具的真实界面）全部记在 `docs/TASKS.md`，
+不作为本 Phase 欠项 —— 它们各自需要新协议或新的产品定义。

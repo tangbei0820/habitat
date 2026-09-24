@@ -102,10 +102,11 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 
 | 脚本 | 覆盖 |
 | --- | --- |
-| `node web/scripts/verify-chat.mjs` | 聊天链路 / 消息对象操作 / 跨模块收录 / 会话置顶与设置 / 会话分组 / 消息块分发 / 分页 / 候选版本 / 输入区快捷栏与请求回复拆开 / **安全 HTML（sandbox + CSP）· widget · tab-group** / **录音预览与真实转写** / **图片理解与生成** / **Mini Terminal 空态**（140 项） |
+| `node web/scripts/verify-chat.mjs` | 聊天链路 / 消息对象操作 / 跨模块收录 / 会话置顶与设置 / 会话分组 / 消息块分发 / 分页 / 候选版本 / 输入区快捷栏与请求回复拆开 / **安全 HTML（sandbox + CSP）· widget · tab-group** / **录音预览与真实转写** / **图片理解与生成** / **Mini Terminal 空态** / **气泡头像开关（全局偏好、刷新后仍记住）**（148 项） |
 | `node web/scripts/verify-providers.mjs` | API 方案管理 UI（22 项） |
+| `node web/scripts/verify-llm.mjs` | **Phase 6.5 P2 · 小栖档案（App Launcher）**：卡片与服务端能力快照**逐条比对**（不写死能力名）、可用状态一致、不可用必给原因、有界面的模块真能启动、没界面的不做假入口（16 项） |
 | `node web/scripts/verify-diagnostics.mjs` | 诊断日志面板（36 项） |
-| `node web/scripts/verify-home.mjs` | Home 十模块 + **主屏 Widget** + **收藏分类 / 相册分类** + 备份恢复（75 项，含备份 v8 的分类归属与旧版兼容） |
+| `node web/scripts/verify-home.mjs` | Home 十模块 + **主屏 Widget** + **收藏分类 / 相册分类** + 备份恢复（77 项，含备份 v8 的分类归属与旧版兼容） |
 | `node web/scripts/verify-life.mjs` | Life 四视图、移动端布局、价格 / 钱包入口、Push 降级、运行状态（15 项） |
 | `node web/scripts/verify-export.mjs` | 单会话导出（Markdown / JSON 回执带条数、不更新全量备份时间）、久未导出提醒、导入前覆盖警告（17 项） |
 | `node web/scripts/verify-offline.mjs` | **真断网**下的只读边界：横幅、本地数据可读、联网动作禁用 / 撤下、工具面板区分「离线」与「未配 MCP」、恢复联网后还原（38 项） |
@@ -113,11 +114,15 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 
 各脚本的**准确前置条件**写在**各自文件头的注释**里，跑之前先看一眼。
 
-前四支 + export/offline 共用一套前置（server:3100 + vite:5174 + CDP:9222），一键跑：
+组一六支（`home` / `chat` / `providers` / `llm` / `export` / `offline`）共用一套前置
+（server:3100 + vite:5174 + CDP:9222），组二 `diagnostics` 另起一套（会重建库文件，端口错开），一键跑：
 
 ```bash
 bash .workbuddy/run-front-verify.sh    # 日志 /tmp/front-verify.log
 ```
+
+> ⚠️ **顺序有讲究**：`verify-home` **必须排最前**（它是唯一会清浏览器站点数据的那支），
+> `verify-offline`（唯一会真断网的）**必须排最后**。改流水线顺序前先看脚本头部的注释。
 
 > ⚠️ **别把两条流水线并发跑**。`verify-home` 每换一个 Home 子模块都做一次**整页导航**；
 > 导航等待已单独放宽到 60s，但并行占用同一台机器仍会制造无意义的慢测与噪音。

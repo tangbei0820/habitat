@@ -4,6 +4,7 @@ import type { ChatToolCallPayload } from '@shared/events'
 import type { LlmChatMessage } from '@shared/providers'
 import type { ChatMessage, ChatSession, MessageBlock, MessageStatus, ToolResultBlock } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
+import { useChatDisplay } from '../../app/useChatDisplay'
 import {
   ChatBubble,
   itemKey,
@@ -142,6 +143,9 @@ export function ChatWindowPage() {
   const [draft, setDraft] = useState('')
   const [hasMore, setHasMore] = useState(false)
   const [loadingEarlier, setLoadingEarlier] = useState(false)
+
+  /** 全局显示偏好（SPEC §9.1.3）：头像开关。在这里读一次再往下传，气泡保持纯展示组件 */
+  const showAvatars = useChatDisplay((state) => state.showAvatars)
 
   /* ---------- 消息对象操作（SPEC §2.3）的状态 ---------- */
   /** 离线时禁掉所有会发请求的消息动作（朗读 / 换一个 / 重发 / 重新生成） */
@@ -882,10 +886,11 @@ export function ChatWindowPage() {
         selected={selectedIds.has(item.message.id)}
         editing={editingId === item.message.id}
         bubbleMode={session?.bubbleMode ?? 'chat'}
+        showAvatars={showAvatars}
       />
     ),
     // actions 每次渲染都是新对象（刻意为之），所以这里等于「总是重渲」——正是我们要的
-    [actions, selectedIds, editingId, session?.bubbleMode],
+    [actions, selectedIds, editingId, session?.bubbleMode, showAvatars],
   )
 
   const unrepliedCount = useMemo(() => countUnreplied(messages), [messages])

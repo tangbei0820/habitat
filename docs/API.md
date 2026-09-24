@@ -311,6 +311,11 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
 无参数、**只读**（刻意没有写端点：能力可用性由服务端按依赖真实情况判定，
 提供一个「手动改成可用」的开关会立刻把这份快照变成谎言）。
 
+> **前端消费方**：`web/src/pages/llm/LlmPage.tsx`（小栖档案 / App Launcher）。
+> 页面**不许自带第二份能力清单**，也不许写死能力文案 —— 每个字都来自这份快照。
+> 模块 → 界面的映射在 `features/llm/capabilityModules.ts`，它与「能力能不能用」**无关**：
+> 入口的有无取决于「界面在不在」，能力徽标才取决于「依赖就绪没有」（`PRODUCT_SPEC` §9.1.1）。
+
 ```json
 {
   "capabilities": [
@@ -325,14 +330,14 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
       "toolName": "memory_search"
     },
     {
-      "id": "diary.create",
-      "module": "diary",
-      "label": "写日记",
-      "summary": "写一篇只有小栖自己能看的日记",
+      "id": "memory.write",
+      "module": "memory",
+      "label": "写入记忆",
+      "summary": "把一段新记忆存进长期记忆",
       "modelHint": "…",
       "enabled": false,
       "autonomy": "unavailable",
-      "reason": "AI 私有日记的权威存储尚未迁到服务端（P1）"
+      "reason": "本阶段只读接入 Nocturne（实例的写工具 hold 尚未接入）"
     }
   ]
 }
@@ -341,6 +346,7 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
 - `enabled=false` 时 **`reason` 必填** —— 不许静默降级，用户有权知道「为什么不能用」
 - `enabled=true` 且绑定工具的能力，**必有 `toolName`**（否则模型无从调用）
 - `autonomy`：`autonomous` / `confirm` / `user-only` / `unavailable`
+  （`confirm` 自 P1 起也会绑工具，但调用只**挂起**成待确认事件，不真执行 —— 见下节）
 
 
 ## Phase 6.5 已实现（共同生活数据 · 服务端权威）

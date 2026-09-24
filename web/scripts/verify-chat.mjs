@@ -1176,6 +1176,11 @@ await seedSessions([
   },
 ])
 await seedMessages('pin-new', [
+  // 两条消息是刻意的：这条用户消息让「两侧头像」这一条断言在同一屏里就能验，
+  // 不必靠滚动去凑（虚拟列表只渲染可视区，滚出来的状态很不稳）。
+  seedMessage('settings-user', 'user', [
+    { kind: 'text', order: 0, payload: { text: '只属于这段对话的问题' } },
+  ], { createdAt: 2000, updatedAt: 2000 }),
   seedMessage('settings-ai', 'assistant', [
     { kind: 'text', order: 0, payload: { text: '设置模式验收消息' } },
   ], { createdAt: 2100, updatedAt: 2100 }),
@@ -1906,6 +1911,69 @@ await waitFor(`document.querySelector('[data-testid="mini-terminal"]')?.innerTex
 const terminalText = await evaluate(`document.querySelector('[data-testid="mini-terminal"]').innerText`)
 check('Mini Terminal 无可用 MCP 时显示诊断指引', terminalText.includes('检查 MCP Server 状态'), terminalText)
 await evaluate(`(() => { document.querySelector('[aria-label="关闭工具面板"]').click(); return 'ok' })()`)
+
+/* ---------- 13. Chat 头像开关（SPEC §9.1.3，全局显示偏好） ---------- */
+await send('Page.navigate', { url: `${APP}/chat/pin-new` })
+await waitFor(`document.querySelector('[data-testid="chat-settings-open"]') !== null`, '回到设置验收会话')
+// 先把这条偏好清掉再刷新 —— 否则验到的是上一轮留下的状态，而不是「默认是显示」
+await evaluate(`(() => { localStorage.removeItem('habitat-chat-display'); return 'ok' })()`)
+await reloadAndWait(`document.querySelector('[data-testid="chat-settings-open"]') !== null`, '清掉显示偏好后重新进入会话')
+
+await evaluate(`(() => { document.querySelector('[data-testid="chat-settings-open"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="chat-setting-avatars"]') !== null`, '聊天设置里的头像开关')
+
+const avatarOn = await evaluate(`(() => {
+  const nodes = [...document.querySelectorAll('[data-testid="message-avatar"]')]
+  const toggle = document.querySelector('[data-testid="chat-setting-avatars"]')
+  return {
+    count: nodes.length,
+    roles: [...new Set(nodes.map((n) => n.dataset.avatarRole))].sort().join(','),
+    // 头像必须在气泡的**外侧**：小栖在左（before）、用户在右（after）
+    sides: nodes.map((node) => {
+      const row = node.closest('[data-message-id]')
+      if (row === null) return 'no-row'
+      const bubble = row.querySelector('[data-bubble-mode]')
+      if (bubble === null) return 'no-bubble'
+      const ordered = [...row.querySelectorAll('[data-testid="message-avatar"], [data-bubble-mode]')]
+      return node.dataset.avatarRole + ':' + (ordered.indexOf(node) < ordered.indexOf(bubble) ? 'before' : 'after')
+    }).sort().join(','),
+    label: toggle?.textContent.trim(),
+    pressed: toggle?.getAttribute('aria-pressed'),
+    hint: toggle?.closest('div')?.parentElement?.innerText ?? '',
+  }
+})()`)
+check('默认两侧都显示头像（用户侧与小栖侧各一）', avatarOn.count >= 2 && avatarOn.roles === 'companion,user', JSON.stringify(avatarOn))
+check('头像挂在气泡外侧（小栖在左、用户在右）', avatarOn.sides === 'companion:before,user:after', avatarOn.sides)
+check('头像开关初值反映当前状态', avatarOn.label === '显示' && avatarOn.pressed === 'true', JSON.stringify(avatarOn))
+check('开关明说影响所有会话', avatarOn.hint.includes('影响所有会话'), avatarOn.hint)
+
+await evaluate(`(() => { document.querySelector('[data-testid="chat-setting-avatars"]').click(); return 'ok' })()`)
+const avatarOff = await evaluate(`(() => ({
+  count: document.querySelectorAll('[data-testid="message-avatar"]').length,
+  label: document.querySelector('[data-testid="chat-setting-avatars"]')?.textContent.trim(),
+}))()`)
+check('关掉后头像立即消失', avatarOff.count === 0 && avatarOff.label === '隐藏', JSON.stringify(avatarOff))
+
+await evaluate(`(() => { document.querySelector('[aria-label="关闭聊天设置"]').click(); return 'ok' })()`)
+await reloadAndWait(`document.querySelector('[data-testid="chat-settings-open"]') !== null`, '刷新回到会话')
+const avatarAfterReload = await evaluate(`(() => ({
+  count: document.querySelectorAll('[data-testid="message-avatar"]').length,
+  stored: localStorage.getItem('habitat-chat-display') ?? '',
+}))()`)
+check('头像开关刷新后仍然记住', avatarAfterReload.count === 0 && avatarAfterReload.stored.includes('"showAvatars":false'), JSON.stringify(avatarAfterReload))
+
+const storeNames = await evaluate(`(async () => {
+  const db = await new Promise((res, rej) => { const r = indexedDB.open('habitat-db'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
+  const names = [...db.objectStoreNames]; db.close(); return names
+})()`)
+check('显示偏好不落 Dexie（它是偏好不是数据，不进备份）', !storeNames.includes('chatDisplay'), storeNames.join(','))
+
+/* 收尾：恢复显示 —— 别把「隐藏」留给后面的截图与下一次运行 */
+await evaluate(`(() => { document.querySelector('[data-testid="chat-settings-open"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="chat-setting-avatars"]') !== null`, '重新打开聊天设置')
+await evaluate(`(() => { document.querySelector('[data-testid="chat-setting-avatars"]').click(); return 'ok' })()`)
+check('再点一次可恢复显示', (await evaluate(`document.querySelectorAll('[data-testid="message-avatar"]').length`)) >= 2, '')
+await evaluate(`(() => { document.querySelector('[aria-label="关闭聊天设置"]').click(); return 'ok' })()`)
 
 /* ---------- 14. 控制台 ---------- */
 const errors = consoleLogs.filter((l) => l.startsWith('[error]') || l.startsWith('[exception]'))

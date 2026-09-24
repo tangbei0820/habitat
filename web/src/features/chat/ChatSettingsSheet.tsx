@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { BubbleMode, ChatSession } from '@shared/types'
 import type { ChatSessionSettingsInput } from '../../db/chat'
+import { useChatDisplay } from '../../app/useChatDisplay'
 import { exportSessionJson, exportSessionMarkdown } from '../../lib/exportSession'
 
 const FIELD_CLASS = 'w-full rounded-lg border bg-transparent px-3 py-2 text-sm outline-none'
@@ -33,6 +34,10 @@ export function ChatSettingsSheet({
 
   const [exporting, setExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
+
+  /** 全局显示偏好：不在表单里、不随「保存」提交 —— 点一下立刻生效（SPEC §9.1.3） */
+  const showAvatars = useChatDisplay((state) => state.showAvatars)
+  const toggleAvatars = useChatDisplay((state) => state.toggleAvatars)
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
@@ -84,7 +89,7 @@ export function ChatSettingsSheet({
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 id="chat-settings-title" className="font-semibold">聊天设置</h2>
-            <p className="mt-0.5 text-xs" style={{ color: 'var(--color-text-dim)' }}>只影响当前会话</p>
+            <p className="mt-0.5 text-xs" style={{ color: 'var(--color-text-dim)' }}>上方三项只影响当前会话</p>
           </div>
           <button type="button" onClick={onClose} disabled={saving} aria-label="关闭聊天设置" className="px-2 text-lg disabled:opacity-40">×</button>
         </div>
@@ -168,6 +173,30 @@ export function ChatSettingsSheet({
               </p>
             )}
           </div>
+        </div>
+
+        {/*
+          全局显示偏好（SPEC §9.1.3）。刻意**与上方三项分开、也不参与本表单的提交**：
+          它属于所有会话，跟「点了保存才生效」的语义不同 —— 混进同一个提交里，
+          用户会以为「不点保存就不算数」。
+        */}
+        <div className="mt-4 border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span>聊天气泡头像</span>
+            <button
+              type="button"
+              data-testid="chat-setting-avatars"
+              aria-pressed={showAvatars}
+              onClick={toggleAvatars}
+              className="rounded-full border px-4 py-1 text-sm"
+              style={{ borderColor: 'var(--color-border)' }}
+            >
+              {showAvatars ? '显示' : '隐藏'}
+            </button>
+          </div>
+          <p className="mt-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+            影响所有会话，点了立刻生效（不用点保存）。
+          </p>
         </div>
 
         <div className="mt-5 flex justify-end gap-2">

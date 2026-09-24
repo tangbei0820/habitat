@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { BubbleMode, ChatMessage } from '@shared/types'
+import { MessageAvatar } from './MessageAvatar'
 import { MessageBlocks } from './MessageBlocks'
 
 /** 长按判定时长：短了会和「点一下」打架，长了会让人觉得没反应 */
@@ -82,6 +83,7 @@ export function ChatBubble({
   selected,
   editing,
   bubbleMode,
+  showAvatars,
 }: {
   item: ChatItem
   actions: BubbleActions
@@ -90,6 +92,8 @@ export function ChatBubble({
   /** 是否正在内联编辑这一条 */
   editing: boolean
   bubbleMode: BubbleMode
+  /** 是否显示两侧头像 —— **全局显示偏好**（SPEC §9.1.3），不随会话变，所以由上层读 store 传进来 */
+  showAvatars: boolean
 }) {
   const { message, text } = item
   const isUser = message.role === 'user'
@@ -204,6 +208,12 @@ export function ChatBubble({
             {selected ? '✓' : ''}
           </span>
         )}
+        {/*
+          头像放在气泡的**外侧**（用户侧在右、小栖侧在左），与主流聊天 App 一致：
+          放内侧会把气泡挤离屏幕边缘，整列看起来像塌了。
+          `MessageAvatar` 对 tool / system 消息返回 null，所以两处都写也不会多出空占位。
+        */}
+        {showAvatars && !isUser && <MessageAvatar role={message.role} />}
         <div className={`flex min-w-0 flex-1 ${isUser ? 'justify-end' : 'justify-start'}`}>
           <div
             data-bubble-mode={bubbleMode}
@@ -288,6 +298,7 @@ export function ChatBubble({
             )}
           </div>
         </div>
+        {showAvatars && isUser && <MessageAvatar role={message.role} />}
       </div>
 
       {showActions && (
