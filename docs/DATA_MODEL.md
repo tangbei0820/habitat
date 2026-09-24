@@ -164,16 +164,15 @@ interface SessionGroup extends BaseObject {
 写入侧（`setSessionGroup` / `deleteSessionGroup`）已保证不会产生悬空引用，但导入的备份与手工改过的库不受我们控制 ——
 兜底放在**渲染**层，任何新的读取点都不会因为「这条会话哪个分区都不属于」而把它漏掉。
 
-## 4. Home 生活实体（本地）
+## 4. Home 生活实体
 
-十类生活数据，全部继承基座：
+原本十类，**2026-09-24 起只剩八类在本地** —— `Moment`（留言板）与 `Diary`（日记）
+已迁到服务端 SQLite（理由与字段见 §11）。剩下这八类仍住 Dexie：
 
 | 实体 | 表 | 关键字段 |
 |---|---|---|
-| `Moment` | `moments` | `content`, `author: 'user' \| 'companion'` |
 | `WishlistItem` | `wishlist` | `title`, `status: 'open' \| 'done'`, `completedAt` |
 | `CountdownDay` | `countdowns` | `title`, `targetDate`（本地 `YYYY-MM-DD`） |
-| `Diary` | `diaries` | `title`, `content`（纯文本）, `entryDate` |
 | `Bookmark` | `bookmarks` | `targetType`, `targetId`, `title`, `note`, `categoryId` |
 | `Artwork` | `artworks` | `title`, `category`, `description`, `externalUrl` |
 | `Photo` | `photos` | `title`, `caption`, `imageDataUrl`, `mimeType`, `sizeBytes`, `takenAt`, `collectionId` |
@@ -222,7 +221,7 @@ interface SessionGroup extends BaseObject {
 | 项 | 改动 | 依据 |
 |---|---|---|
 | ~~会话分组~~ | ✅ 已落地（T-018）：`ChatSession.groupId` + `sessionGroups` 表 → Dexie v8 | SPEC §2.1.3 |
-| 日记权限模型 | `Diary` 加 `author`、可见性 / 锁定；新增「查看请求」实体 | SPEC §3.4 / §6.3 |
+| 日记权限模型 | 🟡 **部分落地**（T-036）：`Diary.author` / `visibility` 已随迁服务端落库（§11）；「查看请求」实体待 Phase 6.5 P1 的事件收件箱 | SPEC §3.4 / §6.3 |
 | 作品来源引用 | 复用基座的 `sourceId` / `sessionId`，**不新增字段**；聊天来源已落地（T-016） | SPEC §3.6.3 |
 | 相册来源引用 | 同上；聊天图片来源与 block 位置已落地（T-016） | SPEC §3.7.2 |
 
@@ -243,9 +242,28 @@ interface SessionGroup extends BaseObject {
 | v8 | 80 | `sessions` 加 `groupId` 索引 + `sessionGroups` 表（会话分组，T-018）。**本版是首个带 `upgrade()` 回调的迁移**：给所有老会话补 `groupId: null` |
 | v9 | 90 | 新增 `homeWidgets` 表（主屏 Widget，T-020）。纯新增表，**不需要 `upgrade()` 回调** —— 它对留言板 / 倒数日只是多了一条引用，没动那两张表的任何字段。`&kind` 是唯一索引 |
 | v10 | 100 | `bookmarks` 加 `categoryId` 索引 + `bookmarkCategories` 表；`photos` 加 `collectionId` 索引 + `photoCollections` 表（收藏分类与相册，T-021）。**带 `upgrade()` 回调**：给老收藏补 `categoryId: null`、老照片补 `collectionId: null`（同 v8 的理由 —— 不让「归属字段一定有值」只活在读取方的记忆里） |
+| v11 | 110 | 新增中转表 `legacyUploads`（日记与留言板迁往服务端，T-036）。⚠️ **本版刻意不带 `upgrade()` 回调**，见下方「v11 为什么不用 upgrade」 |
 
 Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画版本（`verify-chat.mjs`）。
 **每次升版都要在 `db.ts` 的版本注释里写清「为什么」**；只写「加了张表」等于没写。
+
+### v11 为什么不用 `upgrade()`（一个容易反着猜的地方）
+
+**Dexie 的 `stores()` 是跨版本累加的，删表删不掉。**
+源码 `Version.prototype.stores` 里是一句 `extend(storesSpec, version._cfg.storesSource)` ——
+它把 v1..vn **所有**版本的声明合并成一份 schema，后面的 `deleteRemovedTables()` 也只认这份合并结果。
+⇒ **「新版本不声明某张表」不等于删掉它**：只要某个历史版本声明过，表壳就一直在
+（升级事务末尾的 `createMissingTables` 甚至会把缺的表再建回来）。
+实测：升级到 v11 后 `diaries` / `moments` 两张表仍在库里，里面的数据也还在。
+
+于是 v11 不再假装「删表」：
+- `diaries` / `moments` 的**表壳永久存在**（空壳）。别再去"清理"它 —— 清不掉。
+- `db.diaries` / `db.moments` 这类入口在类型层面**刻意不再暴露**；搬迁代码用 `db.table('diaries')`
+  字符串取表，这是明确的「我知道表还在，但它不该再当活表用」。
+- 搬迁**不挂 `upgrade()`，挂在启动期**（`web/src/db/legacy-upload.ts`）。
+  理由：既然旧表删不掉、旧数据本来就一直在，那升级回调就不是"最后一个安全时机"，
+  而它**一辈子只跑一次** —— 那次没搬干净（当时离线 / 浏览器中途关掉 / 跑的是还没写搬迁逻辑的旧构建）
+  就再没有第二次机会。挂启动期则**每次启动都收敛**：表里还剩什么就搬什么。
 
 > ⚠️ v8 为什么用 `upgrade()` 补字段，而不是「读的时候把 `undefined` 当 `null` 容忍」：
 > 后者会让「会话一定有 `groupId`」这条不变量只存在于**读取方的记忆**里，
@@ -263,6 +281,7 @@ Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画
 | v6 | + 会话分组（T-018）；旧版导入时分组按空处理，会话 `groupId` 补成 `null` |
 | v7 | + 主屏 Widget（T-020）；旧版导入时主屏回到「一张 Widget 都没有」 |
 | v8 | + 收藏分类与相册（T-021）；旧版导入时两张分类表按空处理，收藏 `categoryId` / 照片 `collectionId` 补成 `null`（落进「未分类」） |
+| v9 | **− 日记 / 留言板**（T-036）：它们已归服务端，而这份备份的语义始终是「本地那张库的快照」，且必须**离线也能导出** —— 从服务端拉会让它变成「一半离线一半在线」，在最需要它的时候最不可靠。⚠️ 旧备份（v2–v8）里这两块**不丢**：导入时转存进 `legacyUploads` 中转表，由启动流程 / 导入流程上传到服务端，并按 `legacyDiaries` / `legacyMoments` 报数 |
 > ⚠️ v7 导入时**必须按 `kind` 去重**：`&kind` 是唯一索引，手改过的备份（例如两条 `board`）会让
 > `bulkAdd` 抛 `ConstraintError`，导致**整份备份一个字都导不进去**。保留 `createdAt` 最早的那条，
 > 与「先上主屏的在前」的排序语义一致。
@@ -319,3 +338,39 @@ Life 月历与账本是查询模型，不复制事实表：月历按 `event_log.
 `wallet` / `wallet_transaction`；运行页聚合现有健康端点、`body_state_snapshot` 与 `automation_*`。
 价格快照新增后只回填 `price_snapshot_id IS NULL` 且调用时间在有效期内的记录。历史方案若已删除，已有费用仍按
 `profile_id` 与绑定快照保留；无法识别 provider 的老未定价记录继续明确显示未定价，不猜测归属。
+
+## 11. Phase 6.5 共同生活数据（服务端 SQLite，T-036）
+
+从 Dexie 迁入的两张表。**搬家的唯一理由**：AI 跑在服务端，而
+「AI 写日记」「用户请求查看某篇」「AI 决定放不放」这三件事都只能发生在服务端 ——
+数据留在浏览器里，AI 就只能对着假数据演戏（SPEC §6.3 明令禁止）。
+
+| 表 | 字段 | 关键不变量 |
+|---|---|---|
+| `diary` | `id` / `title` / `content` / `entry_date` / `author` / `visibility` / `created_at` / `updated_at` | `author` **就是权限位**：`user` 的日记用户可自由读写删；`companion` 的只给封面。**正文过滤只走 `db/diary.ts` 的 `toDiaryView()` 这一个出口** |
+| `moment` | `id` / `content` / `author` / `created_at` / `updated_at` | 无可见性概念（写出来就是给人看的），只有「谁能删」：用户只能删自己的 |
+
+字段约定：
+
+- `author`：`'user' | 'companion'`（`ContentAuthor`）。**不设第二套 role 字段** —— 作者位与权限位是同一件事。
+- `visibility`：`'private' | 'open' | 'locked'`。三态是**同一件事的三种状态**，
+  所以合成一个字段而不是拆 `private` + `locked` 两个布尔（拆开会造出「private 且 locked」这种没含义的组合）。
+- `entry_date`：本地日期 `YYYY-MM-DD` 字符串，同 `CountdownDay.targetDate` 的理由（避免纯日期被时区推一天）。
+- ⚠️ 无权限时**不发正文**：`DiaryView.content` 为 `null`（**不是空串**），并显式给 `readable` / `editable`。
+  让前端拿 `content === null` 去猜「没权限还是还没写」是不行的 —— 那是两件完全不同的事。
+
+**迁移怎么保证不丢数据**：整套搬迁在**启动期**跑（`web/src/db/legacy-upload.ts`，三轮：收编 → 上传 → 清源）。
+先把旧表 `diaries` / `moments` 里剩余的行登记进中转表 `legacyUploads`（按 `kind:id` 去重），
+再整批发给 `/api/diary/import` 与 `/api/moments/import`。
+两个导入端点都**幂等**（已存在的 id 跳过、不覆盖），所以重复触发不产生副本；
+**服务端确认收下之后**才删中转行、并从旧表删掉那几行 —— 传一半就清，等于把用户的东西弄丢。
+「每次启动都跑」这件事本身就是安全网：老设备的遗留数据、旧构建没搬干净的数据，都会在下次启动收敛。
+
+（为什么不放 Dexie 的 `upgrade()`：见上文「v11 为什么不用 upgrade」。总结一句 —— 旧表壳删不掉，
+而 upgrade 只跑一次。）
+
+⚠️ **迁移上来的旧日记一律标 `author='user'`**，所以北北已写好的日记不会因迁移变成只读。
+AI 的日记只能由 AI 侧写入（Phase 6.5 P1 的工具层），用户接口**不接受 `author` 入参**（SPEC §3.4.2）。
+
+**待补（本轮范围外）**：日记的「查看请求」实体（`diary_access_request`）与 AI 的允许 / 拒绝决策，
+属 Phase 6.5 P1 的事件收件箱；`Diary` 的数据层与权限字段已就位，缺的是流转。

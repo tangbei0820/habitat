@@ -6,9 +6,7 @@ import type {
   ChatMessage,
   ChatSession,
   CountdownDay,
-  Diary,
   HomeWidget,
-  Moment,
   Photo,
   PhotoCollection,
   ReadingNote,
@@ -17,6 +15,27 @@ import type {
   StudyRecord,
   WishlistItem,
 } from '@shared/types'
+
+/**
+ * v11 的**搬迁中转表**（临时，传完即清）。
+ *
+ * v4/v5 建的 `diaries` / `moments` 在新架构里降级成**搬迁源**：日记 / 留言板归服务端了
+ * （AI 也在服务端跑，数据留两份就一定会分家），界面不再读这两张表。
+ *
+ * ⚠️ 但它们的**表壳删不掉** —— 见类注释 v11 那条：Dexie 的 `stores()` 是跨版本累加的，
+ * 「新版本不声明」≠「删掉」。所以搬迁是**每次启动做一遍**的收敛过程：
+ * 收编旧表剩余行 → 上传服务端 → 服务端确认后才删中转行、并从旧表删掉那几行。
+ * 全过程在 `legacy-upload.ts`。
+ *
+ * `payload` 存 JSON 字符串而不解析成结构：搬运过程中少做一层加工，就少一个出错的地方。
+ * 表里没有行时它就是纯粹的空表，不占任何东西。
+ */
+export interface LegacyUpload {
+  id: string
+  kind: 'diary' | 'moment'
+  payload: string
+  createdAt: number
+}
 
 /**
  * 本地数据层（铁律5）：第一天就版本化迁移。
@@ -37,15 +56,21 @@ import type {
  *     它对留言板 / 倒数日只是「多了一条引用」，没有动那两张表的任何字段。
  * v10：收藏分类 + 相册（SPEC §3.5.4 / §3.7.3）。新增两张分类表，`bookmarks` / `photos`
  *     各加一个归属字段（老数据在 upgrade 里补 `null`，同 v8 的做法）。
+ * v11：日记 / 留言板**迁往服务端**（Phase 6.5）。本版只新增一张搬迁中转表 `legacyUploads`，
+ *     **不含 upgrade 回调** —— 搬迁（收编 → 上传 → 服务端确认后清源）整套在启动期由
+ *     `legacy-upload.ts` 完成。为什么不放这里：Dexie 的 `stores()` 是**跨版本累加**的
+ *     （源码里 `extend(storesSpec, version._cfg.storesSource)` 层层合并，删表也只认这份合并结果），
+ *     所以「新版本不声明某张表」**删不掉它** —— `diaries` / `moments` 的表壳会一直存在。
+ *     而 upgrade 回调一辈子只跑一次，一旦留下没搬干净的旧数据就再也没机会补救；
+ *     搬到启动期则每次启动都会收敛。两个真后果：旧表壳永久存在（空壳，别去"清理"它），
+ *     以及 `db.diaries` 这类入口在类型层面刻意不再暴露。
  */
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
   sessionGroups!: Table<SessionGroup, string>
   messages!: Table<ChatMessage, string>
-  moments!: Table<Moment, string>
   wishlist!: Table<WishlistItem, string>
   countdowns!: Table<CountdownDay, string>
-  diaries!: Table<Diary, string>
   bookmarks!: Table<Bookmark, string>
   bookmarkCategories!: Table<BookmarkCategory, string>
   artworks!: Table<Artwork, string>
@@ -55,6 +80,8 @@ export class HabitatDb extends Dexie {
   musicTracks!: Table<MusicTrack, string>
   studyRecords!: Table<StudyRecord, string>
   homeWidgets!: Table<HomeWidget, string>
+  /** 搬迁中转表：启动流程把旧表搬完、服务端确认后就清空，之后一直是空的 */
+  legacyUploads!: Table<LegacyUpload, string>
 
   constructor() {
     super('habitat-db')
@@ -201,6 +228,32 @@ export class HabitatDb extends Dexie {
             if (photo.collectionId === undefined) photo.collectionId = null
           })
       })
+    // v11：日记 / 留言板迁往服务端（Phase 6.5）。本版**只加一张搬迁中转表**，不含 upgrade 回调 ——
+    // 整套搬运（收编 → 上传 → 服务端确认后清源）在启动期由 `legacy-upload.ts` 完成。
+    // 为什么不放 upgrade 回调里：① `diaries` / `moments` 的表壳**删不掉**（Dexie 的 stores() 是
+    // 跨版本累加的，见类注释 v11 那条），旧数据本来就会一直躺在库里；② upgrade 回调**一辈子只跑一次**，
+    // 万一那次没搬干净（当时离线 / 浏览器中途关掉 / 跑的是还没写搬迁逻辑的旧构建），就再无补救机会。
+    // 放启动期则**每次启动都收敛**：表里还剩什么就搬什么。
+    this.version(11)
+      .stores({
+        sessions: 'id, updatedAt, pinnedAt, archivedAt, groupId',
+        sessionGroups: 'id, createdAt',
+        messages: 'id, sessionId, createdAt, [sessionId+createdAt+id]',
+        wishlist: 'id, status, createdAt, updatedAt',
+        countdowns: 'id, targetDate, createdAt',
+        bookmarks: 'id, targetType, targetId, createdAt, categoryId, &[targetType+targetId]',
+        bookmarkCategories: 'id, createdAt',
+        artworks: 'id, category, createdAt, updatedAt',
+        photos: 'id, takenAt, createdAt, collectionId',
+        photoCollections: 'id, createdAt',
+        readingNotes: 'id, status, createdAt, updatedAt',
+        musicTracks: 'id, createdAt, updatedAt',
+        studyRecords: 'id, studiedOn, createdAt, updatedAt',
+        homeWidgets: 'id, &kind, createdAt',
+        legacyUploads: 'id, kind, createdAt',
+      })
+    // 刻意没有 .upgrade()：搬迁不在版本变化时做，而在每次启动时做（见上方注释与 legacy-upload.ts）。
+    // 也不在这里声明 diaries / moments —— 声明了也删不掉它们，省掉能少一份「以为删了」的误解。
   }
 }
 

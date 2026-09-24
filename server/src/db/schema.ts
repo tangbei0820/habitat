@@ -1,8 +1,13 @@
 /**
  * Drizzle schema —— 服务端 SQLite（技术方案 §6.2）
- * 覆盖基础诊断、API/用量、Phase 3B 主动行为与钱包账本表。
+ * 覆盖基础诊断、API/用量、Phase 3B 主动行为、钱包账本，以及 Phase 6.5 起从 Dexie 迁入的共同生活数据。
  */
-import type { ApiProfileModelMap, AutomationPolicy } from '@shared/types'
+import type {
+  ApiProfileModelMap,
+  AutomationPolicy,
+  ContentAuthor,
+  DiaryVisibility,
+} from '@shared/types'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 /** McpDiagnosticLog（§6.2 / §7.2②）：MCP 握手与每次请求响应全量落此表，逐请求可回放 */
@@ -228,3 +233,48 @@ export const walletTransaction = sqliteTable('wallet_transaction', {
   refId: text('ref_id'),
   createdAt: integer('created_at').notNull(),
 })
+
+/**
+ * Diary（SPEC §3.4 / §6.2）。**服务端是权威源** —— 2026-09-24 从 `web` 的 Dexie 迁入。
+ *
+ * 为什么必须搬：AI 跑在服务端，而「AI 写日记」「用户请求查看某篇日记」「AI 决定放不放」
+ * 这三件事都发生在服务端。日记留在浏览器里，AI 就只能对着假数据演戏（SPEC §6.3 明确禁止）。
+ *
+ * `author` 同时是权限位（见 shared/types.ts 的 `ContentAuthor`）：
+ * - `user`      —— 用户自己写的，可自由读写删
+ * - `companion` —— AI 私有，用户只能看封面；正文仅在 `visibility='open'` 时才随接口下发
+ *
+ * ⚠️ 正文过滤**在数据访问层做**（`db/diary.ts`），不是在路由层拼参数 ——
+ * 路由以后可能多几条，漏一处就是把 AI 的私密日记漏给用户。
+ */
+export const diary = sqliteTable('diary', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  /** 本地日期 `YYYY-MM-DD`（与 `CountdownDay.targetDate` 同惯例，避免纯日期被时区推一天） */
+  entryDate: text('entry_date').notNull(),
+  author: text('author', { enum: ['companion', 'user'] }).$type<ContentAuthor>().notNull(),
+  visibility: text('visibility', { enum: ['private', 'open', 'locked'] }).$type<DiaryVisibility>().notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+export type DiaryRow = typeof diary.$inferSelect
+export type NewDiary = typeof diary.$inferInsert
+
+/**
+ * Moment（SPEC §3.3 留言板）。服务端权威源，同 Diary 的理由。
+ *
+ * `author` 不是为迁移新加的字段 —— 前端 Dexie 时代就预留了 `companion`，
+ * 只是一直没人写（`createMoment` 硬编码 `'user'`）。现在 AI 主动行为能真正写进来了。
+ */
+export const moment = sqliteTable('moment', {
+  id: text('id').primaryKey(),
+  content: text('content').notNull(),
+  author: text('author', { enum: ['user', 'companion'] }).$type<ContentAuthor>().notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+export type MomentRow = typeof moment.$inferSelect
+export type NewMoment = typeof moment.$inferInsert

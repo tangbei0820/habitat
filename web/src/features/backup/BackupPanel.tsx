@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { downloadBackup, exportAll, importAll, readLastExportAt } from '../../lib/backup'
 import { db } from '../../db/db'
+import { runLegacyUpload } from '../../db/legacy-upload'
 import { log } from '../../lib/log'
 
 /** 超过这个天数没导出就提醒。个人自用、数据变动不频繁，7 天太吵、30 天太晚 */
@@ -52,8 +53,8 @@ export function BackupPanel() {
       downloadBackup(backup)
       setLastExportAt(backup.exportedAt)
       setIsError(false)
-      const homeCount = backup.moments.length + backup.wishlist.length + backup.countdowns.length + backup.diaries.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.musicTracks.length + backup.studyRecords.length
-      setMessage(`已导出 ${backup.sessions.length} 个会话、${backup.messages.length} 条消息、${homeCount} 条生活记录`)
+      const homeCount = backup.wishlist.length + backup.countdowns.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.musicTracks.length + backup.studyRecords.length
+      setMessage(`已导出 ${backup.sessions.length} 个会话、${backup.messages.length} 条消息、${homeCount} 条生活记录（日记与留言板在服务端，不在本地备份内）`)
     } catch (err: unknown) {
       log.error('导出备份失败', err)
       setIsError(true)
@@ -85,8 +86,21 @@ export function BackupPanel() {
       }
       const counts = await importAll(raw)
       setIsError(false)
-      const homeCount = counts.moments + counts.wishlist + counts.countdowns + counts.diaries + counts.bookmarks + counts.artworks + counts.photos + counts.readingNotes + counts.musicTracks + counts.studyRecords
-      setMessage(`导入完成：${counts.sessions} 个会话、${counts.messages} 条消息、${homeCount} 条生活记录。刷新页面后生效。`)
+      // 旧备份里救出来的日记 / 留言立刻送上服务端。传不动**不算导入失败** ——
+      // 它们还在中转表里，下次启动会自动重试，没必要让用户为此重来一遍。
+      let rescued = counts.legacyDiaries + counts.legacyMoments
+      try {
+        const uploaded = await runLegacyUpload()
+        if (uploaded !== null) rescued = uploaded.diaries + uploaded.moments
+      } catch (err: unknown) {
+        log.warn('旧备份数据上传未完成，下次启动会重试', err)
+      }
+      const homeCount = counts.wishlist + counts.countdowns + counts.bookmarks + counts.artworks + counts.photos + counts.readingNotes + counts.musicTracks + counts.studyRecords
+      setMessage(
+        `导入完成：${counts.sessions} 个会话、${counts.messages} 条消息、${homeCount} 条生活记录。` +
+          (rescued > 0 ? `另有 ${counts.legacyDiaries} 篇日记、${counts.legacyMoments} 条留言已恢复到服务端。` : '') +
+          '刷新页面后生效。',
+      )
       setPendingFile(null)
       if (input !== null) input.value = ''
     } catch (err: unknown) {
@@ -111,6 +125,8 @@ export function BackupPanel() {
       </h2>
       <p className="mb-3 text-xs" style={{ color: 'var(--color-text-dim)' }}>
         导出全部本地聊天与共同生活记录（JSON 文件）。换浏览器 / 清站点数据前先导一份。
+        <br />
+        日记与留言板存在服务端，<strong>不在这份本地备份里</strong> —— 它们随服务端数据一起备份（sqlite 文件）。
       </p>
 
       <div className="flex flex-wrap items-center gap-2">

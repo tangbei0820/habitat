@@ -205,6 +205,31 @@ CREATE TABLE IF NOT EXISTS wallet_transaction (
 CREATE INDEX IF NOT EXISTS idx_wallet_tx_created ON wallet_transaction (created_at DESC);
 `)
 
+// 共同生活数据（Phase 6.5 起从 web 的 Dexie 迁入）。搬家的理由见 schema.ts 的 Diary 注释：
+// AI 跑在服务端，「AI 写日记 / 用户请求查看 / AI 决定放不放」都只能在这里发生。
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS diary (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  entry_date TEXT NOT NULL,
+  author TEXT NOT NULL DEFAULT 'companion',
+  visibility TEXT NOT NULL DEFAULT 'private',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_diary_entry ON diary (entry_date DESC);
+CREATE INDEX IF NOT EXISTS idx_diary_author ON diary (author, entry_date DESC);
+CREATE TABLE IF NOT EXISTS moment (
+  id TEXT PRIMARY KEY,
+  content TEXT NOT NULL,
+  author TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_moment_created ON moment (created_at DESC);
+`)
+
 export const db = drizzle(sqlite, { schema })
 
 export function closeDb(): void {

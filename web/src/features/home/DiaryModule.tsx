@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { Diary } from '@shared/types'
+import type { DiaryView } from '@shared/types'
 import { createDiary, deleteDiary, listDiaries, updateDiary } from '../../db/home'
 
 function todayKey(): string {
@@ -8,8 +8,21 @@ function todayKey(): string {
   return `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
+/**
+ * 日记（SPEC §3.4）。
+ *
+ * 这一页上**两种日记并存**：
+ * - 自己写的（`author='user'`）—— 可编辑、可删除，正文一直都在
+ * - 小栖写的（`author='companion'`）—— 只给封面；它没开放时连正文都不下发
+ *
+ * 所以「编辑 / 删除」按 `item.editable` 显示，而不是「这一页的日记都能改」——
+ * 后者会把 AI 的私密日记当成用户的普通内容（SPEC §6.2 明确区分这两者）。
+ *
+ * ⚠️ 「请求查看」的交互属于 Phase 6.5 P1 的权限流转（事件收件箱），本版还没接；
+ * 现在只把权限状态如实显示出来，不做一个点了没反应的按钮。
+ */
 export function DiaryModule() {
-  const [items, setItems] = useState<Diary[]>([])
+  const [items, setItems] = useState<DiaryView[]>([])
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [entryDate, setEntryDate] = useState(todayKey)
@@ -48,9 +61,10 @@ export function DiaryModule() {
     }
   }
 
-  function startEditing(item: Diary): void {
+  function startEditing(item: DiaryView): void {
     setTitle(item.title)
-    setContent(item.content)
+    // 能进编辑的必然是自己的日记（按钮只在 editable 时渲染），正文一定有；`?? ''` 只是给类型收口
+    setContent(item.content ?? '')
     setEntryDate(item.entryDate)
     setEditingId(item.id)
     setError(null)
@@ -98,14 +112,27 @@ export function DiaryModule() {
       ) : (
         <ul className="space-y-3">
           {items.map((item) => (
-            <li key={item.id} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
-              <time className="text-xs" style={{ color: 'var(--color-text-dim)' }}>{item.entryDate}</time>
-              <h3 className="mt-1 font-medium">{item.title}</h3>
-              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.content}</p>
-              <div className="mt-3 flex justify-end gap-3 text-xs">
-                <button type="button" onClick={() => startEditing(item)} style={{ color: 'var(--color-primary)' }}>编辑</button>
-                <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deletingId === item.id ? '确认删除？' : '删除'}</button>
+            <li key={item.id} data-testid="diary-item" data-author={item.author} data-readable={item.readable ? 'true' : 'false'} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+              <div className="flex items-center justify-between gap-3">
+                <time className="text-xs" style={{ color: 'var(--color-text-dim)' }}>{item.entryDate}</time>
+                {item.author === 'companion' && (
+                  <span className="text-xs" style={{ color: 'var(--color-text-dim)' }}>小栖的日记</span>
+                )}
               </div>
+              <h3 className="mt-1 font-medium">{item.title}</h3>
+              {item.readable ? (
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.content}</p>
+              ) : (
+                <p className="mt-2 text-sm" style={{ color: 'var(--color-text-dim)' }}>
+                  {item.visibility === 'locked' ? '这一篇被小栖锁着。' : '小栖还没决定要不要把这一篇给你看。'}
+                </p>
+              )}
+              {item.editable && (
+                <div className="mt-3 flex justify-end gap-3 text-xs">
+                  <button type="button" onClick={() => startEditing(item)} style={{ color: 'var(--color-primary)' }}>编辑</button>
+                  <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deletingId === item.id ? '确认删除？' : '删除'}</button>
+                </div>
+              )}
             </li>
           ))}
         </ul>

@@ -9,6 +9,12 @@ import {
   removeHomeWidget,
 } from '../../db/home'
 
+/**
+ * 留言板（SPEC §3.3）。
+ *
+ * 与日记不同，这里**没有私密一说** —— 写出来就是给人看的，所以小栖的留言照样显示正文。
+ * 唯一的权限差别是**谁能删**：用户只能删自己的，小栖的留言不归用户处置（SPEC §6.2）。
+ */
 export function BoardModule() {
   const [items, setItems] = useState<Moment[]>([])
   const [draft, setDraft] = useState('')
@@ -47,9 +53,15 @@ export function BoardModule() {
       setDeleting(id)
       return
     }
-    await deleteMoment(id)
-    setItems((current) => current.filter((item) => item.id !== id))
-    setDeleting(null)
+    try {
+      await deleteMoment(id)
+      setItems((current) => current.filter((item) => item.id !== id))
+      setDeleting(null)
+      setError(null)
+    } catch (err: unknown) {
+      setDeleting(null)
+      setError(err instanceof Error ? err.message : String(err))
+    }
   }
 
   /** 上主屏 = 放一张引用卡片；留言板 Widget 不指向某一条留言（SPEC §3.2.2） */
@@ -97,11 +109,16 @@ export function BoardModule() {
       ) : (
         <ul className="space-y-2">
           {items.map((item) => (
-            <li key={item.id} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+            <li key={item.id} data-testid="moment-item" data-author={item.author} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
               <p className="whitespace-pre-wrap break-words text-sm">{item.content}</p>
               <div className="mt-3 flex items-center justify-between gap-3 text-xs" style={{ color: 'var(--color-text-dim)' }}>
-                <time>{new Date(item.createdAt).toLocaleString('zh-CN')}</time>
-                <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} style={{ color: deleting === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deleting === item.id ? '确认删除？' : '删除'}</button>
+                <span>
+                  {item.author === 'companion' && <span style={{ color: 'var(--color-primary)' }}>小栖 · </span>}
+                  <time>{new Date(item.createdAt).toLocaleString('zh-CN')}</time>
+                </span>
+                {item.author === 'user' && (
+                  <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} style={{ color: deleting === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deleting === item.id ? '确认删除？' : '删除'}</button>
+                )}
               </div>
             </li>
           ))}

@@ -6,7 +6,7 @@ import {
   type BookmarkCategory,
   type ChatMessage,
   type CountdownDay,
-  type Diary,
+  type DiaryView,
   type HomeWidget,
   type HomeWidgetKind,
   type Moment,
@@ -19,6 +19,7 @@ import {
   type StudyRecord,
   type WishlistItem,
 } from '@shared/types'
+import { fetchJson, fetchVoid } from '../lib/api'
 import { formatDuration } from '../lib/format'
 import { db } from './db'
 
@@ -36,26 +37,28 @@ function requiredText(value: string, label: string): string {
   return normalized
 }
 
+/**
+ * ⚠️ 留言板自 2026-09-24 起**权威存储在服务端**（`moment` 表）。
+ *
+ * 搬家不是为了「统一架构」，而是因为 AI 跑在服务端：留言板留在浏览器里，
+ * 「小栖主动留言」就只能由前端伪造 —— 那是 SPEC §6.3 明令禁止的假数据。
+ * 前端 Dexie 不再有 `moments` 表（v11 起）。
+ */
 export async function listMoments(): Promise<Moment[]> {
-  return db.moments.orderBy('createdAt').reverse().toArray()
+  const data = await fetchJson<{ items: Moment[] }>('/api/moments')
+  return data.items
 }
 
 export async function createMoment(content: string): Promise<Moment> {
-  const at = Date.now()
-  const item: Moment = {
-    id: nowId('moment'),
-    type: 'moment',
-    content: requiredText(content, '留言'),
-    author: 'user',
-    createdAt: at,
-    updatedAt: at,
-  }
-  await db.moments.add(item)
-  return item
+  return fetchJson<Moment>('/api/moments', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ content: requiredText(content, '留言') }),
+  })
 }
 
 export async function deleteMoment(id: string): Promise<void> {
-  await db.moments.delete(id)
+  await fetchVoid(`/api/moments/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 export async function listWishlist(): Promise<WishlistItem[]> {
@@ -136,37 +139,44 @@ function requiredDate(value: string): string {
   return normalized
 }
 
-export async function listDiaries(): Promise<Diary[]> {
-  return db.diaries.orderBy('entryDate').reverse().toArray()
+/**
+ * ⚠️ 日记自 2026-09-24 起**权威存储在服务端**（`diary` 表），返回类型也从 `Diary` 换成 `DiaryView`。
+ *
+ * 换类型不是改名：AI 的日记**可能没有正文**（SPEC §3.4.2 —— 用户看得到有几篇、看得到封面，
+ * 要读正文得先请求）。用 `readable` / `editable` 显式表达，页面就不必去猜
+ * 「content 为空是没权限还是还没写」—— 那是两种完全不同的情况。
+ */
+export async function listDiaries(): Promise<DiaryView[]> {
+  const data = await fetchJson<{ items: DiaryView[] }>('/api/diary')
+  return data.items
 }
 
-export async function createDiary(title: string, content: string, entryDate: string): Promise<Diary> {
-  const at = Date.now()
-  const item: Diary = {
-    id: nowId('diary'),
-    type: 'diary',
-    title: requiredText(title, '日记标题'),
-    content: requiredText(content, '日记正文'),
-    entryDate: requiredDate(entryDate),
-    createdAt: at,
-    updatedAt: at,
-  }
-  await db.diaries.add(item)
-  return item
-}
-
-export async function updateDiary(id: string, title: string, content: string, entryDate: string): Promise<void> {
-  const changed = await db.diaries.update(id, {
-    title: requiredText(title, '日记标题'),
-    content: requiredText(content, '日记正文'),
-    entryDate: requiredDate(entryDate),
-    updatedAt: Date.now(),
+export async function createDiary(title: string, content: string, entryDate: string): Promise<DiaryView> {
+  return fetchJson<DiaryView>('/api/diary', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      title: requiredText(title, '日记标题'),
+      content: requiredText(content, '日记正文'),
+      entryDate: requiredDate(entryDate),
+    }),
   })
-  if (changed === 0) throw new Error('这篇日记已经不存在')
+}
+
+export async function updateDiary(id: string, title: string, content: string, entryDate: string): Promise<DiaryView> {
+  return fetchJson<DiaryView>(`/api/diary/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      title: requiredText(title, '日记标题'),
+      content: requiredText(content, '日记正文'),
+      entryDate: requiredDate(entryDate),
+    }),
+  })
 }
 
 export async function deleteDiary(id: string): Promise<void> {
-  await db.diaries.delete(id)
+  await fetchVoid(`/api/diary/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 export async function listBookmarks(): Promise<Bookmark[]> {
@@ -801,9 +811,10 @@ export type HomeWidgetView =
   | { kind: 'board'; id: string; createdAt: number; notes: Moment[] }
   | { kind: 'countdown'; id: string; createdAt: number; day: CountdownDay }
 
-/** 主屏 Widget 用的「最近 N 条」；留言板模块页仍用全量 `listMoments()` */
+/** 主屏 Widget 用的「最近 N 条」（由服务端切片，不把整表拉回来）；留言板模块页用全量 `listMoments()` */
 async function recentMoments(limit: number): Promise<Moment[]> {
-  return db.moments.orderBy('createdAt').reverse().limit(limit).toArray()
+  const data = await fetchJson<{ items: Moment[] }>(`/api/moments?limit=${String(limit)}`)
+  return data.items
 }
 
 /** 按「上主屏的先后」返回（`createdAt` 升序）：先放的在前面，位置不随点选跳动 */

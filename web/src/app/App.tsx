@@ -6,6 +6,7 @@ import {
 } from 'react-router-dom'
 import { AppShell } from './AppShell'
 import { hydrateDb } from '../db/db'
+import { runLegacyUpload } from '../db/legacy-upload'
 import { log } from '../lib/log'
 import { ChatListPage } from '../pages/chat/ChatListPage'
 import { ChatWindowPage } from '../pages/chat/ChatWindowPage'
@@ -21,7 +22,17 @@ function HydrationGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     hydrateDb()
-      .then(() => setState('ready'))
+      .then(() => {
+        setState('ready')
+        // v11 搬迁（若有）：**不阻塞进入应用** —— 搬不动（离线 / 后端没起）就下次启动再试，
+        // 不该因为一件后台的事让人打不开门。搬完之前，日记 / 留言页会是空的，
+        // 但数据在旧表和中转表里各有一份，不会丢（见 db/legacy-upload.ts）。
+        void runLegacyUpload()
+          .then((result) => {
+            if (result !== null) log.info('本地日记 / 留言已搬到服务端', result)
+          })
+          .catch((err: unknown) => log.warn('本地数据搬迁未完成，下次启动会重试', err))
+      })
       .catch((err: unknown) => {
         log.error('本地数据水合失败', err)
         setError(err)

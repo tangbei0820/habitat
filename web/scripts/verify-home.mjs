@@ -1,7 +1,14 @@
 /**
- * Phase 2 Home 完整验收：十个生活模块 + 主屏 Widget + Dexie v9 持久化 / 备份 v7。
+ * Phase 2 Home 完整验收：八个生活模块 + 主屏 Widget + Dexie v11 持久化 / 备份 v9。
  * 前置：vite + 无头 Edge CDP；用 Node >= 22 运行（需全局 WebSocket）。
  * 请使用隔离的浏览器 profile：验收最后会导入一份空 v1 备份来验兼容性。
+ *
+ * ⚠️ **本支必须排在流水线最前**（`run-front-verify.sh` 里也是这么排的）。
+ * 它是唯一一支开头就 `Storage.clearDataForOrigin` 的脚本 —— 排在后面的话，清库要等本轮末尾才发生，
+ * **下一轮**的 verify-chat 就会继承本轮留下的收藏记录，而 chat 里「从原位加入收藏」用的是固定 id
+ * （flow-text），撞上重复收藏就等不到「已加入收藏」，直接超时崩掉整支。
+ * 这不是推测：verify-home 曾因语法错误整支没执行（parse 错误 → 模块根本不跑 → 清库没发生），
+ * 下一轮 chat 就超时在「收藏成功反馈」。
  */
 const CDP = process.env.VERIFY_CDP ?? 'http://127.0.0.1:9222'
 const APP = process.env.VERIFY_APP ?? 'http://127.0.0.1:5174'
@@ -118,9 +125,9 @@ await send('Storage.clearDataForOrigin', { origin: new URL(APP).origin, storageT
  */
 await navigate('/home', '留言板')
 await evaluate(`(async () => {
-  const stores = ['sessions', 'sessionGroups', 'messages', 'moments', 'wishlist', 'countdowns',
-    'diaries', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections',
-    'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets']
+  const stores = ['sessions', 'sessionGroups', 'messages', 'wishlist', 'countdowns',
+    'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections',
+    'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets', 'legacyUploads']
   const db = await new Promise((resolve, reject) => {
     const request = indexedDB.open('habitat-db')
     request.onsuccess = () => resolve(request.result)
@@ -992,15 +999,17 @@ const backupCheck = await evaluate(`(async () => {
   })
   return {
     version: backup.version,
-    exportedHome: backup.moments.length + backup.wishlist.length + backup.countdowns.length + backup.diaries.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.musicTracks.length + backup.studyRecords.length,
-    restoredHome: restored.moments + restored.wishlist + restored.countdowns + restored.diaries + restored.bookmarks + restored.artworks + restored.photos + restored.readingNotes + restored.musicTracks + restored.studyRecords,
+    exportedHome: backup.wishlist.length + backup.countdowns.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.musicTracks.length + backup.studyRecords.length,
+    restoredHome: restored.wishlist + restored.countdowns + restored.bookmarks + restored.artworks + restored.photos + restored.readingNotes + restored.musicTracks + restored.studyRecords,
     unsafeBookmarkRejected,
     unsafePhotoRejected,
     unsafeMusicRejected,
     legacyV4NewTables: legacyV4.readingNotes + legacyV4.musicTracks + legacyV4.studyRecords,
     legacyV3NewTables: legacyV3.artworks + legacyV3.photos,
-    legacyV2NewTables: legacyV2.diaries + legacyV2.bookmarks,
-    legacyV1Home: legacyV1.moments + legacyV1.wishlist + legacyV1.countdowns + legacyV1.diaries + legacyV1.bookmarks + legacyV1.artworks + legacyV1.photos + legacyV1.readingNotes + legacyV1.musicTracks + legacyV1.studyRecords,
+    // v9 起日记 / 留言板归服务端：旧备份里的它们不再落 Dexie，而是转存进中转表 ——
+    // 计数语义随之从 diaries 改为 legacyDiaries（含义仍是「这批数据有没有被接住」）
+    legacyV2NewTables: legacyV2.legacyDiaries + legacyV2.bookmarks,
+    legacyV1Home: legacyV1.legacyMoments + legacyV1.wishlist + legacyV1.countdowns + legacyV1.legacyDiaries + legacyV1.bookmarks + legacyV1.artworks + legacyV1.photos + legacyV1.readingNotes + legacyV1.musicTracks + legacyV1.studyRecords,
     exportedGroups: backup.sessionGroups.length,
     restoredGroups: restored.sessionGroups,
     restoredGroupName: restoredGroupRow?.name,
@@ -1033,7 +1042,7 @@ const backupCheck = await evaluate(`(async () => {
     legacyV7BookmarkCategoryId: legacyV7Bookmark === undefined ? 'no-row' : legacyV7Bookmark.categoryId,
   }
 })()`)
-check('备份 v8 覆盖十类 Home 数据并可整体恢复', backupCheck.version === 8 && backupCheck.exportedHome >= 9 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
+check('备份 v9 覆盖八类本地 Home 数据并可整体恢复（日记 / 留言板已归服务端）', backupCheck.version === 9 && backupCheck.exportedHome >= 7 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
 check(
   '备份 v7 带走会话分组与归属（含折叠状态）',
   backupCheck.exportedGroups === 1 &&
@@ -1116,14 +1125,79 @@ check('旧 v3 备份仍可导入，作品与相册按空处理', backupCheck.leg
 check('旧 v2 备份仍可导入，新增两表按空处理', backupCheck.legacyV2NewTables === 0)
 check('旧 v1 聊天备份仍可导入', backupCheck.legacyV1Home === 0)
 
+/* ---------- v11 启动期搬迁：旧表里剩余的行必须被搬走 + 清空 ---------- */
+// 旧表壳删不掉（Dexie 的 stores() 跨版本累加，省略不等于删除，见 db.ts 类注释 v11 条），
+// 所以「搬迁到底成没成」不能靠「表在不在」判断，只能靠数据本身证明。
+// 这里主动往旧表塞两行（模拟 v10 时代留下的数据）→ 重新进应用触发启动期搬迁 →
+// 三条都要成立：服务端收下了、旧表空了、中转表空了。
+const strayTitle = '搬迁探针-' + Date.now()
+const strayMoment = '搬迁前的本地留言-' + Date.now()
+await evaluate(`(async () => {
+  const db = await new Promise((resolve, reject) => {
+    const request = indexedDB.open('habitat-db')
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  const put = (store, rows) => new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite')
+    rows.forEach((row) => tx.objectStore(store).put(row))
+    tx.oncomplete = () => resolve('ok')
+    tx.onerror = () => reject(tx.error)
+  })
+  const now = Date.now()
+  await put('diaries', [{ id: 'stray-diary', type: 'diary', title: '${strayTitle}', content: '搬迁前的本地日记', entryDate: '2026-09-24', createdAt: now, updatedAt: now }])
+  await put('moments', [{ id: 'stray-moment', type: 'moment', content: '${strayMoment}', author: 'user', createdAt: now, updatedAt: now }])
+  db.close()
+  return 'ok'
+})()`)
+// 重新进应用 = 触发启动期搬迁。用 /api 回读来确认「服务端真的收下了」，而不是只看本地删没删。
+await navigate('/home', '留言板')
+let migrated = true
+try {
+  await waitFor(
+    `(async () => {
+      const [diary, moments] = await Promise.all([
+        fetch('/api/diary').then((r) => r.json()),
+        fetch('/api/moments').then((r) => r.json()),
+      ])
+      return diary.items.some((item) => item.title === ${JSON.stringify(strayTitle)}) &&
+        moments.items.some((item) => item.content === ${JSON.stringify(strayMoment)})
+    })()`,
+    '启动期搬迁把旧表数据送到服务端',
+    20000,
+  )
+} catch {
+  migrated = false
+}
+check('启动期搬迁：旧表里的日记与留言都被送到服务端', migrated)
+
+// 清源发生在「服务端回包之后」的下一拍：回读命中不代表本地已经删完，稍等一拍再数。
+await sleep(400)
 const dbShape = await evaluate(`(async () => {
   const request = indexedDB.open('habitat-db')
   const db = await new Promise((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error) })
-  const value = { version: db.version, stores: [...db.objectStoreNames] }
+  const count = (name) => db.objectStoreNames.contains(name)
+    ? new Promise((resolve, reject) => {
+        const r = db.transaction(name).objectStore(name).count()
+        r.onsuccess = () => resolve(r.result)
+        r.onerror = () => reject(r.error)
+      })
+    : -1
+  const value = {
+    version: db.version,
+    stores: [...db.objectStoreNames],
+    strayDiaries: await count('diaries'),
+    strayMoments: await count('moments'),
+    pending: await count('legacyUploads'),
+  }
   db.close()
   return value
 })()`)
-check('Dexie 已升到 v10，十张 Home 表 + 主屏 Widget 表 + 两张分类表齐全', dbShape.version === 100 && ['moments', 'wishlist', 'countdowns', 'diaries', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
+check('Dexie 已升到 v11：八张 Home 表 + 主屏 Widget + 两张分类表 + 搬迁中转表', dbShape.version === 110 && ['wishlist', 'countdowns', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets', 'legacyUploads'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
+// 旧表壳**删不掉**（Dexie 的 stores() 跨版本累加，省略 ≠ 删除，见 db.ts 类注释 v11 条），
+// 所以这里验的是「搬走了」而不是「表没了」：旧表清空 + 中转表清空。
+// 两者都为 0 才有意义 —— 中转表清空的前置是「服务端已确认」（见 legacy-upload.ts 的三条纪律）。
+check('日记 / 留言板旧表已搬空，中转表也没有残留', dbShape.strayDiaries === 0 && dbShape.strayMoments === 0 && dbShape.pending === 0, JSON.stringify(dbShape))
 check('控制台无异常', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '))
 
 const passed = results.filter(Boolean).length

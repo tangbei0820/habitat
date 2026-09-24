@@ -343,6 +343,77 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
 - `autonomy`：`autonomous` / `confirm` / `user-only` / `unavailable`
 
 
+## Phase 6.5 已实现（共同生活数据 · 服务端权威）
+
+日记与留言板自 2026-09-24 起**权威存储在服务端 SQLite**（`diary` / `moment` 两张表），
+前端 Dexie 不再有这两张表（v11 起）。搬家理由：AI 也在服务端跑，
+「AI 写日记」「用户请求查看某篇」「AI 决定放不放」都只能在这里发生 ——
+数据留在浏览器里，AI 就只能对着假数据演戏（SPEC §6.3 明确禁止）。
+
+### 权限模型：`author` 就是权限位
+
+| `author` | 谁写的 | 用户能读正文？ | 用户能改 / 删？ |
+| --- | --- | --- | --- |
+| `user` | 用户自己（含迁移上来的旧日记） | ✅ 总是能 | ✅ |
+| `companion` | AI（小栖） | 仅 `visibility = 'open'` 时 | ❌ |
+
+`visibility` 三态：`private`（默认）/ `open` / `locked`。用户自己的日记恒为 `open` ——
+所以本次迁移**不会让北北已写好的日记变成只读**。
+
+下发形状 `DiaryView`：
+
+```ts
+{
+  id, title, entryDate, author, visibility, createdAt, updatedAt,
+  content: string | null,   // 无权限时是 null（**不是空串**）
+  readable: boolean,        // 当前用户能否读正文
+  editable: boolean         // 当前用户能否改 / 删
+}
+```
+
+⚠️ 用 `content === null` 去猜「是没权限还是还没写」是两件完全不同的事，所以权限另给显式字段。
+过滤发生在数据访问层（`server/src/db/diary.ts` 的 `toDiaryView`），**不在路由层** ——
+路由以后会多，漏一处就是把 AI 的私密日记漏给用户。
+
+### `GET /api/diary` → `{ items: DiaryView[] }`
+
+列表**包含** AI 的私密日记 —— 用户看得到「有几篇、都是哪天」（封面可见，SPEC §3.4.2），
+但它们的 `content` 为 `null`。
+
+### `GET /api/diary/:id`
+
+单篇。无权限时同样只给封面，仍然返回 **200**（它确实存在）；id 不存在才 404。
+
+### `POST /api/diary` / `PATCH /api/diary/:id` / `DELETE /api/diary/:id`
+
+用户对自己日记的增删改。`author` / `visibility` **不接受入参** ——
+用户建不出 AI 日记（SPEC §3.4.2），把这两个字段交给调用方自觉就等于没规则。
+
+| 情况 | 状态码 | code |
+| --- | --- | --- |
+| `title` 空或超 120 字 / `content` 空或超 10000 字 | 400 | `BAD_REQUEST` |
+| `entryDate` 非 `YYYY-MM-DD` | 400 | `BAD_REQUEST` |
+| 改 / 删 AI 的日记，或 id 不存在 | **404** | `NOT_FOUND` |
+
+> 「没权限」也是 404 而非 403：单用户场景下这两件事对调用方没有区别，
+> 而 404 少泄漏一层 —— AI 私密日记**存在与否**本身也算信息。
+
+### `POST /api/diary/import` —— 一次性搬迁
+
+请求体 `{ items: [...] }`，把浏览器里残留的旧日记搬上来。
+`author` / `visibility` / 时间戳可缺省（旧数据里没有这些字段）。
+
+**幂等**：已存在的 id 跳过并计入 `skipped`，**不覆盖** ——
+重复调不产生副本，也不会盖掉用户后来在服务端改过的内容。
+
+### 留言板：`GET/POST /api/moments`、`DELETE /api/moments/:id`、`POST /api/moments/import`
+
+与日记的差别：**没有可见性过滤**（留言写出来就是给人看的），只有「谁能删」——
+用户只能删自己的，AI 的留言不归用户处置（SPEC §6.2）。
+
+`GET /api/moments?limit=N` 供主屏 Widget 取最近 N 条 ——
+不然每次渲染主屏都要把全表拉过来再切片。`limit` 非正整数 → 400。
+
 ## Phase 1 已实现（切片五 · 诊断日志查询）
 
 设置页「诊断日志」时间线的数据源。**只读**，把 `mcp_diagnostic_log` 里的原始字段**原样**下发 —— 诊断日志是排障证据，在服务端做二次解释只会让「页面看到的」与「库里存的」对不上。

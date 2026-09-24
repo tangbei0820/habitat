@@ -12,9 +12,7 @@ import type {
   ChatMessage,
   ChatSession,
   CountdownDay,
-  Diary,
   HomeWidget,
-  Moment,
   MusicTrack,
   Photo,
   PhotoCollection,
@@ -24,10 +22,22 @@ import type {
   WishlistItem,
 } from '@shared/types'
 import { MAX_PHOTO_BYTES } from '@shared/types'
-import { db } from '../db/db'
+import { db, type LegacyUpload } from '../db/db'
 
 export const BACKUP_FORMAT = 'habitat-backup'
-export const BACKUP_VERSION = 8
+
+/**
+ * v9 起备份**不再包含日记与留言板** —— 它们已经搬到服务端（Phase 6.5）。
+ *
+ * 为什么不是「从服务端拉一份塞进备份」：这份备份的语义一直是「本地那张库的快照」，
+ * 而它必须在**离线时也能导出**（T-030 定的性质）。硬把服务端数据混进来，
+ * 会让一份本该离线可用的文件变成「一半离线一半在线」——那种东西在最需要它的时候最不可靠。
+ * 服务端数据（sqlite 文件）的备份是部署层的事。
+ *
+ * ⚠️ 但**旧备份（v2–v8）里带着它们**，导入时不能丢：走 `legacyUploads` 转存到服务端，
+ * 详见 `importAll` 与 `db/legacy-upload.ts`。
+ */
+export const BACKUP_VERSION = 9
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -36,10 +46,8 @@ export interface HabitatBackup {
   sessions: ChatSession[]
   sessionGroups: SessionGroup[]
   messages: ChatMessage[]
-  moments: Moment[]
   wishlist: WishlistItem[]
   countdowns: CountdownDay[]
-  diaries: Diary[]
   bookmarks: Bookmark[]
   bookmarkCategories: BookmarkCategory[]
   artworks: Artwork[]
@@ -55,10 +63,8 @@ export interface BackupCounts {
   sessions: number
   sessionGroups: number
   messages: number
-  moments: number
   wishlist: number
   countdowns: number
-  diaries: number
   bookmarks: number
   bookmarkCategories: number
   artworks: number
@@ -68,17 +74,18 @@ export interface BackupCounts {
   musicTracks: number
   studyRecords: number
   homeWidgets: number
+  /** 从**旧备份**（v2–v8）里救出来、转存进中转表等服务端接收的条数。新备份（v9）恒为 0。 */
+  legacyDiaries: number
+  legacyMoments: number
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, sessionGroups, messages, moments, wishlist, countdowns, diaries, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, musicTracks, studyRecords, homeWidgets] = await Promise.all([
+  const [sessions, sessionGroups, messages, wishlist, countdowns, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, musicTracks, studyRecords, homeWidgets] = await Promise.all([
     db.sessions.toArray(),
     db.sessionGroups.toArray(),
     db.messages.toArray(),
-    db.moments.toArray(),
     db.wishlist.toArray(),
     db.countdowns.toArray(),
-    db.diaries.toArray(),
     db.bookmarks.toArray(),
     db.bookmarkCategories.toArray(),
     db.artworks.toArray(),
@@ -96,10 +103,8 @@ export async function exportAll(): Promise<HabitatBackup> {
     sessions,
     sessionGroups,
     messages,
-    moments,
     wishlist,
     countdowns,
-    diaries,
     bookmarks,
     bookmarkCategories,
     artworks,
@@ -210,7 +215,18 @@ function looksLikeMessage(value: unknown): value is ChatMessage {
   return isRecord(value) && typeof value.id === 'string' && value.type === 'chat-message'
 }
 
-function looksLikeMoment(value: unknown): value is Moment {
+/**
+ * 旧备份里的留言 / 日记校验。
+ *
+ * 它们**不再进 Dexie** —— 而是转存到服务端（见 `importAll`），所以这里只需要
+ * 「认得出这是一条留言 / 日记、并且拿得住 id」。
+ *
+ * 刻意不做 `value is Moment` 那种精确校验：v9 之前的数据形状本来就不一样
+ * （日记那时还没有 `author` / `visibility`，因为那时日记只属于用户），
+ * 硬套现在的类型等于要求旧备份先改造自己 —— 那只会在导入时把用户的老数据判成损坏，
+ * 而它其实完全能用。
+ */
+function looksLikeLegacyMoment(value: unknown): value is { id: string } {
   return isRecord(value) && typeof value.id === 'string' && value.type === 'moment' && typeof value.content === 'string'
 }
 
@@ -222,7 +238,7 @@ function looksLikeCountdown(value: unknown): value is CountdownDay {
   return isRecord(value) && typeof value.id === 'string' && value.type === 'countdown-day' && typeof value.targetDate === 'string'
 }
 
-function looksLikeDiary(value: unknown): value is Diary {
+function looksLikeLegacyDiary(value: unknown): value is { id: string } {
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
@@ -356,26 +372,29 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   }
 
   // v1 只有聊天数据；导入旧备份时 Home 表按空数组处理，不把用户旧备份直接判死。
-  const momentsRaw = version >= 2 ? raw.moments : []
+  // ⚠️ v9 起备份里**没有** moments / diaries 了（它们归服务端），所以高版本按空处理 ——
+  //    不这么写的话，导入自家新版备份会报「moments 必须是数组」。
+  const momentsRaw = version >= 2 && version < 9 ? raw.moments : []
   const wishlistRaw = version >= 2 ? raw.wishlist : []
   const countdownsRaw = version >= 2 ? raw.countdowns : []
   if (!Array.isArray(momentsRaw) || !Array.isArray(wishlistRaw) || !Array.isArray(countdownsRaw)) {
     throw new Error('备份内容损坏：Home 数据必须是数组')
   }
-  const moments = momentsRaw.filter(looksLikeMoment)
+  // 旧留言不落 Dexie，转存到服务端（见下面的 legacyUploads）
+  const legacyMoments = momentsRaw.filter(looksLikeLegacyMoment)
   const wishlist = wishlistRaw.filter(looksLikeWishlistItem)
   const countdowns = countdownsRaw.filter(looksLikeCountdown)
-  if (moments.length !== momentsRaw.length || wishlist.length !== wishlistRaw.length || countdowns.length !== countdownsRaw.length) {
+  if (legacyMoments.length !== momentsRaw.length || wishlist.length !== wishlistRaw.length || countdowns.length !== countdownsRaw.length) {
     throw new Error('备份内容损坏：存在无法识别的 Home 记录')
   }
 
-  // v3 新增日记与收藏；v1/v2 导入时这两张表为空，继续遵守“整体替换”语义。
-  const diariesRaw = version >= 3 ? raw.diaries : []
+  // v3 新增日记与收藏；v1/v2 导入时这两张表为空。v9 起日记也不在备份里了（同 moments），高版本按空处理。
+  const diariesRaw = version >= 3 && version < 9 ? raw.diaries : []
   const bookmarksRaw = version >= 3 ? raw.bookmarks : []
   if (!Array.isArray(diariesRaw) || !Array.isArray(bookmarksRaw)) {
     throw new Error('备份内容损坏：diaries / bookmarks 必须是数组')
   }
-  const diaries = diariesRaw.filter(looksLikeDiary)
+  const legacyDiaries = diariesRaw.filter(looksLikeLegacyDiary)
   // v10 之前没有分类字段；补成 null 让它落进「未分类」——
   // 留成 undefined 会让筛选条漏掉这批旧数据（它们哪个筛选里都不出现）
   const bookmarks = bookmarksRaw
@@ -384,7 +403,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
       ...bookmark,
       categoryId: typeof bookmark.categoryId === 'string' ? bookmark.categoryId : null,
     }))
-  if (diaries.length !== diariesRaw.length || bookmarks.length !== bookmarksRaw.length) {
+  if (legacyDiaries.length !== diariesRaw.length || bookmarks.length !== bookmarksRaw.length) {
     throw new Error('备份内容损坏：存在无法识别的日记或收藏')
   }
 
@@ -470,14 +489,30 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：存在无法识别的分类或相册')
   }
 
-  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.moments, db.wishlist, db.countdowns, db.diaries, db.bookmarks, db.bookmarkCategories, db.artworks, db.photos, db.photoCollections, db.readingNotes, db.musicTracks, db.studyRecords, db.homeWidgets], async () => {
+  // 旧备份里的日记 / 留言转存进中转表：它们已经不属本地库了，但也不能就这么丢掉。
+  // 用 `bulkPut`（而非 bulkAdd）：这张表是**待上传队列**，可能还有上一次没传完的残留，
+  // 而「整体替换」语义只针对本地库，不该顺手把队列清空。
+  const legacyRows: LegacyUpload[] = [
+    ...legacyDiaries.map((row) => ({
+      id: `diary:${row.id}`,
+      kind: 'diary' as const,
+      payload: JSON.stringify(row),
+      createdAt: Date.now(),
+    })),
+    ...legacyMoments.map((row) => ({
+      id: `moment:${row.id}`,
+      kind: 'moment' as const,
+      payload: JSON.stringify(row),
+      createdAt: Date.now(),
+    })),
+  ]
+
+  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.wishlist, db.countdowns, db.bookmarks, db.bookmarkCategories, db.artworks, db.photos, db.photoCollections, db.readingNotes, db.musicTracks, db.studyRecords, db.homeWidgets, db.legacyUploads], async () => {
     await db.sessions.clear()
     await db.sessionGroups.clear()
     await db.messages.clear()
-    await db.moments.clear()
     await db.wishlist.clear()
     await db.countdowns.clear()
-    await db.diaries.clear()
     await db.bookmarks.clear()
     await db.bookmarkCategories.clear()
     await db.artworks.clear()
@@ -487,13 +522,12 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.musicTracks.clear()
     await db.studyRecords.clear()
     await db.homeWidgets.clear()
+    if (legacyRows.length > 0) await db.legacyUploads.bulkPut(legacyRows)
     await db.sessions.bulkAdd(sessions)
     await db.sessionGroups.bulkAdd(sessionGroups)
     await db.messages.bulkAdd(messages)
-    await db.moments.bulkAdd(moments)
     await db.wishlist.bulkAdd(wishlist)
     await db.countdowns.bulkAdd(countdowns)
-    await db.diaries.bulkAdd(diaries)
     await db.bookmarks.bulkAdd(bookmarks)
     await db.bookmarkCategories.bulkAdd(bookmarkCategories)
     await db.artworks.bulkAdd(artworks)
@@ -508,10 +542,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     sessions: sessions.length,
     sessionGroups: sessionGroups.length,
     messages: messages.length,
-    moments: moments.length,
     wishlist: wishlist.length,
     countdowns: countdowns.length,
-    diaries: diaries.length,
     bookmarks: bookmarks.length,
     bookmarkCategories: bookmarkCategories.length,
     artworks: artworks.length,
@@ -521,5 +553,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     musicTracks: musicTracks.length,
     studyRecords: studyRecords.length,
     homeWidgets: homeWidgets.length,
+    legacyDiaries: legacyDiaries.length,
+    legacyMoments: legacyMoments.length,
   }
 }

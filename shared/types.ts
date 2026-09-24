@@ -171,13 +171,26 @@ export interface ChatMessage extends BaseObject {
   editedAt: number | null
 }
 
-/* ---------- Home 共同生活（本地 Dexie） ---------- */
+/* ---------- Home 共同生活（服务端 SQLite，Phase 6.5 起从 Dexie 迁入） ---------- */
 
-/** 留言板的一条生活痕迹；作者位预留给 Phase 3 后的小栖主动写入。 */
+/**
+ * 内容作者位 —— 它同时**就是权限位**，不另设一套 role 字段。
+ *
+ * - `user`      用户自己产的普通内容：可自由读写删（SPEC §6.1）
+ * - `companion` AI 私有内容（日记 / 主动留言）：用户默认只能看封面（SPEC §6.2 / §6.3）
+ */
+export type ContentAuthor = 'companion' | 'user'
+
+/**
+ * 留言板的一条生活痕迹。
+ *
+ * `companion` 这个取值自 Phase 2 就写在类型里，但一直没被写进去过（`createMoment` 硬编码 `'user'`）；
+ * Phase 6.5 起 AI 主动行为才真正能往这里落内容。
+ */
 export interface Moment extends BaseObject {
   type: 'moment'
   content: string
-  author: 'user' | 'companion'
+  author: ContentAuthor
 }
 
 export type WishlistStatus = 'open' | 'done'
@@ -216,12 +229,52 @@ export interface HomeWidget extends BaseObject {
   refId: string | null
 }
 
-/** 日记按本地日期归档；正文先存纯文本，避免在没有富文本沙箱前引入 HTML。 */
+/**
+ * AI 对「这篇给不给用户看」的决定（SPEC §3.4.3）。
+ *
+ * 三态是**同一件事的三种状态**，所以合成一个字段而不是拆 `private` + `locked` 两个布尔 ——
+ * 拆开就会出现「private 且 locked」这种没有含义的组合，读的人还得猜哪个优先。
+ */
+export type DiaryVisibility = 'private' | 'open' | 'locked'
+
+/**
+ * 日记按本地日期归档；正文先存纯文本，避免在没有富文本沙箱前引入 HTML。
+ *
+ * ⚠️ **权威存储在服务端 SQLite**（2026-09-24 从 Dexie 迁入）—— AI 也在服务端跑，
+ * 只有放服务端才谈得上「AI 和用户操作同一个真实数据源」（SPEC §6.3）。
+ * 前端 Dexie 不再保留 `diaries` 表（v11 起）。
+ */
 export interface Diary extends BaseObject {
   type: 'diary'
   title: string
   content: string
   entryDate: string
+  author: ContentAuthor
+  visibility: DiaryVisibility
+}
+
+/**
+ * 日记的**面向前端的视图** —— 与 `Diary` 分开，是因为它可能**没有正文**。
+ *
+ * 「用户看得到这篇日记存在」与「用户看得到这篇日记写了什么」是两件事（SPEC §3.4.2）：
+ * 列表接口对 AI 私密日记只下发封面，`content` 为 `null`。
+ * 用 `readable` / `editable` 显式表达权限，而不是让前端拿 `content === null` 去猜 ——
+ * 「null 是因为没权限」和「null 是因为还没写」是两种完全不同的情况，不能用同一个信号。
+ */
+export interface DiaryView {
+  id: string
+  title: string
+  entryDate: string
+  author: ContentAuthor
+  visibility: DiaryVisibility
+  createdAt: number
+  updatedAt: number
+  /** 有权限时为正文；无权限时 `null`（**不是空串**） */
+  content: string | null
+  /** 当前用户能否读到正文 */
+  readable: boolean
+  /** 当前用户能否编辑 / 删除（只有 `author='user'` 的日记可以） */
+  editable: boolean
 }
 
 /**

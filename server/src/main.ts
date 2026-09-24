@@ -17,9 +17,11 @@ import { loadEventideStateProvider } from './providers/eventide-state.js'
 import { registerCapabilityRoutes } from './routes/capabilities.js'
 import { registerChatRoutes } from './routes/chat.js'
 import { registerDiagnosticRoutes } from './routes/diagnostics.js'
+import { registerDiaryRoutes } from './routes/diary.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerProviderRoutes } from './routes/providers.js'
 import { registerMemoryRoutes } from './routes/memory.js'
+import { registerMomentRoutes } from './routes/moment.js'
 import { registerStateRoutes } from './routes/state.js'
 import { registerAutomationRoutes } from './routes/automation.js'
 import { registerLifeRoutes } from './routes/life.js'
@@ -85,6 +87,9 @@ registerDiagnosticRoutes(app)
 registerMemoryRoutes(app, memoryProvider)
 registerStateRoutes(app, stateProvider)
 registerCapabilityRoutes(app, capabilityService)
+// 共同生活数据（Phase 6.5 起服务端权威）：AI 也在服务端跑，日记 / 留言板放这里才谈得上共用一份数据
+registerDiaryRoutes(app)
+registerMomentRoutes(app)
 
 // LLM 方案：**服务端 SQLite 是权威源**（见 db/profiles.ts）。
 // 环境变量 HABITAT_LLM_PROFILES 仅作**首次种子**：从未导入过时一次性导入，之后改 .env 不再生效

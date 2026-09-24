@@ -1646,3 +1646,93 @@ breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delt
 - ⏳ `docs/PRODUCT_SPEC.md` §9.7 需要随本层落地而订正（本轮未改产品规格正文）
 - ⏳ P1：Event Inbox、`diary_access_request` 流转、日记/留言板迁服务端（Dexie v11 + 备份格式升级）
 - ⏳ P2：LLM 页面 App Launcher、Chat 头像开关
+
+---
+
+### T-036 · 2026-09-24 · Phase 6.5 P1 前置 · 共同生活数据迁服务端 —— **完成**
+
+**范围**：把日记（`Diary`）与留言板（`Moment`）从浏览器 Dexie 迁到服务端 SQLite，
+并**一次把权限模型落实**（SPEC §3.4 / §6.2）。这是北北 P1 清单里
+「Event Inbox / 日记权限 / Diary·MessageBoard Tool」三项的**共同前置** ——
+不做完它，那三项都无处落脚。
+
+**为什么必须搬**：AI 跑在服务端，而「AI 写日记」「用户请求查看某篇」「AI 决定放不放」
+这三件事都只能发生在服务端。日记留在浏览器里，AI 就只能对着假数据演戏（SPEC §6.3 明确禁止）。
+
+**权限模型：`author` 就是权限位**（不另设第二套 role 字段）
+
+| `author` | 谁写的 | 用户能读正文？ | 用户能改 / 删？ |
+| --- | --- | --- | --- |
+| `user` | 用户自己（含迁移上来的旧日记） | ✅ 总是能 | ✅ |
+| `companion` | AI（小栖） | 仅 `visibility='open'` 时 | ❌ |
+
+`visibility` 三态 `private` / `open` / `locked`，三态是**同一件事的三种状态** ——
+合成一个字段而不是拆 `private` + `locked` 两个布尔（拆开会造出「private 且 locked」这种没含义的组合）。
+
+⚠️ **迁移上来的旧日记一律标 `author='user'`**：北北已写好的日记**不会因迁移变成只读**。
+这一点在设计时最先确认 —— 搬家不能顺手把用户的权夺走。
+
+**落地**
+
+| 位置 | 内容 |
+| --- | --- |
+| `shared/types.ts` | `ContentAuthor` / `DiaryVisibility` / `DiaryView`（**可能没有正文**的视图类型）；`Diary` 加 `author` / `visibility` |
+| `server/src/db/schema.ts` + `index.ts` | `diary` / `moment` 两张表，照既有「手写 CREATE TABLE + 索引」惯例（无 drizzle-kit） |
+| `server/src/db/diary.ts` | **权限过滤的唯一关口** `toDiaryView()`；用户建日记时 `author` / `visibility` **不收外部入参** |
+| `server/src/db/moment.ts` | 同构，只是没有可见性概念（只有「谁能删」） |
+| `server/src/routes/diary.ts` | 列表 / 单篇 / 增删改 / `import`（搬迁入口，幂等） |
+| `server/src/routes/moment.ts` | 列表（带 `limit`）/ 发帖 / 删 / `import` |
+| `web/src/db/db.ts` | **Dexie v11**：只新增中转表 `legacyUploads`，**刻意不带 `upgrade()` 回调**（理由见下条「Dexie 删不掉表」） |
+| `web/src/db/legacy-upload.ts` | 搬迁的**全部三轮**：收编旧表剩余行 → 上传 → **服务端确认后才删中转行 + 删旧表那几行**；失败不删源、下次启动重试（不阻塞启动） |
+| `web/src/lib/backup.ts` | **备份 v9**：不再含日记 / 留言板；旧备份里的它们转存进中转表 |
+| `web/src/features/home/DiaryModule.tsx` | 按 `readable` / `editable` 渲染；小栖的日记显示「小栖的日记」+ 权限状态文案 |
+| `web/src/features/home/BoardModule.tsx` | 显示「小栖 ·」标记；只有自己的留言才有删除按钮 |
+| `web/src/lib/api.ts` | 新增 `fetchVoid`（204 无响应体） |
+
+**四个真 bug（全是「跑一遍才现形」型，看代码看不出来）**
+
+1. **Fastify 里 `return null` + `code(204)` 会变成 500** —— 204 不允许响应体，
+   Fastify 去序列化那个 JSON `null` 就炸了，错误又被统一处理器兜成 500，看起来像服务端崩了。
+   修法：`reply.code(204).send()`。
+2. **探针自己发错**：给没有 body 的 DELETE 也带了 `content-type: application/json`，
+   Fastify 去解析空 body 抛错 → 同样被兜成 500。→ 改成「只在真有 body 时才声明 JSON」。
+3. **「新版本不声明某张表」删不掉它** —— 这是本任务**最值得记的一条**，因为它推翻了整个
+   「升级回调里搬完就删」的设计。Dexie 的 `stores()` 是**跨版本累加**的
+   （源码 `Version.prototype.stores` 里 `extend(storesSpec, version._cfg.storesSource)` 把 v1..vn 的声明
+   合成一份 schema，`deleteRemovedTables()` 只认这份合并结果，末尾 `createMissingTables` 还会把缺的再建回来）。
+   ⇒ 实测升到 v11 后 `diaries` / `moments` **表壳仍在、数据也仍在**。
+   **修法不是换个删表姿势，而是换搬迁的挂载点**：既然旧表删不掉、旧数据本来就一直在，
+   升级回调就不再是"最后一个安全时机"，而它**一辈子只跑一次**（那次离线 / 中途关掉 / 跑的是旧构建，
+   就再没补救机会）→ 整套搬到**启动期**，每次启动收敛。详见 `docs/DATA_MODEL.md` §7「v11 为什么不用 upgrade」。
+4. **验收脚本自己在模板字符串里被反引号截断**：`verify-home.mjs` 把注入到页面的 JS 写成模板字符串，
+   我在**那段 JS 的注释里**写了反引号包住的 `diaries` / `legacyDiaries` → 模板被提前闭合 → 整支 parse 失败。
+   连带后果比它本身大得多：**parse 错误 = 模块根本不执行 = 它开头那句 `Storage.clearDataForOrigin` 没跑**，
+   于是本轮留下的收藏记录被下一轮的 verify-chat 继承，chat 超时崩在「收藏成功反馈」——
+   表面看是「收藏功能坏了」，实际是隔了一层的测试隔离问题。
+   两条收尾：① 流水线改成 **verify-home 排最前**（它是唯一清库的那支，清库必须发生在别人之前）；
+   ② 这条理由写进 `verify-home.mjs` 头部（`.workbuddy/` 被 gitignore，**只写在流水线脚本里会丢**）。
+
+**验收（全部实跑）**
+
+| 项 | 结果 |
+| --- | --- |
+| `probe-diary.ts`（新增） | **40/40** |
+| 两端 typecheck | 通过 |
+| 前端全套回归 | ✅ 六支零失败：**home 77/77**（含两条新增的搬迁探针）· **chat 140/140** · providers 22/22 · export · offline · diagnostics 36/36 |
+| 搬迁探针（写进 `verify-home`） | **实跑验证，不靠环境残留**：往 `diaries` / `moments` 直接塞两行 → 重新进应用 → 断言「服务端 `/api/diary` + `/api/moments` 回读到它们」且「旧表与中转表都清空」（`strayDiaries/strayMoments/pending` 全 0） |
+
+`probe-diary.ts` 的重点**不是「CRUD 跑得通」**（那是最容易也最不重要的部分），而是边界：
+私密日记正文不下发（`content` 为 `null` 而非空串）· 改 / 删 AI 的日记返回 **404 而非 403** ·
+**「拒绝」不等于「删掉」**（被拒之后日记必须还在、内容没变）· 迁移入口幂等（重复导入不产生副本、不覆盖）·
+用户自己的日记不受这些限制 · 输入校验与排序。
+
+**遗留（已记录，不顺手处理）**
+
+- ⏳ 「查看请求」实体与 AI 的允许 / 拒绝决策 → Phase 6.5 P1 的事件收件箱（下一批）
+- ⏳ 日记 / 留言板**离线时不能写**（走 `fetchJson`，离线抛 `OFFLINE`）。
+  完整的离线只读适配（逐处禁按钮 + 提示文案）尚未做
+- ⏳ `BackupPanel` 的「久未导出提醒」数不到日记 / 留言板的变动（它们已不在本地库）
+- ⏳ 服务端数据的备份策略（sqlite 文件级）未落文档，目前只在设置页 UI 上口头说明
+- ⏳ `diaries` / `moments` 两张**空壳表**会永久留在 IndexedDB（Dexie 删不掉，见上面 bug 3）。
+  已写进 `db.ts` 与 `DATA_MODEL.md` 提醒「别去清理它」，但每次有人翻 schema 都可能再困惑一次 ——
+  真想去掉只有「重开一个库名 + 全量迁移」这条路，代价远大于收益，不建议动

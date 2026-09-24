@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：**宿主 nginx 1.18.0** + habitat-server + Nocturne / Ombre Brain（容器 nginx）+ eventide-sidecar；Caddy 仅为早期方案记录                      |
-| 当前阶段 | **Phase 6.5 · AI Runtime Integration 进行中（P0 已完成，T-035）** —— 能力注册 / 运行时上下文 / 工具绑定 / 工具调用闭环已落地；P1（Event Inbox、日记权限、日记留言板 Tool）与 P2（LLM App Launcher、头像开关）未开始｜Phase 6 已完成（T-028~T-030 / T-032 / T-033）；Phase 3A 记忆链路与生产鉴权已完成真机 **26/26**（T-034） |
+| 当前阶段 | **Phase 6.5 · AI Runtime Integration 进行中** —— P0 已完成（T-035：能力注册 / 运行时上下文 / 工具绑定 / 工具调用闭环）；**P1 前置已完成（T-036：日记与留言板迁服务端 + `author` 权限模型）**；P1 剩余（Event Inbox、日记查看请求、日记·留言板 Tool）与 P2（LLM App Launcher / 头像开关）未开始｜Phase 6 已完成（T-028~T-030 / T-032 / T-033）；Phase 3A 记忆链路与生产鉴权已完成真机 **26/26**（T-034） |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -264,8 +264,9 @@ habitat/
 ### 下一步
 
 1. 🎨 **后续 UI 专项**：动画与过渡效果须与完整视觉方案一起做（`docs/UI_DESIGN.md` 被补充前不堆视觉细节，见铁律 6）
-2. PRODUCT_SPEC P2 的 AI 自主日记 / 留言现在已有主动行为底座，但应按各自权限模型单独施工
-3. PRODUCT_SPEC P2 的 AI 自主日记 / 留言现在已有主动行为底座，但应按各自权限模型单独施工，不能直接把独处记录冒充成日记或留言
+2. PRODUCT_SPEC P2 的 AI 自主日记 / 留言：**数据层与权限模型已就位**（T-036，`diary.author` / `visibility` 已在服务端，
+   用户侧接口拿不到 AI 私密正文）—— 缺的是 AI 侧写入（工具层）与「查看请求」流转（事件收件箱），
+   属 Phase 6.5 P1 剩余项。⚠️ **不能直接把独处记录冒充成日记或留言** —— 那正是 SPEC §6.3 禁止的假数据
 
 动手前：先读 `PRODUCT_SPEC` 对应章节 + `TASKS.md` 待优化清单，
 再核对 `DATA_MODEL.md`：**改数据结构要同时动三处**（`shared/types.ts` → Dexie 升版 → 备份格式升版）；

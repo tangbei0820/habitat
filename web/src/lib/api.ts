@@ -45,3 +45,16 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   if (!res.ok) throw await parseError(res)
   return (await res.json()) as T
 }
+
+/**
+ * 与 `fetchJson` 同一套规则，但用于**没有响应体**的端点（204）。
+ *
+ * 单独一个函数而不是让 `fetchJson` 去猜：`res.json()` 对空体会直接抛 SyntaxError，
+ * 而那个错误看起来像「响应坏了」，实际上「删除成功」就是这么设计的。
+ * 用错函数的代价是一次毫无线索的排查，不如多一个函数名。
+ */
+export async function fetchVoid(path: string, init?: RequestInit): Promise<void> {
+  assertOnline()
+  const res = await fetch(path, init)
+  if (!res.ok) throw await parseError(res)
+}
