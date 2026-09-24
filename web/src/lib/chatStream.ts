@@ -12,7 +12,7 @@ import type {
   ChatStreamRequest,
   ChatUsagePayload,
 } from '@shared/events'
-import { ApiRequestError } from './api'
+import { ApiRequestError, assertOnline } from './api'
 
 export interface ChatStreamHandlers {
   onDelta?: (delta: ChatDeltaPayload) => void
@@ -85,6 +85,7 @@ export async function streamChat(
   handlers: ChatStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
+  assertOnline()
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'text/event-stream' },

@@ -565,7 +565,10 @@ async function loadChatImage(url: string): Promise<{ dataUrl: string; mimeType: 
   try {
     response = await fetch(url)
   } catch {
-    throw new Error('无法读取聊天图片，可能是图片来源禁止跨域访问')
+    // 离线时外部图片必然取不到 —— 别把它说成「跨域」，那会把人引到完全错误的方向去查
+    throw new Error(navigator.onLine === false
+      ? '当前离线，需要联网才能读取这张外部图片'
+      : '无法读取聊天图片，可能是图片来源禁止跨域访问')
   }
   if (!response.ok) throw new Error(`无法读取聊天图片（${response.status}）`)
   const blob = await response.blob()

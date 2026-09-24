@@ -1,5 +1,5 @@
 import type { MediaImageResult, MediaTranscriptionResult, MediaVisionResult } from '@shared/types'
-import { ApiRequestError, fetchJson } from './api'
+import { ApiRequestError, assertOnline, fetchJson } from './api'
 import { ErrorCodes, type ApiError } from '@shared/errors'
 
 export function transcribeAudio(dataUrl: string): Promise<MediaTranscriptionResult> {
@@ -21,6 +21,7 @@ export function generateImage(prompt: string): Promise<MediaImageResult> {
 }
 
 export async function synthesizeSpeech(text: string): Promise<Blob> {
+  assertOnline()
   const res = await fetch('/api/media/speech', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }),
   })

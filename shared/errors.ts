@@ -19,6 +19,11 @@ export const ErrorCodes = {
   ProviderUpstreamError: 'PROVIDER_UPSTREAM_ERROR',
   /** BudgetGuard 拒绝本次 LLM / 主动行为调用。 */
   BudgetExceeded: 'BUDGET_EXCEEDED',
+  /**
+   * 浏览器处于离线状态，请求在发出前就被拦下（Phase 6 §离线）。
+   * ⚠️ 只由前端产生 —— 后端不会返回它。
+   */
+  Offline: 'OFFLINE',
   Internal: 'INTERNAL',
 } as const
 

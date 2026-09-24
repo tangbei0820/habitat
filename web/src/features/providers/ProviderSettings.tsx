@@ -10,6 +10,7 @@ import { useState, type ReactNode } from 'react'
 import type { ApiKeySource, ApiProfileCreateInput, ApiProfilePublic, LlmProbeResult } from '@shared/types'
 import { ProviderForm } from './ProviderForm'
 import { useProviders } from './useProviders'
+import { useOnlineStatus } from '../offline/useOnlineStatus'
 
 const LABEL_STYLE = { color: 'var(--color-text-dim)' } as const
 const SECTION_STYLE = {
@@ -87,6 +88,8 @@ function ProviderRow({
   onConfirmDelete,
   onCancelDelete,
 }: ProviderRowProps) {
+  /** 「测试连接」要打后端探测上游，离线时必然失败 —— 直接禁掉，别让用户白点 */
+  const online = useOnlineStatus()
   return (
     <li className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)' }}>
       <div className="flex items-center gap-2">
@@ -125,7 +128,7 @@ function ProviderRow({
       )}
 
       <div className="mt-2 flex flex-wrap gap-1">
-        <RowButton onClick={onTest} disabled={probing || busy}>
+        <RowButton onClick={onTest} disabled={probing || busy || !online}>
           {probing ? '测试中…' : '测试连接'}
         </RowButton>
         <RowButton onClick={onEdit} disabled={busy}>

@@ -42,6 +42,7 @@ import { streamChat } from '../../lib/chatStream'
 import { formatDuration } from '../../lib/format'
 import { log } from '../../lib/log'
 import { describeImage, generateImage, synthesizeSpeech, transcribeAudio } from '../../lib/media'
+import { useOnlineStatus } from '../../features/offline/useOnlineStatus'
 
 /** 首屏只拉最近这么多条（§9 风险8：按时间分页，不全量读）；向上翻页也用它 */
 const PAGE_SIZE = 60
@@ -142,6 +143,8 @@ export function ChatWindowPage() {
   const [loadingEarlier, setLoadingEarlier] = useState(false)
 
   /* ---------- 消息对象操作（SPEC §2.3）的状态 ---------- */
+  /** 离线时禁掉所有会发请求的消息动作（朗读 / 换一个 / 重发 / 重新生成） */
+  const online = useOnlineStatus()
   const [sheetFor, setSheetFor] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState('')
@@ -614,23 +617,27 @@ export function ChatWindowPage() {
 
     const items: SheetAction[] = []
     if (hasCopyText) items.push({ id: 'copy', label: hasText ? '复制' : '复制转写文本' })
-    if (!isUser && hasText) items.push({ id: speechRef.current === null ? 'speak' : 'stop-speech', label: speechRef.current === null ? '朗读' : '停止朗读' })
+    // 「停止朗读」是纯本地动作，离线也留着；「朗读」要打 TTS 接口，离线时干脆不给这一项
+    if (!isUser && hasText) {
+      const speaking = speechRef.current !== null
+      if (speaking || online) items.push({ id: speaking ? 'stop-speech' : 'speak', label: speaking ? '停止朗读' : '朗读' })
+    }
     items.push({ id: 'edit', label: '编辑' })
     items.push({ id: 'bookmark', label: '收藏' })
     items.push({ id: 'artwork', label: '收录至作品' })
     if (hasImage) items.push({ id: 'album', label: '加入相册' })
     items.push({ id: 'multi', label: '多选' })
     // SPEC §2.3.3：AI 消息按当前状态追加「换一个 / 重发 / 切换历史候选」
-    if (!isUser && isLast && hasText) items.push({ id: 'reroll', label: '换一个' })
-    if (isUser && isLast) items.push({ id: 'resend', label: '重发' })
+    if (!isUser && isLast && hasText && online) items.push({ id: 'reroll', label: '换一个' })
+    if (isUser && isLast && online) items.push({ id: 'resend', label: '重发' })
     // SPEC §2.3.4：编辑用户消息后，截断其后内容并重生成必须是**显式**动作
-    if (isUser && !isLast && index >= 0 && index < messages.length - 1) {
+    if (isUser && !isLast && index >= 0 && index < messages.length - 1 && online) {
       items.push({ id: 'regenerate', label: '从这条重新生成' })
     }
     items.push({ id: 'recall', label: '撤回' })
     items.push({ id: 'delete', label: '删除', danger: true })
     return items
-  }, [sheetFor, messages])
+  }, [sheetFor, messages, online])
 
   async function runSheetAction(actionId: string): Promise<void> {
     const id = sheetFor

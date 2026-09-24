@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
 import { formatDuration } from '../../lib/format'
 import { log } from '../../lib/log'
+import { useOnlineStatus } from '../offline/useOnlineStatus'
 import { MAX_PHOTO_BYTES, type PhotoMime } from '@shared/types'
 
 /** 语音条时长上限（SPEC §2.4.4）：到点自动停止，免得一条录音把备份撑爆 */
@@ -74,6 +75,8 @@ export function Composer({
   onAbort,
   onError,
 }: ComposerProps) {
+  /** 离线时：凡点了会发 HTTP 请求的动作一律禁用，纯本地动作（写草稿 / 插入时间）照常 */
+  const online = useOnlineStatus()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -273,15 +276,17 @@ export function Composer({
   const moreActions = useMemo<SheetAction[] | null>(() => {
     if (!moreOpen) return null
     const items: SheetAction[] = []
+    // 「只发送，不请求回复」只落本地、不发请求 —— 离线时保留（离线也能先把想说的话记下来）
     if (!sending && draft.trim() !== '') items.push({ id: 'silent-send', label: '只发送，不请求回复' })
-    if (!sending) items.push({ id: 'choose-image', label: '发送图片' })
-    if (!sending) items.push({ id: 'generate-image', label: '生成图片' })
+    // 发图会顺带请求 AI 回复、生成图片要打生图接口，两者都会发请求 —— 离线时不给
+    if (!sending && online) items.push({ id: 'choose-image', label: '发送图片' })
+    if (!sending && online) items.push({ id: 'generate-image', label: '生成图片' })
     items.push({ id: 'insert-time', label: `插入当前时间（${nowText()}）` })
     if (draft !== '') items.push({ id: 'clear-draft', label: '清空输入' })
     return items
-    // nowText() 只用于展示，分钟级变化不值得重建菜单 —— draft / sending / moreOpen 才是真依赖
+    // nowText() 只用于展示，分钟级变化不值得重建菜单 —— draft / sending / online / moreOpen 才是真依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moreOpen, draft, sending])
+  }, [moreOpen, draft, sending, online])
 
   function runMoreAction(actionId: string): void {
     setMoreOpen(false)
@@ -306,7 +311,7 @@ export function Composer({
     }
   }
 
-  const canSend = draft.trim() !== '' && !sending
+  const canSend = draft.trim() !== '' && !sending && online
   const recording = recordingSince !== null
 
   return (
@@ -363,7 +368,7 @@ export function Composer({
               value={draft}
               onChange={(e) => onDraftChange(e.target.value)}
               rows={1}
-              placeholder="输入消息…"
+              placeholder={online ? '输入消息…' : '离线中 —— 联网后才能发送'}
               className="max-h-32 flex-1 resize-none rounded-lg border px-3 py-2 text-sm outline-none"
               style={{
                 borderColor: 'var(--color-border)',
@@ -375,6 +380,8 @@ export function Composer({
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault()
                   if (canSend) onSend(draft.trim(), { requestReply: true })
+                  // 离线时回车不会有任何反应，得说出来 —— 否则看起来像「键盘坏了」
+                  else if (!online && draft.trim() !== '') onError('当前离线，联网后才能发送')
                 }
               }}
             />
@@ -411,7 +418,8 @@ export function Composer({
               type="button"
               data-testid="quick-voice"
               aria-label="录一条语音"
-              disabled={sending}
+              disabled={sending || !online}
+              title={online ? undefined : '当前离线，联网后才能发送语音'}
               onClick={() => void startRecording()}
               className="rounded px-2 py-1 text-base disabled:opacity-40"
               style={{ color: 'var(--color-text)' }}
@@ -443,8 +451,9 @@ export function Composer({
             <button
               type="button"
               data-testid="request-reply"
-              disabled={sending || unrepliedCount === 0}
+              disabled={sending || unrepliedCount === 0 || !online}
               onClick={onRequestReply}
+              title={online ? undefined : '当前离线，联网后才能请求回复'}
               className="rounded px-2 py-1 text-xs disabled:opacity-40"
               style={{ color: 'var(--color-primary)' }}
             >
