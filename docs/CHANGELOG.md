@@ -610,3 +610,27 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 新增用户发起的 Mini Terminal：真实列出 ToolGateway 工具、展示参数 schema、显式确认调用，成功 / 失败均落 `tool-result`；AI 自主工具调用继续关闭。
 - 补全 `PRODUCT_SPEC §9.6 / §9.7`，明确实时双工 / 主动拨号与逐次授权的 AI 工具调用不在 v0.1，邮件不建硬编码旁路。
 - Phase 5 API 探针 8/8；浏览器 Chat 140/140、Providers 22/22、Home 75/75、Diagnostics 36/36；类型检查、构建与差异检查通过。
+
+### Phase 6 · PWA（可安装 + 离线外壳）（T-028）—— **完成**
+
+- 接入 `vite-plugin-pwa`，应用可装进主屏、断网也能打开外壳；`registerType: 'prompt'` + `injectRegister: null`，由应用自己注册并弹「有新版本」提示，不做静默替换。
+- manifest 与三张图标（192 / 512 / 512 maskable）+ `apple-touch-icon`；图标由 Pillow + 系统 emoji 字体生成。
+- Service Worker 与 Phase 4 的 Web Push 处理器**合并为一个**：手写的 `web-push-sw.js` 改为 `workbox.importScripts` 并入，避免同作用域两个 SW 互相顶掉。
+- 预缓存 app shell 供离线开壳；`/api/` 排除在 `navigateFallback` 之外，断网时不会拿到 HTML 当接口响应。
+- 开发期不启 SW（`devOptions.enabled: false`）；PWA 验收打生产构建产物，`verify-pwa` 25/25。
+
+### Phase 6 · 离线只读（T-029）—— **完成**
+
+- 新增统一错误码 `OFFLINE` 与 `assertOnline()`：所有请求都在 `lib/api.ts` 收口，离线时提前拦下并给出人话，而不是抛出 `TypeError: Failed to fetch`。
+- 离线横幅说清边界（本地内容照常可看；发消息、生成、朗读等暂不可用），放在文档流内不遮挡内容。
+- 输入区、消息菜单、工具面板、设置页、Life 运行视图逐处收口：联网动作禁用或撤下并说明原因，本地动作保留；**草稿仍可写**，不建发送队列。
+- 工具面板离线时明确区分「当前离线」与「未配 MCP」；取外部图片失败时区分「离线」与「跨域」。
+- 验收用 CDP `Network.emulateNetworkConditions` **真断网**（同时影响 `navigator.onLine` 与 `fetch`），并验恢复联网后的还原；`verify-offline` 38/38。
+
+### Phase 6 · 导入导出增强（T-030）—— **完成**
+
+- 新增单会话导出：Markdown（面向阅读，媒体只写说明不内联）与 JSON（与全量备份同构），入口在聊天设置面板。
+- 全量备份补两条护栏：导入前的覆盖警告（含「先导出一份现在的备份」入口）与久未导出提醒（14 天且库里有数据）。
+- 单会话导出**不**计入「上次导出备份」时间 —— 它不含日记 / 相册 / 账本，拿它当备份是错觉。
+- 不引入任何外部导出格式；Dexie 仍 v10、备份格式仍 v8，本轮三条切片**零 schema 改动**。
+- `verify-export` 17/17；四支原有前端验收（chat 140 / providers 22 / home 75 / diagnostics 36）无回归；两端 typecheck、生产构建、`git diff --check` 通过。

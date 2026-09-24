@@ -3,10 +3,30 @@
  *
  * 导入是**整体替换**语义，所以给两步确认（选文件 → 看清后果 → 再点导入），
  * 与删除方案 / 会话同一套交互口径，不用原生 confirm。
+ *
+ * Phase 6 增补（技术方案 §9 风险7「本地数据损坏/丢失」的对策）：
+ * - **导入前提醒**：覆盖是不可逆的，所以在确认导入前先把「先导一份」摆在手边
+ * - **久未导出提醒**：光有按钮不够，得有人提醒该导了
+ * 两条都刻意留在这里、不弹全局弹窗 —— 备份是低频动作，弹窗只会变成噪音。
  */
-import { useRef, useState } from 'react'
-import { downloadBackup, exportAll, importAll } from '../../lib/backup'
+import { useEffect, useRef, useState } from 'react'
+import { downloadBackup, exportAll, importAll, readLastExportAt } from '../../lib/backup'
+import { db } from '../../db/db'
 import { log } from '../../lib/log'
+
+/** 超过这个天数没导出就提醒。个人自用、数据变动不频繁，7 天太吵、30 天太晚 */
+const STALE_DAYS = 14
+
+/** 相对时间文案：备份提醒里「今天 / 3 天前」比一串时间戳好读得多 */
+function describeAge(days: number): string {
+  if (days <= 0) return '今天'
+  if (days === 1) return '昨天'
+  return `${days} 天前`
+}
+
+function ageInDays(at: number): number {
+  return Math.floor((Date.now() - at) / 86_400_000)
+}
 
 export function BackupPanel() {
   const fileRef = useRef<HTMLInputElement | null>(null)
@@ -14,6 +34,15 @@ export function BackupPanel() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [isError, setIsError] = useState(false)
+  const [lastExportAt, setLastExportAt] = useState<number | null>(() => readLastExportAt())
+  const [hasData, setHasData] = useState(false)
+
+  useEffect(() => {
+    // 空库还催人备份纯属噪音 —— 先问库本身有没有东西，任一表非空都算
+    void Promise.all(db.tables.map((table) => table.count()))
+      .then((counts) => setHasData(counts.some((count) => count > 0)))
+      .catch(() => setHasData(false))
+  }, [])
 
   async function handleExport(): Promise<void> {
     setBusy(true)
@@ -21,6 +50,7 @@ export function BackupPanel() {
     try {
       const backup = await exportAll()
       downloadBackup(backup)
+      setLastExportAt(backup.exportedAt)
       setIsError(false)
       const homeCount = backup.moments.length + backup.wishlist.length + backup.countdowns.length + backup.diaries.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.musicTracks.length + backup.studyRecords.length
       setMessage(`已导出 ${backup.sessions.length} 个会话、${backup.messages.length} 条消息、${homeCount} 条生活记录`)
@@ -68,6 +98,9 @@ export function BackupPanel() {
     }
   }
 
+  const stale = lastExportAt === null ? null : ageInDays(lastExportAt)
+  const shouldRemind = hasData && !busy && (stale === null || stale >= STALE_DAYS)
+
   return (
     <section
       className="mb-4 rounded-lg border p-4"
@@ -83,6 +116,7 @@ export function BackupPanel() {
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
+          data-testid="backup-export"
           onClick={() => void handleExport()}
           disabled={busy}
           className="rounded-full border px-3 py-1 text-sm disabled:opacity-50"
@@ -100,6 +134,7 @@ export function BackupPanel() {
         />
         <button
           type="button"
+          data-testid="backup-choose"
           onClick={() => fileRef.current?.click()}
           disabled={busy}
           className="rounded-full border px-3 py-1 text-sm disabled:opacity-50"
@@ -115,6 +150,7 @@ export function BackupPanel() {
             </span>
             <button
               type="button"
+              data-testid="backup-import-confirm"
               onClick={() => void handleImport()}
               disabled={busy}
               className="rounded-full px-3 py-1 text-sm disabled:opacity-50"
@@ -124,6 +160,7 @@ export function BackupPanel() {
             </button>
             <button
               type="button"
+              data-testid="backup-import-cancel"
               onClick={() => {
                 setPendingFile(null)
                 if (fileRef.current !== null) fileRef.current.value = ''
@@ -136,6 +173,37 @@ export function BackupPanel() {
           </>
         )}
       </div>
+
+      {/* 导入前提醒：覆盖不可逆，所以在确认按钮已经出现在手边时，把「先导一份」也摆出来 */}
+      {pendingFile !== null && (
+        <div
+          data-testid="backup-import-warning"
+          className="mt-3 rounded border p-2 text-xs"
+          style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}
+        >
+          导入会<strong>整体覆盖</strong>当前全部本地数据，现有会话、日记、相册等都会被替换且不可撤销。
+          <button
+            type="button"
+            onClick={() => void handleExport()}
+            disabled={busy}
+            className="ml-1 underline disabled:opacity-50"
+          >
+            先导出一份现在的备份
+          </button>
+        </div>
+      )}
+
+      {/* 上次导出时间 / 久未导出提醒 */}
+      <p data-testid="backup-last-export" className="mt-3 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+        {lastExportAt === null ? '这台设备还没有导出过备份' : `上次导出：${describeAge(stale ?? 0)}`}
+      </p>
+      {shouldRemind && (
+        <p data-testid="backup-stale-hint" className="mt-1 text-xs" style={{ color: 'var(--color-danger)' }}>
+          {stale === null
+            ? `本地已经有数据了，建议导出一份留在自己手里 —— 清站点数据或换浏览器都会让它们消失。`
+            : `已经 ${stale} 天没导出了，中间产生的内容还只在这台设备的浏览器里。`}
+        </p>
+      )}
 
       {message !== null && (
         <p className="mt-3 text-xs" style={{ color: isError ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>

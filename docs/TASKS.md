@@ -16,7 +16,7 @@
 
 > **与 `docs/CHANGELOG.md` 的分工**：CHANGELOG 记「改了什么」（面向版本，按 Phase 组织）；本文件记「做到哪、还欠什么」（面向推进与排期）。
 > **两条硬规矩**：① 已完成只写要点，正文链到 CHANGELOG，**不复制**；② **所有待优化一律收敛到本文件**，不许散落在对话、代码注释或临时文件里。
-> 最后更新：2026-09-23
+> 最后更新：2026-09-24
 
 ---
 
@@ -81,6 +81,10 @@
 - [ ] **留言板 Widget 目前只能展示「最近留言」** —— SPEC §3.2.2 还写了「指定分组 / 指定留言」，但这两者依赖留言条自身还没有的分组与单条选取能力（§3.2.1 的「分组」同样未实现）。→ 等留言板有了分组，Widget 才谈得上「展示范围可选」；届时要给 `HomeWidget` 加一个范围字段，大概率又是一次 Dexie 升版。**现在刻意没放一个只有一个选项的下拉框。**
 - [ ] **主屏 Widget 不能拖拽调序、也不能选位置** —— v0.1 的先后按「上主屏的时间」定（SPEC §1.4），只有两张卡片时不明显；§5.3 的候选 Widget（一起听 / 今日学习 / 日记封面……）真做起来就需要 `order` 字段 + 拖拽交互。→ 与 §5.1「可编排首页」一起做，别单独长出一个半截的排序。
 - [ ] **备份界面提示不提主屏 Widget** —— `BackupPanel` 的概览句是「N 个会话、N 条消息、N 条生活记录」，Widget 不在其中（它属展示层引用，不是生活记录）。当前选择是「不把它算进记录数」，但用户没法从界面确认自己的主屏配置进了备份。→ 要么补一句，要么把这句取舍写进文档（现在只写在代码注释里）。
+- [ ] **离线只做「只读」，不建发送队列**（T-029 定的边界）—— 断网时草稿照写，但发送 / 生成 / 朗读 / 工具调用一律**禁用并说明原因**，不做「先收下、联网再补发」。→ 真要排队，得连「重连后按序补发、与撤回/编辑/换一个互相干扰、超时后怎么办」一整套语义一起定，不能只把按钮放开。
+- [ ] **单会话导出的 Markdown 不内联图片与语音**（T-030）—— 媒体块只写一行说明（「需要原文件请用 JSON 或全量备份」），否则一次导出会变成几十 MB 的文本。→ 若日后要「一份能直接带走的会话」，正确形态是 zip（md + 媒体原文件），而不是把 base64 塞进 md。
+- [ ] **`navigator.onLine` 只代表网卡通，不代表后端可达** —— 家里断路由器上行、服务器挂了、被代理拦住都会是 `true`。所以离线拦截的定位是「兜底 + 把原因说清」，**不能**替代「后端不可达」的失败暴露（`lib/api.ts` 的注释已写明）。→ 想要更准得上轻量健康探测，但它自己就有过期问题，先不做。
+- [ ] **PWA 用 prompt 模式，用户不点「刷新」就一直用旧版** —— 这是**有意**取舍（`autoUpdate` 会在用户正看页面时换掉资源，旧页面再加载已删除的懒加载 chunk 就 404），代价是更新要用户点头。→ 若日后觉得吵，可改成「空闲时自动应用」，但必须先确认没有会被悬空引用的懒加载 chunk。
 
 ### 低 —— 开发工具与体验毛刺
 
@@ -90,6 +94,8 @@
 - [x] ~~**`--bottom-nav-height` 是估的 4rem**~~ —— 已修（T-008）：`BottomNav` 用 `ResizeObserver` 实测自身高度后写回 `--bottom-nav-height`，改图标 / 字号自动跟随，不再需要手动同步。
 - [x] ~~**思维链整段存进 `metadata.reasoning`，无长度上限**~~ —— 已修（T-008）：`db/chat.ts` 加 `capReasoning()` / `REASONING_LIMIT = 32000`，超限保留头尾并插入截断说明（头尾各半 —— 开头是推理起点、结尾是结论，中间最适合丢）。写入路径（`addVersion`、流式草稿、收尾定性）统一走它。
 - [ ] **验收脚本的断言绑定了 mock 的固定回复文案** —— 改 `mock-openai.ts` 的回复就要同步改 `web/scripts/verify-chat.mjs` 的断言。→ 让 mock 回显请求内容，断言改成检查回显。
+- [ ] **`verify-home.mjs` 对机器负载敏感**（T-028~T-030 实测）—— 它每换一个 Home 子模块都做一次**整页导航**（`Page.navigate`），而 `navigate()` 的就绪等待是 30s 硬超时。同一条流水线里还并行跑着别的验收 / 无头浏览器时，vite dev 冷启动（本机实测 27.8s）+ 模块图加载会逼近这个上限，症状是**失败点会漂移**（一次卡在「学习记录刷新保留」、一次卡在「/home/works 就绪」），空闲时同一条命令 **75/75 全过**。→ 要么把导航类等待放宽到 60s，要么在流水线里先给 vite 预热（把 `/home/*` 各 curl 一遍）再跑。
+- [ ] **CDP 验收脚本有两条「流水线级」约束，目前靠注释口头传承** —— ① `Runtime.enable` 会把**上一个会话**的 console 消息重放一遍，不清桶的话「控制台零异常」会被上游脚本的报错污染成假红；② 新建会话后「路由变了 ≠ 输入框已挂载」，`setValue` 会**静默**返回 `'missing'`，后面白等 30s 才超时、且报错完全指不到原因。两条都已写进 `verify-export.mjs` / `verify-offline.mjs` 的注释。→ 写到第三个脚本时该把 `waitFor` / `setValue` / 清桶抽成 `web/scripts/lib/` 的公共 helper。
 - [ ] **`probe-nocturne-live.ts` 默认不打印 boot 正文** —— 那是本人记忆，默认只打印字数（要看得加 `NOCTURNE_PROBE_PREVIEW=1`）。代价是排查「召回内容对不对」时得多敲一个环境变量。→ 保持现状；若日后要做召回质量评估，应改成写文件而不是打屏。
 - [ ] ⚠️ **本机对 `SNI=beiyan.cc` 存在 TLS 客户端分界线**（T-022 实测）—— 带 SNI 时 **Node 20（OpenSSL 3.0.15）连续 6/6 `ECONNRESET`**，而 Node 22（OpenSSL 3.5.5）与 Git Bash 的 openssl 3.5.7 **6/6 通过**；**不带 SNI（裸 IP）时两个版本都通**；换 9 组 TLS 参数（TLS1.2/1.3、`ecdhCurve`、`ciphers`、ALPN）**全部无效**。→ 机制从外部判不了（疑似链路 DPI 按 ClientHello 特征重置连接）。**影响很直接：habitat `server` 必须跑 Node 20（`better-sqlite3` ABI），所以本地开发时用 server 连 `beiyan.cc` 会失败。** ✅ **已由北北在沙箱外终端复核确认**（同报 `ERR ECONNRESET`），排除本环境出口代理干扰，是真实现象；**生产为同机内网直连，不受影响**（见 `docs/DEPLOYMENT.md` §4）。
 - [x] ~~**`ApiProfilePublic.hasKey` 语义有歧义**~~ —— 已修（T-005）：新增 `keySource`（`stored` / `env` / `missing` / `not-required`），UI 文案据此分别渲染「密钥已保存」/「密钥来自环境变量」/「缺密钥，现在调不通」/「无需密钥」。`hasKey` 保留（= `keySource !== 'missing'`），不破坏既有契约。
@@ -1298,3 +1304,132 @@
 - 两端 typecheck、前端生产构建、`git diff --check` 通过；构建仅保留既有的单 chunk >500 kB 提示
 
 **Phase 5 至此完成。下一阶段**：Phase 6 只做打磨与剩余偏差清理；T-022 Nocturne 生产验真仍是部署前关卡。
+
+---
+
+### T-028 · 2026-09-24 · PWA（可安装 + 离线外壳）—— **完成**
+
+**范围**：把 Web 应用做成能装进主屏、断网也能打开外壳的 PWA；不碰业务功能，不动数据层。
+本轮属技术任务（不涉及产品交互新增），按 `AGENTS.md` §4「纯改接口 / 部署类不强制查参考项目」未引外部项目。
+
+**口径与决策**
+
+1. **`registerType: 'prompt'`，不用 `autoUpdate`** —— 静默更新会在用户正看页面时把资源换掉，
+   旧页面再去加载已被删除的懒加载 chunk 就是 404。给一条明确提示、让用户挑时机刷新更稳。
+2. **由应用自己注册**（`injectRegister: null`），这样才拿得到 `needRefresh` 去弹提示。
+3. **开发期不启 SW**（`devOptions.enabled: false`）—— 否则改代码不生效；PWA 验收一律打生产构建产物。
+4. **与 Phase 4 的推送处理器共用一个 SW** —— 同一个作用域只能有一个 Service Worker，
+   手写的 `public/web-push-sw.js` 若自己 `register()` 就会与 PWA 生成的 SW 互相顶掉。
+   改为 `workbox.importScripts: ['/web-push-sw.js']` 并入：**推送与离线共用一个 SW，两个能力都在**。
+5. **`/api/` 绝不落 `index.html` 兜底**（`navigateFallbackDenylist: [/^\/api\//]`）——
+   否则断网时会拿到一页 HTML 当接口响应，错误会变得极难解释。
+
+**落地**
+
+- 新增 `vite-plugin-pwa` 1.3.0 + `workbox-window`；manifest（名称 / standalone / 主题色 `#f6f4f1` / start_url+scope）与
+  三张图标（192 any、512 any、512 maskable 单独一张，图形已缩到中心安全区，被裁成圆形也不切掉叶子）
+- 图标由 Pillow + 系统 emoji 字体生成，含 `apple-touch-icon.png`（iOS 不认 manifest 图标，要单独声明）
+- `web/src/features/pwa/`：`useAppUpdate.ts`（`useRegisterSW` 封装）+ `UpdatePrompt.tsx`（新版本 / 已可离线两条提示）
+- `AppShell` 把横幅放在**文档流里**（不是 fixed 悬浮）：出现时把内容推下去，收起时自动还原，不必反算 padding
+- `features/life/push.ts` 改为复用**已存在的** SW 注册，不再自己 `register('/web-push-sw.js')`
+- 新增 `web/scripts/verify-pwa.mjs` + `.workbuddy/run-pwa-verify.sh`（build → preview:5284 → CDP:9434，端口与 dev 路线错开）
+
+**验收（全部实跑）**
+
+- `verify-pwa.mjs`：**25/25** —— manifest 与三张图标可取、SW 注册并激活、app shell 预缓存、
+  **断网仍能打开外壳**、`/api/` 不被兜底成 HTML、更新提示与「已可离线」提示可关
+- `verify-chat` 140/140、`verify-providers` 22/22、`verify-home` 75/75、`verify-diagnostics` 36/36（无回归）
+- 两端 typecheck、前端生产构建、`git diff --check` 通过
+
+**踩到的坑（脚本侧，值得记）**
+
+- `waitFor` 的条件写成 Promise 时 `if (promise)` **恒真** = 假等待 —— SW 还在 install 就断言「已激活」，
+  于是「12/13」里唯一那条失败其实是我自己写的假等待。→ 条件一律 `await (…)` 后再判。
+- PWA 验收**必须打生产构建**：dev 下不注册 SW，在 dev server 上验「断网还能开壳」永远验不出来。
+
+---
+
+### T-029 · 2026-09-24 · 离线只读 —— **完成**
+
+**范围**：断网时把「能做什么、不能做什么」说清楚并落到交互上；**只做只读**，不建发送队列，
+也不引入任何离线写冲突语义。
+
+**口径与决策**
+
+1. **`navigator.onLine` 只是兜底信号** —— 它 `true` 只表示网卡通，不代表后端可达。
+   所以离线拦截的定位是「提前拦一下并给出人话说明」，**不能**替代「后端不可达」的失败暴露。
+2. **拦在唯一入口**：所有请求都过 `lib/api.ts` 的 `fetchJson`，在那里 `assertOnline()`；
+   同时各处该禁用的按钮仍要**禁用**（否则用户要点一下才知道不能用）。
+3. **说清而不是喊「断网了」**：横幅的文案是「本地内容照常可看；需要联网的动作（发消息、生成、朗读等）暂时不可用」——
+   栖息地的聊天、日记、相册、账本本来就全在本机，把它说明白，用户就不会以为数据丢了。
+
+**落地**
+
+- `shared/errors.ts` 新增前端专用错误码 `OFFLINE`；`lib/api.ts` 加 `assertOnline()` 并挂在 `fetchJson` 前
+- 新增 `features/offline/`：`useOnlineStatus.ts`（online/offline 事件）+ `OfflineBanner.tsx`
+- 输入区（`Composer`）：离线时主按钮 / 语音 / 请求回复禁用，placeholder 改文案，回车给出明确提示，
+  「发送图片 / 生成图片」从菜单里撤掉；**草稿照写**
+- 消息菜单（`ChatWindowPage`）：离线时撤掉「朗读 / 换一个 / 重发 / 重新生成」等联网动作，保留本地动作（收藏、复制、编辑、删除）
+- 工具面板（`MiniTerminal`）：离线时不发 `/api/tools`，直接显示「当前离线。工具需要联网，恢复联网后会自动读取」——
+  与「没有可用工具（未配 MCP）」明确区分开，避免把人引到错误方向
+- 设置页离线时可打开、可导出备份（纯本地动作），「测试连接」禁用；Life 运行视图如实给出「离线」说明
+- 取外部图片失败时区分「离线」与「跨域」（这两件事的排查方向完全相反）
+- 新增 `web/scripts/verify-offline.mjs`：用 CDP `Network.emulateNetworkConditions` **真断网**（同时影响 `navigator.onLine` 与 `fetch`），
+  而不是只 mock `navigator.onLine`（那样验不出问题）
+
+**验收（全部实跑）**
+
+- `verify-offline.mjs`：**38/38** —— 离线横幅出现且不遮挡内容、列表与会话内容仍可读、输入区四项禁用、草稿可写、
+  消息菜单联网项消失而本地项保留、工具面板给的是「离线」不是「没配 MCP」、设置页与 Life 页可读、
+  **恢复联网后横幅消失 + 提示语还原 + 发送恢复可用**、联网 / 恢复阶段控制台零异常
+- 断网阶段的 console 输出**单独分桶**、只记录不判失败（断网时请求失败正是「如实失败」的证据）
+- 四支原有前端验收无回归；两端 typecheck、生产构建、`git diff --check` 通过
+
+**踩到的坑（脚本侧，值得记）**
+
+- ⚠️ **`Runtime.enable` 会把上一个 CDP 会话的 console 消息重放一遍**（已实测确认）。同一条流水线上
+  `verify-offline` 断网阶段的报错被 `verify-export` 原样收走，「控制台零异常」假红。
+  **排除掉的两个错误方向**：①「断网状态跨会话泄漏」—— 实测不会，会话一断覆盖就失效；
+  ② 用 `Network.emulateNetworkConditions(offline:false)` 去「恢复」—— 实测无必要，而且会让人误以为问题在网络层。
+- 分段桶的 `phase = 'offline'` 漏写一行，断网阶段的日志被记进 online 桶，末尾那条断言必然误报。
+- 「路由变了 ≠ 输入框已挂载」：`setValue` 静默返回 `'missing'` → 草稿为空 → 发送按钮一直禁用 →
+  30s 后才超时，且报错完全指不到真正原因。→ 先 `waitFor` 挂载，并**断言写入返回值**。
+- 到达判据别用页面文本：`body.innerText.includes('生活')` 在别的页面也成立（底栏有「Life」、页面标题有「生活」），
+  改用 `location.pathname` / `location.search`。
+
+---
+
+### T-030 · 2026-09-24 · 导入导出增强 —— **完成**
+
+**范围**：增强自家备份能力，**不引入任何外部格式**（不碰 ChatGPT / Claude 的导出格式）。
+
+**口径与决策**
+
+1. **单会话导出 ≠ 备份** —— 一次会话导出不含日记 / 相册 / 账本，拿它当备份是错觉。
+   所以单会话导出**不更新**「上次导出备份」的时间戳，两者在界面上也分开写。
+2. **导入前必须把「先导一份」摆在手边** —— 导入是整体替换、不可逆；只在确认按钮出现时给出覆盖警告与
+   「先导出一份现在的备份」入口，不用全局弹窗（备份是低频动作，弹窗只会变噪音）。
+3. **光有按钮不够，得有人提醒该导了** —— 超过 14 天没导出且库里有数据才提醒（7 天太吵、30 天太晚）。
+
+**落地**
+
+- 新增 `web/src/lib/exportSession.ts`：`sessionMarkdown()` / `sessionJson()` 两种形态。
+  Markdown 面向阅读（标题、时间、角色、块内容），**图片 / 语音只写一行说明**（否则一次导出就是几十 MB 文本）；
+  JSON 与全量备份同构（`{format:'habitat-session',version:1,session,messages}`），便于后续做程序化处理
+- `lib/backup.ts` 加 `readLastExportAt()` / `markExported()`（localStorage `habitat:last-export-at`）
+- `BackupPanel` 重写：保留原有 testid 之外补 `backup-export` / `backup-choose` / `backup-import-confirm` /
+  `backup-import-cancel`；新增 `backup-import-warning`（含「先导出一份现在的备份」）、`backup-last-export`、`backup-stale-hint`
+- 聊天设置面板加「导出这段对话」区块（`chat-export-markdown` / `chat-export-json` / `chat-export-message`）
+- 新增 `web/scripts/verify-export.mjs`
+
+**验收（全部实跑）**
+
+- `verify-export.mjs`：**17/17** —— 单会话 Markdown / JSON 导出回执**带真实条数**、
+  单会话导出**不**更新全量备份时间、有数据但从未备份时提醒、导出后记下「上次导出：今天」且提醒收起、
+  选中备份文件后出现覆盖警告（含「整体覆盖」「不可撤销」「先导出一份」）、取消后警告一并收起、控制台零异常
+- 四支原有前端验收无回归；两端 typecheck、生产构建、`git diff --check` 通过
+
+**本轮（T-028~T-030）共同结论**：三条都是前端侧能力，**Dexie 仍是 v10、备份格式仍是 v8 —— 零 schema 改动**。
+
+**下一阶段**：Phase 6 打磨继续按 `PRODUCT_SPEC` / 本文件剩余偏差切片；
+**动画与过渡效果留给 UI 一起做**（北北明确要求）。T-022 Nocturne 生产验真仍是部署前关卡（暂停中）。

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { BubbleMode, ChatSession } from '@shared/types'
 import type { ChatSessionSettingsInput } from '../../db/chat'
+import { exportSessionJson, exportSessionMarkdown } from '../../lib/exportSession'
 
 const FIELD_CLASS = 'w-full rounded-lg border bg-transparent px-3 py-2 text-sm outline-none'
 const FIELD_STYLE = {
@@ -30,6 +31,9 @@ export function ChatSettingsSheet({
   const [background, setBackground] = useState(session.background ?? '')
   const [bubbleMode, setBubbleMode] = useState<BubbleMode>(session.bubbleMode)
 
+  const [exporting, setExporting] = useState(false)
+  const [exportMessage, setExportMessage] = useState<string | null>(null)
+
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
     await onSave({
@@ -37,6 +41,27 @@ export function ChatSettingsSheet({
       background: background === '' ? null : background,
       bubbleMode,
     })
+  }
+
+  /**
+   * 导出这段对话。
+   *
+   * ⚠️ 刻意**不**更新「上次导出备份」的时间：单会话导出不包含日记、相册、账本那些，
+   *    拿它当「我备份过了」是错觉 —— 那个提醒只认全量备份。
+   */
+  async function exportAs(kind: 'markdown' | 'json'): Promise<void> {
+    setExporting(true)
+    setExportMessage(null)
+    try {
+      const result = kind === 'markdown'
+        ? await exportSessionMarkdown(session.id)
+        : await exportSessionJson(session.id)
+      setExportMessage(`已导出「${result.title}」，共 ${result.messageCount} 条消息`)
+    } catch (err: unknown) {
+      setExportMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -108,6 +133,41 @@ export function ChatSettingsSheet({
               <option value="native">AI 原生式</option>
             </select>
           </label>
+
+          {/* 导出这段对话（技术方案 §9 风险7）。放设置面板里而不去挤聊天页 header —— 它是低频动作 */}
+          <div className="grid gap-1.5 text-sm">
+            <span>导出这段对话</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-testid="chat-export-markdown"
+                disabled={exporting}
+                onClick={() => void exportAs('markdown')}
+                className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40"
+                style={{ borderColor: 'var(--color-border)' }}
+              >
+                导出为 Markdown
+              </button>
+              <button
+                type="button"
+                data-testid="chat-export-json"
+                disabled={exporting}
+                onClick={() => void exportAs('json')}
+                className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40"
+                style={{ borderColor: 'var(--color-border)' }}
+              >
+                导出为 JSON
+              </button>
+            </div>
+            <p className="text-xs" style={{ color: 'var(--color-text-dim)' }}>
+              Markdown 能直接读、能贴到别处；JSON 保留完整结构，便于日后迁移。
+            </p>
+            {exportMessage !== null && (
+              <p data-testid="chat-export-message" className="text-xs" style={{ color: 'var(--color-text-dim)' }}>
+                {exportMessage}
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="mt-5 flex justify-end gap-2">

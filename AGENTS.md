@@ -10,7 +10,7 @@
 > **纯修 bug、补测试、改接口、改部署等不涉及产品交互的任务，不强制查 GitHub 参考项目。**
 >
 > 任务完成后立即停止。不得自行扩展需求、重构无关代码、继续优化或执行下一阶段任务。超出当前范围的问题统一写入 `docs/TASKS.md`。
-> 最后更新：2026-09-23
+> 最后更新：2026-09-24
 
 ---
 
@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar ⚠️ **实测线上跑的是 nginx/1.18.0，不是 Caddy**（T-022），选型待北北确认                      |
-| 当前阶段 | **Phase 5 高级能力已完成**（T-027）：ASR / TTS、图片理解 / 生成、安全富消息块、用户发起 Mini Terminal｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022）｜下一阶段 Phase 6 打磨 |
+| 当前阶段 | **Phase 6 打磨进行中**：T-028 PWA（可安装 + 离线外壳）｜T-029 离线只读｜T-030 导入导出增强 已完成；**动画 / 过渡效果待与 UI 一起做**｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022） |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -138,7 +138,8 @@ habitat/
 | 主动唤醒 / 独处时光 | `docs/PRODUCT_SPEC.md` §9.5 + 技术方案 §7.2③ / §9 风险6 | 需要设计主动行为时实查 Headlong / AI Companion Runtime / WrenWen 等 |
 | Life 统计 / 账本 / 通知 | `docs/PRODUCT_SPEC.md` §9.2（待补）+ 技术方案 §6.2 | Phosphene、WORKKK |
 | 部署 / 反代 / SSE | 技术方案 §4 / §9 风险2·3 | 非产品交互任务，按需查：Ocean、AionsHome、Not Fade Away、cloud-and-island |
-| 导入导出 / 数据主权 | 技术方案 §9 风险7 | 非产品交互任务，按需查：forge-reload、context-slim、chatgpt-exporter |
+| 导入导出 / 数据主权 | 技术方案 §9 风险7 + `README.md` 「本地验收 / PWA」 | 非产品交互任务，按需查：forge-reload、context-slim、chatgpt-exporter |
+| PWA / 离线 / 应用更新 | 技术方案 §9 风险7·9 + `README.md`「PWA」 | 非产品交互任务；改 SW / 推送前先读 `web/vite.config.ts` 的 `workbox` 注释（**推送与离线共用一个 SW**） |
 | 语音 / TTS（Phase 5） | `docs/PRODUCT_SPEC.md` §2.4.4 / §9.6 + 技术方案 §7.1 | voice-mcp、GPT-SoVITS、Callhome |
 | 感知（Phase 5+） | — | Akari Pulse、gaze、cove-sensory-mcp |
 
@@ -172,14 +173,29 @@ habitat/
 - Phase 3B Eventide：✅ 完成（状态 + 互动结算 + 事件 / 梦境 + BudgetGuard + 唤醒 / 独处 + 钱包）
 - Phase 4 Life：✅ 完成（月历 / 账本 / 通知 / 运行 + PriceSnapshot / Web Push）
 - Phase 5 高级能力：✅ 完成（异步语音 / TTS / 图片 / 富消息块 / Mini Terminal）
-- Phase 6 打磨：未开始
+- Phase 6 打磨：🚧 进行中（T-028 PWA / T-029 离线只读 / T-030 导入导出增强 已完成；**动画与过渡效果待与 UI 一起做**）
 
 **UX 收口横切（依 `PRODUCT_SPEC` §7）**：**P0 ✅ 全部收口（14 项）** —— 消息对象操作 + 跨模块内容流转 + 会话置顶 / 聊天设置 + 会话分组（T-015~T-018）
 **P1（6 项）**：输入区快捷栏 ✅ + 请求回复拆开 ✅（T-019）｜留言板 Widget ✅ + 倒数日 Widget ✅（T-020，**Dexie 升 v9 / 备份升 v7**）｜收藏分类 ✅ + 相册分类 ✅（T-021，**Dexie 升 v10 / 备份升 v8**）｜**P1 全部完成**｜P2 未开始
 
 ### 当前施工点
 
-**Phase 5 高级能力已收口**；T-022 的 Nocturne 生产验真仍是部署前关卡，不阻塞进入 Phase 6。
+**Phase 6 打磨已开工**；T-022 的 Nocturne 生产验真仍是部署前关卡，不阻塞打磨。
+
+- ✅ **打磨第一批「PWA + 离线只读 + 导入导出增强」（T-028~T-030）**：**零 schema 改动**（Dexie 仍 v10、备份格式仍 v8）
+  - **PWA**：可装进主屏、断网能开壳。更新走 `prompt`（用户决定何时刷新，不做静默替换）；
+    **离线外壳与 Web Push 共用一个 SW**（`web-push-sw.js` 用 `workbox.importScripts` 并入，不再各自 `register`）；
+    `/api/` 排除在 `navigateFallback` 之外；dev 期不启 SW → **PWA 验收必须打生产构建**（`verify-pwa` 25/25）
+  - **离线只读**：`assertOnline()` 收口在 `lib/api.ts`，离线时提前拦下并给人话（而不是 `TypeError: Failed to fetch`）；
+    横幅说清「本地照常可看、要联网的动作暂不可用」；输入区 / 消息菜单 / 工具面板 / 设置页 / Life 运行视图逐处禁用或撤下联网动作，
+    **草稿仍可写**；工具面板区分「离线」与「未配 MCP」（`verify-offline` 38/38，用 CDP 真断网）
+  - **导入导出**：聊天设置里可导出**单会话**（Markdown 面向阅读 / JSON 与全量备份同构）；
+    全量备份补「导入前覆盖警告 + 先导一份」与「久未导出提醒」；**单会话导出不计入「上次导出备份」**（`verify-export` 17/17）
+  - ⏭ **刻意没做**：动画 / 过渡效果（北北要求留到与 UI 一起做）；离线发送队列（只做只读，不建排队语义）
+  - 📌 验收排布：`run-front-verify.sh` 现在含 **6 支**（chat / providers / home / export / offline + 组二 diagnostics）；
+    PWA 单独一条 `run-pwa-verify.sh`（打生产构建）。**别并发跑**，`verify-home` 的整页导航对机器负载敏感（详见 `docs/TASKS.md` 待优化）
+
+**Phase 5 高级能力（T-027，已收口）**
 
 - ✅ **第一批「消息对象操作」**：编辑（保留原版本，与「换一个」共用一套版本导航）/ 撤回（留痕、不进模型上下文、可恢复）/ 删除 / 多选批量删 / 复制，统一进「长按 + 右键 + `⋯`」同一个菜单
 - ✅ **第二批「跨模块内容流转」**：消息 → 收藏、消息 / 组件 → 作品、聊天图片 → 相册；三类条目保留来源与快照
@@ -242,7 +258,9 @@ habitat/
 
 ### 下一步
 
-1. 🔵 **下一阶段 · Phase 6 打磨**：先依据 `PRODUCT_SPEC` / `TASKS` 剩余偏差切片，不把实时通话或 AI 自主工具循环顺手塞进打磨
+1. 🔵 **Phase 6 打磨（进行中）**：PWA / 离线只读 / 导入导出增强已落地。
+   **下一步是动画与过渡效果 —— 但它必须与 UI 一起做**（`docs/UI_DESIGN.md` 被补充前不堆视觉细节，见铁律 6）；
+   其余按 `PRODUCT_SPEC` / `TASKS` 剩余偏差切片，不把实时通话或 AI 自主工具循环顺手塞进打磨
 2. ⏸ **部署前关卡 · Phase 3A 自部署 Nocturne**：服务器上开启 `api_token`、验证内网 `/mcp`、重跑 `probe-nocturne-live.ts`；详见 `docs/DEPLOYMENT.md` §3
 3. PRODUCT_SPEC P2 的 AI 自主日记 / 留言现在已有主动行为底座，但应按各自权限模型单独施工，不能直接把独处记录冒充成日记或留言
 

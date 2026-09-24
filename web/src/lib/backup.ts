@@ -112,6 +112,27 @@ export async function exportAll(): Promise<HabitatBackup> {
   }
 }
 
+/**
+ * 上次成功导出的时间戳（localStorage）。
+ *
+ * 用来兑现技术方案 §9 风险7 的对策「float-phone 丢数据前科」——
+ * 光有导出按钮不够，得有人提醒你该导了。刻意只记在这台浏览器上：
+ * 导出是否发生过是**设备级**的事实，跟账号无关，也不该混进备份本体。
+ */
+const LAST_EXPORT_KEY = 'habitat:last-export-at'
+
+export function readLastExportAt(): number | null {
+  const raw = window.localStorage.getItem(LAST_EXPORT_KEY)
+  if (raw === null) return null
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
+/** 在 `downloadBackup` 里调用 —— 备份文件真的落到用户机器上才算数 */
+function markExported(at: number): void {
+  window.localStorage.setItem(LAST_EXPORT_KEY, String(at))
+}
+
 /** 触发浏览器下载；调用方决定文件名 */
 export function downloadBackup(backup: HabitatBackup): void {
   const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' })
@@ -122,6 +143,7 @@ export function downloadBackup(backup: HabitatBackup): void {
   anchor.href = url
   anchor.download = `habitat-backup-${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}.json`
   anchor.click()
+  markExported(backup.exportedAt)
   // Firefox / 大文件场景下同步释放可能在下载真正开始前就把 URL 提前销毁。
   setTimeout(() => URL.revokeObjectURL(url), 0)
 }

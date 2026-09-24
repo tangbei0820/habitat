@@ -95,8 +95,37 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `node web/scripts/verify-diagnostics.mjs` | 诊断日志面板（36 项） |
 | `node web/scripts/verify-home.mjs` | Home 十模块 + **主屏 Widget** + **收藏分类 / 相册分类** + 备份恢复（75 项，含备份 v8 的分类归属与旧版兼容） |
 | `node web/scripts/verify-life.mjs` | Life 四视图、移动端布局、价格 / 钱包入口、Push 降级、运行状态（15 项） |
+| `node web/scripts/verify-export.mjs` | 单会话导出（Markdown / JSON 回执带条数、不更新全量备份时间）、久未导出提醒、导入前覆盖警告（17 项） |
+| `node web/scripts/verify-offline.mjs` | **真断网**下的只读边界：横幅、本地数据可读、联网动作禁用 / 撤下、工具面板区分「离线」与「未配 MCP」、恢复联网后还原（38 项） |
+| `node web/scripts/verify-pwa.mjs` | PWA：manifest 与图标、SW 注册并激活、app shell 预缓存、断网开壳、`/api/` 不被兜底成 HTML（25 项，**须打生产构建**） |
 
 各脚本的**准确前置条件**写在**各自文件头的注释**里，跑之前先看一眼。
+
+前四支 + export/offline 共用一套前置（server:3100 + vite:5174 + CDP:9222），一键跑：
+
+```bash
+bash .workbuddy/run-front-verify.sh    # 日志 /tmp/front-verify.log
+```
+
+> ⚠️ **别把两支脚本并发跑**。`verify-home` 每换一个 Home 子模块都做一次**整页导航**，
+> 就绪等待是 30s 硬超时；本机实测高负载时（vite dev 冷启动要 27.8s）会逼近上限并超时，
+> 而且**失败点会漂移**（空闲时同一条命令 75/75 全过）。跑的时候别同时在跑别的验收或浏览器。
+
+### PWA
+
+应用可装进主屏、断网也能打开外壳；**开发期不注册 Service Worker**（改了代码不生效），
+所以 PWA 验收打的是**生产构建产物**，单独一条流水线：
+
+```bash
+bash .workbuddy/run-pwa-verify.sh      # build → vite preview:5284 → 无头 Edge CDP:9434；日志 /tmp/pwa-verify.log
+```
+
+端口刻意与上面那条错开（5284 / 9434 vs 5174 / 9222），两条可以并存。
+
+- 更新策略是 **`prompt`**：新版本就绪时顶部弹一条提示，由用户决定何时刷新（静默更新会让正看页面的用户撞上已删除的懒加载 chunk）。
+- 离线外壳与 Web Push **共用一个 Service Worker**：手写的 `public/web-push-sw.js` 通过 `workbox.importScripts` 并入 PWA 生成的 SW，
+  不会互相顶掉。新增推送逻辑仍写在那一个文件里。
+- 手机安装：用浏览器打开站点 →「添加到主屏幕」。iOS 走 `apple-touch-icon`（Safari 不认 manifest 图标）。
 
 ### ⚠️ 跑验收的硬前提
 
@@ -112,6 +141,8 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 - **`verify-chat.mjs` 的语音条断言要求无头 Edge 带假麦克风**：起浏览器时须加
   `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`（`.workbuddy/run-front-verify.sh` 已带）。
   缺了这两个开关，`getUserMedia` 拿不到流，录音相关的断言会全线失败 —— 那是环境问题，不是功能坏了。
+- **PWA 相关验收必须打生产构建产物**（`vite build` + `vite preview`）。dev 下不注册 Service Worker，
+  在 dev server 上验「断网还能开壳」永远验不出来 —— 那不是功能坏了，是走错了路线。
 
 ## 文档
 
