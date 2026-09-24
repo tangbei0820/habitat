@@ -152,7 +152,8 @@ await waitFor('document.body.innerText.includes("流式回复")', 'AI 回复落�
 check('已备好一段两轮的对话', (await evaluate('document.querySelectorAll("[data-message-id]").length')) >= 2)
 
 /* ---------- 二、单会话导出（聊天设置面板里） ---------- */
-await clickContains('设置')
+// ⚠️ 顶栏按钮换皮后是纯图标（无文案），别按「设置」两个字找 —— 按图标按钮的 testid 点
+await clickSelector('[data-testid="chat-settings-open"]')
 await waitFor('document.querySelector(\'[data-testid="chat-settings-sheet"]\') !== null', '聊天设置打开')
 check('聊天设置里有「导出这段对话」', (await textOf('[data-testid="chat-settings-sheet"]')).includes('导出这段对话'))
 check('提供 Markdown 与 JSON 两种导出', await exists('[data-testid="chat-export-markdown"]') && await exists('[data-testid="chat-export-json"]'))

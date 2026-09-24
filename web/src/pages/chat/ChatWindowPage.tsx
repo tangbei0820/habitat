@@ -4,6 +4,7 @@ import type { ChatToolCallPayload } from '@shared/events'
 import type { LlmChatMessage } from '@shared/providers'
 import type { ChatMessage, ChatSession, MessageBlock, MessageStatus, ToolResultBlock } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
+import { IconChevronLeft, IconSetting, IconToolbox } from '../../components/qixi/Icons'
 import { useChatDisplay } from '../../app/useChatDisplay'
 import {
   ChatBubble,
@@ -14,6 +15,7 @@ import {
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
 import { ChatSettingsSheet } from '../../features/chat/ChatSettingsSheet'
 import { Composer } from '../../features/chat/Composer'
+import { MessageAvatar } from '../../features/chat/MessageAvatar'
 import { MiniTerminal } from '../../features/chat/MiniTerminal'
 import {
   createMessageArtwork,
@@ -41,7 +43,7 @@ import {
 } from '../../db/chat'
 import { ApiRequestError } from '../../lib/api'
 import { streamChat } from '../../lib/chatStream'
-import { formatDuration } from '../../lib/format'
+import { formatDayLabel, formatDuration, isSameDay } from '../../lib/format'
 import { log } from '../../lib/log'
 import { describeImage, generateImage, synthesizeSpeech, transcribeAudio } from '../../lib/media'
 import { useOnlineStatus } from '../../features/offline/useOnlineStatus'
@@ -56,6 +58,11 @@ const TITLE_LIMIT = 18
  */
 const DRAFT_FLUSH_MS = 800
 const TOAST_MS = 1800
+/**
+ * 开场动画窗口时长。大于入场动画本身（`--dur-card` = 300ms）留出余量 ——
+ * 太短会让首批消息只播一半就被掐掉，太长会把「滚出来的新行」也算进去。
+ */
+const ENTER_ANIM_MS = 700
 
 function titleFrom(text: string): string {
   const oneLine = text.replace(/\s+/g, ' ').trim()
@@ -143,6 +150,15 @@ export function ChatWindowPage() {
   const [draft, setDraft] = useState('')
   const [hasMore, setHasMore] = useState(false)
   const [loadingEarlier, setLoadingEarlier] = useState(false)
+  /**
+   * 「刚打开这个会话」的入场窗口（`--dur-card` 300ms + 余量）。
+   *
+   * ⚠️ 为什么要有这么个开关，而不是让每条消息自己挂进入动画：
+   * 消息流是**虚拟列表**，滚动过程中会不断挂载新行 —— 若动画挂在 `.msg-row` 上，
+   * 往上翻历史时每一行都会淡入一次，看起来像「整页在不停重新加载」。
+   * 所以动画只在打开会话那一瞬开，过了这个窗口就不再播。
+   */
+  const [entering, setEntering] = useState(false)
 
   /** 全局显示偏好（SPEC §9.1.3）：头像开关。在这里读一次再往下传，气泡保持纯展示组件 */
   const showAvatars = useChatDisplay((state) => state.showAvatars)
@@ -186,6 +202,13 @@ export function ChatWindowPage() {
     }
   }, [toast])
 
+  // 开场动画窗口自己会关，别一直开着（一直开着就等于每条新挂载的行都在播）
+  useEffect(() => {
+    if (!entering) return
+    const timer = window.setTimeout(() => setEntering(false), ENTER_ANIM_MS)
+    return () => window.clearTimeout(timer)
+  }, [entering])
+
   useEffect(() => {
     if (sessionId === undefined) return
     // 换会话时把消息级操作状态清干净：残留的选中 / 待确认会作用到另一个会话的消息上
@@ -219,6 +242,8 @@ export function ChatWindowPage() {
         }
         // 拉满一页说明前面可能还有；不满则已知到底
         setHasMore(page.length === PAGE_SIZE)
+        // 开场动画窗口：只在「刚进来」这一瞬给，滚动挂载的新行不再播（见 entering 的注释）
+        if (page.length > 0) setEntering(true)
       } catch (err) {
         log.error('读取会话失败', err)
         if (!cancelled) {
@@ -850,15 +875,21 @@ export function ChatWindowPage() {
     }
   }
 
-  const items = useMemo<ChatItem[]>(
-    () =>
-      messages.map((message, index) => ({
+  const items = useMemo<ChatItem[]>(() => {
+    const now = Date.now()
+    return messages.map((message, index) => {
+      // 跨天才插日期分隔。判据用**自然日**而不是毫秒差：今天 00:10 与昨天 23:50 只差 20 分钟，
+      // 但它们不是同一天 —— 用毫秒差会把它归成一天，分隔永远不出现。
+      const previous = index === 0 ? null : messages[index - 1]
+      const crossDay = previous === null || !isSameDay(previous.createdAt, message.createdAt)
+      return {
         message,
         text: messageText(message),
         isLast: index === messages.length - 1,
-      })),
-    [messages],
-  )
+        dayLabel: crossDay ? formatDayLabel(message.createdAt, now) : null,
+      }
+    })
+  }, [messages])
 
   // 刻意不做 memo：这些回调都读最新 state，缓存住反而会闭包读到旧数组
   const actions: BubbleActions = {
@@ -895,38 +926,60 @@ export function ChatWindowPage() {
 
   const unrepliedCount = useMemo(() => countUnreplied(messages), [messages])
 
+  /**
+   * 顶栏第二行的状态文案。**只说真话** ——
+   * 设计稿那里写的是「在线 · 正在听雨」，但栖息地并没有「听雨」这件事，
+   * 照抄就等于在界面上凭空宣称一个不存在的状态。这里换成三个真实状态。
+   */
+  const statusText = !online ? '离线' : sending ? '正在回复…' : '在线'
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header
-        className="flex shrink-0 items-center gap-2 border-b px-3 py-3"
-        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
-      >
-        <Link to="/chat" className="text-lg" style={{ color: 'var(--color-primary)' }}>
-          ‹
+      {/*
+        低存在感顶栏（设计 §9.2）：头像 + 名字 + 状态点，没有实线分隔、没有底色。
+        ⚠️ 与设计稿的两处差异，都是栖息地的真实需要：
+        ① 左侧多一个返回 —— 会话页是沉浸式路由（不显示底栏），这里是**唯一**的回程入口；
+        ② 右侧保留「工具 / 设置」两个入口（设计稿没有），它们对应 Mini Terminal 与聊天设置，
+           是既有能力，不能因为换皮就丢掉。
+        ⚠️ 顶栏那个头像**不是**消息头像（`inMessage={false}`）：它不受「显示头像」开关管辖，
+           也不该被验收里「数消息头像个数」的断言算进去。
+      */}
+      <header className="topbar" data-testid="chat-topbar">
+        <Link to="/chat" data-testid="chat-back" aria-label="返回会话列表" className="icon-btn">
+          <IconChevronLeft size={20} />
         </Link>
-        <h1 className="flex-1 truncate text-base font-semibold">
-          {session === undefined ? '加载中…' : (session?.title ?? '会话不存在')}
-        </h1>
+        <MessageAvatar role="assistant" size={36} inMessage={false} />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <h1 className="topbar-title truncate">
+            {session === undefined ? '加载中…' : (session?.title ?? '会话不存在')}
+          </h1>
+          <span className="topbar-status" data-testid="chat-status" data-online={String(online)}>
+            {/* 离线时点要**退成灰色**：绿色脉冲点配「离线」两个字，是把两件相反的事说在一起 */}
+            <span
+              className={`dot${online ? ' pulse' : ''}`}
+              style={online ? undefined : { backgroundColor: 'var(--text-tertiary)' }}
+            />
+            {statusText}
+          </span>
+        </div>
+        <button
+          type="button"
+          data-testid="mini-terminal-open"
+          aria-label="打开工具面板"
+          onClick={() => setTerminalOpen(true)}
+          className="icon-btn"
+        >
+          <IconToolbox size={19} />
+        </button>
         <button
           type="button"
           data-testid="chat-settings-open"
           aria-label="聊天设置"
           disabled={session === undefined || session === null}
           onClick={() => setSettingsOpen(true)}
-          className="rounded px-2 py-1 text-sm disabled:opacity-40"
-          style={{ color: 'var(--color-primary)' }}
+          className="icon-btn disabled:opacity-40"
         >
-          设置
-        </button>
-        <button
-          type="button"
-          data-testid="mini-terminal-open"
-          aria-label="打开工具面板"
-          onClick={() => setTerminalOpen(true)}
-          className="rounded px-2 py-1 text-sm"
-          style={{ color: 'var(--color-primary)' }}
-        >
-          工具
+          <IconSetting size={19} />
         </button>
       </header>
 
@@ -940,17 +993,15 @@ export function ChatWindowPage() {
           items={items}
           getKey={itemKey}
           renderItem={renderItem}
-          estimateHeight={64}
+          // 估值只影响「还没被测量过」的行。换装后一条消息 = 上下内边距 22 + 气泡 46 + 时间行 20，
+          // 估值贴近真实高度能少几次「滚起来忽长忽短」的抖动
+          estimateHeight={96}
           onReachTop={() => void loadEarlier()}
-          className="h-full"
+          className={`chat-scroll is-virtual h-full${entering ? ' is-entering' : ''}`}
         />
         {loadingEarlier && (
           <div
-            className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-full px-2 py-1 text-xs"
-            style={{
-              backgroundColor: 'var(--color-surface-alt)',
-              color: 'var(--color-text-dim)',
-            }}
+            className="chip pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 text-xs"
           >
             正在加载更早的消息…
           </div>
@@ -958,13 +1009,13 @@ export function ChatWindowPage() {
       </div>
 
       {items.length === 0 && (
-        <div className="pb-4 text-center text-sm" style={{ color: 'var(--color-text-dim)' }}>
+        <div className="pb-4 text-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
           和小栖说点什么吧
         </div>
       )}
 
       {errorText !== null && (
-        <div className="shrink-0 px-4 pb-2 text-center text-xs" style={{ color: 'var(--color-danger)' }}>
+        <div className="shrink-0 px-4 pb-2 text-center text-xs" style={{ color: 'var(--danger)' }}>
           {errorText}
         </div>
       )}
@@ -974,11 +1025,8 @@ export function ChatWindowPage() {
       {pendingConfirm !== null && (
         <div
           data-testid="confirm-bar"
-          className="flex shrink-0 items-center gap-3 border-t px-3 py-2"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-surface-alt)',
-          }}
+          className="card mx-3 mb-1 flex shrink-0 items-center gap-3"
+          style={{ padding: '10px 14px' }}
         >
           <span data-testid="confirm-text" className="flex-1 text-xs">
             {pendingConfirm.text}
@@ -987,8 +1035,8 @@ export function ChatWindowPage() {
             type="button"
             data-testid="confirm-yes"
             onClick={() => void confirmPending()}
-            className="rounded px-3 py-1 text-xs"
-            style={{ backgroundColor: 'var(--color-danger)', color: 'var(--color-primary-contrast)' }}
+            className="btn-pill btn-danger shrink-0"
+            style={{ minHeight: 32, padding: '0 16px', fontSize: 12.5 }}
           >
             确认
           </button>
@@ -996,8 +1044,8 @@ export function ChatWindowPage() {
             type="button"
             data-testid="confirm-no"
             onClick={() => setPendingConfirm(null)}
-            className="rounded px-3 py-1 text-xs"
-            style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)' }}
+            className="btn-pill btn-ghost shrink-0"
+            style={{ minHeight: 32, padding: '0 16px', fontSize: 12.5 }}
           >
             取消
           </button>
@@ -1007,8 +1055,8 @@ export function ChatWindowPage() {
       {selectMode ? (
         <div
           data-testid="select-bar"
-          className="safe-bottom flex shrink-0 items-center gap-3 border-t px-3 py-3"
-          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+          className="card mx-3 mb-1 flex shrink-0 items-center gap-3"
+          style={{ padding: '10px 14px' }}
         >
           <span data-testid="select-count" className="flex-1 text-sm">
             已选 {selectedIds.size} 项
@@ -1024,8 +1072,8 @@ export function ChatWindowPage() {
                 text: `删除选中的 ${selectedIds.size} 条消息？此操作不可恢复。`,
               })
             }
-            className="rounded px-3 py-1.5 text-sm disabled:opacity-40"
-            style={{ backgroundColor: 'var(--color-danger)', color: 'var(--color-primary-contrast)' }}
+            className="btn-pill btn-danger shrink-0 disabled:opacity-40"
+            style={{ minHeight: 32, padding: '0 16px', fontSize: 13 }}
           >
             删除
           </button>
@@ -1033,8 +1081,8 @@ export function ChatWindowPage() {
             type="button"
             data-testid="select-cancel"
             onClick={exitSelectMode}
-            className="rounded px-3 py-1.5 text-sm"
-            style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text)' }}
+            className="btn-pill btn-ghost shrink-0"
+            style={{ minHeight: 32, padding: '0 16px', fontSize: 13 }}
           >
             取消
           </button>
@@ -1046,9 +1094,9 @@ export function ChatWindowPage() {
           {unrepliedCount > 0 && (
             <div
               data-testid="unreplied-hint"
-              className="flex shrink-0 items-center gap-3 px-3 pt-2"
+              className="flex shrink-0 justify-center px-3 pt-2"
             >
-              <span className="flex-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+              <span className="chip text-xs">
                 {unrepliedCount} 条消息还没请求回复
               </span>
             </div>
@@ -1072,8 +1120,7 @@ export function ChatWindowPage() {
       {toast !== null && (
         <div
           data-testid="toast"
-          className="pointer-events-none fixed bottom-24 left-1/2 -translate-x-1/2 rounded-full px-3 py-1.5 text-xs"
-          style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text)' }}
+          className="chip pointer-events-none fixed bottom-24 left-1/2 -translate-x-1/2"
         >
           {toast}
         </div>

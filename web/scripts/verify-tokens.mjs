@@ -180,6 +180,7 @@ const built = await evaluate(`(() => {
       minHeight: cs.minHeight,
       width: cs.width,
       flexDirection: cs.flexDirection,
+      justifyContent: cs.justifyContent,
       fontSize: cs.fontSize,
       backdrop: cs.backdropFilter || cs.webkitBackdropFilter || '',
       backgroundImage: cs.backgroundImage,
@@ -198,7 +199,9 @@ check('玻璃卡：真的有毛玻璃模糊', built.glass.backdrop.includes('blu
 check('胶囊底栏：绝对定位浮起', built.bottomNav.position === 'absolute', built.bottomNav.position)
 check('子页面滑入层：绝对定位且有位移（收起态在屏外）', built.subLayer.position === 'absolute' && built.subLayer.transform !== 'none', built.subLayer.transform)
 check('雨幕：背景是渐变（不是图片）', built.rain.backgroundImage.includes('linear-gradient'), built.rain.backgroundImage.slice(0, 48))
-check('用户侧消息行方向反转（右侧对齐）', built.userRow.flexDirection === 'row-reverse', built.userRow.flexDirection)
+// 用户行不翻转方向：DOM 顺序 = [选择标, 气泡列, 头像]（头像在气泡「外侧」），
+// 靠右由 justify-content 完成 —— row-reverse 会把 DOM 里最后的头像翻到左边，跟语义打架
+check('用户侧消息行靠右（justify-content: flex-end）', built.userRow.flexDirection === 'row' && built.userRow.justifyContent === 'flex-end', `${built.userRow.flexDirection}/${built.userRow.justifyContent}`)
 check('AI 侧消息行不反转', built.aiRow.flexDirection === 'row', built.aiRow.flexDirection)
 check('输入胶囊：绝对定位（悬浮在内容之上）', built.inputbar.position === 'absolute', built.inputbar.position)
 check('字号阶梯 t-h1 = 22px', built.h1.fontSize === '22px', built.h1.fontSize)

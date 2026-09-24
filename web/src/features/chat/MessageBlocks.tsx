@@ -58,7 +58,7 @@ function ImageBlockView({ payload }: { payload: ImageBlock['payload'] }) {
       alt={payload.alt ?? ''}
       loading="lazy"
       className="max-h-72 max-w-full rounded-lg object-contain"
-      style={{ border: '1px solid var(--color-border)' }}
+      style={{ border: '1px solid var(--border-soft)' }}
     />
   )
 }
@@ -69,14 +69,15 @@ function AudioBlockView({ payload }: { payload: AudioBlock['payload'] }) {
       <span className="flex items-center gap-2">
         {/*
           ⚠️ 播放器给**固定宽度**，别写 `w-full`。
-          气泡是 `max-w-[82%]` 的收缩宽度块，而外层 `MessageBlocks` 与这里都是 `items-start` 的伸缩列 ——
+          气泡是 `max-width: 76%` 的收缩宽度块（设计 §11.2；换装前是 82%），
+          而外层 `MessageBlocks` 与这里都是 `items-start` 的伸缩列 ——
           这种上下文里父宽由内容决定，`width: 100%` 解出来是个极小值，
           播放器会被压成一条窄条（截图上看就是气泡里一个 40px 的小方块）。
           百分比在「尺寸待定」的容器里本来就不可靠，这里用固定值最省事。
         */}
         <audio controls src={payload.url} style={{ width: '14rem' }} />
         {payload.durationMs !== undefined && (
-          // ⚠️ 用 `opacity` 而不是 `color: var(--color-text-dim)`：
+          // ⚠️ 用 `opacity` 而不是 `color: var(--text-secondary)`：
           // 块视图现在**两侧气泡都在用**，用户气泡是深色底 + 反白字，
           // 硬编码的「次要文字色」在深底上等于看不见。继承当前文字色 + 降透明度两边都成立
           <span data-testid="audio-duration" className="shrink-0 text-xs opacity-75">
@@ -97,9 +98,9 @@ function FileBlockView({ payload }: { payload: FileBlock['payload'] }) {
       href={payload.url}
       download={payload.name}
       className="flex w-full max-w-xs items-center gap-2 rounded-lg border px-2 py-1.5 text-xs no-underline"
-      style={{ borderColor: 'var(--color-border)', color: 'inherit' }}
+      style={{ borderColor: 'var(--border-soft)', color: 'inherit' }}
     >
-      <span className="shrink-0" style={{ color: 'var(--color-text-dim)' }}>
+      <span className="shrink-0" style={{ color: 'var(--text-secondary)' }}>
         <IconFile size={15} />
       </span>
       <span className="min-w-0 flex-1 truncate">{payload.name}</span>
@@ -139,13 +140,13 @@ function ToolResultBlockView({ payload }: { payload: ToolResultBlock['payload'] 
   return (
     <details
       className="w-full rounded-lg border px-2 py-1.5 text-xs"
-      style={{ borderColor: 'var(--color-border)' }}
+      style={{ borderColor: 'var(--border-soft)' }}
     >
       <summary className="flex cursor-pointer select-none items-center gap-1">
         {payload.ok ? (
-          <IconCheck size={14} style={{ color: 'var(--color-primary)' }} />
+          <IconCheck size={14} style={{ color: 'var(--accent-strong)' }} />
         ) : (
-          <IconAlert size={14} style={{ color: 'var(--color-danger)' }} />
+          <IconAlert size={14} style={{ color: 'var(--danger)' }} />
         )}
         <span>{title}</span>
         <span className="opacity-70">{payload.ok ? '已完成' : '未完成'}</span>
@@ -171,14 +172,14 @@ function HtmlBlockView({ payload }: { payload: HtmlBlock['payload'] }) {
       sandbox=""
       srcDoc={srcDoc}
       className="h-48 w-full min-w-[16rem] rounded-lg border bg-white"
-      style={{ borderColor: 'var(--color-border)' }}
+      style={{ borderColor: 'var(--border-soft)' }}
     />
   )
 }
 
 function WidgetBlockView({ payload }: { payload: WidgetBlock['payload'] }) {
   return (
-    <span className="flex min-w-[12rem] flex-col rounded-lg border px-3 py-2" style={{ borderColor: 'var(--color-border)' }}>
+    <span className="flex min-w-[12rem] flex-col rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-soft)' }}>
       <strong>{payload.title?.trim() || '小组件'}</strong>
       {payload.source !== undefined && <span className="mt-1 text-xs opacity-65">来源：{payload.source}</span>}
     </span>
@@ -202,10 +203,10 @@ function TabGroupBlockView({ payload }: { payload: TabGroupBlock['payload'] }) {
   const tab = payload.tabs[selected]
   if (tab === undefined) return <PlaceholderBlockView label="tab-group" reason="没有可显示的标签页" />
   return (
-    <span className="flex w-full min-w-[16rem] flex-col rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
-      <span className="flex gap-1 overflow-x-auto border-b p-1" style={{ borderColor: 'var(--color-border)' }}>
+    <span className="flex w-full min-w-[16rem] flex-col rounded-lg border" style={{ borderColor: 'var(--border-soft)' }}>
+      <span className="flex gap-1 overflow-x-auto border-b p-1" style={{ borderColor: 'var(--border-soft)' }}>
         {payload.tabs.map((item, index) => (
-          <button key={`${item.label}:${index}`} type="button" onClick={() => setSelected(index)} className="rounded px-2 py-1 text-xs" style={{ backgroundColor: index === selected ? 'var(--color-surface-alt)' : 'transparent' }}>
+          <button key={`${item.label}:${index}`} type="button" onClick={() => setSelected(index)} className="rounded px-2 py-1 text-xs" style={{ backgroundColor: index === selected ? 'var(--bg-subtle)' : 'transparent' }}>
             {item.label || `标签 ${index + 1}`}
           </button>
         ))}
@@ -224,7 +225,7 @@ function PlaceholderBlockView({ label, reason }: { label: string; reason: string
   return (
     <span
       className="block rounded-lg border border-dashed px-2 py-1.5 text-xs"
-      style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }}
+      style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}
     >
       [{label}] {reason}
     </span>

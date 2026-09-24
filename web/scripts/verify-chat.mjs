@@ -132,9 +132,11 @@ async function type(text) {
 
 async function sendButtonState() {
   return evaluate(`(() => {
-    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '发送')
+    // 换装第 3 批后主按钮是**圆形图标按钮**（没有文字），所以按 data-testid 定位，
+    // 不再按文案找 —— 按文案的写法在图标化之后会直接落空
+    const btn = document.querySelector('[data-testid="send"]')
     const ta = ${COMPOSER}
-    return { found: btn !== undefined, disabled: btn ? btn.disabled : null, draft: ta ? ta.value : null }
+    return { found: btn !== null, disabled: btn ? btn.disabled : null, draft: ta ? ta.value : null }
   })()`)
 }
 
@@ -145,11 +147,11 @@ async function lastUpstreamBody() {
   return res.json()
 }
 
-/** 点「发送」按钮（到处都要用，收一处） */
+/** 点「发送」按钮（到处都要用，收一处）。主按钮已图标化，按 testid 定位 */
 async function clickSend() {
   return evaluate(`(() => {
-    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '发送')
-    if (!btn) return 'missing'
+    const btn = document.querySelector('[data-testid="send"]')
+    if (btn === null) return 'missing'
     btn.click()
     return 'ok'
   })()`)
@@ -235,17 +237,13 @@ check('新建会话并跳转', created === 'ok' && /^\/chat\/[^/]+$/.test(pathAf
 await type('你好，报到一下')
 const firstState = await sendButtonState()
 check('输入后发送按钮可用', firstState.disabled === false, JSON.stringify(firstState))
-await evaluate(`(() => {
-  const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '发送')
-  if (btn) btn.click()
-  return 'ok'
-})()`)
+await clickSend()
 
 /* ---------- 3. 流式中途截图（抓光标与「停止」按钮） ---------- */
 await sleep(400)
 const midText = await evaluate('document.body.innerText')
 const midHasStop = await evaluate(
-  `[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '停止')`,
+  `document.querySelector('[data-testid="composer-abort"]') !== null`,
 )
 await shot('shot-chat-streaming.png')
 check(
@@ -271,11 +269,7 @@ await waitIdle('第一轮收尾')
 await type('这条我会中途掐掉')
 const secondState = await sendButtonState()
 check('第二轮输入后按钮可用', secondState.disabled === false, JSON.stringify(secondState))
-await evaluate(`(() => {
-  const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '发送')
-  if (btn) btn.click()
-  return 'ok'
-})()`)
+await clickSend()
 // 「中止」要验证的是**保留已收内容**，掐得太早正文还是空的就什么也验不到，
 // 所以先等到流式气泡里出现正文再掐
 const gotPartial = await evaluate(`(async () => {
@@ -298,8 +292,8 @@ check(
   String(gotPartial).replace(/\n/g, '⏎'),
 )
 const stopClicked = await evaluate(`(() => {
-  const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '停止')
-  if (!btn) return 'missing'
+  const btn = document.querySelector('[data-testid="composer-abort"]')
+  if (btn === null) return 'missing'
   btn.click()
   return 'ok'
 })()`)
@@ -624,9 +618,11 @@ const geom = () =>
   })()`)
 
 const page0 = await geom()
+// 上限按行高校准：换皮（第 3 批）后每条消息自带上下 padding，实测行高 ~97px，
+// 一页 60 条 ≈ 5800px（旧皮肤 64px 时代上限是 5200）。两页会到 11500+，7500 依然分得开。
 check(
   '首屏只加载一页（最旧的 #069 未进来）',
-  page0.scrollHeight > 3000 && page0.scrollHeight < 5200 && !page0.text.includes('历史 #069'),
+  page0.scrollHeight > 3000 && page0.scrollHeight < 7500 && !page0.text.includes('历史 #069'),
   `scrollHeight=${page0.scrollHeight}`,
 )
 
@@ -654,13 +650,15 @@ await top()
 await sleep(1200)
 const page3 = await geom()
 // 高度别拿等号比：先前按估值占位的项被实测后会微调总高，容差留给这个漂移；
-// 但真要又插进一页（60 条 ≈ +3000px）就远超容差，断言依然有效
+// 但真要又插进一页（60 条 ≈ +3000px）就远超容差，断言依然有效。
+// ⚠️ 别再拿「#009 也得在 innerText 里」当子句：虚拟列表只渲染
+// 「scrollTop ± overscan」的窗口，#009 渲不渲染取决于 视口高 + 6×行高 的算术，
+// 换皮后行高 64→96，263px 的滚动窗刚好盖不到它 —— 以前过纯属压线。
+// 「加载到最早」的可靠判据是：总高稳定 + scrollTop=0 时第 0 项（#000）一定在渲染窗口里。
 check(
   '到底后不再重复加载（已到最早）',
-  page3.scrollHeight < page2.scrollHeight * 1.15 &&
-    page3.text.includes('历史 #000') &&
-    page3.text.includes('历史 #009'),
-  `${page2.scrollHeight} → ${page3.scrollHeight}`,
+  page3.scrollHeight < page2.scrollHeight * 1.15 && page3.text.includes('历史 #000'),
+  `${page2.scrollHeight} → ${page3.scrollHeight} / #000=${page3.text.includes('历史 #000')} scrollTop=${page3.scrollTop}`,
 )
 check('加载提示已收起', !page3.text.includes('正在加载更早的消息'))
 await shot('shot-chat-paging.png')
@@ -668,11 +666,7 @@ await shot('shot-chat-paging.png')
 /* ---------- 11. 换一个 / 重发 ---------- */
 const sessionReroll = await newSession('换一个')
 await type('换一个测试')
-await evaluate(`(() => {
-  const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '发送')
-  if (btn) btn.click()
-  return 'ok'
-})()`)
+await clickSend()
 await waitFor(`document.body.innerText.includes('流式回复')`, '首轮回复落地', 25000)
 await waitIdle('首轮收尾')
 const firstReply = await evaluate('document.body.innerText')
@@ -692,7 +686,8 @@ check('换一个后的正文是完整回复', rerolled.includes('收到，这是
 await shot('shot-chat-reroll.png')
 
 await evaluate(`(() => {
-  const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '‹')
+  // 换装后版本切换是图标按钮（原来的 ‹ / › 文字没了），按 testid 前缀找
+  const btn = document.querySelector('[data-testid^="version-prev-"]')
   if (!btn) return 'missing'
   btn.click()
   return 'ok'
@@ -754,7 +749,7 @@ const BY_TEXT = (text) =>
  * 气泡本体（挂指针 / 右键处理的那一层）。
  * ⚠️ 事件必须派发到它身上：事件只会**往上冒**，派发在根节点上不会「往下」触发气泡的处理函数。
  */
-const BUBBLE_OF = (rootExpr) => `${rootExpr}?.querySelector('.rounded-2xl')`
+const BUBBLE_OF = (rootExpr) => `${rootExpr}?.querySelector('.msg-bubble')`
 /** 菜单项的 testid 白名单（`action-sheet` 与遮罩也以 action- 开头，得排掉） */
 const MENU_ITEMS = `[...document.querySelectorAll('[data-testid]')]
   .filter((el) => /^action-(copy|edit|bookmark|artwork|album|multi|reroll|resend|regenerate|recall|restore|delete)$/.test(el.dataset.testid))
@@ -868,13 +863,13 @@ check('编辑不改动后续对话（后续回复仍在）', editedState.followe
 
 // 切回上一版：「原版本真的还在」的直接证据 —— 只看到 `2/2` 三个字说明不了这一点
 await evaluate(
-  `(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '‹').click(); return 'ok' })()`,
+  `(() => { document.querySelector('[data-testid^="version-prev-"]').click(); return 'ok' })()`,
 )
 await waitFor(`document.body.innerText.includes('1/2')`, '切回编辑前的版本')
 const backToOld = await evaluate(`document.body.innerText.includes('第一句话（改过）')`)
 check('可切回编辑前的原版本', backToOld === false, `改后文本仍可见=${String(backToOld)}`)
 await evaluate(
-  `(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '›').click(); return 'ok' })()`,
+  `(() => { document.querySelector('[data-testid^="version-next-"]').click(); return 'ok' })()`,
 )
 await waitFor(`document.body.innerText.includes('第一句话（改过）')`, '切回编辑后的版本')
 

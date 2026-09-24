@@ -35,3 +35,36 @@ export function formatRelativeTime(ts: number, now: number = Date.now()): string
   if (days <= 30) return `${days} 天前`
   return new Date(ts).toLocaleDateString('zh-CN')
 }
+
+/** 取「自然日」的零点时间戳 —— 按本地时区切，不是按「距今 24 小时」切 */
+function startOfDay(ts: number): number {
+  const d = new Date(ts)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+/**
+ * 时间戳 → 日期分隔的文案（聊天气泡之间的「今天 / 昨天 / 8月3日」）。
+ *
+ * ⚠️ 必须按**自然日**比较，不能拿 `now - ts` 去除以 86400000：
+ * 今天 00:10 和昨天 23:50 只差 20 分钟，但它们是两个不同的日子 ——
+ * 用毫秒差算会把它归成同一天，分隔条就永远不出现。
+ */
+export function formatDayLabel(ts: number, now: number = Date.now()): string {
+  const days = Math.round((startOfDay(now) - startOfDay(ts)) / 86_400_000)
+  if (days <= 0) return '今天'
+  if (days === 1) return '昨天'
+  const date = new Date(ts)
+  if (date.getFullYear() === new Date(now).getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日`
+  }
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+/**
+ * 两个时间戳是否属于同一个自然日。用于判断「要不要在两段之间插日期分隔」。
+ * 放在这里而不是组件内：同一套日历口径只能有一份实现。
+ */
+export function isSameDay(a: number, b: number): boolean {
+  return startOfDay(a) === startOfDay(b)
+}

@@ -24,9 +24,9 @@ const SETTLED_LABEL: Record<
   { Icon: ComponentType<IconProps>; text: string; color: string }
 > = {
   // 拒绝用中性色而不是红色：那是北北的选择，不是出错
-  approved: { Icon: IconCheck, text: '你已允许', color: 'var(--color-primary)' },
-  denied: { Icon: IconBlock, text: '你已拒绝', color: 'var(--color-text-dim)' },
-  failed: { Icon: IconAlert, text: '允许了，但没能完成', color: 'var(--color-danger)' },
+  approved: { Icon: IconCheck, text: '你已允许', color: 'var(--accent-strong)' },
+  denied: { Icon: IconBlock, text: '你已拒绝', color: 'var(--text-secondary)' },
+  failed: { Icon: IconAlert, text: '允许了，但没能完成', color: 'var(--danger)' },
 }
 
 export function EventConfirmCard({
@@ -84,10 +84,10 @@ export function EventConfirmCard({
       data-testid="event-confirm-card"
       data-event-id={eventId}
       data-status={event?.status ?? 'loading'}
-      className="w-full rounded-lg border p-3 text-xs"
+      className="card w-full p-3 text-xs"
       style={{
-        borderColor: pending ? 'var(--color-primary)' : 'var(--color-border)',
-        backgroundColor: 'var(--color-surface)',
+        // 待决时描边用强调色：这条消息和别的「已发生的事」不同，它**在等一个动作**
+        borderColor: pending ? 'var(--accent-strong)' : 'var(--border-soft)',
       }}
     >
       <p className="flex items-center gap-1.5 font-medium">
@@ -106,8 +106,8 @@ export function EventConfirmCard({
               type="button"
               disabled={busy}
               onClick={() => void decide(true)}
-              className="rounded-full px-3 py-1.5 disabled:opacity-40"
-              style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}
+              className="btn-pill btn-strong disabled:opacity-40"
+              style={{ minHeight: 34, padding: '0 18px', fontSize: 13 }}
             >
               {busy ? '处理中…' : '允许'}
             </button>
@@ -115,8 +115,8 @@ export function EventConfirmCard({
               type="button"
               disabled={busy}
               onClick={() => void decide(false)}
-              className="rounded-full border px-3 py-1.5 disabled:opacity-40"
-              style={{ borderColor: 'var(--color-border)' }}
+              className="btn-pill btn-ghost disabled:opacity-40"
+              style={{ minHeight: 34, padding: '0 18px', fontSize: 13 }}
             >
               拒绝
             </button>
@@ -132,7 +132,7 @@ export function EventConfirmCard({
         </p>
       )}
 
-      {error !== null && <p className="mt-2" style={{ color: 'var(--color-danger)' }}>{error}</p>}
+      {error !== null && <p className="mt-2" style={{ color: 'var(--danger)' }}>{error}</p>}
     </div>
   )
 }

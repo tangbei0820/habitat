@@ -140,6 +140,18 @@ export const IconPause = ({ filled, ...p }: IconProps) => (
       : <path d="M8.6 5.4v13.2M15.4 5.4v13.2" />}
   </IconBase>
 )
+/**
+ * 「停止生成」。
+ * ⚠️ 与 `IconPause` 是两个意思，别无脑互换：暂停是「待会儿接着来」，停止是「这一轮到此为止」。
+ * 聊天里按的是**停止**（栖息地的 `composer-abort` 只中止当前这轮流式输出）。
+ */
+export const IconStop = ({ filled, ...p }: IconProps) => (
+  <IconBase filled={filled} {...p}>
+    {filled
+      ? <rect x="6.6" y="6.6" width="10.8" height="10.8" rx="2.6" />
+      : <rect x="6.9" y="6.9" width="10.2" height="10.2" rx="2.4" />}
+  </IconBase>
+)
 export const IconSkipBack = ({ filled, ...p }: IconProps) => (
   <IconBase filled={filled} {...p}>
     {filled
@@ -404,6 +416,7 @@ export const QIXI_ICONS = {
   more: IconMore,
   play: IconPlay,
   pause: IconPause,
+  stop: IconStop,
   timer: IconTimer,
   note: IconNote,
   moon: IconMoon,

@@ -4,6 +4,11 @@
  * 单独成文件的原因：气泡承载的东西已经远超「画个框」—— 长按 / 右键进菜单、内联编辑、
  * 撤回痕迹、多选勾选、版本导航、快捷操作行。留在页面里会让那个文件同时管数据流与交互细节，
  * 谁也改不动。页面只负责「给什么数据、操作落到哪」，气泡只管「长什么样、什么时候回调」。
+ *
+ * 换装（第 3 批）后结构对齐设计稿：`.msg-row(.from-ai/.from-user)` → `.msg-col`
+ * → `.msg-bubble` + `.msg-actions` + `.msg-meta`。
+ * ⚠️ 三处**没有**照抄设计，都在 `theme/qixi/components.css` 里写了原因：
+ * 操作行必须常显（触屏没有 hover）、消息列宽度不按百分比收缩、进入动画只播一次（虚拟列表）。
  */
 import {
   useCallback,
@@ -14,7 +19,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { BubbleMode, ChatMessage } from '@shared/types'
-import { IconCheck } from '../../components/qixi/Icons'
+import { IconCheck, IconChevronLeft, IconChevronRight, IconMore } from '../../components/qixi/Icons'
 import { MessageAvatar } from './MessageAvatar'
 import { MessageBlocks } from './MessageBlocks'
 
@@ -27,6 +32,12 @@ export interface ChatItem {
   message: ChatMessage
   text: string
   isLast: boolean
+  /**
+   * 本条之前要不要插一条「日期分隔」。
+   * 由页面按相邻两条的**自然日**算出来（跨天才有），气泡自己不判断 ——
+   * 虚拟列表只渲染可视窗口，气泡单独看一条无从知道前一条是哪天。
+   */
+  dayLabel: string | null
 }
 
 export function itemKey(item: ChatItem): string {
@@ -59,11 +70,14 @@ function TinyButton({
   onClick,
   disabled = false,
   testId,
+  ariaLabel,
 }: {
   children: ReactNode
   onClick: () => void
   disabled?: boolean
   testId?: string
+  /** 内容是图标（没有文字）时补一个可读名 —— 否则读屏里就只剩「按钮」两个字 */
+  ariaLabel?: string
 }) {
   return (
     <button
@@ -71,7 +85,9 @@ function TinyButton({
       onClick={onClick}
       disabled={disabled}
       data-testid={testId}
+      {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel })}
       className="px-0.5 disabled:opacity-30"
+      style={{ color: 'var(--text-tertiary)' }}
     >
       {children}
     </button>
@@ -112,8 +128,15 @@ export function ChatBubble({
   const canResend = isUser && item.isLast && !actions.busy && !isRecalled
 
   /**
+   * 只有「人」有头像。⚠️ 不能图省事写成 `role="assistant"`：
+   * tool / system 消息也走这个组件，给它们画头像会让头像个数与「两条消息两个头像」对不上，
+   * 验收里有两条断言是数个数和判左右顺序的，会直接挂。
+   */
+  const isPerson = message.role === 'user' || message.role === 'assistant'
+
+  /**
    * 操作行何时出现：SPEC §2.3 要求双方消息都拥有对象级操作能力。
-   * 末条与有多版本的消息把 `···` 直接摆出来（桌面端也要点得到），
+   * 末条与有多版本的消息把入口直接摆出来（桌面端也要点得到），
    * 中间的普通消息则靠**长按**（移动端）或**右键**（桌面）进入同一个菜单 —— 见下面的指针处理。
    * 刻意**不给每条消息都挂一行**：60 条消息各加一行会把列表撑高一截，视觉上也吵。
    */
@@ -176,171 +199,214 @@ export function ChatBubble({
   }
 
   const nativeAssistant = bubbleMode === 'native' && !isUser && !isRecalled
+  /**
+   * 撤回态与原生模式仍然走**行内样式**（不是偷懒）：
+   * 它们的取值要压过 `.msg-bubble` 在 CSS 里的默认背景/描边，而验收里有一条
+   * 直接读 `getComputedStyle(bubble).backgroundColor` 断言「原生态是透明的」——
+   * 行内优先级最高，这条才立得住。
+   */
   const bubbleStyle = isRecalled
-    ? {
-        backgroundColor: 'transparent',
-        color: 'var(--color-text-dim)',
-        border: '1px dashed var(--color-border)',
-      }
-    : {
-        backgroundColor: isUser ? 'var(--color-primary)' : nativeAssistant ? 'transparent' : 'var(--color-surface)',
-        color: isUser ? 'var(--color-primary-contrast)' : 'var(--color-text)',
-        border: isUser || nativeAssistant ? 'none' : '1px solid var(--color-border)',
-      }
+    ? { border: '1px dashed var(--border-soft)' }
+    : nativeAssistant
+      ? { backgroundColor: 'transparent' }
+      : undefined
 
-  return (
-    <div
-      className="flex flex-col px-4 py-1.5"
-      data-message-id={message.id}
-      data-selected={actions.selectMode ? String(selected) : undefined}
+  const bubbleClass = [
+    'msg-bubble',
+    isRecalled ? 'is-recalled' : '',
+    nativeAssistant ? 'is-native' : '',
+    editing ? 'is-editing' : '',
+  ]
+    .filter((name) => name !== '')
+    .join(' ')
+
+  const selectMark = actions.selectMode ? (
+    <span
+      aria-hidden
+      data-testid={`select-mark-${message.id}`}
+      className="mt-2 flex h-4 w-4 shrink-0 items-center justify-center rounded text-[10px]"
+      style={{
+        border: '1px solid var(--border-soft)',
+        backgroundColor: selected ? 'var(--accent-strong)' : 'transparent',
+        color: 'var(--accent-on-strong)',
+      }}
     >
-      <div className="flex w-full items-start gap-2">
-        {actions.selectMode && (
-          <span
-            aria-hidden
-            data-testid={`select-mark-${message.id}`}
-            className="mt-2 flex h-4 w-4 shrink-0 items-center justify-center rounded text-[10px]"
-            style={{
-              border: '1px solid var(--color-border)',
-              backgroundColor: selected ? 'var(--color-primary)' : 'transparent',
-              color: 'var(--color-primary-contrast)',
-            }}
-          >
-            {selected ? <IconCheck size={11} /> : null}
-          </span>
-        )}
-        {/*
-          头像放在气泡的**外侧**（用户侧在右、小栖侧在左），与主流聊天 App 一致：
-          放内侧会把气泡挤离屏幕边缘，整列看起来像塌了。
-          `MessageAvatar` 对 tool / system 消息返回 null，所以两处都写也不会多出空占位。
-        */}
-        {showAvatars && !isUser && <MessageAvatar role={message.role} />}
-        <div className={`flex min-w-0 flex-1 ${isUser ? 'justify-end' : 'justify-start'}`}>
-          <div
-            data-bubble-mode={bubbleMode}
-            className={`break-words rounded-2xl px-3 py-2 text-sm ${editing ? 'w-full' : nativeAssistant ? 'max-w-full' : 'max-w-[82%]'}`}
-            style={bubbleStyle}
-            onPointerDown={startPress}
-            onPointerMove={movePress}
-            onPointerUp={cancelPress}
-            onPointerCancel={cancelPress}
-            onPointerLeave={cancelPress}
-            onContextMenu={onContextMenu}
-            onClick={onBubbleClick}
-          >
-            {editing ? (
-              <div className="flex w-full flex-col gap-2" data-testid="edit-box">
-                <textarea
-                  data-testid="edit-textarea"
-                  value={actions.editDraft}
-                  onChange={(e) => actions.onEditDraftChange(e.target.value)}
-                  rows={Math.min(8, Math.max(2, actions.editDraft.split('\n').length))}
-                  className="w-full resize-none rounded-lg border px-2 py-1.5 text-sm outline-none"
-                  style={{
-                    borderColor: 'var(--color-border)',
-                    backgroundColor: 'var(--color-bg)',
-                    color: 'var(--color-text)',
-                  }}
-                />
-                <div className="flex justify-end gap-2 text-xs">
-                  <button
-                    type="button"
-                    data-testid="edit-save"
-                    onClick={() => actions.onEditSave(message.id)}
-                    className="rounded px-2 py-1"
-                    style={{
-                      backgroundColor: 'var(--color-primary)',
-                      color: 'var(--color-primary-contrast)',
-                    }}
-                  >
-                    保存
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="edit-cancel"
-                    onClick={actions.onEditCancel}
-                    className="rounded px-2 py-1"
-                    style={{
-                      backgroundColor: 'var(--color-surface-alt)',
-                      color: 'var(--color-text)',
-                    }}
-                  >
-                    取消
-                  </button>
-                </div>
-              </div>
-            ) : isRecalled ? (
-              <span data-testid="recalled" className="text-xs italic">
-                {isUser ? '你撤回了一条消息' : '小栖撤回了一条消息'}
-                {message.recalledAt !== null && ` · ${clock(message.recalledAt)}`}
-              </span>
-            ) : (
-              <>
-                {/*
-                  两侧**都走块分发**（§6.2）。
-                  原先用户侧是 `<span>{messageText(message)}</span>` —— 那等于「用户只能发纯文本」这条
-                  假设被写死在渲染里：语音条（`audio` 块）与图片会被画成**空气泡**，
-                  数据明明在库里、上下文里也有占位描述，界面上却什么都没显示。
-                  `TextBlockView` 本身就是 `whitespace-pre-wrap break-words`，
-                  比原来的 `whitespace-pre-wrap` 只多一个断词，所以这不是「能力补齐」，是**把分叉去掉**。
-                */}
-                <MessageBlocks blocks={message.blocks} />
-                {isStreaming && (
-                  <span className="ml-0.5 animate-pulse" style={{ opacity: 0.7 }}>
-                    {text === '' ? '…' : '▍'}
-                  </span>
-                )}
-                {interrupted && (
-                  <span className="ml-1 text-xs opacity-60">
-                    {message.status === 'aborted' ? '（已停止）' : '（中断）'}
-                  </span>
-                )}
-              </>
-            )}
+      {selected ? <IconCheck size={11} /> : null}
+    </span>
+  ) : null
+
+  const body = (
+    <div className="msg-col">
+      <div
+        data-bubble-mode={bubbleMode}
+        className={bubbleClass}
+        style={bubbleStyle}
+        onPointerDown={startPress}
+        onPointerMove={movePress}
+        onPointerUp={cancelPress}
+        onPointerCancel={cancelPress}
+        onPointerLeave={cancelPress}
+        onContextMenu={onContextMenu}
+        onClick={onBubbleClick}
+      >
+        {editing ? (
+          <div className="flex w-full flex-col gap-2" data-testid="edit-box">
+            <textarea
+              data-testid="edit-textarea"
+              value={actions.editDraft}
+              onChange={(e) => actions.onEditDraftChange(e.target.value)}
+              rows={Math.min(8, Math.max(2, actions.editDraft.split('\n').length))}
+              className="w-full resize-none rounded-lg px-2 py-1.5 text-sm outline-none"
+              style={{
+                border: '1px solid var(--border-soft)',
+                backgroundColor: 'var(--bg-base)',
+                color: 'var(--text-primary)',
+              }}
+            />
+            <div className="flex justify-end gap-2 text-xs">
+              <button
+                type="button"
+                data-testid="edit-save"
+                onClick={() => actions.onEditSave(message.id)}
+                className="rounded-full px-3 py-1"
+                style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}
+              >
+                保存
+              </button>
+              <button
+                type="button"
+                data-testid="edit-cancel"
+                onClick={actions.onEditCancel}
+                className="rounded-full px-3 py-1"
+                style={{ backgroundColor: 'var(--bg-subtle)', color: 'var(--text-primary)' }}
+              >
+                取消
+              </button>
+            </div>
           </div>
-        </div>
-        {showAvatars && isUser && <MessageAvatar role={message.role} />}
+        ) : isRecalled ? (
+          <span data-testid="recalled" className="text-xs italic" style={{ color: 'var(--text-tertiary)' }}>
+            {isUser ? '你撤回了一条消息' : '小栖撤回了一条消息'}
+            {message.recalledAt !== null && ` · ${clock(message.recalledAt)}`}
+          </span>
+        ) : (
+          <>
+            {/*
+              两侧**都走块分发**（§6.2）。
+              原先用户侧是 `<span>{messageText(message)}</span>` —— 那等于「用户只能发纯文本」这条
+              假设被写死在渲染里：语音条（`audio` 块）与图片会被画成**空气泡**，
+              数据明明在库里、上下文里也有占位描述，界面上却什么都没显示。
+              `TextBlockView` 本身就是 `whitespace-pre-wrap break-words`，
+              比原来的 `whitespace-pre-wrap` 只多一个断词，所以这不是「能力补齐」，是**把分叉去掉**。
+            */}
+            <MessageBlocks blocks={message.blocks} />
+            {isStreaming &&
+              (text === '' ? (
+                // 还没吐出一个字：给三点跳动，比一个孤零零的「…」更像「在想」
+                <span className="typing-dots" data-testid="typing-dots">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              ) : (
+                <span className="ml-0.5 animate-pulse" style={{ opacity: 0.7 }}>
+                  ▍
+                </span>
+              ))}
+            {interrupted && (
+              <span className="ml-1 text-xs" style={{ opacity: 0.6 }}>
+                {message.status === 'aborted' ? '（已停止）' : '（中断）'}
+              </span>
+            )}
+          </>
+        )}
       </div>
 
       {showActions && (
-        <div
-          className={`mt-0.5 flex items-center gap-2 text-xs ${isUser ? 'pr-1' : 'pl-1'}`}
-          style={{
-            color: 'var(--color-text-dim)',
-            justifyContent: isUser ? 'flex-end' : 'flex-start',
-          }}
-        >
+        // ⚠️ `is-on` 不是可选的美化：设计的 `.msg-actions` 默认 `opacity: 0` 靠 hover 显现，
+        //    而触屏没有 hover —— 少了这个类，手机上「换一个 / 重发 / 版本 / 更多」全都点不到。
+        <div className="msg-actions is-on" data-testid={`msg-actions-${message.id}`}>
           {versionCount > 1 && (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
               <TinyButton
+                testId={`version-prev-${message.id}`}
+                ariaLabel="上一个版本"
                 disabled={selectedVersion <= 0 || actions.busy}
                 onClick={() => actions.onSelectVersion(message.id, selectedVersion - 1)}
               >
-                ‹
+                <IconChevronLeft size={14} />
               </TinyButton>
-              <span>
+              <span data-testid={`version-count-${message.id}`}>
                 {selectedVersion + 1}/{versionCount}
               </span>
               <TinyButton
+                testId={`version-next-${message.id}`}
+                ariaLabel="下一个版本"
                 disabled={selectedVersion >= versionCount - 1 || actions.busy}
                 onClick={() => actions.onSelectVersion(message.id, selectedVersion + 1)}
               >
-                ›
+                <IconChevronRight size={14} />
               </TinyButton>
             </span>
           )}
           {edited && (
-            <span data-testid="edited-mark">
+            <span data-testid="edited-mark" className="text-xs">
               {item.isLast ? '已编辑' : '已编辑 · 其后回复基于旧内容'}
             </span>
           )}
-          {canReroll && <TinyButton onClick={() => actions.onReroll(message.id)}>换一个</TinyButton>}
-          {canResend && <TinyButton onClick={() => actions.onResend(message.id)}>重发</TinyButton>}
-          <TinyButton onClick={() => actions.onOpenMenu(message.id)} testId={`more-${message.id}`}>
-            ···
+          {canReroll && (
+            <TinyButton testId={`reroll-${message.id}`} onClick={() => actions.onReroll(message.id)}>
+              换一个
+            </TinyButton>
+          )}
+          {canResend && (
+            <TinyButton testId={`resend-${message.id}`} onClick={() => actions.onResend(message.id)}>
+              重发
+            </TinyButton>
+          )}
+          <TinyButton onClick={openMenu} testId={`more-${message.id}`} ariaLabel="更多操作">
+            <span className="flex h-7 w-7 items-center justify-center">
+              <IconMore size={15} />
+            </span>
           </TinyButton>
         </div>
       )}
+
+      {/* 时间：设计里就是「每条一行小字」，稀疏、最淡 */}
+      {!isRecalled && (
+        <div className="msg-meta">
+          <span>{clock(message.createdAt)}</span>
+        </div>
+      )}
     </div>
+  )
+
+  return (
+    <>
+      {item.dayLabel !== null && <div className="day-divider">{item.dayLabel}</div>}
+      <div
+        className={`msg-row ${isUser ? 'from-user' : 'from-ai'}`}
+        data-message-id={message.id}
+        data-status={message.status}
+        data-selected={actions.selectMode ? String(selected) : undefined}
+      >
+        {isUser ? (
+          <>
+            {/* DOM 顺序 = 语义顺序：头像在气泡**外侧**（用户侧在右、即气泡之后）。
+                别学原型用 row-reverse 翻转 —— 那会让「DOM 靠前」和「视觉靠右」打架，
+                验收按 DOM 顺序断言头像在气泡外侧，翻转就全反了。 */}
+            {selectMark}
+            {body}
+            {showAvatars && isPerson && <MessageAvatar role={message.role} />}
+          </>
+        ) : (
+          <>
+            {selectMark}
+            {showAvatars && isPerson && <MessageAvatar role={message.role} />}
+            {body}
+          </>
+        )}
+      </div>
+    </>
   )
 }

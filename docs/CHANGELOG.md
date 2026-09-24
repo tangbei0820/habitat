@@ -873,3 +873,30 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 全量回归：home 77/77、chat 148/148、providers 24/24、llm 16/16、tokens 24/24、**shell 31/31**、
   export 17/17、offline 38/38、diagnostics 36/36（共 **411 项**）—— **零失败**。
 - 两端 typecheck 通过。
+
+### UI 换装 · 第 3 批：对话页换皮（T-041）
+
+**范围**：6 批里最费工的一批 —— 会话列表 + 气泡消息流 + 浮起输入胶囊 + 对话相关组件令牌收敛。
+硬约束全守住：真网址不改、`data-testid` 不删、界面不加 emoji、假数据不搬、**11 项对话能力一样不丢**。
+
+**web**
+
+- `pages/chat/ChatListPage.tsx`：`.topbar`（标题「对话」）+ 新建/分组改 `.btn-pill` 胶囊（SVG 图标）+ 会话行改 `.card` + 「⋯」→ `IconMore`。
+- `pages/chat/ChatWindowPage.tsx`：顶栏改低存在感 `.topbar`（返回/小栖头像/标题/在线状态点/工具箱/设置，全图标）；虚拟列表套 `.chat-scroll.is-virtual`，进入动画 700ms 一次性（`.is-entering`）；跨天插 `day-divider`（今天/昨天/8月3日/跨年带年，`formatDayLabel` + `isSameDay` 按本地时区自然日）。
+- `features/chat/ChatBubble.tsx` 重写：`.msg-row(.from-ai/.from-user)` → `.msg-col`（`.msg-bubble` + `.msg-actions.is-on` 常显 + `.msg-meta`）；流式空文本显示 `.typing-dots` 三跳圆点、否则 `▍` 光标；版本切换 `‹›`/`···` 全换 SVG。
+- `features/chat/MessageAvatar.tsx` 独立：用户侧 `--accent-strong` 实底、小栖侧深色渐变；`inMessage` 开关让顶栏头像不被「数头像个数」断言算进去。
+- `features/chat/Composer.tsx` 重写输入区：停靠胶囊 `.chat-inputbar--docked`（＋ / 自增高输入框（上限 108px）/ 麦克风 / 圆形主按钮 `IconSend`，生成中变 `IconStop`）；录音态/预览态/表情面板/图片描述条全部对齐新令牌；快捷栏保留表情 + 请求回复。
+- `MessageBlocks` / `EventConfirmCard` / `ChatSettingsSheet` / `MiniTerminal`：`--color-*` 清零，对话相关文件全部吃新令牌。
+- `components/qixi/Icons.tsx`：新增 `IconStop`（正方形，区别于 `IconPause` 双竖条）。
+- `theme/qixi/components.css`：补 `.msg-col` / 三个气泡状态变体 / `.chat-inputbar--docked` 停靠变体 / 虚拟列表消息流与居中日期分隔的偏离规则；用户行改 `justify-content: flex-end`（不翻转 DOM 顺序，头像语义上在气泡「外侧」—— `row-reverse` 会把头像翻到左边，跟验收的 DOM 顺序断言打架）。
+
+**验收脚本随动**（组件换皮 → 定位方式跟着换，不是放水）
+
+- `verify-chat.mjs`（148 项保持全过）：气泡定位 `.rounded-2xl` → `.msg-bubble`；发送/停止/版本切换的**文案定位**全改 testid（主按钮已是图标）；分页两处「压线过」修正 —— 首屏高度上限按新行高 64→97px 校准（5200→7500）；删掉「#009 必须在 innerText」这个**视口算术**子句（263px 滚动窗 + 6×96 overscan 刚好盖不到 #009，旧 64px 时代是压线碰巧过），可靠判据改为「总高稳定 + scrollTop=0 时第 0 项必在窗口」。
+- `verify-export.mjs`（17/17）：顶栏按钮纯图标无文案，`clickContains('设置')` → `chat-settings-open` testid。
+- `verify-offline.mjs`（38/38）：长按气泡定位同 `.msg-bubble`。
+- `verify-tokens.mjs`（24/24）：用户行断言从 `row-reverse` 改为 `flex-end`（积木探针补采 `justifyContent`）。
+
+**验收**：新增 `web/scripts/verify-chat-skin.mjs` **31/31**（列表顶栏与胶囊真图标 / 气泡方向底色圆角来自令牌（颜色用探针元素解析成 rgb() 再比）/ 操作行常显可点 / 输入胶囊停靠不遮消息 / 圆形发送键 / 11 项能力入口齐 / 界面无 emoji 图标）；全量回归 **442 项零失败**（home 77 / chat 148 / skin 31 / providers 24 / llm 16 / tokens 24 / shell 31 / export 17 / offline 38 / diagnostics 36）；两端 typecheck 通过。
+
+**刻意不做的**：设计稿的假数据（未读数、占位会话名）一律不搬；输入区没照抄 `position:absolute` 悬浮（沉浸式页面里跟虚拟列表打架，用文档流停靠，偏离已写进 CSS 注释与 `UI_DESIGN.md` §4）。

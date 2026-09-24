@@ -132,7 +132,7 @@ async function openMenuByLongPress(messageText) {
   return evaluate(`(async () => {
     const root = [...document.querySelectorAll('[data-message-id]')].find((el) => (el.innerText ?? '').includes(${JSON.stringify(messageText)}))
     if (!root) return 'missing'
-    const bubble = root.querySelector('.rounded-2xl')
+    const bubble = root.querySelector('.msg-bubble')
     if (!bubble) return 'no-bubble'
     const r = bubble.getBoundingClientRect()
     bubble.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: r.left + 8, clientY: r.top + 8 }))

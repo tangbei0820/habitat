@@ -79,6 +79,9 @@ body {
 }
 .btn-pill:active { transform: scale(0.96); }
 .btn-strong { background: var(--accent-strong); color: var(--accent-on-strong); }
+/* 破坏性动作（删除 / 撤回确认）的实心胶囊。设计与 `.btn-strong` 同形，只是把强调色换成危险色 ——
+   栖息地的「确认删除」一直是实心红按钮，换皮不该把它降级成一个看不出后果的灰按钮。 */
+.btn-danger { background: var(--danger); color: var(--accent-on-strong); }
 .btn-ghost {
   background: var(--bg-surface-solid);
   color: var(--text-primary);
@@ -258,7 +261,8 @@ body {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.msg-row.from-user { flex-direction: row-reverse; }
+/* 用户行不翻转方向（DOM 里头像就排在气泡后面，语义即「外侧」），只把整行推到右边 */
+.msg-row.from-user { justify-content: flex-end; }
 
 .msg-avatar {
   width: 32px;
@@ -387,6 +391,128 @@ body {
 @keyframes typing-bounce {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ------------------------------------------------------------
+   栖息地对 Chat 的四处**必要偏离**
+   都不是「设计改了」，是落地时的现实约束 —— 逐条写了原因，别当成随手加的补丁。
+   ------------------------------------------------------------ */
+
+/*
+  ① 虚拟列表版消息流。
+  设计里 `.chat-scroll` 用 `flex + gap: 22px` 排行间距；但栖息地的消息流是**虚拟列表**：
+  每条消息被绝对定位在一层撑高的占位里 —— flex 的 gap 对**绝对定位子元素完全不生效**，
+  间距会整体塌成 0，所有气泡挤在一起。
+  → 虚拟态把容器退回 block，行间距改由每条消息自身的上下内边距承担（11px × 2 = 22px，与设计同值）。
+*/
+.chat-scroll.is-virtual {
+  display: block;
+  padding: 6px 20px 12px;
+}
+.chat-scroll.is-virtual .msg-row {
+  padding: 11px 0;
+  /* 逐条挂进入动画的后果：虚拟列表每滚出一条新行就再播一次，
+     翻历史看起来像「整页在不停加载」。改成只在刚打开会话那一瞬播（下一条）。 */
+  animation: none;
+}
+.chat-scroll.is-virtual.is-entering .msg-row {
+  animation: msg-in var(--dur-card) var(--ease-out) both;
+}
+/*
+  日期分隔在虚拟列表里要额外补两句：
+  ① 它自己的 `align-self: center` 是给 flex 父容器用的，而虚拟列表的每一项外面是块级占位 div ——
+     `align-self` 直接失效，分隔会贴到左边。在块级父容器里，同样的居中效果靠它自己的
+     `justify-content: center` 达成。
+  ② 分隔是「那一天第一条消息」的兄弟节点，`.msg-row` 的 11px 上内边距够不到它，
+     需要自己带一点下间隔，否则紧贴在气泡上。
+*/
+.chat-scroll.is-virtual .day-divider { justify-content: center; padding: 8px 0 3px; }
+
+/*
+  ② 操作行必须**看得见**。
+  设计的 `.msg-actions` 默认 `opacity: 0`、靠 `.msg-row:hover` 显现 —— 那是桌面鼠标的习惯。
+  触屏没有 hover：北北手机上长按能唤出菜单，但那一行图标永远不显形，
+  等于把「换一个 / 重发 / 版本切换 / 更多」四个入口藏成了不可见。
+  → 需要常驻的行加 `.is-on` 直接显示；hover 规则保留，只当桌面端的额外手段。
+*/
+.msg-actions.is-on { opacity: 1; transform: translateY(0); }
+
+/*
+  ③ 输入区「停靠」变体。
+  原型的 `.chat-inputbar` 是 `position: absolute; bottom: 86px`（浮在底栏之上）。
+  栖息地的会话页是**沉浸式**的（自持滚动容器、不显示底栏，见 AppShell 的 FULLSCREEN_ROUTE），
+  照搬绝对定位会和虚拟列表抢高度、还要多算一次避让。
+  → 仍在文档流里，只是长成同一颗浮起胶囊：位置交给 flex，视觉与设计一致。
+*/
+.chat-inputbar--docked {
+  position: static;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  flex: none;
+  /* 下边距留小：胶囊是整屏最底部那一条，下面不再有别的东西；
+     安全区由 Composer 根节点统一承担，避免这里和根节点各加一次 env()
+     而凭空多出一条空白（底栏那次踩过同样的坑）。 */
+  margin: 6px 14px 2px;
+}
+
+/*
+  ⑤ 快捷操作栏与贴胶囊的面板。
+  设计里没有这两样（原型的胶囊已经自带「＋ / 语音 / 发送」三颗），
+  但栖息地有额外的动作入口要保留：表情包、请求回复、生图提示条。
+  做法是把它们排成**胶囊上方**的一行轻控件 + 贴着胶囊长出来的卡片 ——
+  位置刻意不放在胶囊下面，否则胶囊会被顶离屏幕底部、手够不着（拇指热区）。
+*/
+.chat-quickbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 2px;
+}
+.chat-panel {
+  margin: 0 14px 6px;
+  padding: 10px 12px;
+}
+
+/*
+  ④ 消息列：气泡 + 操作行 + 时间纵向排。
+  设计里这层是内联样式的匿名 div（`max-width: 82%`）；这里给它名字并改成 `flex: 1`：
+  百分比宽度嵌在「宽度还要看内容」的收缩容器里，解出来的值不可预期；
+  撑满剩余宽度 + 气泡自身的 `max-width: 76%` 更稳，长短消息都对。
+*/
+.msg-col {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.msg-row.from-user .msg-col { align-items: flex-end; }
+
+/* 气泡的三个状态变体（默认态见上面的 `.msg-row.from-ai/.from-user .msg-bubble`） */
+.msg-bubble.is-native {          /* AI 原生气泡模式：不要气泡壳，只要正文 */
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 2px 0;
+  max-width: 100%;
+}
+.msg-bubble.is-recalled {        /* 撤回痕迹：虚线框、不要阴影（背景由行内样式给成透明） */
+  background: transparent;
+  box-shadow: none;
+}
+.msg-bubble.is-editing {         /* 内联编辑：撑满整行才好写字 */
+  max-width: 100%;
+  width: 100%;
+}
+
+/* 顶栏第二行（状态）：复用设计的 `.dot`，字小、色最淡 */
+.topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
 /* ============================================================

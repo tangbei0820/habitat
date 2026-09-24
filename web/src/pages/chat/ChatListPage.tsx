@@ -17,7 +17,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { ChatSession, SessionGroup } from '@shared/types'
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
 import { NameSheet } from '../../components/NameSheet'
-import { IconChevronDown, IconChevronRight, IconPin } from '../../components/qixi/Icons'
+import { IconChevronDown, IconChevronRight, IconJournal, IconMore, IconPin, IconPlus } from '../../components/qixi/Icons'
 import {
   SESSION_GROUP_NAME_MAX,
   createSession,
@@ -297,32 +297,40 @@ export function ChatListPage() {
   }, [sessions, groups])
 
   function renderSessionRow(s: ChatSession) {
+    const pinned = s.pinnedAt !== null
     return (
       <li
         key={s.id}
         data-testid={`session-row-${s.id}`}
-        className="flex items-center gap-2 rounded-lg border px-4 py-3"
+        className="pressable card flex items-center gap-2"
         style={{
-          borderColor: 'var(--color-border)',
-          backgroundColor: s.pinnedAt === null ? 'var(--color-surface)' : 'var(--color-surface-alt)',
+          padding: '12px 14px',
+          // 置顶的行换一层底色：它已经跨分组浮到最上面，不给点区别就看不出「它为什么在这儿」
+          ...(pinned ? { backgroundColor: 'var(--bg-subtle)' } : {}),
         }}
       >
         <Link
           to={`/chat/${s.id}`}
           data-testid={`session-title-${s.id}`}
-          className="flex min-w-0 flex-1 items-center gap-1"
+          className="flex min-w-0 flex-1 items-center gap-2"
+          style={{ color: 'var(--text-primary)' }}
         >
-          {s.pinnedAt !== null && (
-            <IconPin size={13} className="shrink-0" style={{ color: 'var(--color-primary)' }} />
-          )}
+          {pinned && <IconPin size={13} className="shrink-0" style={{ color: 'var(--accent-strong)' }} />}
           <span className="truncate">{s.title}</span>
         </Link>
         {confirmingId === s.id ? (
           <button
             type="button"
             data-testid={`session-confirm-${s.id}`}
-            className="shrink-0 rounded border px-2 py-0.5 text-xs"
-            style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
+            className="btn-pill shrink-0"
+            style={{
+              minHeight: 30,
+              padding: '0 12px',
+              fontSize: 12,
+              backgroundColor: 'transparent',
+              border: '1px solid var(--danger)',
+              color: 'var(--danger)',
+            }}
             onClick={() => void removeSession(s.id)}
           >
             确认删除？
@@ -332,11 +340,11 @@ export function ChatListPage() {
             type="button"
             data-testid={`session-menu-${s.id}`}
             aria-label={`会话操作：${s.title}`}
-            className="shrink-0 px-2 text-sm"
-            style={{ color: 'var(--color-text-dim)' }}
+            className="icon-btn shrink-0"
+            style={{ width: 30, height: 30, color: 'var(--text-tertiary)' }}
             onClick={() => setSheet({ kind: 'session', id: s.id })}
           >
-            ⋯
+            <IconMore size={15} />
           </button>
         )}
       </li>
@@ -347,130 +355,146 @@ export function ChatListPage() {
   const empty = !loading && (sessions ?? []).length === 0 && (groups ?? []).length === 0
 
   return (
-    <div className="px-4 py-4">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">聊天</h1>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void startSession()}
-            className="rounded-full px-3 py-1 text-sm"
-            style={{
-              backgroundColor: 'var(--color-primary)',
-              color: 'var(--color-primary-contrast)',
-            }}
-          >
-            ＋ 新建
-          </button>
-          <button
-            type="button"
-            data-testid="create-group"
-            onClick={() => setNameSheet({ mode: 'create' })}
-            className="rounded-full border px-3 py-1 text-sm"
-            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-          >
-            ＋ 分组
-          </button>
-        </div>
+    <div className="flex flex-col">
+      {/* 顶栏沿用设计的 `.topbar`（低存在感）：标题 + 两枚胶囊按钮，不放任何色块横幅 */}
+      <div className="topbar">
+        <h1 className="topbar-title">对话</h1>
+        <span className="topbar-spacer" />
+        <button
+          type="button"
+          onClick={() => void startSession()}
+          className="btn-pill btn-strong"
+          style={{ minHeight: 36, padding: '0 16px', fontSize: 13.5 }}
+        >
+          <IconPlus size={16} />
+          新建
+        </button>
+        <button
+          type="button"
+          data-testid="create-group"
+          onClick={() => setNameSheet({ mode: 'create' })}
+          className="btn-pill btn-ghost"
+          style={{ minHeight: 36, padding: '0 16px', fontSize: 13.5 }}
+        >
+          <IconJournal size={16} />
+          分组
+        </button>
       </div>
 
-      {error !== null && (
-        <p className="mb-3 text-sm" style={{ color: 'var(--color-danger)' }}>
-          读取失败：{error}
-        </p>
-      )}
-      {loading && error === null && (
-        <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>加载中…</p>
-      )}
-      {empty && (
-        <div
-          className="rounded-lg border p-8 text-center text-sm"
-          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }}
-        >
-          还没有对话，点右上角「新建」开始吧
-        </div>
-      )}
-
-      <ul className="flex flex-col gap-2">
-        {/* 置顶区：跨分组浮在最顶，所以只在有分组时才需要一个「置顶」标题来交代它为什么脱离了自己的分组 */}
-        {view.pinned.length > 0 && view.hasGroups && (
-          <li data-testid="pinned-section" className="px-1 pt-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>
-            置顶
-          </li>
+      <div className="flex flex-col" style={{ padding: '0 20px 24px' }}>
+        {error !== null && (
+          <p className="mb-3 text-sm" style={{ color: 'var(--danger)' }}>
+            读取失败：{error}
+          </p>
         )}
-        {view.pinned.map((s) => renderSessionRow(s))}
+        {loading && error === null && (
+          <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>加载中…</p>
+        )}
+        {empty && (
+          <div
+            className="card p-8 text-center text-sm"
+            style={{ color: 'var(--text-tertiary)' }}
+          >
+            还没有对话，点右上角「新建」开始吧
+          </div>
+        )}
 
-        {view.sections.map(({ group, sessions: groupSessions }) => (
-          <Fragment key={group.id}>
+        <ul className="flex flex-col gap-2">
+          {/* 置顶区：跨分组浮在最顶，所以只在有分组时才需要一个「置顶」标题来交代它为什么脱离了自己的分组 */}
+          {view.pinned.length > 0 && view.hasGroups && (
             <li
-              data-testid={`group-section-${group.id}`}
-              className="mt-1 flex items-center gap-2 px-1 text-sm"
+              data-testid="pinned-section"
+              className="px-1 pt-1 text-xs"
+              style={{ color: 'var(--text-tertiary)', letterSpacing: '0.12em' }}
             >
-              <button
-                type="button"
-                data-testid={`group-toggle-${group.id}`}
-                aria-expanded={!group.collapsed}
-                className="flex min-w-0 flex-1 items-center gap-1 text-left font-medium"
-                style={{ color: 'var(--color-text)' }}
-                onClick={() => void toggleGroupCollapsed(group)}
-              >
-                {group.collapsed ? (
-                  <IconChevronRight size={14} className="shrink-0" />
-                ) : (
-                  <IconChevronDown size={14} className="shrink-0" />
-                )}
-                <span data-testid={`group-name-${group.id}`} className="truncate">{group.name}</span>
-                <span
-                  data-testid={`group-count-${group.id}`}
-                  className="shrink-0 text-xs"
-                  style={{ color: 'var(--color-text-dim)' }}
-                >
-                  {groupSessions.length}
-                </span>
-              </button>
-              {confirmingGroupId === group.id ? (
-                <button
-                  type="button"
-                  data-testid={`group-confirm-${group.id}`}
-                  className="shrink-0 rounded border px-2 py-0.5 text-xs"
-                  style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
-                  onClick={() => void removeGroup(group.id)}
-                >
-                  {groupSessions.length === 0
-                    ? '确认删除？'
-                    : `确认删除？（${groupSessions.length} 个会话回到未分组）`}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  data-testid={`group-menu-${group.id}`}
-                  aria-label={`分组操作：${group.name}`}
-                  className="shrink-0 px-2"
-                  style={{ color: 'var(--color-text-dim)' }}
-                  onClick={() => setSheet({ kind: 'group', id: group.id })}
-                >
-                  ⋯
-                </button>
-              )}
+              置顶
             </li>
-            {!group.collapsed && groupSessions.map((s) => renderSessionRow(s))}
-          </Fragment>
-        ))}
+          )}
+          {view.pinned.map((s) => renderSessionRow(s))}
 
-        {/* 未分组兜底区：只有真的存在分组、且这里确实有会话时才出现 */}
-        {view.hasGroups && view.unassigned.length > 0 && (
-          <li data-testid="unassigned-section" className="mt-1 px-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>
-            未分组
-          </li>
-        )}
-        {view.unassigned.map((s) => renderSessionRow(s))}
-      </ul>
+          {view.sections.map(({ group, sessions: groupSessions }) => (
+            <Fragment key={group.id}>
+              <li
+                data-testid={`group-section-${group.id}`}
+                className="mt-1 flex items-center gap-2 px-1 text-sm"
+              >
+                <button
+                  type="button"
+                  data-testid={`group-toggle-${group.id}`}
+                  aria-expanded={!group.collapsed}
+                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left font-medium"
+                  style={{ color: 'var(--text-primary)' }}
+                  onClick={() => void toggleGroupCollapsed(group)}
+                >
+                  {group.collapsed ? (
+                    <IconChevronRight size={14} className="shrink-0" />
+                  ) : (
+                    <IconChevronDown size={14} className="shrink-0" />
+                  )}
+                  <span data-testid={`group-name-${group.id}`} className="truncate">{group.name}</span>
+                  <span
+                    data-testid={`group-count-${group.id}`}
+                    className="shrink-0 text-xs"
+                    style={{ color: 'var(--text-tertiary)' }}
+                  >
+                    {groupSessions.length}
+                  </span>
+                </button>
+                {confirmingGroupId === group.id ? (
+                  <button
+                    type="button"
+                    data-testid={`group-confirm-${group.id}`}
+                    className="btn-pill shrink-0"
+                    style={{
+                      minHeight: 30,
+                      padding: '0 12px',
+                      fontSize: 12,
+                      backgroundColor: 'transparent',
+                      border: '1px solid var(--danger)',
+                      color: 'var(--danger)',
+                    }}
+                    onClick={() => void removeGroup(group.id)}
+                  >
+                    {groupSessions.length === 0
+                      ? '确认删除？'
+                      : `确认删除？（${groupSessions.length} 个会话回到未分组）`}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid={`group-menu-${group.id}`}
+                    aria-label={`分组操作：${group.name}`}
+                    className="icon-btn shrink-0"
+                    style={{ width: 30, height: 30, color: 'var(--text-tertiary)' }}
+                    onClick={() => setSheet({ kind: 'group', id: group.id })}
+                  >
+                    <IconMore size={15} />
+                  </button>
+                )}
+              </li>
+              {!group.collapsed && groupSessions.map((s) => renderSessionRow(s))}
+            </Fragment>
+          ))}
+
+          {/* 未分组兜底区：只有真的存在分组、且这里确实有会话时才出现 */}
+          {view.hasGroups && view.unassigned.length > 0 && (
+            <li
+              data-testid="unassigned-section"
+              className="mt-1 px-1 text-xs"
+              style={{ color: 'var(--text-tertiary)', letterSpacing: '0.12em' }}
+            >
+              未分组
+            </li>
+          )}
+          {view.unassigned.map((s) => renderSessionRow(s))}
+        </ul>
+      </div>
 
       {toast !== null && (
         <p
           data-testid="list-toast"
-          className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full px-4 py-2 text-sm"
-          style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text)' }}
+          className="chip fixed bottom-24 left-1/2 z-40 -translate-x-1/2"
+          style={{ boxShadow: 'var(--shadow-lift)' }}
         >
           {toast}
         </p>

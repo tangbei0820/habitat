@@ -6,8 +6,8 @@ import { exportSessionJson, exportSessionMarkdown } from '../../lib/exportSessio
 
 const FIELD_CLASS = 'w-full rounded-lg border bg-transparent px-3 py-2 text-sm outline-none'
 const FIELD_STYLE = {
-  borderColor: 'var(--color-border)',
-  color: 'var(--color-text)',
+  borderColor: 'var(--border-soft)',
+  color: 'var(--text-primary)',
 } as const
 
 const BACKGROUNDS = [
@@ -84,12 +84,12 @@ export function ChatSettingsSheet({
         data-testid="chat-settings-sheet"
         onSubmit={(event) => void submit(event)}
         className="safe-bottom w-full max-w-md rounded-t-2xl border p-4 shadow-xl sm:rounded-2xl"
-        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+        style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}
       >
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 id="chat-settings-title" className="font-semibold">聊天设置</h2>
-            <p className="mt-0.5 text-xs" style={{ color: 'var(--color-text-dim)' }}>上方三项只影响当前会话</p>
+            <p className="mt-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>上方三项只影响当前会话</p>
           </div>
           <button type="button" onClick={onClose} disabled={saving} aria-label="关闭聊天设置" className="px-2 text-lg disabled:opacity-40">×</button>
         </div>
@@ -149,7 +149,7 @@ export function ChatSettingsSheet({
                 disabled={exporting}
                 onClick={() => void exportAs('markdown')}
                 className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40"
-                style={{ borderColor: 'var(--color-border)' }}
+                style={{ borderColor: 'var(--border-soft)' }}
               >
                 导出为 Markdown
               </button>
@@ -159,16 +159,16 @@ export function ChatSettingsSheet({
                 disabled={exporting}
                 onClick={() => void exportAs('json')}
                 className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40"
-                style={{ borderColor: 'var(--color-border)' }}
+                style={{ borderColor: 'var(--border-soft)' }}
               >
                 导出为 JSON
               </button>
             </div>
-            <p className="text-xs" style={{ color: 'var(--color-text-dim)' }}>
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
               Markdown 能直接读、能贴到别处；JSON 保留完整结构，便于日后迁移。
             </p>
             {exportMessage !== null && (
-              <p data-testid="chat-export-message" className="text-xs" style={{ color: 'var(--color-text-dim)' }}>
+              <p data-testid="chat-export-message" className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                 {exportMessage}
               </p>
             )}
@@ -180,7 +180,7 @@ export function ChatSettingsSheet({
           它属于所有会话，跟「点了保存才生效」的语义不同 —— 混进同一个提交里，
           用户会以为「不点保存就不算数」。
         */}
-        <div className="mt-4 border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="mt-4 border-t pt-4" style={{ borderColor: 'var(--border-soft)' }}>
           <div className="flex items-center justify-between gap-3 text-sm">
             <span>聊天气泡头像</span>
             <button
@@ -189,12 +189,12 @@ export function ChatSettingsSheet({
               aria-pressed={showAvatars}
               onClick={toggleAvatars}
               className="rounded-full border px-4 py-1 text-sm"
-              style={{ borderColor: 'var(--color-border)' }}
+              style={{ borderColor: 'var(--border-soft)' }}
             >
               {showAvatars ? '显示' : '隐藏'}
             </button>
           </div>
-          <p className="mt-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+          <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
             影响所有会话，点了立刻生效（不用点保存）。
           </p>
         </div>
@@ -206,7 +206,7 @@ export function ChatSettingsSheet({
             data-testid="chat-settings-save"
             disabled={saving}
             className="rounded-lg px-4 py-2 text-sm disabled:opacity-40"
-            style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}
+            style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}
           >
             {saving ? '保存中…' : '保存'}
           </button>

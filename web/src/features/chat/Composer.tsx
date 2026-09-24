@@ -1,7 +1,9 @@
 /**
  * 聊天输入区（SPEC §2.4）
  *
- * 结构：**文本输入 + 主按钮** 一行，**快捷操作栏** 一行（输入框正下方）。
+ * 结构（第 3 批换装后对齐设计 §11.3「浮起胶囊」）：
+ * **轻控件行**（表情包 / 请求回复）→ 贴着胶囊长出来的**卡片**（表情面板 / 生图提示条）→
+ * **输入胶囊**（＋ / 文本 / 语音 / 圆形主按钮）。胶囊留在整屏最底部 —— 拇指热区。
  *
  * 为什么把输入区整个抽出来：它此前长在 `ChatWindowPage` 里，而页面已经承担了
  * 「生成生命周期 / 消息对象操作 / 跨模块收录 / 会话设置」四件事。输入区自己又新添了
@@ -10,12 +12,19 @@
  * 更不知道生成怎么跑；这些一律通过回调交回页面。
  *
  * 一个刻意的克制：**不做「发送 / 请求回复」双主按钮的形态切换**。
- * 主按钮永远叫「发送」，「请求回复」永远是快捷栏里那个固定位置 ——
+ * 主按钮永远只有一颗（圆形，发送 / 生成中变停止），「请求回复」永远是控件行里那个固定位置 ——
  * 一个按钮两副面孔，会让人每次点之前都要先看一眼它现在是什么。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
-import { IconMic, IconSmile } from '../../components/qixi/Icons'
+import {
+  IconClose,
+  IconMic,
+  IconPlus,
+  IconSend,
+  IconSmile,
+  IconStop,
+} from '../../components/qixi/Icons'
 import { formatDuration } from '../../lib/format'
 import { log } from '../../lib/log'
 import { useOnlineStatus } from '../offline/useOnlineStatus'
@@ -25,6 +34,8 @@ import { MAX_PHOTO_BYTES, type PhotoMime } from '@shared/types'
 const VOICE_MAX_MS = 60_000
 /** 太短的录音（按下就没）多半是误触，不发出去 */
 const VOICE_MIN_MS = 400
+/** 输入框自增高上限（与 `.chat-inputbar textarea` 的 `max-height` 对齐） */
+const TEXTAREA_MAX_PX = 108
 /**
  * 录音格式候选，按优先级取第一个被支持的。
  * ⚠️ 实测 Edge（Chromium）**不支持 `audio/ogg;codecs=opus`**，
@@ -121,6 +132,17 @@ export function Composer({
     },
     [],
   )
+
+  /**
+   * 草稿变化时把输入框撑到内容高度（设计里输入框是自增高的）。
+   * ⚠️ 先把高度归零再读 `scrollHeight`：不归零的话它只会越撑越长，删字也缩不回去。
+   */
+  useEffect(() => {
+    const el = textareaRef.current
+    if (el === null) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_PX)}px`
+  }, [draft])
 
   function releaseStream(): void {
     streamRef.current?.getTracks().forEach((track) => track.stop())
@@ -316,53 +338,176 @@ export function Composer({
   const recording = recordingSince !== null
 
   return (
+    /*
+      安全区在这一层统一承担（胶囊自己的 margin 里**不**夹 env()）：
+      两处都加就会凭空多出一条空白 —— 底栏那次踩过同样的坑。
+      输入区不再是「贴底一条带顶边框的横条」，而是浮起的玻璃胶囊（设计 §11.3）。
+    */
     <div
-      className="safe-bottom flex shrink-0 flex-col border-t"
-      style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+      className="flex shrink-0 flex-col"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       {recording ? (
-        <div data-testid="voice-recording" className="flex items-center gap-2 px-3 py-3">
-          <span data-testid="voice-time" className="flex-1 text-sm" style={{ color: 'var(--color-text)' }}>
-            ● 录音中 {formatDuration(elapsedMs)} / {formatDuration(VOICE_MAX_MS)}
+        <div
+          data-testid="voice-recording"
+          className="chat-inputbar chat-inputbar--docked"
+          style={{ alignItems: 'center' }}
+        >
+          {/* 红点走设计的 `.dot.pulse`，不用一个「●」字符 —— 字符会跟着字体变形状 */}
+          <span className="dot pulse shrink-0" style={{ backgroundColor: 'var(--danger)' }} />
+          <span data-testid="voice-time" className="flex-1 px-3 text-sm" style={{ color: 'var(--text-primary)' }}>
+            录音中 {formatDuration(elapsedMs)} / {formatDuration(VOICE_MAX_MS)}
           </span>
           <button
             type="button"
             data-testid="voice-cancel"
             onClick={cancelRecording}
-            className="rounded-full px-4 py-2 text-sm"
-            style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text)' }}
+            className="btn-pill btn-ghost shrink-0"
+            style={{ minHeight: 36, padding: '0 18px', fontSize: 13.5 }}
           >
             取消
           </button>
-          {/* 刻意不叫「发送」：全局唯一的「发送」主按钮是输入区那个，
-              多一个同名按钮会让验收脚本的文案定位抓错对象 */}
+          {/* 刻意不叫「发送」：全局唯一的「发送」主按钮是输入区那颗圆形按钮，
+              多一个同名按钮会让「按文案找按钮」的脚本抓错对象 */}
           <button
             type="button"
             data-testid="voice-send"
             onClick={stopRecording}
-            className="rounded-full px-4 py-2 text-sm"
-            style={{
-              backgroundColor: 'var(--color-primary)',
-              color: 'var(--color-primary-contrast)',
-            }}
+            className="btn-pill btn-strong shrink-0"
+            style={{ minHeight: 36, padding: '0 18px', fontSize: 13.5 }}
           >
             发出
           </button>
         </div>
       ) : voicePreview !== null ? (
-        <div data-testid="voice-preview" className="flex flex-col gap-2 px-3 py-3">
+        <div data-testid="voice-preview" className="card chat-panel flex flex-col gap-2" style={{ padding: '12px 14px' }}>
           <audio controls src={voicePreview.dataUrl} className="w-full" />
           <div className="flex items-center gap-2">
-            <span className="flex-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+            <span className="flex-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
               录音预览 · {formatDuration(voicePreview.durationMs)}
             </span>
-            <button type="button" data-testid="voice-rerecord" onClick={() => { setVoicePreview(null); void startRecording() }} className="rounded-full px-3 py-1.5 text-sm" style={{ backgroundColor: 'var(--color-surface-alt)' }}>重录</button>
-            <button type="button" data-testid="voice-preview-send" onClick={() => { const value = voicePreview; setVoicePreview(null); onSendVoice(value.dataUrl, value.durationMs) }} className="rounded-full px-3 py-1.5 text-sm" style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}>发送</button>
+            <button type="button" data-testid="voice-rerecord" onClick={() => { setVoicePreview(null); void startRecording() }} className="btn-pill btn-ghost" style={{ minHeight: 34, padding: '0 16px', fontSize: 13 }}>重录</button>
+            <button type="button" data-testid="voice-preview-send" onClick={() => { const value = voicePreview; setVoicePreview(null); onSendVoice(value.dataUrl, value.durationMs) }} className="btn-pill btn-strong" style={{ minHeight: 34, padding: '0 16px', fontSize: 13 }}>发送</button>
           </div>
         </div>
       ) : (
         <>
-          <div className="flex items-end gap-2 px-3 pt-3">
+          {/*
+            快捷操作栏（SPEC §2.4.2）：表情包 / 请求回复。
+            ⚠️ 位置相对旧版**挪到了胶囊上方**：设计里浮起的输入胶囊是页面最底部那一条，
+            控件行若还放在它下面，等于把输入框往上顶、让手在最下面摸到一排次要按钮。
+            顺序改成「先控件、后胶囊」，胶囊留在拇指热区。
+          */}
+          <div data-testid="quick-bar" className="chat-quickbar">
+            <button
+              type="button"
+              data-testid="quick-emoji"
+              aria-label="表情包"
+              aria-expanded={emojiOpen}
+              onClick={() => setEmojiOpen((prev) => !prev)}
+              className="icon-btn"
+              style={{
+                width: 32,
+                height: 32,
+                color: emojiOpen ? 'var(--accent-strong)' : 'var(--text-secondary)',
+              }}
+            >
+              <IconSmile size={18} />
+            </button>
+            <span className="flex-1" />
+            <button
+              type="button"
+              data-testid="request-reply"
+              disabled={sending || unrepliedCount === 0 || !online}
+              onClick={onRequestReply}
+              title={online ? undefined : '当前离线，联网后才能请求回复'}
+              className="chip pressable disabled:opacity-40"
+              style={
+                // 有待回复的消息时它是这一屏唯一的强调色元素 —— 那是此刻最该被点的东西
+                unrepliedCount > 0 && !sending && online
+                  ? {
+                      backgroundColor: 'var(--accent-strong)',
+                      color: 'var(--accent-on-strong)',
+                      borderColor: 'transparent',
+                    }
+                  : undefined
+              }
+            >
+              {unrepliedCount > 0 ? `请求回复 (${unrepliedCount})` : '请求回复'}
+            </button>
+          </div>
+
+          {/* 表情面板：浮起卡片，紧贴胶囊上方（像键盘那样贴着输入框长出来） */}
+          {emojiOpen && (
+            <div data-testid="emoji-panel" className="card chat-panel">
+              <div className="grid grid-cols-8 gap-1">
+                {EMOJI_ROWS.flat().map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    data-testid="emoji-option"
+                    aria-label={`插入 ${emoji}`}
+                    onClick={() => insertAtCursor(emoji)}
+                    className="rounded py-1 text-lg"
+                    style={{ backgroundColor: 'transparent' }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {imagePromptOpen && voicePreview === null && (
+            <div data-testid="image-prompt" className="card chat-panel flex items-center gap-2">
+              <input
+                value={imagePrompt}
+                onChange={(event) => setImagePrompt(event.target.value)}
+                placeholder="描述想生成的图片…"
+                className="min-w-0 flex-1 rounded-lg px-2 py-1.5 text-sm outline-none"
+                style={{
+                  border: '1px solid var(--border-soft)',
+                  backgroundColor: 'var(--bg-base)',
+                  color: 'var(--text-primary)',
+                }}
+              />
+              <button
+                type="button"
+                disabled={imagePrompt.trim() === '' || sending}
+                onClick={() => {
+                  const prompt = imagePrompt.trim()
+                  setImagePrompt('')
+                  setImagePromptOpen(false)
+                  onGenerateImage(prompt)
+                }}
+                className="btn-pill btn-strong shrink-0 disabled:opacity-40"
+                style={{ minHeight: 34, padding: '0 16px', fontSize: 13 }}
+              >
+                生成
+              </button>
+              <button
+                type="button"
+                onClick={() => setImagePromptOpen(false)}
+                className="icon-btn shrink-0"
+                aria-label="取消"
+                style={{ width: 34, height: 34, color: 'var(--text-tertiary)' }}
+              >
+                <IconClose size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* 输入胶囊（设计 §11.3）：浮起、玻璃、圆角拉满 */}
+          <div className="chat-inputbar chat-inputbar--docked">
+            <button
+              type="button"
+              data-testid="quick-more"
+              aria-label="更多功能"
+              onClick={() => setMoreOpen(true)}
+              className="icon-btn"
+            >
+              <IconPlus size={20} />
+            </button>
             <textarea
               ref={textareaRef}
               data-testid="composer"
@@ -370,12 +515,6 @@ export function Composer({
               onChange={(e) => onDraftChange(e.target.value)}
               rows={1}
               placeholder={online ? '输入消息…' : '离线中 —— 联网后才能发送'}
-              className="max-h-32 flex-1 resize-none rounded-lg border px-3 py-2 text-sm outline-none"
-              style={{
-                borderColor: 'var(--color-border)',
-                backgroundColor: 'var(--color-bg)',
-                color: 'var(--color-text)',
-              }}
               onKeyDown={(e) => {
                 // isComposing：中文输入法选词时的回车不能当发送（否则一句话被切两半）
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -386,35 +525,6 @@ export function Composer({
                 }
               }}
             />
-            {sending ? (
-              <button
-                type="button"
-                data-testid="composer-abort"
-                onClick={onAbort}
-                className="rounded-full px-4 py-2 text-sm"
-                style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text)' }}
-              >
-                停止
-              </button>
-            ) : (
-              <button
-                type="button"
-                data-testid="send"
-                onClick={() => onSend(draft.trim(), { requestReply: true })}
-                disabled={!canSend}
-                className="rounded-full px-4 py-2 text-sm disabled:opacity-40"
-                style={{
-                  backgroundColor: 'var(--color-primary)',
-                  color: 'var(--color-primary-contrast)',
-                }}
-              >
-                发送
-              </button>
-            )}
-          </div>
-
-          {/* 快捷操作栏（SPEC §2.4.2）：语音条 / 表情包 / 更多 / 请求回复 */}
-          <div data-testid="quick-bar" className="flex items-center gap-1 px-3 pb-3 pt-2">
             <button
               type="button"
               data-testid="quick-voice"
@@ -422,44 +532,38 @@ export function Composer({
               disabled={sending || !online}
               title={online ? undefined : '当前离线，联网后才能发送语音'}
               onClick={() => void startRecording()}
-              className="rounded px-2 py-1 text-base disabled:opacity-40"
-              style={{ color: 'var(--color-text)' }}
+              className="icon-btn disabled:opacity-40"
             >
-              <IconMic size={18} />
+              <IconMic size={19} />
             </button>
-            <button
-              type="button"
-              data-testid="quick-emoji"
-              aria-label="表情包"
-              aria-expanded={emojiOpen}
-              onClick={() => setEmojiOpen((prev) => !prev)}
-              className="rounded px-2 py-1 text-base"
-              style={{ color: 'var(--color-text)' }}
-            >
-              <IconSmile size={18} />
-            </button>
-            <button
-              type="button"
-              data-testid="quick-more"
-              aria-label="更多功能"
-              onClick={() => setMoreOpen(true)}
-              className="rounded px-2 py-1 text-base"
-              style={{ color: 'var(--color-text)' }}
-            >
-              ＋
-            </button>
-            <span className="flex-1" />
-            <button
-              type="button"
-              data-testid="request-reply"
-              disabled={sending || unrepliedCount === 0 || !online}
-              onClick={onRequestReply}
-              title={online ? undefined : '当前离线，联网后才能请求回复'}
-              className="rounded px-2 py-1 text-xs disabled:opacity-40"
-              style={{ color: 'var(--color-primary)' }}
-            >
-              {unrepliedCount > 0 ? `请求回复 (${unrepliedCount})` : '请求回复'}
-            </button>
+            {sending ? (
+              /*
+                生成中：主按钮换成「停止」。
+                ⚠️ 用的是 `IconStop`（方块，一轮到此为止），**不是** `IconPause`（双竖条，待会儿接着来）——
+                栖息地的中止只结束当前这轮流式输出，图标用错会把这件事说反。
+              */
+              <button
+                type="button"
+                data-testid="composer-abort"
+                aria-label="停止"
+                onClick={onAbort}
+                className="send-btn"
+                style={{ backgroundColor: 'var(--bg-subtle)', color: 'var(--text-primary)' }}
+              >
+                <IconStop size={16} filled />
+              </button>
+            ) : (
+              <button
+                type="button"
+                data-testid="send"
+                aria-label="发送"
+                onClick={() => onSend(draft.trim(), { requestReply: true })}
+                disabled={!canSend}
+                className="send-btn"
+              >
+                <IconSend size={18} />
+              </button>
+            )}
           </div>
         </>
       )}
@@ -476,35 +580,8 @@ export function Composer({
         }}
       />
 
-      {imagePromptOpen && !recording && voicePreview === null && (
-        <div data-testid="image-prompt" className="flex gap-2 border-t px-3 py-2" style={{ borderColor: 'var(--color-border)' }}>
-          <input value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} placeholder="描述想生成的图片…" className="min-w-0 flex-1 rounded border px-2 py-1.5 text-sm" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)' }} />
-          <button type="button" disabled={imagePrompt.trim() === '' || sending} onClick={() => { const prompt = imagePrompt.trim(); setImagePrompt(''); setImagePromptOpen(false); onGenerateImage(prompt) }} className="rounded px-3 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}>生成</button>
-          <button type="button" onClick={() => setImagePromptOpen(false)} className="text-sm">取消</button>
-        </div>
-      )}
-
-      {emojiOpen && !recording && (
-        <div
-          data-testid="emoji-panel"
-          className="grid grid-cols-8 gap-1 border-t px-3 py-2"
-          style={{ borderColor: 'var(--color-border)' }}
-        >
-          {EMOJI_ROWS.flat().map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              data-testid="emoji-option"
-              aria-label={`插入 ${emoji}`}
-              onClick={() => insertAtCursor(emoji)}
-              className="rounded py-1 text-lg"
-              style={{ backgroundColor: 'transparent' }}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* 表情面板 / 生图提示条都已经挂进上面的常规输入分支里，
+          不再是「浮在底栏之上的独立浮层」——它们现在是贴着胶囊长出来的卡片 */}
 
       <ActionSheet
         actions={moreActions}
