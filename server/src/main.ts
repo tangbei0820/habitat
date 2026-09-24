@@ -21,9 +21,13 @@ import { registerMemoryRoutes } from './routes/memory.js'
 import { registerStateRoutes } from './routes/state.js'
 import { registerAutomationRoutes } from './routes/automation.js'
 import { registerLifeRoutes } from './routes/life.js'
+import { registerMediaRoutes } from './routes/media.js'
+import { registerToolRoutes } from './routes/tools.js'
 import { AutomationService, startAutomationScheduler } from './services/automation.js'
 
 const app = Fastify({
+  // Phase 5 媒体仍走受控 data URL；给 8 MB 音频的 base64 膨胀留空间，具体端点再按类型收紧。
+  bodyLimit: 12 * 1024 * 1024,
   logger: {
     transport: {
       target: 'pino-pretty',
@@ -83,6 +87,8 @@ const importedProfiles = importProfiles(seedProfiles)
 const llmRegistry = new LlmRegistry()
 registerProviderRoutes(app, llmRegistry)
 registerChatRoutes(app, llmRegistry, stateProvider)
+registerMediaRoutes(app, llmRegistry)
+registerToolRoutes(app, gateway)
 const automationService = new AutomationService(llmRegistry, stateProvider, memoryProvider, app.log)
 registerAutomationRoutes(app, automationService)
 registerLifeRoutes(app, gateway, stateProvider)

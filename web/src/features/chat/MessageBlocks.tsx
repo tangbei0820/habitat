@@ -15,11 +15,16 @@
 import type {
   AudioBlock,
   FileBlock,
+  HtmlBlock,
   ImageBlock,
+  LeafMessageBlock,
   MessageBlock,
+  TabGroupBlock,
   TextBlock,
   ToolResultBlock,
+  WidgetBlock,
 } from '@shared/types'
+import { useState } from 'react'
 import { formatDuration } from '../../lib/format'
 
 /** 已知的块类型（与 `MessageBlock` 联合一一对应；用于拦下「新版本写进来的块」） */
@@ -133,6 +138,62 @@ function ToolResultBlockView({ payload }: { payload: ToolResultBlock['payload'] 
   )
 }
 
+function HtmlBlockView({ payload }: { payload: HtmlBlock['payload'] }) {
+  const srcDoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'"><style>html{color-scheme:light dark}body{margin:8px;font:14px/1.5 system-ui;overflow-wrap:anywhere}</style></head><body>${payload.html}</body></html>`
+  return (
+    <iframe
+      title="富内容预览"
+      sandbox=""
+      srcDoc={srcDoc}
+      className="h-48 w-full min-w-[16rem] rounded-lg border bg-white"
+      style={{ borderColor: 'var(--color-border)' }}
+    />
+  )
+}
+
+function WidgetBlockView({ payload }: { payload: WidgetBlock['payload'] }) {
+  return (
+    <span className="flex min-w-[12rem] flex-col rounded-lg border px-3 py-2" style={{ borderColor: 'var(--color-border)' }}>
+      <strong>{payload.title?.trim() || '小组件'}</strong>
+      {payload.source !== undefined && <span className="mt-1 text-xs opacity-65">来源：{payload.source}</span>}
+    </span>
+  )
+}
+
+function LeafBlockView({ block }: { block: LeafMessageBlock }) {
+  switch (block.kind) {
+    case 'text': return <TextBlockView payload={block.payload} />
+    case 'html': return <HtmlBlockView payload={block.payload} />
+    case 'image': return <ImageBlockView payload={block.payload} />
+    case 'audio': return <AudioBlockView payload={block.payload} />
+    case 'file': return <FileBlockView payload={block.payload} />
+    case 'tool-result': return <ToolResultBlockView payload={block.payload} />
+    case 'widget': return <WidgetBlockView payload={block.payload} />
+  }
+}
+
+function TabGroupBlockView({ payload }: { payload: TabGroupBlock['payload'] }) {
+  const [selected, setSelected] = useState(0)
+  const tab = payload.tabs[selected]
+  if (tab === undefined) return <PlaceholderBlockView label="tab-group" reason="没有可显示的标签页" />
+  return (
+    <span className="flex w-full min-w-[16rem] flex-col rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
+      <span className="flex gap-1 overflow-x-auto border-b p-1" style={{ borderColor: 'var(--color-border)' }}>
+        {payload.tabs.map((item, index) => (
+          <button key={`${item.label}:${index}`} type="button" onClick={() => setSelected(index)} className="rounded px-2 py-1 text-xs" style={{ backgroundColor: index === selected ? 'var(--color-surface-alt)' : 'transparent' }}>
+            {item.label || `标签 ${index + 1}`}
+          </button>
+        ))}
+      </span>
+      <span className="flex flex-col items-start gap-2 p-2">
+        {[...tab.blocks].sort((a, b) => a.order - b.order).map((block, index) => (
+          <LeafBlockView key={`${block.kind}:${block.order}:${index}`} block={block} />
+        ))}
+      </span>
+    </span>
+  )
+}
+
 /** 渲染不了 / 未启用的块：显示「是什么 + 为什么没渲染」，而不是空白 */
 function PlaceholderBlockView({ label, reason }: { label: string; reason: string }) {
   return (
@@ -164,12 +225,11 @@ function MessageBlockView({ block }: { block: MessageBlock }) {
     case 'tool-result':
       return <ToolResultBlockView payload={block.payload} />
     case 'html':
-      // 刻意不渲染：LLM 产出的 HTML 需要沙箱（见 shared/types.ts 的 HtmlBlock 注释）
-      return <PlaceholderBlockView label="html" reason="沙箱渲染未接入" />
+      return <HtmlBlockView payload={block.payload} />
     case 'widget':
-      return <PlaceholderBlockView label="widget" reason="Phase 5 接入" />
+      return <WidgetBlockView payload={block.payload} />
     case 'tab-group':
-      return <PlaceholderBlockView label="tab-group" reason="Phase 5 接入" />
+      return <TabGroupBlockView payload={block.payload} />
   }
 }
 

@@ -561,6 +561,7 @@ const blockDom = await evaluate(`JSON.stringify({
   audio: document.querySelectorAll('audio').length,
   tool: document.querySelectorAll('details').length,
   rawBold: document.querySelectorAll('b').length,
+  htmlFrame: (() => { const frame = document.querySelector('iframe[title="富内容预览"]'); return frame === null ? null : { sandbox: frame.getAttribute('sandbox'), srcdoc: frame.getAttribute('srcdoc') } })(),
   pre: [...document.querySelectorAll('pre')].map((p) => p.textContent).join('|'),
 })`)
 const dom = JSON.parse(blockDom)
@@ -584,13 +585,13 @@ check(
   '',
 )
 check(
-  'html 块只给占位、不注入原文（防 XSS）',
-  blocksText.includes('[html] 沙箱渲染未接入') && dom.rawBold === 0,
-  `rawBold=${String(dom.rawBold)}`,
+  'html 块进入无权限 + CSP iframe，不注入主文档',
+  dom.htmlFrame?.sandbox === '' && dom.htmlFrame.srcdoc.includes("default-src 'none'") && dom.rawBold === 0,
+  JSON.stringify(dom.htmlFrame),
 )
 check(
-  'widget / tab-group 明确标注未启用',
-  blocksText.includes('[widget] Phase 5 接入') && blocksText.includes('[tab-group] Phase 5 接入'),
+  'widget / tab-group 已按协议渲染',
+  blocksText.includes('天气') && blocksText.includes('甲'),
   '',
 )
 check(
@@ -1757,7 +1758,24 @@ check('录音中显示实时计时', /录音中\s*0:0[1-9]/.test(voiceTime), voi
 await shot('shot-chat-recording.png')
 
 await evaluate(`(() => { document.querySelector('[data-testid="voice-send"]').click(); return 'ok' })()`)
-await waitIdle('语音条发完并拿到回复')
+await waitFor(`document.querySelector('[data-testid="voice-preview"]') !== null`, '录音预览出现')
+const previewState = await evaluate(`(() => ({
+  audio: document.querySelector('[data-testid="voice-preview"] audio') !== null,
+  rerecord: document.querySelector('[data-testid="voice-rerecord"]') !== null,
+  send: document.querySelector('[data-testid="voice-preview-send"]') !== null,
+}))()`)
+check('录音停止后可试听、重录或发送', previewState.audio && previewState.rerecord && previewState.send, JSON.stringify(previewState))
+await evaluate(`(() => { document.querySelector('[data-testid="voice-preview-send"]').click(); return 'ok' })()`)
+{
+  const deadline = Date.now() + 30000
+  let completed = false
+  while (Date.now() < deadline) {
+    const rows = await readMessages(composerSession)
+    if (rows.filter((m) => m.role === 'assistant').length === assistantsBeforeVoice + 1 && rows.at(-1)?.status === 'done') { completed = true; break }
+    await sleep(200)
+  }
+  if (!completed) throw new Error('等待超时：语音条发完并拿到回复')
+}
 const afterVoice = await readMessages(composerSession)
 const voiceMessage = afterVoice.find((m) => m.blocks.some((b) => b.kind === 'audio'))
 const voiceBlock = voiceMessage?.blocks.find((b) => b.kind === 'audio')
@@ -1781,10 +1799,11 @@ check(
 )
 const voiceUpstream = JSON.stringify(await lastUpstreamBody())
 check(
-  '语音条以占位描述进入上下文（不是空气泡）',
-  voiceUpstream.includes('[语音条 '),
+  '语音条以真实转写进入上下文（不是空气泡）',
+  voiceUpstream.includes('这是 mock 转写文本。'),
   '',
 )
+check('语音条保存真实转写', voiceBlock?.payload.transcript === '这是 mock 转写文本。', String(voiceBlock?.payload.transcript))
 check(
   '气泡上显示语音时长',
   await evaluate(`document.querySelector('[data-testid="audio-duration"]') !== null`),
@@ -1845,6 +1864,48 @@ check(
   afterCancel.length === afterVoice.length,
   `${afterVoice.length} → ${afterCancel.length}`,
 )
+
+/* --- 图片：选择文件后经视觉模型描述，再走普通消息链路 --- */
+const assistantsBeforeImage = afterCancel.filter((m) => m.role === 'assistant').length
+await evaluate(`(() => {
+  const input = document.querySelector('[data-testid="image-input"]')
+  const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='), c => c.charCodeAt(0))
+  const transfer = new DataTransfer()
+  transfer.items.add(new File([bytes], 'phase5.png', { type: 'image/png' }))
+  input.files = transfer.files
+  input.dispatchEvent(new Event('change', { bubbles: true }))
+  return 'ok'
+})()`)
+{
+  const deadline = Date.now() + 30000
+  let completed = false
+  while (Date.now() < deadline) {
+    const rows = await readMessages(composerSession)
+    const imageMessage = rows.find((m) => m.role === 'user' && m.blocks.some((b) => b.kind === 'image' && b.payload.alt === '一张用于验收的图片'))
+    if (imageMessage !== undefined && rows.filter((m) => m.role === 'assistant').length === assistantsBeforeImage + 1 && rows.at(-1)?.status === 'done') { completed = true; break }
+    await sleep(200)
+  }
+  check('聊天图片保存视觉描述并一步请求回复', completed, '')
+}
+
+/* --- 图片生成：产物是普通 image block，后续对象操作自然复用 --- */
+await evaluate(`(() => { document.querySelector('[data-testid="quick-more"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="action-generate-image"]') !== null`, '生成图片入口')
+await evaluate(`(() => { document.querySelector('[data-testid="action-generate-image"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="image-prompt"] input') !== null`, '图片提示输入出现')
+await setField('[data-testid="image-prompt"] input', '一片叶子')
+await evaluate(`(() => { document.querySelector('[data-testid="image-prompt"] button').click(); return 'ok' })()`)
+await waitFor(`document.body.innerText.includes('图片已生成')`, '图片生成完成')
+const generatedRows = await readMessages(composerSession)
+const generatedMessage = generatedRows.find((m) => m.role === 'assistant' && m.blocks.some((b) => b.kind === 'image' && b.payload.alt === '一片叶子'))
+check('生成图片落成普通 assistant image block', generatedMessage !== undefined, '')
+
+/* --- Mini Terminal：无 MCP 时必须是真空态，而不是演示工具 --- */
+await evaluate(`(() => { document.querySelector('[data-testid="mini-terminal-open"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="mini-terminal"]')?.innerText.includes('没有可用工具')`, 'Mini Terminal 空态')
+const terminalText = await evaluate(`document.querySelector('[data-testid="mini-terminal"]').innerText`)
+check('Mini Terminal 无可用 MCP 时显示诊断指引', terminalText.includes('检查 MCP Server 状态'), terminalText)
+await evaluate(`(() => { document.querySelector('[aria-label="关闭工具面板"]').click(); return 'ok' })()`)
 
 /* ---------- 14. 控制台 ---------- */
 const errors = consoleLogs.filter((l) => l.startsWith('[error]') || l.startsWith('[exception]'))

@@ -8,7 +8,15 @@
  * 刻意不引第三方 SDK：只需要 fetch + SSE 解析，自己写反而更好控错、更好排障。
  */
 import { ErrorCodes } from '@shared/errors.js'
-import type { LLMProvider, LlmChatMessage, LlmStreamChunk, StreamChatOptions } from '@shared/providers.js'
+import type {
+  ImageProvider,
+  LLMProvider,
+  LlmChatMessage,
+  LlmStreamChunk,
+  StreamChatOptions,
+  TTSProvider,
+  TranscriptionProvider,
+} from '@shared/providers.js'
 import type { ApiProfile } from '@shared/types.js'
 import { ProviderError } from './errors.js'
 
@@ -164,7 +172,7 @@ async function safeSnippet(res: Response): Promise<string | null> {
   }
 }
 
-export class OpenAICompatProvider implements LLMProvider {
+export class OpenAICompatProvider implements LLMProvider, TTSProvider, TranscriptionProvider, ImageProvider {
   constructor(
     private readonly profile: ApiProfile,
     /** 从 `profile.keyRef` 指向的环境变量解析出来的密钥；null = 未配置 */
@@ -194,6 +202,89 @@ export class OpenAICompatProvider implements LLMProvider {
     return data
       .map((item) => (isRecord(item) ? asString(item.id) : undefined))
       .filter((id): id is string => id !== undefined && id !== '')
+  }
+
+  async synthesize(text: string, voice = 'alloy'): Promise<{ audio: Uint8Array; mimeType: string; model: string }> {
+    const model = this.profile.modelMap.tts
+    if (model === undefined) {
+      throw new ProviderError(ErrorCodes.ProviderNotConfigured, `方案 '${this.profile.id}' 未配置朗读模型`)
+    }
+    const res = await this.request('POST', '/audio/speech', {
+      model,
+      input: text,
+      voice,
+      response_format: 'mp3',
+    }, {})
+    return {
+      audio: new Uint8Array(await res.arrayBuffer()),
+      mimeType: res.headers.get('content-type')?.split(';')[0] || 'audio/mpeg',
+      model,
+    }
+  }
+
+  async transcribe(data: Uint8Array, mimeType: string, fileName = 'voice.webm'): Promise<{ text: string; model: string }> {
+    const model = this.profile.modelMap.transcription
+    if (model === undefined) {
+      throw new ProviderError(ErrorCodes.ProviderNotConfigured, `方案 '${this.profile.id}' 未配置语音转写模型`)
+    }
+    const form = new FormData()
+    // Uint8Array 的泛型允许 SharedArrayBuffer；复制后取独占 ArrayBuffer，满足 BlobPart 的严格类型。
+    const bytes = Uint8Array.from(data)
+    form.set('file', new Blob([bytes.buffer], { type: mimeType }), fileName)
+    form.set('model', model)
+    form.set('response_format', 'json')
+    const res = await this.requestForm('/audio/transcriptions', form)
+    const body: unknown = await res.json()
+    const text = isRecord(body) ? asString(body.text)?.trim() : undefined
+    if (text === undefined || text === '') {
+      throw new ProviderError(ErrorCodes.ProviderUpstreamError, '转写服务没有返回文本')
+    }
+    return { text, model }
+  }
+
+  async vision(dataUrl: string, prompt = '请简洁描述这张图片中与对话相关的内容。'): Promise<{ description: string; model: string }> {
+    const model = this.profile.modelMap.vision
+    if (model === undefined) {
+      throw new ProviderError(ErrorCodes.ProviderNotConfigured, `方案 '${this.profile.id}' 未配置视觉模型`)
+    }
+    const res = await this.request('POST', '/chat/completions', {
+      model,
+      stream: false,
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: { url: dataUrl } },
+      ] }],
+    }, {})
+    const body: unknown = await res.json()
+    const choices = isRecord(body) && Array.isArray(body.choices) ? body.choices : []
+    const choice = choices.find(isRecord)
+    const message = choice !== undefined && isRecord(choice.message) ? choice.message : null
+    const description = message === null ? undefined : asString(message.content)?.trim()
+    if (description === undefined || description === '') {
+      throw new ProviderError(ErrorCodes.ProviderUpstreamError, '视觉模型没有返回图片描述')
+    }
+    return { description, model }
+  }
+
+  async generate(prompt: string): Promise<{ dataUrl: string; model: string }> {
+    const model = this.profile.modelMap.image
+    if (model === undefined) {
+      throw new ProviderError(ErrorCodes.ProviderNotConfigured, `方案 '${this.profile.id}' 未配置图片生成模型`)
+    }
+    const res = await this.request('POST', '/images/generations', {
+      model,
+      prompt,
+      size: '1024x1024',
+      response_format: 'b64_json',
+    }, {})
+    const body: unknown = await res.json()
+    const items = isRecord(body) && Array.isArray(body.data) ? body.data : []
+    const first = items.find(isRecord)
+    const encoded = first === undefined ? undefined : asString(first.b64_json)
+    if (encoded === undefined || encoded === '') {
+      throw new ProviderError(ErrorCodes.ProviderUpstreamError, '图片服务没有返回可本地保存的图像数据')
+    }
+    return { dataUrl: `data:image/png;base64,${encoded}`, model }
   }
 
   async *streamChat(messages: LlmChatMessage[], opts: StreamChatOptions = {}): AsyncIterable<LlmStreamChunk> {
@@ -309,6 +400,40 @@ export class OpenAICompatProvider implements LLMProvider {
       const unauthorized = res.status === 401 || res.status === 403
       throw new ProviderError(
         unauthorized ? ErrorCodes.ProviderUnauthorized : ErrorCodes.ProviderUpstreamError,
+        `上游返回 ${res.status}${res.statusText === '' ? '' : ` ${res.statusText}`}（方案 '${this.profile.id}'）`,
+        snippet,
+      )
+    }
+    return res
+  }
+
+  /** multipart 不能复用 JSON request；鉴权、超时和错误映射仍保持同一口径。 */
+  private async requestForm(path: string, form: FormData): Promise<Response> {
+    const url = `${this.profile.baseUrl.replace(/\/+$/, '')}${path}`
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), DEFAULT_HEADER_TIMEOUT_MS)
+    let res: Response
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { accept: 'application/json', ...(this.profile.headers ?? {}), ...this.authHeaders() },
+        body: form,
+        signal: controller.signal,
+      })
+    } catch (err) {
+      throw new ProviderError(
+        ErrorCodes.ProviderUpstreamError,
+        controller.signal.aborted
+          ? `连接 '${this.profile.id}' 超过 ${DEFAULT_HEADER_TIMEOUT_MS}ms 未响应：${url}`
+          : `连接 '${this.profile.id}' 失败：${errMessage(err)}`,
+      )
+    } finally {
+      clearTimeout(timer)
+    }
+    if (!res.ok) {
+      const snippet = await safeSnippet(res)
+      throw new ProviderError(
+        res.status === 401 || res.status === 403 ? ErrorCodes.ProviderUnauthorized : ErrorCodes.ProviderUpstreamError,
         `上游返回 ${res.status}${res.statusText === '' ? '' : ` ${res.statusText}`}（方案 '${this.profile.id}'）`,
         snippet,
       )

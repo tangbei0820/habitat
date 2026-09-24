@@ -600,3 +600,13 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 通知中心支持单条 / 全部已读；新增 Service Worker + VAPID Web Push，未配置 / 不支持 / 拒绝授权时安全退回站内收件箱。
 - 运行页聚合 habitat-server、Eventide、MCP、当前状态与主动任务，明确区分正常 / 异常 / 未配置。
 - 全链探针 16/16，真实浏览器 Life 验收 15/15，Phase 3B 回归 21/21；类型检查、构建与差异检查通过。
+
+### Phase 5 · 高级消息能力（T-027）—— **完成**
+
+- OpenAI-compatible Adapter 增加 ASR、TTS、视觉理解与图片生成；方案设置消费 `tts / transcription / vision / image` 四个媒体模型槽位。
+- 语音条停止后先试听 / 重录 / 发送；真实转写写回 audio block 并进入上下文，失败保留原音且明确提示；AI 文本消息可手动朗读 / 停止。
+- 聊天可直接选择图片并保存视觉描述，也可按提示生成图片；生成物仍是普通 image block，可继续加入相册或收录至作品。
+- HTML 改为 `sandbox=""` + CSP iframe，widget / 单层 tab-group 正式渲染；没有注入主文档，也没有引入递归块或 Dexie 升级。
+- 新增用户发起的 Mini Terminal：真实列出 ToolGateway 工具、展示参数 schema、显式确认调用，成功 / 失败均落 `tool-result`；AI 自主工具调用继续关闭。
+- 补全 `PRODUCT_SPEC §9.6 / §9.7`，明确实时双工 / 主动拨号与逐次授权的 AI 工具调用不在 v0.1，邮件不建硬编码旁路。
+- Phase 5 API 探针 8/8；浏览器 Chat 140/140、Providers 22/22、Home 75/75、Diagnostics 36/36；类型检查、构建与差异检查通过。

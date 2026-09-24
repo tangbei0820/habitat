@@ -42,6 +42,10 @@ export function ProviderForm({ initial, busy, onSubmit, onCancel }: ProviderForm
   const [name, setName] = useState(initial?.name ?? '')
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? '')
   const [chatModel, setChatModel] = useState(initial?.modelMap.chat ?? '')
+  const [ttsModel, setTtsModel] = useState(initial?.modelMap.tts ?? '')
+  const [transcriptionModel, setTranscriptionModel] = useState(initial?.modelMap.transcription ?? '')
+  const [visionModel, setVisionModel] = useState(initial?.modelMap.vision ?? '')
+  const [imageModel, setImageModel] = useState(initial?.modelMap.image ?? '')
   const [secret, setSecret] = useState('')
   const [keyRef, setKeyRef] = useState(initial?.keyRef ?? '')
   const [isActive, setIsActive] = useState(initial?.isActive ?? false)
@@ -63,7 +67,13 @@ export function ProviderForm({ initial, busy, onSubmit, onCancel }: ProviderForm
       {
         name: name.trim(),
         baseUrl: baseUrl.trim(),
-        modelMap: { chat: chatModel.trim() },
+        modelMap: {
+          chat: chatModel.trim(),
+          ...(ttsModel.trim() === '' ? {} : { tts: ttsModel.trim() }),
+          ...(transcriptionModel.trim() === '' ? {} : { transcription: transcriptionModel.trim() }),
+          ...(visionModel.trim() === '' ? {} : { vision: visionModel.trim() }),
+          ...(imageModel.trim() === '' ? {} : { image: imageModel.trim() }),
+        },
         // 编辑时**总是**带上 keyRef，这样把它清空才生效；新建时空串就不必传
         ...(isEdit || keyRef.trim() !== '' ? { keyRef: keyRef.trim() } : {}),
         streamOptions,
@@ -172,9 +182,15 @@ export function ProviderForm({ initial, busy, onSubmit, onCancel }: ProviderForm
 
       <details className="mb-3">
         <summary className="cursor-pointer text-xs" style={LABEL_STYLE}>
-          高级：环境变量密钥 / 兼容开关
+          高级：语音 / 图片模型与兼容设置
         </summary>
         <div className="mt-2">
+          <div className="mb-3 grid gap-2 sm:grid-cols-2">
+            <input className={INPUT_CLS} style={INPUT_STYLE} value={transcriptionModel} onChange={(event) => setTranscriptionModel(event.target.value)} placeholder="语音转写模型（如 whisper-1）" autoComplete="off" />
+            <input className={INPUT_CLS} style={INPUT_STYLE} value={ttsModel} onChange={(event) => setTtsModel(event.target.value)} placeholder="朗读模型（如 gpt-4o-mini-tts）" autoComplete="off" />
+            <input className={INPUT_CLS} style={INPUT_STYLE} value={visionModel} onChange={(event) => setVisionModel(event.target.value)} placeholder="视觉模型（留空则不用）" autoComplete="off" />
+            <input className={INPUT_CLS} style={INPUT_STYLE} value={imageModel} onChange={(event) => setImageModel(event.target.value)} placeholder="图片生成模型（留空则不用）" autoComplete="off" />
+          </div>
           <input
             className={INPUT_CLS}
             style={INPUT_STYLE}

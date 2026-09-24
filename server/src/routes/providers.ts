@@ -28,7 +28,7 @@ const PROBE_SAMPLE_SIZE = 5
 const NAME_MAX_LENGTH = 60
 /** 环境变量名规范（POSIX 的保守子集） */
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
-const EXTRA_MODEL_SLOTS = ['tts', 'vision', 'embedding'] as const
+const EXTRA_MODEL_SLOTS = ['tts', 'transcription', 'vision', 'image', 'embedding'] as const
 
 interface IdParams {
   id: string

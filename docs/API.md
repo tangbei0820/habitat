@@ -499,8 +499,26 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 Web Push 仅是站内通知的尽力而为副本：VAPID 环境变量不完整时接口明确返回 `configured=false`；Push 失败
 不回滚通知，404 / 410 的失效订阅会自动清除。
 
+## Phase 5 已实现（媒体与用户工具）
+
+媒体接口统一使用当前启用的 API 方案，也可在请求体传 `profileId` 指定方案。浏览器只到 habitat-server，
+不会拿到上游密钥。成功调用均写 UsageRecord（没有 token 明细的媒体服务以 0 token 留下调用事实）。
+
+| 接口 | 说明 |
+|---|---|
+| `POST /api/media/transcriptions` | `{ dataUrl, profileId? }`；只收 `audio/*` base64 data URL，解码后最大 8 MB |
+| `POST /api/media/speech` | `{ text, voice?, profileId? }`；返回音频二进制，正文最多 4,000 字 |
+| `POST /api/media/vision` | `{ dataUrl, prompt?, profileId? }`；只收白名单前端产生的 `image/*`，解码后最大 3 MB |
+| `POST /api/media/images` | `{ prompt, profileId? }`；要求上游返回 `b64_json`，服务端转成可本地保存的 PNG data URL |
+| `GET /api/tools` | 从当前 ready 的 MCP Server 聚合脱敏工具描述与 `inputSchema` |
+| `POST /api/tools/call` | `{ serverId, name, args }`；用户在 Mini Terminal 显式确认后调用 |
+
+`modelMap` 对应槽位为 `transcription / tts / vision / image`。未配置返回
+`400 PROVIDER_NOT_CONFIGURED`；上游鉴权 / 网络 / 非 2xx 继续使用统一 Provider 错误码。
+媒体路由的 Fastify 总体请求上限是 12 MB（容纳 base64 膨胀），端点内部再按上述解码后大小收紧。
+
 ## 待实现（按阶段）
 
 - Phase 3A 剩余：**自部署 Nocturne 实例**的 Token / Namespace / 反代链路验证（客户端代码已用官方只读 Demo 验通，见 `docs/TASKS.md` T-013）
-- Phase 5：TTS / 语音 / 图片 / HTML / Mini Terminal 等高级能力
+- Phase 6：依据 PRODUCT_SPEC / TASKS 做打磨；实时双工与带逐次授权的 AI 自主工具循环仍需独立协议
 - 诊断日志的留存策略（表只增不减，目前没有清空 / 归档入口）

@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
 import { formatDuration } from '../../lib/format'
 import { log } from '../../lib/log'
+import { MAX_PHOTO_BYTES, type PhotoMime } from '@shared/types'
 
 /** 语音条时长上限（SPEC §2.4.4）：到点自动停止，免得一条录音把备份撑爆 */
 const VOICE_MAX_MS = 60_000
@@ -50,6 +51,8 @@ export interface ComposerProps {
   onRequestReply: () => void
   /** 语音条：内联 data URL + 实测时长（SPEC §2.4.4） */
   onSendVoice: (dataUrl: string, durationMs: number) => void
+  onSendImage: (dataUrl: string) => void
+  onGenerateImage: (prompt: string) => void
   onAbort: () => void
   /**
    * 原生能力失败（录音权限 / 设备 / 读文件）走这里，由页面统一显示。
@@ -66,16 +69,22 @@ export function Composer({
   onSend,
   onRequestReply,
   onSendVoice,
+  onSendImage,
+  onGenerateImage,
   onAbort,
   onError,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [imagePromptOpen, setImagePromptOpen] = useState(false)
+  const [imagePrompt, setImagePrompt] = useState('')
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   /* ---------- 语音条录制 ---------- */
   const [recordingSince, setRecordingSince] = useState<number | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
+  const [voicePreview, setVoicePreview] = useState<{ dataUrl: string; durationMs: number } | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -202,13 +211,33 @@ export function Composer({
         onError('录音读取失败，没有发出')
         return
       }
-      onSendVoice(url, durationMs)
+      setVoicePreview({ dataUrl: url, durationMs })
     }
     reader.onerror = () => {
       log.error('录音读取失败', reader.error)
       onError('录音读取失败，没有发出')
     }
     reader.readAsDataURL(blob)
+  }
+
+  function chooseImage(file: File | undefined): void {
+    if (file === undefined) return
+    const allowed: readonly string[] = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] satisfies readonly PhotoMime[]
+    if (!allowed.includes(file.type)) {
+      onError('只支持 JPEG、PNG、WebP 或 GIF 图片')
+      return
+    }
+    if (file.size <= 0 || file.size > MAX_PHOTO_BYTES) {
+      onError('图片必须在 1 B–3 MB 之间')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') onSendImage(reader.result)
+      else onError('图片读取失败，没有发出')
+    }
+    reader.onerror = () => onError('图片读取失败，没有发出')
+    reader.readAsDataURL(file)
   }
 
   /* ---------- 插入（表情 / 时间）都要落在光标处，不能一律追加到末尾 ---------- */
@@ -245,6 +274,8 @@ export function Composer({
     if (!moreOpen) return null
     const items: SheetAction[] = []
     if (!sending && draft.trim() !== '') items.push({ id: 'silent-send', label: '只发送，不请求回复' })
+    if (!sending) items.push({ id: 'choose-image', label: '发送图片' })
+    if (!sending) items.push({ id: 'generate-image', label: '生成图片' })
     items.push({ id: 'insert-time', label: `插入当前时间（${nowText()}）` })
     if (draft !== '') items.push({ id: 'clear-draft', label: '清空输入' })
     return items
@@ -260,6 +291,12 @@ export function Composer({
         break
       case 'insert-time':
         insertAtCursor(nowText())
+        break
+      case 'choose-image':
+        imageInputRef.current?.click()
+        break
+      case 'generate-image':
+        setImagePromptOpen(true)
         break
       case 'clear-draft':
         onDraftChange('')
@@ -305,6 +342,17 @@ export function Composer({
           >
             发出
           </button>
+        </div>
+      ) : voicePreview !== null ? (
+        <div data-testid="voice-preview" className="flex flex-col gap-2 px-3 py-3">
+          <audio controls src={voicePreview.dataUrl} className="w-full" />
+          <div className="flex items-center gap-2">
+            <span className="flex-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+              录音预览 · {formatDuration(voicePreview.durationMs)}
+            </span>
+            <button type="button" data-testid="voice-rerecord" onClick={() => { setVoicePreview(null); void startRecording() }} className="rounded-full px-3 py-1.5 text-sm" style={{ backgroundColor: 'var(--color-surface-alt)' }}>重录</button>
+            <button type="button" data-testid="voice-preview-send" onClick={() => { const value = voicePreview; setVoicePreview(null); onSendVoice(value.dataUrl, value.durationMs) }} className="rounded-full px-3 py-1.5 text-sm" style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}>发送</button>
+          </div>
         </div>
       ) : (
         <>
@@ -404,6 +452,26 @@ export function Composer({
             </button>
           </div>
         </>
+      )}
+
+      <input
+        ref={imageInputRef}
+        data-testid="image-input"
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={(event) => {
+          chooseImage(event.target.files?.[0])
+          event.target.value = ''
+        }}
+      />
+
+      {imagePromptOpen && !recording && voicePreview === null && (
+        <div data-testid="image-prompt" className="flex gap-2 border-t px-3 py-2" style={{ borderColor: 'var(--color-border)' }}>
+          <input value={imagePrompt} onChange={(event) => setImagePrompt(event.target.value)} placeholder="描述想生成的图片…" className="min-w-0 flex-1 rounded border px-2 py-1.5 text-sm" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)' }} />
+          <button type="button" disabled={imagePrompt.trim() === '' || sending} onClick={() => { const prompt = imagePrompt.trim(); setImagePrompt(''); setImagePromptOpen(false); onGenerateImage(prompt) }} className="rounded px-3 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}>生成</button>
+          <button type="button" onClick={() => setImagePromptOpen(false)} className="text-sm">取消</button>
+        </div>
       )}
 
       {emojiOpen && !recording && (

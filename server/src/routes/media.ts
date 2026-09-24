@@ -1,0 +1,88 @@
+import type { FastifyInstance } from 'fastify'
+import { ErrorCodes } from '@shared/errors'
+import type { MediaImageResult, MediaTranscriptionResult, MediaVisionResult } from '@shared/types'
+import { recordUsage } from '../db/usage.js'
+import { ProviderError } from '../providers/errors.js'
+import type { LlmRegistry } from '../providers/registry.js'
+
+const MAX_AUDIO_BYTES = 8 * 1024 * 1024
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024
+const MAX_SPEECH_CHARS = 4_000
+const MAX_PROMPT_CHARS = 2_000
+const AUDIO_MIMES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/mpeg'])
+const IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+
+function record(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) throw new ProviderError(ErrorCodes.BadRequest, '请求体必须是 JSON 对象')
+  return value as Record<string, unknown>
+}
+
+function text(value: unknown, name: string, max: number): string {
+  if (typeof value !== 'string' || value.trim() === '') throw new ProviderError(ErrorCodes.BadRequest, `${name} 必填`)
+  const result = value.trim()
+  if (result.length > max) throw new ProviderError(ErrorCodes.BadRequest, `${name} 最长 ${max} 字`)
+  return result
+}
+
+function active(registry: LlmRegistry, profileId: unknown) {
+  const profile = typeof profileId === 'string' && profileId !== ''
+    ? registry.toPublic(registry.require(profileId))
+    : registry.active()
+  if (profile === null) throw new ProviderError(ErrorCodes.ProviderNotConfigured, '没有可用的 API 方案')
+  return { profile, provider: registry.mediaProvider(profile.id) }
+}
+
+function parseDataUrl(value: unknown, allowed: ReadonlySet<string>, maxBytes: number, label: string): { data: Uint8Array; mimeType: string } {
+  if (typeof value !== 'string') throw new ProviderError(ErrorCodes.BadRequest, 'dataUrl 必填')
+  // MediaRecorder 会产出 `audio/webm;codecs=opus`；参数属于 MIME，不应被误判成非法 data URL。
+  const match = /^data:([^;,]+)(?:;[^,;]+)*;base64,([A-Za-z0-9+/=]+)$/.exec(value)
+  const mimeType = match?.[1]?.toLowerCase()
+  if (match === null || mimeType === undefined || !allowed.has(mimeType)) {
+    throw new ProviderError(ErrorCodes.BadRequest, `不支持的${label}格式`)
+  }
+  const data = Buffer.from(match[2] ?? '', 'base64')
+  if (data.byteLength === 0 || data.byteLength > maxBytes) {
+    throw new ProviderError(ErrorCodes.BadRequest, `文件必须在 1 B–${Math.floor(maxBytes / 1024 / 1024)} MB 之间`)
+  }
+  return { data, mimeType }
+}
+
+export function registerMediaRoutes(app: FastifyInstance, registry: LlmRegistry): void {
+  app.post('/api/media/transcriptions', async (request): Promise<MediaTranscriptionResult> => {
+    const body = record(request.body)
+    const { profile, provider } = active(registry, body.profileId)
+    const parsed = parseDataUrl(body.dataUrl, AUDIO_MIMES, MAX_AUDIO_BYTES, '音频')
+    const result = await provider.transcribe(parsed.data, parsed.mimeType)
+    recordUsage({ profileId: profile.id, service: 'transcription', model: result.model })
+    return result
+  })
+
+  app.post('/api/media/vision', async (request): Promise<MediaVisionResult> => {
+    const body = record(request.body)
+    const { profile, provider } = active(registry, body.profileId)
+    parseDataUrl(body.dataUrl, IMAGE_MIMES, MAX_IMAGE_BYTES, '图片')
+    const result = await provider.vision(body.dataUrl as string, typeof body.prompt === 'string' ? body.prompt : undefined)
+    recordUsage({ profileId: profile.id, service: 'vision', model: result.model })
+    return result
+  })
+
+  app.post('/api/media/images', async (request): Promise<MediaImageResult> => {
+    const body = record(request.body)
+    const { profile, provider } = active(registry, body.profileId)
+    const result = await provider.generate(text(body.prompt, 'prompt', MAX_PROMPT_CHARS))
+    parseDataUrl(result.dataUrl, IMAGE_MIMES, MAX_IMAGE_BYTES, '图片')
+    recordUsage({ profileId: profile.id, service: 'image', model: result.model })
+    return result
+  })
+
+  app.post('/api/media/speech', async (request, reply): Promise<void> => {
+    const body = record(request.body)
+    const { profile, provider } = active(registry, body.profileId)
+    const result = await provider.synthesize(
+      text(body.text, 'text', MAX_SPEECH_CHARS),
+      typeof body.voice === 'string' && body.voice.trim() !== '' ? body.voice.trim() : undefined,
+    )
+    recordUsage({ profileId: profile.id, service: 'tts', model: result.model })
+    reply.header('content-type', result.mimeType).header('cache-control', 'no-store').send(Buffer.from(result.audio))
+  })
+}

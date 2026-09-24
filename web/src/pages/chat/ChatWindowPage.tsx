@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { LlmChatMessage } from '@shared/providers'
-import type { ChatMessage, ChatSession, MessageBlock, MessageStatus } from '@shared/types'
+import type { ChatMessage, ChatSession, MessageBlock, MessageStatus, ToolResultBlock } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
 import {
   ChatBubble,
@@ -12,6 +12,7 @@ import {
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
 import { ChatSettingsSheet } from '../../features/chat/ChatSettingsSheet'
 import { Composer } from '../../features/chat/Composer'
+import { MiniTerminal } from '../../features/chat/MiniTerminal'
 import {
   createMessageArtwork,
   createMessageBookmark,
@@ -40,6 +41,7 @@ import { ApiRequestError } from '../../lib/api'
 import { streamChat } from '../../lib/chatStream'
 import { formatDuration } from '../../lib/format'
 import { log } from '../../lib/log'
+import { describeImage, generateImage, synthesizeSpeech, transcribeAudio } from '../../lib/media'
 
 /** 首屏只拉最近这么多条（§9 风险8：按时间分页，不全量读）；向上翻页也用它 */
 const PAGE_SIZE = 60
@@ -67,28 +69,41 @@ function titleFrom(text: string): string {
  *    刻意不放进 `messageText()`：那里的职责是「取纯文本投影」，与「这段该不该送出去」是两件事；
  *    混在一起会让所有复用它的地方（列表预览、版本登记）都被动地跟着改行为。
  *
- * 3. 语音条没有文本投影（`messageText()` 只取 text 块），直接送会变成**空气泡** ——
- *    模型看到的是「上一条用户消息」后面什么都没有，答出来必然跑偏。
- *    所以给它一句占位描述（`[语音条 0:03]`）：模型知道收到了语音，只是还听不见内容。
- *    这是 SPEC §2.4.4 记录在案的缺口，等 ASR 接入后换成真实转写。
- *    ⚠️ 只补语音条，**不动图片 / 文件** —— 那是既有行为，改它属于另一件事。
+ * 3. Phase 5 起，语音优先送真实转写、图片优先送视觉描述；服务未配置 / 失败时才送明确的
+ *    `[未转写]` / `[未识别]` 占位。手动 MCP 结果投影成 assistant 摘要（它没有 LLM tool_call_id）。
+ *    原始音频 / 图片 / 工具 JSON 不直接塞进文本上下文。
  */
 function historyUpTo(messages: ChatMessage[], upToIndex: number): LlmChatMessage[] {
   return messages
     .slice(0, upToIndex + 1)
     .filter((message) => message.recalledAt === null)
     .map((message): LlmChatMessage => ({
-      role: message.role,
-      content: messageText(message) || voicePlaceholder(message),
+      // Mini Terminal 是用户直接调用，不对应上游 LLM 的 tool_call_id；投影成 assistant 摘要，
+      // 避免发送一条协议不完整的 role=tool 消息被 OpenAI 兼容端拒绝。
+      role: message.role === 'tool' ? 'assistant' : message.role,
+      content: messageText(message) || mediaContext(message),
     }))
     .filter((message) => message.content !== '')
 }
 
-/** 语音条在上下文里的代表文本；非语音条返回空串（等于「无可入 prompt 的内容」） */
-function voicePlaceholder(message: ChatMessage): string {
+/** 非文本块在上下文里的安全文本投影。 */
+function mediaContext(message: ChatMessage): string {
   const audio = message.blocks.find((block) => block.kind === 'audio')
-  if (audio === undefined || audio.kind !== 'audio') return ''
-  return `[语音条 ${formatDuration(audio.payload.durationMs ?? 0)}]`
+  if (audio !== undefined && audio.kind === 'audio') {
+    return audio.payload.transcript?.trim() || `[语音条 ${formatDuration(audio.payload.durationMs ?? 0)}，未转写]`
+  }
+  const image = message.blocks.find((block) => block.kind === 'image')
+  if (image !== undefined && image.kind === 'image') return image.payload.alt?.trim() || '[图片，未识别]'
+  const tool = message.blocks.find((block) => block.kind === 'tool-result')
+  if (tool !== undefined && tool.kind === 'tool-result') return `[工具 ${tool.payload.toolName}：${tool.payload.summary ?? (tool.payload.ok ? '成功' : '失败')}]`
+  return ''
+}
+
+function copyableText(message: ChatMessage): string {
+  const plain = messageText(message)
+  if (plain !== '') return plain
+  const audio = message.blocks.find((block) => block.kind === 'audio')
+  return audio?.kind === 'audio' ? audio.payload.transcript?.trim() ?? '' : ''
 }
 
 /**
@@ -136,6 +151,8 @@ export function ChatWindowPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSaving, setSettingsSaving] = useState(false)
+  const [mediaBusy, setMediaBusy] = useState(false)
+  const [terminalOpen, setTerminalOpen] = useState(false)
 
   const abortRef = useRef<AbortController | null>(null)
   /**
@@ -146,6 +163,7 @@ export function ChatWindowPage() {
   /** 供回调读最新消息列表，避免闭包读到旧数组 */
   const messagesRef = useRef<ChatMessage[]>([])
   const toastTimerRef = useRef<number | null>(null)
+  const speechRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null)
 
   useEffect(() => {
     messagesRef.current = messages
@@ -210,6 +228,8 @@ export function ChatWindowPage() {
   useEffect(
     () => () => {
       abortRef.current?.abort()
+      speechRef.current?.audio.pause()
+      if (speechRef.current !== null) URL.revokeObjectURL(speechRef.current.url)
     },
     [],
   )
@@ -420,12 +440,103 @@ export function ChatWindowPage() {
 
   /** 语音条（SPEC §2.4.4）：与文本消息同一套发送规则，只是块是音频 */
   async function sendVoice(dataUrl: string, durationMs: number): Promise<void> {
-    if (sending) return
+    if (sending || mediaBusy) return
+    setMediaBusy(true)
+    let transcript: string | undefined
+    let transcriptionFailed = false
+    try {
+      transcript = (await transcribeAudio(dataUrl)).text
+      setErrorText(null)
+    } catch (err) {
+      transcriptionFailed = true
+      log.warn('语音转写未完成', err)
+      setErrorText(`语音已保留，但未转写：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setMediaBusy(false)
+    }
     await submitUserMessage({
       text: '',
-      blocks: [{ kind: 'audio', payload: { url: dataUrl, durationMs }, order: 0 }],
+      blocks: [{ kind: 'audio', payload: { url: dataUrl, durationMs, ...(transcript === undefined ? {} : { transcript }) }, order: 0 }],
       requestReply: true,
     })
+    if (transcriptionFailed) showToast('语音已发送，但未转写；原音仍可播放')
+  }
+
+  async function sendImage(dataUrl: string): Promise<void> {
+    if (sending || mediaBusy) return
+    setMediaBusy(true)
+    let description: string | undefined
+    let visionFailed = false
+    try {
+      description = (await describeImage(dataUrl)).description
+      setErrorText(null)
+    } catch (err) {
+      visionFailed = true
+      log.warn('图片识别未完成', err)
+      setErrorText(`图片已保留，但未识别：${err instanceof Error ? err.message : String(err)}`)
+    } finally { setMediaBusy(false) }
+    await submitUserMessage({
+      text: '',
+      blocks: [{ kind: 'image', payload: { url: dataUrl, ...(description === undefined ? {} : { alt: description }) }, order: 0 }],
+      requestReply: true,
+    })
+    if (visionFailed) showToast('图片已发送，但视觉识别未完成')
+  }
+
+  async function createGeneratedImage(prompt: string): Promise<void> {
+    if (sessionId === undefined || sending || mediaBusy) return
+    setMediaBusy(true); setErrorText(null)
+    try {
+      const result = await generateImage(prompt)
+      const requestMessage = newMessage({ sessionId, role: 'user', text: `[生成图片] ${prompt}` })
+      const message = newMessage({
+        sessionId,
+        role: 'assistant',
+        blocks: [
+          { kind: 'text', payload: { text: `已按描述生成图片：${prompt}` }, order: 0 },
+          { kind: 'image', payload: { url: result.dataUrl, alt: prompt }, order: 1 },
+        ],
+      })
+      await appendMessage(requestMessage); await appendMessage(message)
+      setMessages((prev) => [...prev, requestMessage, message]); await touchSession(sessionId)
+      showToast('图片已生成')
+    } catch (err) {
+      log.error('生成图片失败', err); setErrorText(err instanceof Error ? err.message : String(err))
+    } finally { setMediaBusy(false) }
+  }
+
+  async function speakMessage(message: ChatMessage): Promise<void> {
+    const text = messageText(message)
+    if (text === '') return
+    if (speechRef.current !== null) {
+      speechRef.current.audio.pause(); URL.revokeObjectURL(speechRef.current.url); speechRef.current = null
+    }
+    setMediaBusy(true); setErrorText(null)
+    try {
+      const blob = await synthesizeSpeech(text)
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      speechRef.current = { audio, url }
+      audio.onended = () => { URL.revokeObjectURL(url); if (speechRef.current?.url === url) speechRef.current = null }
+      audio.onerror = () => { URL.revokeObjectURL(url); if (speechRef.current?.url === url) speechRef.current = null }
+      await audio.play(); showToast('正在朗读，再点“停止朗读”可停下')
+    } catch (err) {
+      if (speechRef.current !== null) {
+        speechRef.current.audio.pause(); URL.revokeObjectURL(speechRef.current.url); speechRef.current = null
+      }
+      setErrorText(err instanceof Error ? err.message : String(err))
+    } finally { setMediaBusy(false) }
+  }
+
+  function stopSpeaking(): void {
+    if (speechRef.current === null) return
+    speechRef.current.audio.pause(); URL.revokeObjectURL(speechRef.current.url); speechRef.current = null; showToast('已停止朗读')
+  }
+
+  async function appendToolResult(block: ToolResultBlock): Promise<void> {
+    if (sessionId === undefined) return
+    const message = newMessage({ sessionId, role: 'tool', blocks: [block] })
+    await appendMessage(message); setMessages((prev) => [...prev, message]); await touchSession(sessionId)
   }
 
   /** 重发：这一轮没拿到回复，按原样再跑一次（历史截止到那条用户消息） */
@@ -490,6 +601,7 @@ export function ChatWindowPage() {
     const isUser = message.role === 'user'
     const isLast = messages[messages.length - 1]?.id === message.id
     const hasText = messageText(message) !== ''
+    const hasCopyText = copyableText(message) !== ''
     const hasImage = message.blocks.some((block) => block.kind === 'image')
     const index = messages.findIndex((m) => m.id === message.id)
 
@@ -501,7 +613,8 @@ export function ChatWindowPage() {
     }
 
     const items: SheetAction[] = []
-    if (hasText) items.push({ id: 'copy', label: '复制' })
+    if (hasCopyText) items.push({ id: 'copy', label: hasText ? '复制' : '复制转写文本' })
+    if (!isUser && hasText) items.push({ id: speechRef.current === null ? 'speak' : 'stop-speech', label: speechRef.current === null ? '朗读' : '停止朗读' })
     items.push({ id: 'edit', label: '编辑' })
     items.push({ id: 'bookmark', label: '收藏' })
     items.push({ id: 'artwork', label: '收录至作品' })
@@ -530,7 +643,7 @@ export function ChatWindowPage() {
     switch (actionId) {
       case 'copy': {
         try {
-          await navigator.clipboard.writeText(messageText(message))
+          await navigator.clipboard.writeText(copyableText(message))
           showToast('已复制')
         } catch (err) {
           // 非安全上下文 / 权限被拒时剪贴板不可用。明确告诉用户，而不是静默失败
@@ -539,6 +652,12 @@ export function ChatWindowPage() {
         }
         break
       }
+      case 'speak':
+        await speakMessage(message)
+        break
+      case 'stop-speech':
+        stopSpeaking()
+        break
       case 'edit':
         setEditingId(id)
         setEditDraft(messageText(message))
@@ -748,6 +867,16 @@ export function ChatWindowPage() {
         >
           设置
         </button>
+        <button
+          type="button"
+          data-testid="mini-terminal-open"
+          aria-label="打开工具面板"
+          onClick={() => setTerminalOpen(true)}
+          className="rounded px-2 py-1 text-sm"
+          style={{ color: 'var(--color-primary)' }}
+        >
+          工具
+        </button>
       </header>
 
       <div
@@ -755,6 +884,7 @@ export function ChatWindowPage() {
         className="relative min-h-0 flex-1"
         style={{ backgroundColor: session?.background ?? 'transparent' }}
       >
+        {terminalOpen && <MiniTerminal onClose={() => setTerminalOpen(false)} onResult={(block) => void appendToolResult(block)} />}
         <VirtualList
           items={items}
           getKey={itemKey}
@@ -875,11 +1005,13 @@ export function ChatWindowPage() {
           <Composer
             draft={draft}
             onDraftChange={setDraft}
-            sending={sending}
+            sending={sending || mediaBusy}
             unrepliedCount={unrepliedCount}
             onSend={(text, options) => void send(text, options)}
             onRequestReply={() => void requestReply()}
             onSendVoice={(dataUrl, durationMs) => void sendVoice(dataUrl, durationMs)}
+            onSendImage={(dataUrl) => void sendImage(dataUrl)}
+            onGenerateImage={(prompt) => void createGeneratedImage(prompt)}
             onAbort={() => abortRef.current?.abort()}
             onError={setErrorText}
           />

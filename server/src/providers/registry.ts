@@ -33,11 +33,15 @@ function parseModelMap(value: unknown): ApiProfileModelMap {
   const map: ApiProfileModelMap = {}
   const chat = asString(source.chat)
   const tts = asString(source.tts)
+  const transcription = asString(source.transcription)
   const vision = asString(source.vision)
+  const image = asString(source.image)
   const embedding = asString(source.embedding)
   if (chat !== undefined && chat !== '') map.chat = chat
   if (tts !== undefined && tts !== '') map.tts = tts
+  if (transcription !== undefined && transcription !== '') map.transcription = transcription
   if (vision !== undefined && vision !== '') map.vision = vision
+  if (image !== undefined && image !== '') map.image = image
   if (embedding !== undefined && embedding !== '') map.embedding = embedding
   return map
 }
@@ -166,6 +170,12 @@ export class LlmRegistry {
 
   /** Adapter 工厂：业务代码只拿 LLMProvider，不碰具体服务商 */
   provider(id: string): LLMProvider {
+    const profile = this.require(id)
+    return new OpenAICompatProvider(profile, this.resolveKey(profile).key)
+  }
+
+  /** Phase 5 媒体能力与聊天共用同一方案 / 凭据，但拿到完整兼容适配器。 */
+  mediaProvider(id: string): OpenAICompatProvider {
     const profile = this.require(id)
     return new OpenAICompatProvider(profile, this.resolveKey(profile).key)
   }

@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar ⚠️ **实测线上跑的是 nginx/1.18.0，不是 Caddy**（T-022），选型待北北确认                      |
-| 当前阶段 | **Phase 4 Life 已完成**（T-026）：月历、用量 / 钱包账本、不可变价格快照、通知中心、Web Push 与运行状态｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022）｜下一阶段 Phase 5 高级能力 |
+| 当前阶段 | **Phase 5 高级能力已完成**（T-027）：ASR / TTS、图片理解 / 生成、安全富消息块、用户发起 Mini Terminal｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022）｜下一阶段 Phase 6 打磨 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -139,7 +139,7 @@ habitat/
 | Life 统计 / 账本 / 通知 | `docs/PRODUCT_SPEC.md` §9.2（待补）+ 技术方案 §6.2 | Phosphene、WORKKK |
 | 部署 / 反代 / SSE | 技术方案 §4 / §9 风险2·3 | 非产品交互任务，按需查：Ocean、AionsHome、Not Fade Away、cloud-and-island |
 | 导入导出 / 数据主权 | 技术方案 §9 风险7 | 非产品交互任务，按需查：forge-reload、context-slim、chatgpt-exporter |
-| 语音 / TTS（Phase 5） | `docs/PRODUCT_SPEC.md` §9.6（待补）+ 技术方案 §7.1 | voice-mcp、GPT-SoVITS、Callhome |
+| 语音 / TTS（Phase 5） | `docs/PRODUCT_SPEC.md` §2.4.4 / §9.6 + 技术方案 §7.1 | voice-mcp、GPT-SoVITS、Callhome |
 | 感知（Phase 5+） | — | Akari Pulse、gaze、cove-sensory-mcp |
 
 ---
@@ -171,7 +171,7 @@ habitat/
 - Phase 3A 长期记忆：🚧 一半（客户端链路已验，自部署实例未接）｜**暂停中**，不阻塞 UX 收口
 - Phase 3B Eventide：✅ 完成（状态 + 互动结算 + 事件 / 梦境 + BudgetGuard + 唤醒 / 独处 + 钱包）
 - Phase 4 Life：✅ 完成（月历 / 账本 / 通知 / 运行 + PriceSnapshot / Web Push）
-- Phase 5 高级能力：未开始
+- Phase 5 高级能力：✅ 完成（异步语音 / TTS / 图片 / 富消息块 / Mini Terminal）
 - Phase 6 打磨：未开始
 
 **UX 收口横切（依 `PRODUCT_SPEC` §7）**：**P0 ✅ 全部收口（14 项）** —— 消息对象操作 + 跨模块内容流转 + 会话置顶 / 聊天设置 + 会话分组（T-015~T-018）
@@ -179,7 +179,7 @@ habitat/
 
 ### 当前施工点
 
-**Phase 4 Life 已收口**；T-022 的 Nocturne 生产验真仍是部署前关卡，不阻塞进入 Phase 5。
+**Phase 5 高级能力已收口**；T-022 的 Nocturne 生产验真仍是部署前关卡，不阻塞进入 Phase 6。
 
 - ✅ **第一批「消息对象操作」**：编辑（保留原版本，与「换一个」共用一套版本导航）/ 撤回（留痕、不进模型上下文、可恢复）/ 删除 / 多选批量删 / 复制，统一进「长按 + 右键 + `⋯`」同一个菜单
 - ✅ **第二批「跨模块内容流转」**：消息 → 收藏、消息 / 组件 → 作品、聊天图片 → 相册；三类条目保留来源与快照
@@ -187,7 +187,7 @@ habitat/
 - ✅ **第三批 B「会话分组」**：创建 / 重命名 / 删除分组、会话移入移出、分区折叠（状态落库）、未分组兜底区；**Dexie 升到 v8**，备份格式升到 v6
   - 已定语义（`PRODUCT_SPEC` §2.1.2 / §2.1.3）：**置顶优先于分组**（置顶会话浮到最顶、脱离原分组，取消后回落）；**未分组区是兜底区**（也收 `groupId` 指向不存在分组的脏数据）
 - ✅ **P1 第一批「输入区快捷操作栏 + 请求回复拆开」**（T-019）：输入框下方四项快捷栏（语音条录制 / 表情包 / 更多功能 / 请求回复）；主按钮默认仍是「发送并请求回复」，「只发送」在「更多功能」里；**零 schema 改动**（Dexie 保持 v8、备份保持 v6）
-  - 已定语义（`PRODUCT_SPEC` §2.4.3 / §2.4.4）：**「待回复」由消息序列推导，不落字段**；**语音条走与文本完全相同的发送链路**，模型收到 `[语音条 0:03]` 占位（转写属 ASR，缺口已写在 SPEC 里）
+  - 已定语义（`PRODUCT_SPEC` §2.4.3 / §2.4.4）：**「待回复」由消息序列推导，不落字段**；**语音条走与文本完全相同的发送链路**；Phase 5 已把占位升级为真实 ASR 转写，失败才明确标记“未转写”
   - 顺带修掉一个真 bug：**用户侧气泡原先只渲染纯文本投影**，语音条 / 图片会被画成空气泡 → 改为两侧都走块分发（见 `docs/CHANGELOG.md`）
 - ✅ **P1 第二批「主屏 Widget」（T-020）**：留言板与倒数日可「钉」到 Home 主屏（问候语之下、功能入口之上）；**只存引用不复制数据**；**Dexie 升到 v9**（新增 `homeWidgets` 表，`&kind` 唯一索引），备份格式升到 v7
   - 已定语义（`PRODUCT_SPEC` §1.4 / §3.2.2 / §3.3.2）：**每种 Widget 主屏至多一张**（换对象 = 改引用）；**被引用的实体消失时卡片一并消失**（删实体同事务清引用 + 渲染层对脏引用兜底）；位置先按上主屏的时间，**v0.1 不做拖拽调序**
@@ -222,6 +222,15 @@ habitat/
   SQLite 事务型 BudgetGuard；主动唤醒进入通知收件箱；独处记录保持 AI 私有；钱包余额 + 不可变流水；21/21 全链验收
 - 默认安全态：主动总开关、唤醒、独处、梦境均默认关闭；普通聊天仍可用，所有 LLM 调用统一计账并受资源预算约束
 
+**Phase 5 高级能力（T-027）**
+
+- ✅ OpenAI-compatible ASR / TTS / 视觉 / 图片生成已接服务端，`modelMap` 四个媒体槽位可在方案设置中配置；密钥不出服务端
+- ✅ 语音停止后先预览，可试听 / 重录 / 发送；真实转写落 `AudioBlock.transcript`、进入上下文并可复制，失败保留原音并明示
+- ✅ 图片可从设备直接发送并保存视觉描述，也可生成；产物仍走现有 image block 与相册 / 作品对象操作
+- ✅ HTML 使用无权限 iframe + CSP；widget / 单层 tab-group 已渲染；Dexie 仍是 v10、备份仍是 v8
+- ✅ Mini Terminal 只允许用户显式选择并确认 MCP 工具调用；结果落 `tool-result`。AI 自主调用在逐次授权协议落地前关闭
+- 边界：实时双工、主动拨号 / 软挂断、逐次授权的 AI 工具循环不在 v0.1，不能用轮询或默认放行伪装完成
+
 ### 当前产品状态
 
 已完成一次本地验房，完成 `PRODUCT_SPEC` 的 **P0 全部收口**（消息对象操作 / 跨模块内容流转 / 会话置顶与聊天设置 / 会话分组），并**做完 P1 全部 6 项**（输入区快捷栏与请求回复拆开、主屏 Widget、收藏分类与相册分类）。
@@ -233,7 +242,7 @@ habitat/
 
 ### 下一步
 
-1. 🔵 **下一阶段 · Phase 5 高级能力**：按明确切片施工 TTS / 语音 / 图片 / HTML / Mini Terminal 等能力，开工前先补对应 PRODUCT_SPEC
+1. 🔵 **下一阶段 · Phase 6 打磨**：先依据 `PRODUCT_SPEC` / `TASKS` 剩余偏差切片，不把实时通话或 AI 自主工具循环顺手塞进打磨
 2. ⏸ **部署前关卡 · Phase 3A 自部署 Nocturne**：服务器上开启 `api_token`、验证内网 `/mcp`、重跑 `probe-nocturne-live.ts`；详见 `docs/DEPLOYMENT.md` §3
 3. PRODUCT_SPEC P2 的 AI 自主日记 / 留言现在已有主动行为底座，但应按各自权限模型单独施工，不能直接把独处记录冒充成日记或留言
 

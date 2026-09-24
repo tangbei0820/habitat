@@ -163,12 +163,16 @@ export interface StateProvider {
 }
 
 export interface TTSProvider {
-  synthesize(text: string, voice: string): Promise<string>
+  synthesize(text: string, voice?: string): Promise<{ audio: Uint8Array; mimeType: string; model: string }>
 }
 
 export interface ImageProvider {
-  vision(url: string): Promise<unknown>
-  generate(prompt: string): Promise<string>
+  vision(dataUrl: string, prompt?: string): Promise<import('./types').MediaVisionResult>
+  generate(prompt: string): Promise<import('./types').MediaImageResult>
+}
+
+export interface TranscriptionProvider {
+  transcribe(data: Uint8Array, mimeType: string, fileName?: string): Promise<import('./types').MediaTranscriptionResult>
 }
 
 export interface SearchProvider {

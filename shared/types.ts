@@ -315,8 +315,32 @@ export type LlmProviderKind = 'openai-compat'
 export interface ApiProfileModelMap {
   chat?: string
   tts?: string
+  transcription?: string
   vision?: string
+  image?: string
   embedding?: string
+}
+
+export interface MediaTranscriptionResult {
+  text: string
+  model: string
+}
+
+export interface MediaVisionResult {
+  description: string
+  model: string
+}
+
+export interface MediaImageResult {
+  dataUrl: string
+  model: string
+}
+
+export interface McpToolDescriptor {
+  serverId: string
+  name: string
+  description: string | null
+  inputSchema: Record<string, unknown>
 }
 
 /**

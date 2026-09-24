@@ -8,7 +8,9 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 
-const MODELS = ['mock-chat-small', 'mock-chat-pro', 'mock-embedding']
+const MODELS = ['mock-chat-small', 'mock-chat-pro', 'mock-tts', 'mock-transcription', 'mock-vision', 'mock-image', 'mock-embedding']
+const ONE_PIXEL_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+const SILENT_WAV = Buffer.from('UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=', 'base64')
 
 /** 回复正文，故意切成多块发送，用来验证增量拼接 */
 const REPLY_PIECES = ['收到，', '这是来自 ', 'mock 上游的 ', '流式回复。', '\n链路正常。']
@@ -165,6 +167,8 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
         await handleStream(res, model, background ?? REPLY_PIECES, background === null ? REASONING_PIECES : [])
         return
       }
+      const isVision = Array.isArray(record.messages) && record.messages.some((message) =>
+        isRecord(message) && Array.isArray(message.content) && message.content.some((part) => isRecord(part) && part.type === 'image_url'))
       writeJson(res, 200, {
         id: 'mock-cmpl',
         object: 'chat.completion',
@@ -172,12 +176,31 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
         choices: [
           {
             index: 0,
-            message: { role: 'assistant', content: REPLY_PIECES.join('') },
+            message: { role: 'assistant', content: isVision ? '一张用于验收的图片' : REPLY_PIECES.join('') },
             finish_reason: 'stop',
           },
         ],
         usage: { prompt_tokens: 11, completion_tokens: 13, total_tokens: 24 },
       })
+      return
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/audio/transcriptions') {
+      await readBody(req)
+      writeJson(res, 200, { text: '这是 mock 转写文本。' })
+      return
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/audio/speech') {
+      await readBody(req)
+      res.writeHead(200, { 'content-type': 'audio/wav', 'content-length': SILENT_WAV.byteLength })
+      res.end(SILENT_WAV)
+      return
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/images/generations') {
+      await readBody(req)
+      writeJson(res, 200, { data: [{ b64_json: ONE_PIXEL_PNG }] })
       return
     }
 
