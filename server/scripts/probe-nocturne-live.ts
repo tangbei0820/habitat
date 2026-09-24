@@ -46,6 +46,25 @@ const MCP_URL = (process.env.MCP_NOCTURNE_URL ?? '').trim()
 const TOKEN = (process.env.MCP_NOCTURNE_TOKEN ?? '').trim()
 const NAMESPACE = (process.env.MCP_NOCTURNE_NAMESPACE ?? '').trim()
 const PREVIEW = process.env.NOCTURNE_PROBE_PREVIEW === '1'
+const SHOW_SECRET = process.env.NOCTURNE_SHOW_SECRET === '1'
+
+/** 默认遮住秘密路径；只有显式 NOCTURNE_SHOW_SECRET=1 才打印完整 URL。 */
+function maskUrl(raw: string): string {
+  if (SHOW_SECRET) return raw
+  const maskSegment = (segment: string): string => `${segment.slice(0, 8)}...${segment.slice(-6)}`
+  try {
+    const url = new URL(raw)
+    const masked = url.pathname.split('/').filter(Boolean).map((segment) =>
+      /^mcp-[0-9a-f]{16,}$/i.test(segment) ? maskSegment(segment) : segment,
+    )
+    url.pathname = `/${masked.join('/')}`
+    return url.toString()
+  } catch {
+    return raw.replace(/mcp-[0-9a-f]{16,}/gi, maskSegment)
+  }
+}
+
+const SAFE_MCP_URL = maskUrl(MCP_URL)
 
 /** Habitat 只依赖的只读工具（`recall()` / `search()` 的落点） */
 const READ_TOOLS = ['breath', 'trace']
@@ -106,7 +125,8 @@ function errMessage(err: unknown): string {
     break
   }
 
-  return messages.join(' <- ')
+  const message = messages.join(' <- ')
+  return MCP_URL === '' ? message : message.split(MCP_URL).join(SAFE_MCP_URL)
 }
 
 function removeProbeDb(): void {
@@ -178,7 +198,7 @@ interface ToolSummary {
 }
 
 console.log('\n=== 0. 目标与配置 ===')
-console.log(`  实例地址    : ${MCP_URL}`)
+console.log(`  实例地址    : ${SAFE_MCP_URL}`)
 console.log(`  Bearer      : ${TOKEN === '' ? '(未配)' : `已配（${TOKEN.length} 字符，不打印内容）`}`)
 console.log(`  X-Namespace : ${NAMESPACE === '' ? '(未配 → 走实例默认空间)' : NAMESPACE}`)
 
@@ -188,7 +208,7 @@ try {
 } catch {
   /* 下面那条 check 会报出来 */
 }
-check('MCP_NOCTURNE_URL 是合法 URL', origin !== '', MCP_URL)
+check('MCP_NOCTURNE_URL 是合法 URL', origin !== '', SAFE_MCP_URL)
 
 /* ---------------------------------------------------------------- 1. 反代可达性 */
 console.log('\n=== 1. 反代可达性（REST 例外：只探 /health）===')
@@ -383,7 +403,7 @@ check('每次读调用都在诊断表留痕', loggedCallCount === calls.length, 
 
 /* ---------------------------------------------------------------- 证据 */
 console.log('\n=== 证据（真实抓到的字段）===')
-console.log(`  实例地址       : ${MCP_URL}`)
+console.log(`  实例地址       : ${SAFE_MCP_URL}`)
 console.log(`  mcp-session-id : ${sessionId ?? '(空)'}`)
 console.log(`  serverInfo     : ${serverVersion?.name ?? '?'} v${serverVersion?.version ?? '?'}`)
 console.log(`  工具面         : ${names.join(', ') || '(空)'}`)

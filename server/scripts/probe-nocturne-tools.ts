@@ -63,7 +63,7 @@ function maskUrl(raw: string): string {
     const url = new URL(raw)
     const segs = url.pathname.split('/').filter((seg) => seg !== '')
     const masked = segs.map((seg) => {
-      if (/^mcp-[0-9a-f]{16,}$/i.test(seg)) return `${seg.slice(0, 8)}…${seg.slice(-6)}`
+      if (/^mcp-[0-9a-f]{16,}$/i.test(seg)) return `${seg.slice(0, 8)}...${seg.slice(-6)}`
       return seg
     })
     url.pathname = `/${masked.join('/')}`

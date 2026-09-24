@@ -654,4 +654,15 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 验收：`probe-memory.ts` **21/21**（只读两路径 + 参数边界 + 已移除端点 404）；三个侦察脚本对 mock 全部 2/2、退出码 0；
   `probe-nocturne-live.ts` 经 McpGateway **23/24**（唯一失败项是 mock 无 `/health`，非代码问题），只读纪律通过（实际调用仅 `breath` + `trace`）；
   启动日志出现「Nocturne 工具面自检通过」；两端 typecheck 通过。
-- 遗留：真机验证待北北在服务器上跑 `probe-nocturne-live.ts`（本沙箱连不上公网）；该实例**仍无任何鉴权层**（T-022 风险 1，未处理）。
+- 后续 T-033 已完成真机 25/25；该实例的服务端鉴权仍需服务器权限设置 `OMBRE_ADMIN_TOKEN`（T-022 风险 1）。
+
+### Phase 6 · 验收基础设施与可靠性收口（T-032 / T-033）—— **完成**
+
+- mock MCP 生命周期验收扩为 5 项：session、真实工具面、GET SSE、DELETE 与关闭后拒绝复用；DELETE 同步释放服务端映射。
+- 前端验收不再依赖浏览器“碰巧干净”：Home 开跑前清站点数据，Export 显式清设备级备份时间；PWA 的两条 PASS 输出改为真实成功说明。
+- MCP 从 HTTP 启动关键路径摘出：服务先监听，随后后台连接、自检并每 60 秒重试；不可达 MCP 下健康接口约 291ms 返回 200，状态明确为 `error`。
+- 自部署 Nocturne / Ombre Brain 完成只读专项验真 **25/25**：Streamable HTTP session、9 工具、`breath` / `trace` 两条实际调用均通过，未触碰写工具；探针默认遮蔽秘密路径。
+- 部署文档按现网定稿为双 nginx，Caddy 归档为早期方案；服务端鉴权口径校正为 `OMBRE_ADMIN_TOKEN`，与 Dashboard 首次设置分离。
+- 最终回归：chat 140、providers 22、home 75、export 17、offline 38、diagnostics 36、PWA 25、本地记忆 21，全部通过；两端 typecheck 与生产构建通过。
+
+**Phase 6 至此完成。** 动画 / 过渡效果归后续 UI 专项；实时双工与 AI 自主工具循环归独立协议，不作为 Phase 6 欠项。生产部署仍有一项权限型关卡：取得服务器权限后设置 `OMBRE_ADMIN_TOKEN`、轮换秘密路径，并完成无凭据拒绝 / 有凭据全绿的对照验收。

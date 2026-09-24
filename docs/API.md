@@ -489,6 +489,6 @@ Web Push 仅是站内通知的尽力而为副本：VAPID 环境变量不完整�
 
 ## 待实现（按阶段）
 
-- Phase 3A 剩余：**自部署 Nocturne 实例**的 Token / Namespace / 反代链路验证（客户端代码已用官方只读 Demo 验通，见 `docs/TASKS.md` T-013）
-- Phase 6：依据 PRODUCT_SPEC / TASKS 做打磨；实时双工与带逐次授权的 AI 自主工具循环仍需独立协议
+- Phase 3A 只读链路：自部署实例已完成 Namespace / 反代 / 会话 / `breath` / `trace` 真机 **25/25**；剩余生产部署安全项是设置 `OMBRE_ADMIN_TOKEN` 并做有 / 无凭据对照
+- Phase 6：已完成；实时双工与带逐次授权的 AI 自主工具循环仍需独立协议，不属于本阶段欠项
 - 诊断日志的留存策略（表只增不减，目前没有清空 / 归档入口）

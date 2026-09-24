@@ -61,16 +61,15 @@
 - [ ] **多选没有「全选 / 区间选择」** —— 目前只能逐条点气泡。长会话里想删掉一整段（比如清理一次失败的实验）非常费手。→ 等真实用例出现再设计，最好与未来的搜索 / 筛选一起做，而不是先长出一个孤立的「全选」按钮。
 - [ ] **撤回 / 删除不回改「已经生成的回复」** —— 我们保证的是**被撤回的内容不再进上下文**（SPEC §2.3.5）；而 AI 早先基于它写下的回复仍留在会话里、也仍进上下文，所以可能出现「AI 的话像是在回应一段已经看不见的内容」。这是 SPEC 有意的取舍（撤回是「让它退出对话历史」，不是「改写已经发生的事」），但真实使用中若觉得别扭，需要另定一条规则。
 - [ ] **相册用 data URL 存原图，容量增长较快** —— 现阶段单张已限 3 MB、格式白名单并校验真实 base64 体积，但 base64 本身约有 33% 膨胀，导出的 JSON 也会把原图一起带上。→ 真实照片量上来后改 Blob / OPFS + 缩略图，并补总容量提示；切换存储前必须先做无损迁移与备份兼容。
-- [ ] **公网 Demo 只验到「客户端代码」，自部署实例仍未验** —— T-013 用 Nocturne 官方只读 Demo（`https://misaligned.top/mcp`）跑通了真实 Streamable HTTP 握手、工具清单与 `system://boot`，但它**不是** `beiyan.cc` 上那个实例：Bearer Token、`X-Namespace`、nginx 反代与内网回源这几段都还没走过。→ 部署链路验证仍属风险 1 的未结部分，接阿里云时按 §4 拓扑逐段验。**（T-022 已实测体检，结论见下方 T-022 记录与 `docs/MEMORY.md` / `docs/DEPLOYMENT.md`：进程活着、443 证书正常，但 `/mcp` 被最外层 nginx 单独挡下，链路仍不通。）**
+- [x] **自部署实例只读全链已验** —— T-033 使用现有秘密路径与 `X-Namespace: habitat` 完成真实 Streamable HTTP session、9 工具工具面、`breath` / `trace` 两条只读调用，**25/25**；未调用写工具。公开 `/mcp` 的 404 是有意加固，不是链路故障。
   ⚠️ **2026-09-24 更正**：`/mcp` 的 404 **不是反代缺陷，是当初有意加固**（`location = /mcp { return 404; }` + 秘密路径 `/mcp-<密钥>` 转发，证据：本机 `MCP接入说明_Nocturne.md` / `.mcp_hardening.json`，均 2026-09-13）。**改用秘密路径即可，无需动服务器。** 而**真正**的拦路虎比反代更前置：适配层写死的工具名取自**官方 Demo**，与该自部署实例的实际工具面（Ombre Brain 血统）可能完全对不上 → 见 `docs/MEMORY.md`「自部署实例的工具面」，先跑 `probe-nocturne-tools.ts` 拿一手事实（**在服务器上跑更省事**：用零依赖版 `probe-nocturne-tools-standalone.mjs`，**内网直连** `http://127.0.0.1:8000/mcp` —— 加固只做在 nginx 那层，容器里就是朴素的 `/mcp`，连密钥路径都不用填，也不用装 tsx）。
-- [ ] 🔴 **自部署 Nocturne 实例没有任何鉴权层**（T-022 实测）—— `/health`、`/dashboard`（339 KB 面板）、`/api/*` **全部无凭据 200**，且带 `access-control-allow-origin: *`；dashboard 页面里可枚举约 30 个接口，含 `/api/buckets`、`/api/search`、`/api/config`、`/api/import/upload`（最后这个**从路径名看是写操作，没有实测**）。→ 记忆库当前对公网开放。**探测只到状态码级，未读取任何记忆内容。**
-  **优先走 Nocturne 自己的开关**：`config.json` 里的 `api_token`（compose 已挂载 `./config.json:/app/config.json`），启用后**除 `/health` 外所有 `/api/`、`/mcp`、`/sse` 均需 `Authorization: Bearer <token>`** —— 比在反代加 basic auth 更对口，且正好与 MCP 接入需要的那把凭据是同一个。反代 basic auth / Cloudflare Access / 限制来源 IP 可作为第二层。
-- [ ] ⚠️ **反代实际是 nginx，文档写的是 Caddy**（T-022 实测 `Server: nginx/1.18.0 (Ubuntu)`）—— 而且链路上**有两个 nginx**：宿主机 apt nginx 1.18.0 + Nocturne 容器内 `nginx:alpine`（由 `frontend/` build）。**上游那层已经把 `/mcp` 配好了**（`frontend/nginx.conf` 的 `location /mcp` 带全套反缓冲指令），**缺的是宿主那层**。
+- [ ] 🔴 **自部署 Nocturne / Ombre Brain 实例没有服务端鉴权层**（T-022 / T-033 实测）—— `/dashboard`、`/api/*` 可无凭据访问，秘密路径只能隐藏 MCP 入口，不能替代鉴权。已按 v1.30 源码校正方案：需在部署环境设置 `OMBRE_ADMIN_TOKEN`，Habitat 配同值 `MCP_NOCTURNE_TOKEN`，重启后做无 Token 401/403、带 Token 全绿的对照验收。当前缺服务器 SSH / 部署控制台权限，不能安全代改。
+- [x] **反代口径已统一为 nginx**（T-022 / T-033）—— 现网是宿主 nginx 1.18.0 + Nocturne 容器 nginx 两层；Caddy 只保留为早期方案记录。宿主层现有「公开 `/mcp` 404 + 秘密路径转发」是有效加固，不需要改成 Caddy。
   ⚠️ 关键定位：宿主 nginx 对多数路径是**通配转发到后端**（`/health/`、`/dashboard/` 回 **307** 是 FastAPI `redirect_slashes`；`/zzz-*`、`/index.html`、`/assets/` 回 **9 字节纯文本 404** 是 Starlette），**唯独 `/mcp`（含尾斜杠）回的是 nginx 自己的 162 字节 HTML 404 页** —— 说明它是**被单独拦下的**，连后端都没碰到。
   → 修法不是「新增一条 location」，而是**找到那条把它挡在外面的规则删掉/取代**；补的时候要带 `proxy_buffering off` / `proxy_cache off` / `proxy_http_version 1.1` / `proxy_read_timeout 86400s` / `chunked_transfer_encoding off` / `add_header X-Accel-Buffering no`（可直接照抄上游那份）。完整片段见 `docs/DEPLOYMENT.md` §3.2。
   ⚠️ **2026-09-24 更正**：上一条定位（「被单独拦下」）**方向是对的**，但「那条规则」**不是别人误加的，是当初自己加的** —— T-022 没看到同日生成的加固记录，才把它当成缺陷。**结论改为：加固本就该在，改成用秘密路径访问即可。** 此条仅保留「两种 404 来源不同」这个定位方法的价值。
-**但若走内网直连（推荐路径 A），宿主那层根本不需要改** —— 容器内 nginx 上游已配好，公网可以不开 `/mcp`（少一个「含写工具」的暴露面）。**反代选型（改文档 / 真换成 Caddy）待北北确认。**
-- [ ] **`gateway.connectAll()` 会阻塞服务启动** —— `main.ts` 在 `app.listen()` **之前** `await gateway.connectAll()`，而 SDK 的默认请求超时是 60s。MCP server 挂着时启动会被拖住（公网 Demo 实测握手 2.2–4.6s，单机同机部署可忽略）。→ 给 `connect()` 加显式超时，或把 `connectAll()` 从启动路径摘出去改成后台重试（`diagnostics()` 已经有重连能力，接上定时器即可）。
+**生产仍推荐内网直连**：宿主 nginx 无需参与 Habitat → Nocturne 链路；公网秘密路径保留给受控专项验真。
+- [x] **MCP 已从服务启动关键路径摘出**（T-033）—— HTTP 先监听，随后后台连接、自检并每 60 秒重试；故障 MCP 不再拖住服务。用不可达 MCP 实测 `/api/health` 约 **291ms** 返回 200，MCP 状态明确为 `error`。
 
 - [ ] **分组排序（拖拽调序）未做** —— SPEC §2.1.3 明确把「分组排序」列为后续扩展，本轮按**创建顺序**排列（创建顺序也是全序，删组不会让兄弟分组换位，所以在引入显式排序字段前它最稳），但用户没法把常用分组提前。→ 需要显式排序字段（大概率又是一次 Dexie 升版）+ 拖拽交互，一起做更划算。
 - [ ] **移动端长按会话行不能进菜单** —— SPEC §1.3 把长按定为移动端主路径，长按目前只在**消息气泡**上实现；会话列表行只有 `⋯`，触控目标偏小。→ 需要时把气泡那套 450ms 长按逻辑复用到会话行（`ChatBubble` 里的实现可直接抽成 hook）。
@@ -120,7 +119,7 @@
 - [ ] **流式草稿的并发 flush 有理论上的乱序风险** —— 每次落库写的是**当前完整正文**（不是增量），若两次 flush 的写入真正并发且先后颠倒，库里可能短暂落后于最新内容。800ms 节流让两次 flush 至少隔这么远（IndexedDB 单次写入远快于此），且收尾还会 force 写一次，所以实践中撞不上。→ 真要做严就串行化 flush（排队 + 只保留最后一次）。
 - [ ] **「重新从 `.env` 导入方案」没有入口** —— `app_kv` 的标记一旦写上就永久生效，改了 `HABITAT_LLM_PROFILES` 也不会再导。这本就是「DB 即权威」的应有之义，但用户想推倒重来时只能手动清库。→ 真要给，就在设置页放一个「重新导入环境变量种子」按钮（明确提示会做什么）。
 - [x] ~~**验收脚本的进程清理一直是空转**~~ —— 已修（T-013）：`.workbuddy/run-front-verify.sh` 原来靠 `pkill -f` 收场，但本环境的 Git Bash **根本没有 `pgrep` / `pkill`**（`command not found`），配上 `2>/dev/null` 就是静默不执行；同轮把 `taskkill //PID` 改成 `MSYS2_ARG_CONV_EXCL='*' taskkill /PID … /F`（前者会报「无效参数/选项」）。现在全部按「端口 → PID」清，并已实测「真能杀掉」+「不误伤用户 :3000」。
-- [ ] **`probe-nocturne-demo.ts` 依赖公网，不宜进默认回归** —— 它打的是 Nocturne 官方 Demo，需要外网可达；离线或 Demo 下线时会整片失败。→ 定位是**风险 1 的专项验证 + 换环境时的连通性体检**，不并入常规三件套回归；文档里已注明前置条件。
+- [x] **旧 `probe-nocturne-demo.ts` 已退役** —— 官方 Demo 工具面与自部署实例不一致，脚本已改为明确退出；默认回归只跑 mock，自部署专项验真使用 `probe-nocturne-live.ts`。
 - [ ] **Markdown 表格没有校验手段，AGENTS.md 已被写坏过一次** —— 2026-09-23 那次改版里出现：某行被折成两行（表格断掉）、两行黏成一行、表头列数与分隔行不一致、旧行未删净而重复。这类损坏在编辑时看不出来、渲染时才暴露。→ 改表格后**必须回读确认列数一致**（或后续引入 markdownlint）。
 - [ ] **中间消息在桌面端只能右键进菜单** —— 长按是移动端主路径（SPEC §1.3），`···` 只挂在末条与有多版本的消息上（刻意不给每条消息都加一行：60 条各加一行会把列表撑高约 1.1 屏）。若真实使用觉得别扭，把 `···` 提到每条消息只是一行的事，代价是每个气泡多约 18px。
 - [ ] **「从这条重新生成」截断后续后不可撤销** —— 它已被归入「显式动作 + 二次确认」，确认语里也写明了会移除几条，但被截断的消息本身没有撤回途径，兜底仍是备份导出。
@@ -1094,7 +1093,7 @@
 
 **下一步（等北北）**：
 
-① **先开鉴权** —— 服务器上给 `config.json` 配 `api_token`，重启 backend。一举两得：既补上「记忆库裸奔」，又拿到 MCP 接入要的那把凭据。
+① **先开鉴权** —— 本段是 T-022 当时的旧判断；T-033 已按实例对应源码校正为：部署环境设置 `OMBRE_ADMIN_TOKEN`，重启 backend，Habitat 配同值 `MCP_NOCTURNE_TOKEN`。
 ② **关键分水岭实验**：在服务器上 `curl -i -X POST http://127.0.0.1:<NGINX_PORT>/mcp`（带 `Accept: application/json, text/event-stream`）
 - **通** → 链路已通，**收口，不必改宿主 nginx**（生产是同机内网直连，公网 `/mcp` 可以不开 —— 少一个「含写工具」的暴露面）
 - **不通** → 查容器内那层：`docker exec <nginx容器> cat /etc/nginx/conf.d/default.conf`（可能版本较老，上游新版才有 `location /mcp`）
@@ -1490,7 +1489,7 @@ breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delt
 
 **遗留**
 
-- ⏳ **真机验证待北北在服务器上跑** `probe-nocturne-live.ts`（本沙箱连不上公网 `beiyan.cc`）
+- ✅ 真机验证已在 T-033 完成：`probe-nocturne-live.ts` **25/25**；反代 / 会话 / 真实工具面 / 两条只读调用均通过
 - 🔴 该实例**无任何鉴权层**（T-022 风险 1）—— 记忆库仍对公网开放，未处理
 - 📌 实例血统存疑：`serverInfo` 自称 Nocturne，部署留档记 Ombre Brain v1.30.0 —— **以实测工具面为准**
 
@@ -1519,3 +1518,32 @@ breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delt
 **待优化**：CDP 公共 helper 与 mock 回复去固定文案仍保留在上方清单；本切片不顺手扩成验收框架重构。
 
 **下一步**：Phase 6 继续按剩余清单切片；动画 / 过渡效果仍留给 UI 一起做。
+
+---
+
+### T-033 · 2026-09-24 · Phase 6 收口：MCP 非阻塞启动 + Nocturne 真机验真 —— **完成（生产鉴权待权限）**
+
+**范围**：结清 Phase 6 必须项与 Phase 3A 真实链路证据；不新增产品功能、不改 Dexie、不触碰 Nocturne 写工具。
+
+**落地**
+
+- `main.ts` 不再在 `listen()` 前等待 `gateway.connectAll()`；HTTP 先启动，MCP 在后台连接、自检，失败每 60 秒重试且不阻塞主服务，关闭时清理定时器。
+- `probe-memory.ts` 适配后台连接：最多等待 10 秒读取 ready 状态，避免把正常异步启动误报成失败。
+- Nocturne 专项探针默认遮蔽秘密路径，错误信息也不再回显完整入口；仅显式设置 `NOCTURNE_SHOW_SECRET=1` 才显示。
+- PWA 验收两条 PASS 输出改为真实成功说明，不再在成功时附带“未引入 / 没有脚本”的失败文案。
+- 部署口径定稿为实机双 nginx；Caddy 归档为早期方案。鉴权方案按 Ombre Brain v1.30 源码改为 `OMBRE_ADMIN_TOKEN`，与 Dashboard 首次设置明确分离。
+
+**验收（全部实跑）**
+
+| 项 | 结果 |
+| --- | --- |
+| 自部署实例 `probe-nocturne-live.ts` | **25/25**；serverInfo `Ombre Brain v1.30.0`；9 工具；实际只调用 `breath` / `trace` |
+| 不可达 MCP 启动 | `/api/health` 约 **291ms** 返回 200，MCP 状态 `error`，证明不阻塞 HTTP |
+| 本地 mock 记忆全链 | **21/21** |
+| 前端全套回归 | chat **140/140**、providers **22/22**、home **75/75**、export **17/17**、offline **38/38**、diagnostics **36/36** |
+| PWA 生产构建验收 | **25/25** |
+| 两端 typecheck / 生产构建 | 通过 |
+
+**结论**：Phase 6 的既定工程范围已完成；动画 / 过渡属于后续 UI 专项，实时双工与 AI 自主工具循环属于独立协议范围，均不作为 Phase 6 欠项。
+
+**唯一外部阻塞**：现网还未设置 `OMBRE_ADMIN_TOKEN`，且当前工作环境没有可用 SSH / 部署控制台权限。拿到权限后需同时：设置 Token、让 Habitat 配同值、重启、轮换秘密路径，并完成无凭据拒绝 / 有凭据 25/25 的对照验收。

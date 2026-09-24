@@ -45,7 +45,16 @@ const hitLines = (value: string): number => value.split('\n').filter((line) => l
 const brief = (response: ResponseData): string => JSON.stringify(response.body).slice(0, 120)
 
 console.log('\n[1] 握手与工具面')
-const health = await request('/api/health/mcp')
+// MCP 已移出启动关键路径；等状态机收敛，不假设 health 可用时 MCP 也必然 ready。
+let health = await request('/api/health/mcp')
+const readyDeadline = Date.now() + 10_000
+while (
+  Date.now() < readyDeadline &&
+  (health.body as McpHealth).servers.find((item) => item.serverId === 'nocturne')?.state !== 'ready'
+) {
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  health = await request('/api/health/mcp')
+}
 const nocturne = (health.body as McpHealth).servers.find((item) => item.serverId === 'nocturne')
 check('mock Nocturne 握手 ready', health.status === 200 && nocturne?.state === 'ready')
 check('工具面为 echo + breath + trace（对齐实例形状）', nocturne?.toolCount === 3, `toolCount=${String(nocturne?.toolCount)}`)

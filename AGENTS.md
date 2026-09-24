@@ -45,8 +45,8 @@
 | 前端   | React 18 + TypeScript(strict) + Vite + Dexie(IndexedDB) + Zustand + Tailwind（Tokens 走 CSS 变量） |
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
-| 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar ⚠️ **实测线上跑的是 nginx/1.18.0，不是 Caddy**（T-022），选型待北北确认                      |
-| 当前阶段 | **Phase 6 打磨进行中**：T-028 PWA｜T-029 离线只读｜T-030 导入导出增强｜T-032 验收基础设施收口 已完成；**动画 / 过渡效果待与 UI 一起做**｜Phase 3A 记忆（T-031）已按真实工具面收敛为**只读两方法**，真机复跑待北北 |
+| 部署   | 阿里云单机：**宿主 nginx 1.18.0** + habitat-server + Nocturne / Ombre Brain（容器 nginx）+ eventide-sidecar；Caddy 仅为早期方案记录                      |
+| 当前阶段 | **Phase 6 已完成**（T-028~T-030 / T-032 / T-033）；动画 / 过渡效果留给后续 UI 专项｜Phase 3A 记忆只读链路已按真实工具面收敛并完成真机 **25/25**，生产鉴权待服务器权限 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -170,18 +170,18 @@ habitat/
 - Phase 0：✅ 完成
 - Phase 1 Chat MVP：✅ 完成
 - Phase 2 Home 基础数据链：✅ 完成
-- Phase 3A 长期记忆：🚧 一半（客户端链路已验，自部署实例未接）｜**暂停中**，不阻塞 UX 收口
+- Phase 3A 长期记忆：✅ 只读链路完成（自部署实例 25/25）｜🔴 生产鉴权待服务器权限
 - Phase 3B Eventide：✅ 完成（状态 + 互动结算 + 事件 / 梦境 + BudgetGuard + 唤醒 / 独处 + 钱包）
 - Phase 4 Life：✅ 完成（月历 / 账本 / 通知 / 运行 + PriceSnapshot / Web Push）
 - Phase 5 高级能力：✅ 完成（异步语音 / TTS / 图片 / 富消息块 / Mini Terminal）
-- Phase 6 打磨：🚧 进行中（T-028 PWA / T-029 离线只读 / T-030 导入导出增强 / T-032 验收基础设施收口 已完成；**动画与过渡效果待与 UI 一起做**）
+- Phase 6 打磨：✅ 完成（T-028 PWA / T-029 离线只读 / T-030 导入导出增强 / T-032 验收基础设施 / T-033 可靠性收口）；**动画与过渡效果属于后续 UI 专项**
 
 **UX 收口横切（依 `PRODUCT_SPEC` §7）**：**P0 ✅ 全部收口（14 项）** —— 消息对象操作 + 跨模块内容流转 + 会话置顶 / 聊天设置 + 会话分组（T-015~T-018）
 **P1（6 项）**：输入区快捷栏 ✅ + 请求回复拆开 ✅（T-019）｜留言板 Widget ✅ + 倒数日 Widget ✅（T-020，**Dexie 升 v9 / 备份升 v7**）｜收藏分类 ✅ + 相册分类 ✅（T-021，**Dexie 升 v10 / 备份升 v8**）｜**P1 全部完成**｜P2 未开始
 
 ### 当前施工点
 
-**Phase 6 打磨已开工**；T-022 的 Nocturne 生产验真仍是部署前关卡，不阻塞打磨。
+**Phase 6 已收口**；Nocturne 只读真机链路已验，T-022 只剩生产鉴权这一项部署权限关卡。
 
 - ✅ **打磨第一批「PWA + 离线只读 + 导入导出增强」（T-028~T-030）**：**零 schema 改动**（Dexie 仍 v10、备份格式仍 v8）
   - **PWA**：可装进主屏、断网能开壳。更新走 `prompt`（用户决定何时刷新，不做静默替换）；
@@ -217,7 +217,7 @@ habitat/
   - 已定语义（`PRODUCT_SPEC` §3.5.4 / §3.7.3）：**单归属**（一条内容最多属于一个分类，多维度标记留给后续的「标签」，不让分类兼任）；**删分类不删内容**（同事务把类内归属置 `null`）；**未分类是兜底区**（也收指向不存在分类的脏数据）；相册的**「移出相册」与「删除照片」是两个动作**，措辞不混用
   - 顺带把 `GroupNameSheet` 提升为通用 `components/NameSheet.tsx`（会话分组 / 收藏分类 / 相册三处共用，testid 统一为 `name-sheet-*`），并给收藏 / 相册条目补上「⋯」菜单（与会话行同一套做法）
 
-**Phase 3A（只读打通已完成 T-031；真机复跑待北北）**
+**Phase 3A（只读打通与真机复跑已完成 T-031 / T-033；生产鉴权待权限）**
 
 - ✅ **接口已按实例真实工具面收敛**（T-031，2026-09-24）：`MemoryProvider` 只剩只读两方法 ——
   `recall()` → `breath`（无参）、`search(query,{limit})` → `trace`；`/api/memory` 只剩 `GET boot` + `GET search`。
@@ -226,8 +226,8 @@ habitat/
   排查用三个零依赖侦察脚本（`probe-nocturne-tools.{ts,mjs,sh}`，只握手不调用工具）→ `docs/MEMORY.md`
 - ⚠️ **`/mcp` 的 404 不是故障**：那是 2026-09-13 有意加的秘密路径加固（公开 `/mcp` 一律 404，
   真入口是 `/mcp-<32位密钥>`）；T-022 曾误判为反代缺陷。生产形态是同机内网直连 `http://127.0.0.1:8000/mcp`，**连密钥都不用填**
-- ⏳ **唯一遗留验证**：北北在服务器上重跑 `probe-nocturne-live.ts`（本沙箱连不上公网 `beiyan.cc`）
-- 🔴 该实例**没有任何鉴权层**（`/health`、`/dashboard`、`/api/*` 无凭据 200，含写接口）→ 记忆库当前对公网开放，**未处理**
+- ✅ **真机复跑完成**：`probe-nocturne-live.ts` **25/25**，Streamable HTTP session、9 工具与两条只读调用均通过；探针默认遮蔽秘密路径
+- 🔴 该实例**没有服务端鉴权层**（`/dashboard`、`/api/*` 无凭据可达）→ 需服务器权限设置 `OMBRE_ADMIN_TOKEN`，Habitat 配同值并做有 / 无凭据对照
 - 完整拓扑 / 接入路径 → **`docs/DEPLOYMENT.md`**；结论摘要 → `docs/MEMORY.md`；任务记录 → `docs/TASKS.md` T-022 / T-031
 
 **Phase 3B Eventide（T-023 起）**
@@ -261,11 +261,8 @@ habitat/
 
 ### 下一步
 
-1. 🔵 **Phase 6 打磨（进行中）**：PWA / 离线只读 / 导入导出增强已落地。
-   **下一步是动画与过渡效果 —— 但它必须与 UI 一起做**（`docs/UI_DESIGN.md` 被补充前不堆视觉细节，见铁律 6）；
-   其余按 `PRODUCT_SPEC` / `TASKS` 剩余偏差切片，不把实时通话或 AI 自主工具循环顺手塞进打磨
-2. ⏳ **Phase 3A 真机复跑（唯一遗留）**：北北在服务器上跑 `probe-nocturne-live.ts`，确认反代 / 会话 / 只读两路径真机通；
-   顺带处理那个**公网无鉴权**的洞（T-022 风险 1）。详见 `docs/MEMORY.md`「复验方式」
+1. 🔴 **部署安全收口**：取得服务器 SSH / 部署控制台权限后，设置 `OMBRE_ADMIN_TOKEN`、同步 Habitat Token、轮换秘密路径，完成无凭据拒绝 / 有凭据全绿的对照验收
+2. 🎨 **后续 UI 专项**：动画与过渡效果须与完整视觉方案一起做（`docs/UI_DESIGN.md` 被补充前不堆视觉细节，见铁律 6）
 3. PRODUCT_SPEC P2 的 AI 自主日记 / 留言现在已有主动行为底座，但应按各自权限模型单独施工，不能直接把独处记录冒充成日记或留言
 
 动手前：先读 `PRODUCT_SPEC` 对应章节 + `TASKS.md` 待优化清单，

@@ -150,7 +150,12 @@ check('当前页面已被 Service Worker 接管', typeof swUrl === 'string' && s
 
 // Phase 4 的推送处理器是手写文件，必须被并进同一个 SW —— 否则两个 SW 抢作用域，推送时有时无
 const swSource = await (await fetch(`${APP}/sw.js`)).text()
-check('推送处理器已并入同一个 SW', swSource.includes('web-push-sw.js'), '未在 sw.js 中看到 importScripts')
+const hasPushHandler = swSource.includes('web-push-sw.js')
+check(
+  '推送处理器已并入同一个 SW',
+  hasPushHandler,
+  hasPushHandler ? 'web-push-sw.js 已由主 SW 引入' : '未在 sw.js 中看到 importScripts',
+)
 check('推送处理器文件本身可访问', (await httpStatus(`${APP}/web-push-sw.js`)) === 200)
 
 const cacheSummary = await evaluate(
@@ -158,7 +163,12 @@ const cacheSummary = await evaluate(
 )
 check('已建立预缓存', cacheSummary.keys.length > 0, cacheSummary.keys.join(' '))
 check('应用外壳（index.html）已进缓存', cacheSummary.urls.includes('/index.html'), cacheSummary.urls.slice(0, 6).join(' '))
-check('主脚本已进缓存', cacheSummary.urls.some((url) => url.endsWith('.js')), '缓存里没有 js')
+const cachedScripts = cacheSummary.urls.filter((url) => url.endsWith('.js'))
+check(
+  '主脚本已进缓存',
+  cachedScripts.length > 0,
+  cachedScripts.length > 0 ? `已缓存 ${cachedScripts.length} 个脚本` : '缓存里没有 js',
+)
 
 /* ---------- 三、断网：应用外壳仍要能打开 ---------- */
 phase = 'offline'

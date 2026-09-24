@@ -1,6 +1,6 @@
 # DEPLOYMENT · 部署
 
-状态：**初稿**（2026-09-23，基于阿里云实机体检结果）。
+状态：**按实机定稿**（2026-09-24；生产反代采用 nginx，Caddy 仅保留为早期方案记录）。
 
 拓扑构想的原文见《栖息地初版技术方案分析.md》§4。本文件记录**实测到的真实拓扑**与接入流程。
 本地开发环境：`npm run dev:server` + `npm run dev:web`。
@@ -48,7 +48,7 @@
 | `/sse` | → `backend:8233/sse`（传统 SSE 客户端） |
 | `/messages/` | → `backend:8233/messages/` |
 
-> ⚠️ **两层都要转发才通**：容器内那层上游已经配好，宿主机那层是缺的那一层。
+> ⚠️ 公网访问需要两层都转发；现网已用「公开 `/mcp` 返回 404 + 秘密路径转发」完成宿主层加固。生产 Habitat 与 Nocturne 同机时优先走内网，不经过宿主层。
 
 ---
 
@@ -102,12 +102,12 @@ location = /mcp-<32位十六进制密钥> {
 dashboard 页面中可静态枚举出约 30 个接口（含 `/api/buckets`、`/api/search`、`/api/config`、`/api/import/upload`；后者的写语义**未实测**，仅按名称推断）。
 
 **这意味着记忆库当前对公网敞开。** 而且 MCP 那条**秘密路径本身就在公网上**（见 §2 更正框）——
-它只提供「知道密钥才能进」这一层保护，**没有第二道鉴权**。所以在补上 `api_token` 之前，
+它只提供「知道密钥才能进」这一层保护，**没有第二道鉴权**。所以在补上服务端 Bearer Token 之前，
 相当于把一个**含写工具**的 MCP 端点挂在公网上，仅靠路径保密。
 
-> Nocturne 的鉴权开关：`config.json` 里的 `api_token`（compose 中 `./config.json:/app/config.json` 挂载）。
-> 启用后，**除 `/health` 外所有 `/api/` 与 `/mcp`、`/sse` 端点均需 `Authorization: Bearer <token>`**。
-> 官方 `scripts/setup_docker.py` 会自动生成该 token。
+> 2026-09-24 按该实例对应的 Ombre Brain v1.30 源码复核：全局服务鉴权由部署环境变量
+> **`OMBRE_ADMIN_TOKEN`** 控制；Dashboard 的首次设置 / 登录是另一套状态，不能替代 MCP/API 的服务端 Token。
+> Habitat 侧把同一值放在 **`MCP_NOCTURNE_TOKEN`**，凭据只进部署环境，不进仓库。
 
 ---
 
@@ -218,10 +218,12 @@ location = /mcp-<新密钥> {
 
 ### 3.3 无论走哪条路：**先锁门，再开门**
 
-1. **开鉴权**：在服务器上给 `config.json` 配 `api_token` → `docker compose restart backend`。记下 token 值。
+1. **开鉴权**：在 Nocturne / Ombre Brain 的实际部署环境中设置强随机 `OMBRE_ADMIN_TOKEN`，重建或重启 backend；不要把值写入仓库。
 2. 再按 3.1 / 3.2 处理 `/mcp`。
-3. **复验**：`cd server && MCP_NOCTURNE_URL=... MCP_NOCTURNE_TOKEN=... npx tsx scripts/probe-nocturne-live.ts`
+3. Habitat 部署环境设置同值 `MCP_NOCTURNE_TOKEN`，再复验：
+   `cd server && MCP_NOCTURNE_URL=... MCP_NOCTURNE_TOKEN=... npx tsx scripts/probe-nocturne-live.ts`
    （在服务器上用 `http://127.0.0.1:<端口>/mcp`；在本机用公网地址会撞上 Node 20 的 TLS 问题，需换 Node 22 跑脚本）
+4. 做一次**有 / 无凭据对照**：无 Token 的 MCP 握手必须得到 401/403，带 Token 的探针必须全绿；Dashboard 首次设置另行完成。
 
 ---
 
@@ -246,21 +248,20 @@ location = /mcp-<新密钥> {
 - 仅在「**Node 20 × SNI=beiyan.cc**」这一组合下复现；Node 20 打其它站点正常。
 - 试过 9 组 TLS 参数组合（版本/密码套件等）**均无效**，无法在客户端绕过。
 - **影响面**：只影响「在**本机**用 Node 20 的 server 去连**公网** beiyan.cc」。生产部署是同机内网，不经过此链路，**不受影响**。
-- **结论**：本地开发连远程实例这条路暂时不通；本地开发请走 `probe-nocturne-demo.ts`（官方只读 Demo）或 `dev:mock-mcp`，端到端联调放服务器上做。
+- **结论**：域名链路仍不适合本机 Node 20；本地常规开发走 `dev:mock-mcp`。专项验真可用 Node 20 + 固定 IP 绕开 SNI（仅作为诊断手段，不写入生产配置），或直接在服务器内网执行。
 
 > 该现象疑似链路层 DPI 对 OpenSSL 3.0.x 的 ClientHello 特征做了处置，机制未最终证实，此处只记录可复现的**分界线**。
 
 ---
 
-## 5. 待确认项（2026-09-24 按新认识重排）
+## 5. 验证状态（2026-09-24）
 
-**① 公网连得上吗 —— 唯一需要北北先做的一步：**
+**① 公网只读链路 —— 已完成：**
 
-- [ ] 用**秘密路径**跑一次工具面侦察：
-      `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' npx tsx scripts/probe-nocturne-tools.ts`
-  - ⚠️ 本机 Node 20 可能因 TLS 分界线报 `ECONNRESET`（见 §4）→ 换 Node 22 跑，或直接在服务器上跑。
-  - ✅ 通了 → ① 完成，接着看 ②。
-- [ ] 宿主机 nginx 的加固是否还在：`sudo grep -rn -i "mcp" /etc/nginx/`（判读表见 §3.2）
+- [x] 使用现有秘密路径与 `X-Namespace: habitat` 完成 `probe-nocturne-live.ts`：**25/25**，
+      Streamable HTTP session、9 工具工具面、`breath` / `trace` 两条只读调用均通过；实际调用未触碰写工具。
+- [x] serverInfo 实测为 **Ombre Brain v1.30.0**；以后以实测工具面为准，不再按旧 Demo 猜测。
+- [x] 探针默认遮蔽秘密路径，只有显式 `NOCTURNE_SHOW_SECRET=1` 才显示完整 URL。
 
 **② 工具面对不对得上 —— 已于 2026-09-24 查明并对齐（T-031）：**
 
@@ -268,15 +269,14 @@ location = /mcp-<新密钥> {
       `drive` / `undercurrent` / `trail_delta` / `trail_family`（与旧假设的 5 个名字**0/5 命中**）。
 - [x] 适配层已按真实工具面**重写为只读两方法**（`recall()` → `breath`、`search()` → `trace`）；
       `MemoryProvider` 的 `update` / `delete` 已**删除**（实例没有对应语义，且从未被调用）。见 `docs/MEMORY.md`「定稿映射」。
-- [ ] **唯一遗留**：在服务器上重跑一次全链验真 `npx tsx scripts/probe-nocturne-live.ts`
-      （验证反代 / 会话 / 只读两路径真机通；仓库需先同步到服务器）
+- [x] 全链验真已完成：**25/25**；反代 / 会话 / 工具面 / 只读两路径均通过。
 - 🔁 以后实例**升级 / 换工具名**时：先跑 `probe-nocturne-tools*` 拿一手事实，再看适配层要不要动。
 
 **③ 鉴权 —— 安全项，仍未处理：**
 
-- [ ] `config.json` 里 `api_token` 当前是空还是有值。
-      `/dashboard`、`/health`、`/api/*` 目前**无凭据即 200**，记忆库对公网敞开（T-022 风险 1）。
-- [ ] 启用后 dashboard 的输入体验。
+- [ ] 当前未配置 `OMBRE_ADMIN_TOKEN`；`/dashboard`、`/api/*` 仍可无凭据访问。
+- [ ] 需要服务器 SSH / 部署控制台权限后按 §3.3 设置 Token、重启并做有 / 无凭据对照。
+- [ ] 同时轮换一次 MCP 秘密路径；Dashboard 首次设置与服务端 Token 分开验收。
 
 **④ 生产形态（真正部署时才需要）：**
 

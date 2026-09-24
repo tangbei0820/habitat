@@ -72,7 +72,8 @@ app.setErrorHandler((err: unknown, _req, reply) => {
   return reply.status(500).send(body)
 })
 
-const gateway = new McpGateway(loadMcpRegistry(), app.log)
+const mcpConfigs = loadMcpRegistry()
+const gateway = new McpGateway(mcpConfigs, app.log)
 const memoryProvider = new NocturneMemoryProvider(gateway)
 const stateProvider = loadEventideStateProvider()
 registerHealthRoutes(app, gateway, stateProvider)
@@ -116,30 +117,49 @@ if (activeProfile === null) {
 const pruned = pruneMcpDiagnostics()
 if (pruned > 0) app.log.info({ pruned }, '诊断日志超出保留上限，已裁掉最旧的记录')
 
-// 启动即连接 MCP server；单个失败不阻塞启动（状态机 + 诊断表已留痕）
-await gateway.connectAll()
-
-// 记忆适配层要用的工具，实例上是否真的存在。缺了**不阻塞启动** —— 主动行为的 recall()
-// 本来就有降级（recall 失败时改用「长期记忆当前不可用」），但必须在日志里说清楚。
-// 这条自检是有来历的：适配层的 5 个工具名曾按**官方 Demo** 写死，而实例上一套完全不同的
-// 名字，一个都不存在，直到 2026-09-24 手工对工具面才发现（链路因此从未真正跑通过）。
-// 以后让启动日志自己把这件事讲出来，不要靠人去猜。
-const missingMemoryTools = await memoryProvider.verifyToolFace()
-if (missingMemoryTools.length > 0) {
-  app.log.warn(
-    { missing: missingMemoryTools, expected: Object.values(NOCTURNE_TOOLS) },
-    'Nocturne 实例缺少记忆适配层需要的工具，记忆功能不可用 —— 先跑 npm run probe:nocturne-tools 核对工具面',
-  )
-} else if (Object.keys(NOCTURNE_TOOLS).length > 0) {
-  app.log.info({ tools: Object.values(NOCTURNE_TOOLS) }, 'Nocturne 工具面自检通过')
-}
-
 const port = Number(process.env.PORT ?? 3000)
 const host = process.env.HOST ?? '0.0.0.0'
 
 await app.listen({ port, host })
 
+// MCP 是可降级外部依赖：先监听 HTTP，再在后台连接，不能让 SDK 的默认 60s 超时卡住整个服务。
+// 失败后每分钟重试；同一时刻只允许一轮，避免慢连接重叠。未配置 URL 时不启动定时器。
+let mcpCheckInFlight = false
+let lastToolFace: string | null = null
+async function checkMcpInBackground(): Promise<void> {
+  if (mcpCheckInFlight) return
+  mcpCheckInFlight = true
+  try {
+    await gateway.diagnostics()
+    const nocturne = (await gateway.health()).find((item) => item.serverId === 'nocturne')
+    if (nocturne?.state !== 'ready') return
+
+    const missing = await memoryProvider.verifyToolFace()
+    const signature = missing.length === 0 ? 'ready' : `missing:${missing.join(',')}`
+    if (signature === lastToolFace) return
+    lastToolFace = signature
+    if (missing.length > 0) {
+      app.log.warn(
+        { missing, expected: Object.values(NOCTURNE_TOOLS) },
+        'Nocturne 实例缺少记忆适配层需要的工具，记忆功能不可用 —— 先跑 npm run probe:nocturne-tools 核对工具面',
+      )
+    } else {
+      app.log.info({ tools: Object.values(NOCTURNE_TOOLS) }, 'Nocturne 工具面自检通过')
+    }
+  } finally {
+    mcpCheckInFlight = false
+  }
+}
+
+const hasConfiguredMcp = mcpConfigs.some((config) => config.url !== null && config.url !== '')
+const mcpRetryTimer = hasConfiguredMcp
+  ? setInterval(() => void checkMcpInBackground(), 60_000)
+  : null
+mcpRetryTimer?.unref()
+if (hasConfiguredMcp) void checkMcpInBackground()
+
 async function shutdown(): Promise<void> {
+  if (mcpRetryTimer !== null) clearInterval(mcpRetryTimer)
   stopAutomationScheduler()
   await app.close()
   await gateway.closeAll()

@@ -75,7 +75,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npx tsx scripts/probe-diag-retention.ts` | **不需要 server**（自带一次性临时库，跑完自删） | 诊断日志保留策略（15 项） |
 | `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆**只读**链路：`breath`(boot) / `trace`(search) 两路径、参数边界、已移除的写端点应 404、诊断留痕（21 项） |
 | `npx tsx scripts/probe-nocturne-tools.ts` | **任何** Nocturne 实例（`MCP_NOCTURNE_URL`） | 工具面事实采集 / **漂移检测**：只握手 + `tools/list`，**不调用任何工具**；另有零依赖版 `.mjs` 与只要 `curl+python3` 的 `.sh` |
-| `MCP_NOCTURNE_URL=… npx tsx scripts/probe-nocturne-live.ts` | **自己部署的实例** + 反代已转发 `/mcp-<密钥>` | 反向代理 / Bearer Token（含「不带 Token 再握一次」对照）/ `X-Namespace` / 工具面 / 只读纪律（⏳ 真机复跑待北北，见 `docs/MEMORY.md`） |
+| `MCP_NOCTURNE_URL=… npx tsx scripts/probe-nocturne-live.ts` | **自己部署的实例** + 反代已转发 `/mcp-<密钥>` | 反向代理 / Bearer Token（配置后含无凭据对照）/ `X-Namespace` / 工具面 / 只读纪律（真机 **25/25**；默认遮蔽秘密路径） |
 | ~~`npx tsx scripts/probe-nocturne-demo.ts`~~ | ~~**公网**（Nocturne 官方只读 Demo）~~ | ⛔ **已废弃**（其工具面假设与自部署实例 0/2 命中，脚本已清空实现） |
 | `npm run probe:eventide` | Eventide sidecar :8234；可选 `PROBE_SERVER` | 真实 Eventide revision / 建态 / 时间推进 / 并发串行 / SQLite 恢复 / 故障降级；配置 server 时共 19 项 |
 | `npm run probe:chat-context` | mock OpenAI + server；注入态另需 Eventide | 读取 mock 收到的真实报文，验证状态卡顺序 / 历史不变 / 持久化；注入 7 项、降级 3 项 |
@@ -85,6 +85,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 
 > `probe-nocturne-live.ts` 读 `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`（也可写进 `server/.env`），
 > 默认**不打印**记忆正文（那是本人记忆），要看加 `NOCTURNE_PROBE_PREVIEW=1`。
+> 默认也不打印完整 MCP 秘密路径；仅排障且确认终端输出安全时才设置 `NOCTURNE_SHOW_SECRET=1`。
 > 握手失败时它会**先把报错翻译成「卡在哪一层」**（404 → 秘密路径没带对；401/403 → Token；`ECONNRESET` → 链路；证书 → 链不完整）。
 
 ### 端到端（前端，无头 Edge + CDP）
@@ -144,6 +145,9 @@ bash .workbuddy/run-pwa-verify.sh      # build → vite preview:5284 → 无头 
   缺了这两个开关，`getUserMedia` 拿不到流，录音相关的断言会全线失败 —— 那是环境问题，不是功能坏了。
 - **PWA 相关验收必须打生产构建产物**（`vite build` + `vite preview`）。dev 下不注册 Service Worker，
   在 dev server 上验「断网还能开壳」永远验不出来 —— 那不是功能坏了，是走错了路线。
+
+服务端不会再等待 MCP 连通后才监听 HTTP：MCP 在后台连接、自检并重试。外部记忆服务故障时，健康接口与其它功能仍应先可用；
+`/api/health/mcp` 会明确报告对应连接状态。
 
 ## 文档
 
