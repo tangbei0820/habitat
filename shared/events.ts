@@ -72,6 +72,14 @@ export interface ChatToolCallPayload {
   summary: string
   /** 可折叠详情，已裁剪；失败时是给用户看的错误说明 */
   detail?: string
+  /**
+   * 待确认事件 id（Phase 6.5 P1）。有它就说明这次调用**没有真的执行**，
+   * 而是挂成了一条待北北决策的事件 —— 前端渲染确认卡按钮、并把 id 存进消息块。
+   *
+   * ⚠️ 与 `ok` 的关系：挂起是**成功**的调用（`ok: true`）。模型看到 `ok: true` 才不会重试；
+   * 前端看到 `eventId` 才知道该显示按钮。两个字段各管一件事，不要合并。
+   */
+  eventId?: string
 }
 
 /** `chat-usage`：上游末包用量（在 `chat-done` 之前到达） */

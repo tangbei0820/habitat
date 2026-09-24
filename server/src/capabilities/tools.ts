@@ -13,10 +13,12 @@
  * 工具失败是**模型需要知道的信息**（它得决定重试还是换条路），不是要中断整轮的异常。
  * 抛出去只会让整轮回复变成一条错误，模型永远学不到「刚才那次没成功」。
  */
-import type { CapabilityId, CapabilityModule, CapabilitySnapshot, CapabilityToolSchema } from '@shared/capabilities.js'
+import type { CapabilityAutonomy, CapabilityId, CapabilityModule, CapabilitySnapshot, CapabilityToolSchema } from '@shared/capabilities.js'
 import { CAPABILITY_DEFINITIONS } from '@shared/capabilities.js'
 import type { LlmToolCall, MemoryProvider, StateProvider } from '@shared/providers.js'
 import { describeState } from '@shared/state-summary.js'
+import { getCompanionDiaryView, listCompanionDiaryViews } from '../db/diary.js'
+import { decideEvent, requestToolConfirm } from '../services/event-inbox.js'
 import type { CapabilityService } from './registry.js'
 
 /** 一个绑定好的工具：从能力声明来，能被执行 */
@@ -29,6 +31,11 @@ export interface BoundTool {
   source: string
   description: string
   parameters: CapabilityToolSchema
+  /**
+   * 绑定时能力快照里的自主级别。**执行层据此决定「直接做」还是「挂起来等确认」** ——
+   * 这是 `confirm` 闸门的落点，不是展示用的元数据。
+   */
+  autonomy: CapabilityAutonomy
 }
 
 /** 模块 → 展示来源。**唯一**的定义处，卡片与工具结果共用。 */
@@ -49,6 +56,14 @@ export interface ToolOutcome {
   summary: string
   /** 面向用户的可折叠详情；**必须已裁剪**，原始返回值不往界面送 */
   detail?: string
+  /**
+   * `confirm` 级工具**挂起**时产生的事件 id（Phase 6.5 P1）。
+   *
+   * 有它就说明这次调用**没有真的执行**，只是挂了起来等北北点确认。
+   * ⚠️ 此时 `ok` 仍是 `true` —— 挂起不是失败。把挂起当失败回灌，模型会以为要重试，
+   * 于是北北会收到一串一模一样的确认卡。
+   */
+  eventId?: string
 }
 
 /** 工具正文进模型上下文的上限：记忆全文可能很长，但也不能无界 */
@@ -62,6 +77,11 @@ const DETAIL_LIMIT = 600
  * 只收 `enabled` 且真的绑了 `toolName` 的 —— 这一条就是「**不伪造能力**」在工具层的落点：
  * 声明里写着 `memory.search`，但实例没配时它 `enabled=false`，于是**根本不会**出现在
  * 传给模型的 tools 里。模型看不到它，就不可能去调一个不存在的东西。
+ *
+ * ⚠️ 2026-09-24（P1）起，`confirm` 级别的工具**也绑**（P0 时一律不绑）。
+ * 当年不绑是因为确认协议还没落地，放给模型等于没有闸门；现在闸门在执行层
+ * （`executeTool` 对 confirm 走挂起、不产生副作用），所以绑给模型是安全的 ——
+ * 而且必须绑，否则模型永远不知道「我可以请求写日记」。
  */
 export function buildBoundTools(snapshot: readonly CapabilitySnapshot[]): BoundTool[] {
   const bound: BoundTool[] = []
@@ -69,9 +89,7 @@ export function buildBoundTools(snapshot: readonly CapabilitySnapshot[]): BoundT
     if (!item.enabled || item.toolName === undefined) continue
     const definition = CAPABILITY_DEFINITIONS.find((candidate) => candidate.id === item.id)
     if (definition?.tool === undefined) continue
-    // **只把「AI 可自主调用」的工具交给模型**。`confirm` / `user-only` 一律不绑：
-    // 确认卡与逐次授权协议还没实现（P1），此时放给模型等于没有闸门。失败方向必须朝「关」。
-    if (!isAutoCallable(item.autonomy)) continue
+    if (!isModelCallable(item.autonomy)) continue
     bound.push({
       name: definition.tool.name,
       capabilityId: item.id,
@@ -79,18 +97,21 @@ export function buildBoundTools(snapshot: readonly CapabilitySnapshot[]): BoundT
       source: MODULE_SOURCE[item.module],
       description: definition.tool.description,
       parameters: definition.tool.parameters,
+      autonomy: item.autonomy,
     })
   }
   return bound
 }
 
 /**
- * 目前只读能力会被绑成工具（写能力本阶段都 `unavailable`），所以 `confirm` 级别
- * 的工具表实际为空。确认卡协议落地后（P1），这里要多一层「未经确认不执行」的闸门 ——
- * 在那之前**绝不能**把 `confirm` 工具直接放给模型，那等于把 §9.7 要的授权协议跳过去了。
+ * 这个自主级别的能力能不能**出现在模型看到的工具表里**。
+ *
+ * - `autonomous` → 能，且调用即刻执行
+ * - `confirm`    → 能，但调用只会**挂起**成一条待确认事件（见 `executeTool`）
+ * - `user-only` / `unavailable` → 不能。前者连模型都不该知道怎么调，后者压根没实现
  */
-export function isAutoCallable(autonomy: CapabilitySnapshot['autonomy']): boolean {
-  return autonomy === 'autonomous'
+export function isModelCallable(autonomy: CapabilitySnapshot['autonomy']): boolean {
+  return autonomy === 'autonomous' || autonomy === 'confirm'
 }
 
 /** 转成 OpenAI 兼容协议的 `tools` 参数 */
@@ -146,6 +167,35 @@ function clip(text: string, limit: number): string {
 }
 
 /**
+ * `confirm` 级工具的处置：**挂起，不执行**。
+ *
+ * 这是「可暂停的逐次授权」（PRODUCT_SPEC §9.7）在工具层的实现点。模型发起之后，
+ * 服务端只建一条待北北确认的事件，然后把「已提请确认、尚未执行」回灌给它 ——
+ * 这样模型能自然地接着说「我写了一篇，等你看看」，而不是卡在这里等一个不会同步到来的答案。
+ *
+ * ⚠️ 回灌文本必须**明确说「还没执行」**。含糊其辞会让模型下一轮宣称「我已经写好了」，
+ * 而实际上北北还没点 —— 那正是本 Phase 要修的「模型说的和事实不符」。
+ */
+function requestConfirm(tool: BoundTool, args: Record<string, unknown>): ToolOutcome {
+  const requested = requestToolConfirm({
+    capabilityId: tool.capabilityId,
+    toolName: tool.name,
+    args,
+  })
+  if (!requested.ok) return failure(tool, requested.error)
+  return {
+    ok: true,
+    text:
+      `已提请北北确认：${requested.event.title}。\n` +
+      '这次调用**还没有执行** —— 北北点了「允许」之后才会真正发生，结果会在之后的对话里告诉你。\n' +
+      '现在可以正常说话，不要重复提交同一件事，也不要声称它已经完成。',
+    summary: `等待北北确认：${requested.event.title}`,
+    detail: requested.event.detail,
+    eventId: requested.event.id,
+  }
+}
+
+/**
  * 执行一次工具调用。
  *
  * @param tool 由 `buildBoundTools` 产出 —— 传进来的工具一定已在能力快照里确认为可用。
@@ -155,6 +205,9 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
   const args = parseArgs(call.arguments)
   if (!args.ok) return failure(tool, args.error)
   const value = args.value
+
+  // `confirm` 级一律不在这里执行 —— 闸门只有这一处，不要在下面对某个 case 里再放行
+  if (tool.autonomy === 'confirm') return requestConfirm(tool, value)
 
   try {
     switch (tool.capabilityId) {
@@ -192,6 +245,45 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
           text: summary.text,
           summary: summary.headline,
           detail: clip(summary.text, DETAIL_LIMIT),
+        }
+      }
+
+      case 'diary.list_own': {
+        const limit = normalizeLimit(value.limit) ?? 20
+        const items = listCompanionDiaryViews(limit)
+        if (items.length === 0) {
+          return { ok: true, text: '(你还没写过日记)', summary: '还没有写过日记' }
+        }
+        const lines = items.map((item) => {
+          const state = item.visibility === 'open' ? '已对北北开放' : '私密'
+          return `- ${item.entryDate} 《${item.title}》（${state}，id: ${item.id}）`
+        })
+        const text = `# 你写过的日记（${items.length} 篇）\n\n${lines.join('\n')}`
+        return { ok: true, text, summary: `你有 ${items.length} 篇日记`, detail: clip(text, DETAIL_LIMIT) }
+      }
+
+      case 'diary.read_own': {
+        const id = typeof value.id === 'string' ? value.id.trim() : ''
+        if (id === '') return failure(tool, '缺少必填参数 id')
+        const item = getCompanionDiaryView(id)
+        // 读不到有两种原因（不存在 / 不是自己写的），对模型是同一件事：你没有这一篇
+        if (item === null) return failure(tool, `找不到你写的日记 ${id}`)
+        const text = `# 《${item.title}》\n\n日期：${item.entryDate}\n可见性：${item.visibility === 'open' ? '已对北北开放' : '私密'}\n\n${item.content ?? ''}`
+        return { ok: true, text: clip(text, TOOL_TEXT_LIMIT), summary: `读了《${item.title}》` }
+      }
+
+      case 'diary.allow_access':
+      case 'diary.deny_access': {
+        const eventId = typeof value.eventId === 'string' ? value.eventId.trim() : ''
+        if (eventId === '') return failure(tool, '缺少必填参数 eventId（见「等待你决定」列表）')
+        const approved = tool.capabilityId === 'diary.allow_access'
+        // `decider: 'companion'` 是硬编码的：这层代表 AI 做决定，不能让模型传一个 decider 进来
+        const decided = decideEvent(eventId, 'companion', approved)
+        if (!decided.ok) return failure(tool, decided.error)
+        return {
+          ok: true,
+          text: decided.event.result ?? (approved ? '已同意。' : '已拒绝。'),
+          summary: approved ? '已同意北北查看' : '已拒绝这次查看',
         }
       }
 

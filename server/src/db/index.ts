@@ -230,6 +230,35 @@ CREATE TABLE IF NOT EXISTS moment (
 CREATE INDEX IF NOT EXISTS idx_moment_created ON moment (created_at DESC);
 `)
 
+// Event Inbox（Phase 6.5 P1）。为什么单独一张表、为什么不并进 notification：
+// 见 schema.ts 的 runtimeEvent 注释 —— 那张是单向广播，这张是双向待决。
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS runtime_event (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  decider TEXT NOT NULL,
+  status TEXT NOT NULL,
+  title TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  result TEXT,
+  result_delivered_at INTEGER,
+  capability_id TEXT,
+  target_id TEXT,
+  created_at INTEGER NOT NULL,
+  decided_at INTEGER
+);
+-- 「谁待决什么」是最热的查询：注入上下文取 companion 的，确认卡取 user 的，两边都带 status
+CREATE INDEX IF NOT EXISTS idx_runtime_event_inbox ON runtime_event (decider, status, created_at DESC);
+-- 注入已决结果时按「未送达」筛，用部分索引只给那一小撮建
+CREATE INDEX IF NOT EXISTS idx_runtime_event_undelivered ON runtime_event (created_at) WHERE decided_at IS NOT NULL AND result_delivered_at IS NULL;
+`)
+// target_id 是后加的列，已有库要补上（`CREATE TABLE IF NOT EXISTS` 不会给已存在的表加列）
+const runtimeEventColumns = sqlite.pragma('table_info(runtime_event)') as Array<{ name: string }>
+if (!runtimeEventColumns.some((col) => col.name === 'target_id')) {
+  sqlite.exec('ALTER TABLE runtime_event ADD COLUMN target_id TEXT')
+}
+
 export const db = drizzle(sqlite, { schema })
 
 export function closeDb(): void {

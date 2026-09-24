@@ -104,11 +104,15 @@ export interface CapabilityDefinition {
  * 静态能力表。**只声明，不判断可用性。**
  *
  * 当前阶段的边界（2026-09-24 定，按北北「分级解禁」的选择）：
- *   · 只读三能力（记忆读 / 记忆搜 / 状态读）→ `autonomous`，AI 可自主调用
- *   · 写类四能力（写记忆 / 写日记 / 改日记 / 写留言板）→ `confirm`，
- *     且**当前全部 `unavailable`** —— 日记与留言板的权威存储尚未迁到服务端（P1），
- *     记忆写入则因为 Habitat 目前只读接入 Nocturne。登记而不实现，是为了让
- *     「AI 知道自己未来有什么」与「现在真能做什么」两件事分开表达，不混为一谈。
+ *   · 只读能力（记忆读 / 记忆搜 / 状态读 / 列日记 / 读自己日记 / 允许·拒绝对话）→ `autonomous`，AI 可自主调用
+ *   · 写类三能力（写日记 / 改日记 / 写留言板）→ `confirm`：AI **可以**发起，
+ *     但系统先挂成一条待确认事件，北北点「允许」才真正执行（P1 已落地确认卡）
+ *   · 写记忆 → `confirm` 但**尚未实施**：Habitat 目前只读接入 Nocturne，
+ *     实例的写工具（`hold`）没有接入
+ *
+ * ⚠️ `confirm` 级能力**也要绑工具**（P0 时它们一律不绑，因为那时确认协议还没落地）。
+ * 不绑的后果是模型永远学不会「我可以请求写日记」—— 它会以为这件事根本做不到。
+ * 绑了之后，闸门在执行层：见 `server/src/services/event-inbox.ts` 的挂起逻辑。
  */
 export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
   {
@@ -173,6 +177,24 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     summary: '写一篇只有小栖自己能看的日记',
     modelHint: '写一篇自己的日记。日记默认私有，北北只能看到封面与基本信息，需要你允许才能读正文。',
     autonomy: 'confirm',
+    tool: {
+      name: 'diary_create',
+      description:
+        '写一篇你自己的日记（默认私有，北北看不到正文）。系统会先请北北点确认，确认后才真正写入 —— 所以你说「我写好了」时，用户可能还没点。',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '日记标题，不超过 120 字' },
+          content: { type: 'string', description: '日记正文，不超过 10000 字' },
+          entryDate: {
+            type: 'string',
+            description: '这篇日记算哪一天，格式 YYYY-MM-DD；省略表示今天',
+          },
+        },
+        required: ['title', 'content'],
+        additionalProperties: false,
+      },
+    },
   },
   {
     id: 'diary.update',
@@ -181,6 +203,22 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     summary: '修改自己写过的日记',
     modelHint: '修改自己写过的日记正文。只有你能编辑日记。',
     autonomy: 'confirm',
+    tool: {
+      name: 'diary_update',
+      description:
+        '修改你自己写过的一篇日记。只传要改的字段，没传的沿用原文。系统会先请北北点确认，确认后才真正修改。',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: '要修改的日记 id（先用 diary_list_own 查）' },
+          title: { type: 'string', description: '新的标题；不传则不改标题' },
+          content: { type: 'string', description: '新的正文；不传则不改正文' },
+          entryDate: { type: 'string', description: '新的日期 YYYY-MM-DD；不传则不改日期' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+    },
   },
   {
     id: 'diary.list_own',
@@ -189,6 +227,17 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     summary: '列出自己写过的日记',
     modelHint: '列出自己写过的日记（标题与时间）。需要回想写过什么时调用。',
     autonomy: 'autonomous',
+    tool: {
+      name: 'diary_list_own',
+      description: '列出你自己写过的日记（标题、日期、是否已对北北开放）。需要回想写过什么、或要拿到某篇的 id 时用它。',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: { type: 'number', description: '最多返回几篇，省略为 20' },
+        },
+        additionalProperties: false,
+      },
+    },
   },
   {
     id: 'diary.read_own',
@@ -197,6 +246,18 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     summary: '读取自己某篇日记的正文',
     modelHint: '读取自己某篇日记的正文。只有你自己的日记能这样读。',
     autonomy: 'autonomous',
+    tool: {
+      name: 'diary_read_own',
+      description: '读取你自己某一篇日记的全文。只有你自己写的日记能这样读。',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: '日记 id（先用 diary_list_own 查）' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+    },
   },
   {
     id: 'diary.allow_access',
@@ -205,6 +266,19 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     summary: '同意北北查看某篇日记',
     modelHint: '当北北请求查看某篇日记时，同意这次请求。',
     autonomy: 'autonomous',
+    tool: {
+      name: 'diary_allow_access',
+      description:
+        '同意北北查看你某篇日记的正文（该篇会转为对北北开放）。当待处理列表里有「北北想看看你写的……」时调用它。',
+      parameters: {
+        type: 'object',
+        properties: {
+          eventId: { type: 'string', description: '待处理请求的事件 id（见「等待你决定」列表）' },
+        },
+        required: ['eventId'],
+        additionalProperties: false,
+      },
+    },
   },
   {
     id: 'diary.deny_access',
@@ -213,6 +287,19 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     summary: '拒绝北北查看某篇日记',
     modelHint: '当北北请求查看某篇日记时，拒绝这次请求。拒绝不需要理由，但可以说明。',
     autonomy: 'autonomous',
+    tool: {
+      name: 'diary_deny_access',
+      description:
+        '拒绝北北查看某篇日记。日记保持私密。拒绝不需要理由，你可以照常对北北说话解释你的想法。',
+      parameters: {
+        type: 'object',
+        properties: {
+          eventId: { type: 'string', description: '待处理请求的事件 id（见「等待你决定」列表）' },
+        },
+        required: ['eventId'],
+        additionalProperties: false,
+      },
+    },
   },
   {
     id: 'messageboard.write',
@@ -221,6 +308,19 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     summary: '在留言板上留一条话',
     modelHint: '在留言板上写一条留言。留言板是你和北北共用的，写之前会先请北北确认。',
     autonomy: 'confirm',
+    tool: {
+      name: 'messageboard_write',
+      description:
+        '在留言板上留一条话（你和北北共用）。系统会先请北北点确认，确认后才真正发出。适合留短句，不超过 500 字。',
+      parameters: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: '留言内容，不超过 500 字' },
+        },
+        required: ['content'],
+        additionalProperties: false,
+      },
+    },
   },
   {
     id: 'tools.list',

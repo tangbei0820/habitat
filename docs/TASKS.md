@@ -1736,3 +1736,103 @@ breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delt
 - ⏳ `diaries` / `moments` 两张**空壳表**会永久留在 IndexedDB（Dexie 删不掉，见上面 bug 3）。
   已写进 `db.ts` 与 `DATA_MODEL.md` 提醒「别去清理它」，但每次有人翻 schema 都可能再困惑一次 ——
   真想去掉只有「重开一个库名 + 全量迁移」这条路，代价远大于收益，不建议动
+
+---
+
+### T-037 · 2026-09-24 · Phase 6.5 P1 · 事件收件箱 + 日记权限流转 + 日记·留言板 Tool —— **完成**
+
+**范围**：北北 P1 清单的三件一起做 ——
+① Event Inbox（事件收件箱）② 日记的「允许查看」请求流转 ③ 日记 / 留言板的第一批 Tool。
+三件其实是**一件事的三面**：它们共用同一条「AI 与北北之间异步决定一件事」的通道，
+所以合在一批做完，而不是分成三次改同一批文件。
+
+**为什么三件必须一起做**：只做 ②（权限流转）而没有 ③，AI 就没有决定放不放的手；
+只做 ③ 而没有 ①，模型发起写日记之后无处安放、也无从知道结果。
+`component` 缺一个，另外两个都会退化成「点了没反应」。
+
+**核心设计：挂起式确认（不暂停流）**
+
+`confirm` 级工具（写日记 / 改日记 / 写留言）要用户点头。实现它有一条**不能选的路**：
+在流里停下等用户点按钮 —— SSE 是单向的、服务端没有回传通道；用户刷新即废；
+而且服务端刻意不存聊天记录（§6.2），没有「挂到哪了」可恢复。
+
+所以把「决定」与「执行」拆成两次请求：模型发起 → 服务端**不执行**、只建一条待确认事件 →
+回灌「已提请确认，**这次调用还没有执行**」→ 前端渲染确认卡 → 用户点了才真写 → 结果下一轮注入模型。
+
+⚠️ 两处措辞是刻意的、改之前先想清楚：**挂起算 `ok: true`**（当失败回灌，模型会重试，
+于是北北收到一串一模一样的确认卡）；回灌文本**必须明说「还没执行」**（含糊其辞，
+模型下一轮就会宣称「我已经写好了」而其实还没点 —— 那正是本 Phase 要修的「说的和事实不符」）。
+
+**Event Inbox 是双向的**（本批最该守住的一条）
+
+| 事件类型 | 谁发起 | **谁决定** | 决定后 |
+| --- | --- | --- | --- |
+| `tool_confirm` | AI 想写日记 / 留言 | **北北**（`decider='user'`） | 真写入 / 什么都不做 |
+| `diary_access_request` | 北北想看某篇私密日记 | **AI**（`decider='companion'`） | 该篇转 `open` / 保持私密 |
+
+两个方向的权限检查**方向相反**：北北不能替 AI 决定放不放日记（HTTP 端点拒绝 `decider` 不匹配）；
+AI 不能替北北确认（工具层硬编码 `decider='companion'`，模型传不进来）。
+
+**落地**
+
+| 层 | 文件 | 内容 |
+| --- | --- | --- |
+| 类型 | `shared/types.ts` | `RuntimeEvent` / `Kind` / `Decider` / `Status`；`ToolResultBlock.payload.eventId` |
+| 契约 | `shared/events.ts` | `ChatToolCallPayload.eventId`（挂起时带上，前端据此弹卡） |
+| 声明 | `shared/capabilities.ts` | 七项日记 / 留言能力补齐 tool 绑定（含 schema 与给模型的说明） |
+| 表 | `server/src/db/schema.ts`、`db/index.ts` | `runtime_event`（含 `payload_json` / `target_id` / `result_delivered_at`） |
+| 仓储 | `server/src/db/event.ts` | `settleEvent()` 带 `status='pending'` 条件更新 —— 决策只能做一次 |
+| 执行 | `server/src/services/event-inbox.ts` | 校验 → 挂起 → 决策 → **真副作用**（唯一的执行点） |
+| 日记 AI 侧 | `server/src/db/diary.ts` | `toCompanionDiaryView()`（**第二个出口**，AI 视角）/ `createCompanionDiary` / `setDiaryVisibility` |
+| 留言 AI 侧 | `server/src/db/moment.ts` | `createCompanionMoment` |
+| 判定 | `server/src/capabilities/registry.ts` | `NOT_IMPLEMENTED_YET` 从八条缩到一条（只剩 `memory.write`） |
+| 工具 | `server/src/capabilities/tools.ts` | `confirm` 也绑（`isModelCallable`）；执行层挂起；四个日记工具的执行分支 |
+| 上下文 | `server/src/context/event-context.ts`（新）、`chat-context.ts` | `runtime_events` 段：待决每轮注入 / 结果只注入一次 |
+| 路由 | `server/src/routes/inbox.ts`（新）、`routes/diary.ts` | `/api/inbox*` + `POST /api/diary/:id/request-access` |
+| 前端 | `web/src/db/events.ts`、`features/chat/EventConfirmCard.tsx`、`MessageBlocks.tsx`、`pages/life/LifePage.tsx`、`features/home/DiaryModule.tsx` | 确认卡（读服务端状态、不乐观更新）/ Life 页「事件」tab / 日记页「请求查看」 |
+
+**⚠️ 两个刻意不成对的东西，别顺手统一**
+
+1. **`DiaryView` 有两个出口**：`toDiaryView()` 是**用户视角**（AI 私密日记只给封面），
+   `toCompanionDiaryView()` 是 **AI 视角**（只给自己的日记、且给全文）。
+   共用一个会两个方向都出错：AI 读不到自己写的东西，或者用户拿到私密正文。
+2. **`denied` 与 `failed` 分开**：前者是「北北说不」，后者是「北北说好但它没做成」。
+   混成一句会让用户以为自己点错了。
+
+**真 bug（跑一遍才现形）**
+
+1. **新路由撞了已有端点**：`GET /api/events` 已被 Eventide 的**状态事件流水**占用
+   （`routes/automation.ts`），Fastify 启动直接 `FST_ERR_DUPLICATED_ROUTE` 退出。
+   改名为 `/api/inbox` —— 不是随手挑的名：「事件」这个词太泛，
+   而这张表是「等你决定什么」的待办，叫收件箱才说清了它和流水表的区别。
+   （顺带把文件从 `routes/events.ts` 改名 `routes/inbox.ts`，免得下一个人又按文件名去猜路径。）
+2. **mock 上游不能带参数调工具**：`[[tool:名字]]` 只能发空参数，
+   而写类工具的 `title`/`content` 都是必需的 —— 等于**写类工具永远验不了**。
+   给 mock 加了 `[[tool:名字 {"k":"v"}]]` 形式（P0 时只读工具无参，所以没暴露）。
+
+**验收（全部实跑）**
+
+| 项 | 结果 |
+| --- | --- |
+| `probe-event-inbox.ts`（新增，一键 `.workbuddy/run-p1-verify.sh`） | **66/66** |
+| `probe-ai-runtime.ts`（断言随 P1 更新） | **50/50** |
+| 两端 typecheck | 通过 |
+
+`probe-event-inbox.ts` 盯的是**三条不能破的边界**，不是接口通不通：
+① 挂起时日记**还没被写**（挂起=执行的边界）② 决策**只能做一次**（点两下不写两篇）
+③ 北北**不能替 AI 决定**（`decider` 不匹配 → 400）。
+另加：参数不合法当场回灌而不挂卡 / 结果只注入一次 / 被拒之后日记还在 / AI 的日记用户删不掉。
+
+**遗留（不在本批范围，已收敛到这里）**
+
+- ⏳ 确认卡的**过期 / 撤回**未做：挂很久的请求会一直留在收件箱（目前无害，但该有个上限）
+- ⏳ `memory.write` 仍未实施（Nocturne 实例的写工具 `hold` 没接）
+- ⏳ 工具卡片总排在助手气泡之后（模型在工具调用后又说话时顺序会反）—— 需把一次回复拆成多段气泡
+- ⏳ `docs/PRODUCT_SPEC.md` §9.7「AI 自主工具调用暂不启用」需随本层落地订正
+- ⏳ P2：LLM 页面 App Launcher、Chat 头像开关
+
+**T-037 补充（同日）**：确认卡的**前端交互**（卡片渲染 / 点按钮 / 刷新后状态还在）**没有自动化覆盖** ——
+`probe-event-inbox.ts` 验的是服务端全链（含 `tool-call` 帧里的 `eventId`），
+而 `verify-home` 那套前端脚本不接 mock 上游、没法触发工具调用。
+所以「模型发起写日记 → 聊天里冒出确认卡 → 点允许」这条**人眼要过一遍**。
+要补的话得给前端脚本加一个 mock 上游前置（成本不低，先记着）。

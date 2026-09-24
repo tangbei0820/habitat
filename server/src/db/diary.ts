@@ -10,7 +10,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { desc, eq } from 'drizzle-orm'
-import type { DiaryView } from '@shared/types'
+import type { DiaryView, DiaryVisibility } from '@shared/types'
 import { db } from './index.js'
 import { diary, type DiaryRow } from './schema.js'
 
@@ -110,4 +110,108 @@ export function importDiaryIfAbsent(row: DiaryRow): boolean {
   if (existing !== undefined) return false
   db.insert(diary).values(row).run()
   return true
+}
+
+/* ------------------------------------------------------------------ AI 视角（Phase 6.5 P1）
+ *
+ * ⚠️ 本文件有两个出口，各自对应一个**视角**，别拿错：
+ *
+ *   · `toDiaryView()`          —— **用户视角**：AI 的私密日记只给封面
+ *   · `toCompanionDiaryView()` —— **AI 视角**：只给自己的日记，且给全文
+ *
+ * 为什么不能共用一个：日记「私密」的含义就是「**只有作者能看到正文**」。
+ * 用用户视角的出口去给 AI 读它自己的日记，AI 会得到 `content: null` —— 它写的东西它自己读不到。
+ * 反过来用 AI 视角去给用户查列表，就是直接把私密正文漏出去。
+ * 两个方向都会出错，所以是两个函数，不是同一个函数加参数。
+ *
+ * `DiaryView` 上的 `readable` / `editable` 因此是**相对调用方视角**的：
+ * 同一条 companion 日记，对用户是 `readable=false, editable=false`，对 AI 是两者皆真。
+ */
+
+/** AI 视角出口。仅用于「AI 读 / 改自己的日记」，**绝不**用它回应前端请求。 */
+export function toCompanionDiaryView(row: DiaryRow): DiaryView {
+  return {
+    id: row.id,
+    title: row.title,
+    entryDate: row.entryDate,
+    author: row.author,
+    visibility: row.visibility,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    content: row.content,
+    readable: true,
+    editable: row.author === 'companion',
+  }
+}
+
+/** AI 自己的日记列表（含未开放的）—— `diary.list_own` 工具的数据源。 */
+export function listCompanionDiaryViews(limit = 50): DiaryView[] {
+  return db
+    .select()
+    .from(diary)
+    .where(eq(diary.author, 'companion'))
+    .orderBy(desc(diary.entryDate), desc(diary.createdAt))
+    .limit(limit)
+    .all()
+    .map(toCompanionDiaryView)
+}
+
+/** 读 AI 自己的某篇。**别人的日记一律返回 `null`** —— 与「不存在」对调用方是同一件事。 */
+export function getCompanionDiaryView(id: string): DiaryView | null {
+  const row = db.select().from(diary).where(eq(diary.id, id)).get()
+  if (row === undefined || row.author !== 'companion') return null
+  return toCompanionDiaryView(row)
+}
+
+export interface CompanionDiaryInput {
+  title: string
+  content: string
+  entryDate: string
+}
+
+/**
+ * AI 写日记。
+ *
+ * `visibility` 固定 `private` 起手 —— 「写的时候顺手决定要不要给人看」不该是默认动作，
+ * 开放是**另一件事**（北北请求 → AI 决定，走 `setDiaryVisibility`）。
+ */
+export function createCompanionDiary(input: CompanionDiaryInput): DiaryView {
+  const at = Date.now()
+  const row: DiaryRow = {
+    id: `diary-${randomUUID()}`,
+    title: input.title,
+    content: input.content,
+    entryDate: input.entryDate,
+    author: 'companion',
+    visibility: 'private',
+    createdAt: at,
+    updatedAt: at,
+  }
+  db.insert(diary).values(row).run()
+  return toCompanionDiaryView(row)
+}
+
+/** AI 改自己的日记。改不到（不存在 / 不是它的）返回 `null`。 */
+export function updateCompanionDiary(id: string, input: CompanionDiaryInput): DiaryView | null {
+  const existing = db.select().from(diary).where(eq(diary.id, id)).get()
+  if (existing === undefined || existing.author !== 'companion') return null
+  const updatedAt = Date.now()
+  db.update(diary)
+    .set({ title: input.title, content: input.content, entryDate: input.entryDate, updatedAt })
+    .where(eq(diary.id, id))
+    .run()
+  return toCompanionDiaryView({ ...existing, ...input, updatedAt })
+}
+
+/**
+ * 改可见性（`diary.allow_access` 的落点）。
+ *
+ * **只对 companion 的日记生效**：用户自己的日记本来就是 `open`，让别人（AI）去改它的可见性
+ * 属于越界 —— 返回 `false` 而不是静默改成一样。
+ */
+export function setDiaryVisibility(id: string, visibility: DiaryVisibility): DiaryView | null {
+  const existing = db.select().from(diary).where(eq(diary.id, id)).get()
+  if (existing === undefined || existing.author !== 'companion') return null
+  db.update(diary).set({ visibility, updatedAt: Date.now() }).where(eq(diary.id, id)).run()
+  return toCompanionDiaryView({ ...existing, visibility })
 }

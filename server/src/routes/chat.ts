@@ -36,6 +36,7 @@ import type { CapabilityService } from '../capabilities/registry.js'
 import { buildBoundTools, executeTool, toLlmTools, type BoundTool, type ToolRuntime } from '../capabilities/tools.js'
 import { assembleChatContext } from '../context/chat-context.js'
 import { finishAutomationRun, getAutomationPolicy, noteCounterpartActivity } from '../db/automation.js'
+import { markResultsDelivered } from '../db/event.js'
 import { recordUsage } from '../db/usage.js'
 import { BudgetGuard } from '../lib/budget-guard.js'
 import { ToolCallAccumulator } from '../lib/tool-call-accumulator.js'
@@ -177,6 +178,8 @@ async function runToolCall(
       ok: outcome.ok,
       summary: outcome.summary,
       ...(outcome.detail === undefined ? {} : { detail: outcome.detail }),
+      // 挂起的事件 id：前端据此渲染确认卡按钮（见 ChatToolCallPayload.eventId 注释）
+      ...(outcome.eventId === undefined ? {} : { eventId: outcome.eventId }),
     },
   }
 }
@@ -284,6 +287,11 @@ export function registerChatRoutes(
         controller.abort()
       }
     })
+
+    // 事件结果标记为「已送达」——**必须在响应头真的发出去之后**。
+    // 放在 assembleChatContext 里标记会漏掉一种情况：上游密钥没配 / 不可达时，
+    // 这个函数早就跑完了、标记也打了，但本轮根本没发出去，模型永远失去那条结果。
+    markResultsDelivered(context.deliveredEventIds)
 
     // 跨轮累加：usage 要合计（每次续跑都是**真实发生**的上游调用，都花钱），
     // 正文要合计（结算是按整轮回复算的）。finishReason 取最后一轮。

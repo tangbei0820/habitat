@@ -101,14 +101,18 @@ const synthetic: CapabilitySnapshot[] = [
   { id: 'memory.read', module: 'memory', label: '读取记忆', summary: '', modelHint: '', enabled: true, autonomy: 'autonomous', toolName: 'memory_read' },
   { id: 'memory.search', module: 'memory', label: '搜索记忆', summary: '', modelHint: '', enabled: true, autonomy: 'autonomous', toolName: 'memory_search' },
   // 已声明但依赖缺失 → 不该出现在给模型的工具表里
-  { id: 'memory.write', module: 'memory', label: '写入记忆', summary: '', modelHint: '', enabled: false, autonomy: 'unavailable', reason: '只读接入' },
-  // 需确认的能力 → 确认卡协议落地前也不能给模型
-  { id: 'diary.create', module: 'diary', label: '写日记', summary: '', modelHint: '', enabled: true, autonomy: 'confirm' },
+  { id: 'memory.write', module: 'memory', label: '写入记忆', summary: '', modelHint: '', enabled: false, autonomy: 'unavailable', reason: '只读接入', toolName: 'memory_write' },
+  // 需确认的能力（Phase 6.5 P1）→ **要绑**：不绑模型就永远不知道「我可以请求写日记」。
+  // 闸门从「不给它知道」移到了执行层（调用被挂起、等北北确认）。
+  { id: 'diary.create', module: 'diary', label: '写日记', summary: '', modelHint: '', enabled: true, autonomy: 'confirm', toolName: 'diary_create' },
+  // 仅用户可发起的能力 → 依旧不绑：连「怎么调」都不该让模型知道
+  { id: 'messageboard.write', module: 'board', label: '写留言', summary: '', modelHint: '', enabled: true, autonomy: 'user-only', toolName: 'never_bound' },
 ]
 const bound = buildBoundTools(synthetic)
-check('只绑定 enabled 且有工具名的能力', bound.map((tool) => tool.name).join(',') === 'memory_read,memory_search', bound.map((tool) => tool.name).join(','))
+check('只绑定 enabled 且有工具名的能力', bound.map((tool) => tool.name).join(',') === 'memory_read,memory_search,diary_create', bound.map((tool) => tool.name).join(','))
 check('未启用能力不进工具表', !bound.some((tool) => tool.capabilityId === 'memory.write'))
-check('需确认的能力也不进工具表（闸门朝「关」）', !bound.some((tool) => tool.capabilityId === 'diary.create'))
+check('需确认的能力也绑，但带着 confirm 级别（执行层据此挂起）', bound.find((tool) => tool.capabilityId === 'diary.create')?.autonomy === 'confirm')
+check('仅用户可发起的能力不绑', !bound.some((tool) => tool.capabilityId === 'messageboard.write'))
 
 const llmTools = toLlmTools(bound) as Array<{ type: string; function: { name: string; parameters: unknown } }>
 check('转成 OpenAI 协议形状', llmTools.every((tool) => tool.type === 'function' && typeof tool.function.name === 'string'))
@@ -188,7 +192,15 @@ check(
 const enabledIds = snapshot.filter((item) => item.enabled).map((item) => item.id)
 console.log(`    当前可用：${enabledIds.join(', ') || '（无）'}`)
 console.log(`    当前不可用：${snapshot.filter((item) => !item.enabled).map((item) => `${item.id}(${item.reason ?? ''})`).join('; ') || '（无）'}`)
-check('本阶段写类能力一律不可用（不伪造）', !snapshot.some((item) => item.enabled && (item.id === 'diary.create' || item.id === 'messageboard.write' || item.id === 'memory.write')))
+// Phase 6.5 P1 起：日记 / 留言板的能力已落地，所以它们**可用**；
+// 只有写记忆还没实施（Habitat 只读接入 Nocturne）。这条断言刻意写成两半，
+// 免得下次再有能力落地时，整条被当成「反正就是不可用」而漏掉。
+check(
+  '写记忆仍未实施（如实说不，不伪造）',
+  snapshot.every((item) => item.id !== 'memory.write' || !item.enabled),
+  `memory.write=${enabledIds.includes('memory.write') ? 'enabled' : 'disabled'}`,
+)
+check('日记与留言板能力已落地（P1）', (['diary.create', 'diary.read_own', 'messageboard.write'] as const).every((id) => enabledIds.includes(id)))
 check('只读能力在 mock 环境下可用', enabledIds.includes('memory.read') && enabledIds.includes('memory.search') && enabledIds.includes('tools.list'))
 
 console.log('\n[5] 建一个指向 mock 上游的临时方案')

@@ -406,6 +406,19 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
 **幂等**：已存在的 id 跳过并计入 `skipped`，**不覆盖** ——
 重复调不产生副本，也不会盖掉用户后来在服务端改过的内容。
 
+### `POST /api/diary/:id/request-access` —— 请求查看 AI 的日记
+
+北北想看某篇私密日记时用（SPEC §3.4.3）。
+
+⚠️ **它不会开放任何东西** —— 只在事件收件箱里挂一条待 AI 决策的请求（`decider='companion'`）。
+「点一下就能看到 AI 的私密日记」是绝对不能出现的语义，那等于权限模型不存在。
+真正的开放发生在 AI 调用 `diary_allow_access` 工具之后。
+
+- 201：新建（或复用）了请求，返回 `{ event }`
+- 404：这篇不存在，或者不是小栖写的
+- 400：这篇已经开放了（直接看就行）
+- **幂等**：同一篇已有待决请求时返回那一条，不重复挂（用户连点两下不该让 AI 收到两条）
+
 ### 留言板：`GET/POST /api/moments`、`DELETE /api/moments/:id`、`POST /api/moments/import`
 
 与日记的差别：**没有可见性过滤**（留言写出来就是给人看的），只有「谁能删」——
@@ -413,6 +426,41 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
 
 `GET /api/moments?limit=N` 供主屏 Widget 取最近 N 条 ——
 不然每次渲染主屏都要把全表拉过来再切片。`limit` 非正整数 → 400。
+
+## Phase 6.5 已实现（事件收件箱 · Event Inbox）
+
+⚠️ 路径是 **`/api/inbox`**，不是 `/api/events` —— 后者已被 Eventide 的**状态事件流水**占用
+（`GET /api/events`，见 Phase 3B 那节）。两者语义不同：那张是「发生过什么」，这张是「等你决定什么」。
+
+事件是**双向**的（谁发起 / 谁决定相反）：
+
+| 类型 | 谁发起 | 谁决定 | 决定后 |
+| --- | --- | --- | --- |
+| `tool_confirm` | AI 想写日记 / 留言 | **北北** | 真写入（允许）或什么都不做（拒绝） |
+| `diary_access_request` | 北北想看某篇私密日记 | **AI** | 该篇转 `open`（允许）或保持私密（拒绝） |
+
+### `GET /api/inbox?decider=&status=&limit=`
+
+`decider` ∈ `companion` / `user`，`status` ∈ `pending` / `approved` / `denied` / `failed`，
+两者都可省（省略即不筛这一维）。返回 `{ events: RuntimeEvent[] }`，按 `createdAt` 倒序。
+
+确认卡与 Life 页的「事件」tab 共用这一个端点。
+
+### `GET /api/inbox/:id`
+
+单条，用于确认卡挂载时读状态（**刷新之后卡片还得活着** —— 消息块里只存了 eventId）。
+不存在 → 404。
+
+### `POST /api/inbox/:id/decide` —— **用户侧**决策
+
+请求体 `{ decision: 'approve' | 'deny' }`，返回 `{ event }`。
+
+**只对 `decider='user'` 的事件有效**：拿 `companion` 的事件 id 来调会返回 400
+（「这条事件要小栖自己决定，你不能替它决定」）。
+AI 侧的事件**刻意没有 HTTP 决策入口** —— 它只能由 AI 通过 `diary_allow_access` /
+`diary_deny_access` 工具决定，而工具层硬编码了 `decider='companion'`。
+
+**决策只能做一次**：重复提交 → 400（否则确认卡点两下会写两篇日记）。
 
 ## Phase 1 已实现（切片五 · 诊断日志查询）
 

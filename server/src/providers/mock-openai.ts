@@ -101,12 +101,16 @@ async function handleStream(
 /* ---------------------------------------------------------------- 工具调用场景（Phase 6.5） */
 
 /**
- * 触发标记：`[[tool]]` 调清单里的第一个工具，`[[tool:名字]]` 指定工具。
+ * 触发标记：`[[tool]]` 调清单里的第一个工具，`[[tool:名字]]` 指定工具，
+ * `[[tool:名字 {"k":"v"}]]` 还能**带上参数**（Phase 6.5 P1 起）。
+ *
+ * 为什么要带参数：写类工具（写日记 / 写留言）全都要参数，而它们在 P1 之前不可调用 ——
+ * 不能带参数的 mock 等于「永远验不了写类工具」。参数是单层 JSON 对象，够用即可。
  *
  * 之所以要**显式标记**而不是「只要有 tools 就调」：Phase 6.5 起每轮聊天都会带上
  * tools 参数，若按后者实现，所有既有验收脚本（期望普通文本回复）都会被带偏。
  */
-const TOOL_MARKER = /\[\[tool(?::([A-Za-z_][A-Za-z0-9_]*))?\]\]/
+const TOOL_MARKER = /\[\[tool(?::([A-Za-z_][A-Za-z0-9_]*))?(?:\s+(\{[^}]*\}))?\]\]/
 
 interface ToolScenario {
   name: string
@@ -133,8 +137,21 @@ function toolScenario(body: Record<string, unknown>): ToolScenario | null {
   const fallback = typeof fn.name === 'string' ? fn.name : ''
   const name = match[1] ?? fallback
   if (name === '') return null
-  // 参数按工具名给：不认识的工具照样发一个空对象 —— 这样能覆盖「模型调了不存在的工具」那条路
-  return { name, args: name === 'memory_search' ? { query: '北北' } : {} }
+  // 参数优先取标记里显式给定的 JSON。解析不了就发空对象 —— 那也是一种要覆盖的路：
+  // 服务端拿到空参数会以 ok:false 回灌，模型据此知道该怎么改。
+  let args: Record<string, unknown> = {}
+  const rawArgs = match[2]
+  if (rawArgs !== undefined) {
+    try {
+      const parsed: unknown = JSON.parse(rawArgs)
+      if (isRecord(parsed)) args = parsed
+    } catch {
+      args = {}
+    }
+  } else if (name === 'memory_search') {
+    args = { query: '北北' }
+  }
+  return { name, args }
 }
 
 /**

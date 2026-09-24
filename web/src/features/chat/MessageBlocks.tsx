@@ -26,6 +26,7 @@ import type {
 } from '@shared/types'
 import { useState } from 'react'
 import { formatDuration } from '../../lib/format'
+import { EventConfirmCard } from './EventConfirmCard'
 
 /** 已知的块类型（与 `MessageBlock` 联合一一对应；用于拦下「新版本写进来的块」） */
 const KNOWN_KINDS: ReadonlySet<string> = new Set<MessageBlock['kind']>([
@@ -108,6 +109,11 @@ function FileBlockView({ payload }: { payload: FileBlock['payload'] }) {
 
 /** 工具结果是「细节可查的次要信息」：默认折叠，展开才给原文 */
 function ToolResultBlockView({ payload }: { payload: ToolResultBlock['payload'] }) {
+  // `confirm` 级工具的挂起（Phase 6.5 P1）：这不是「结果」，而是一件**等着北北点按钮**的事 ——
+  // 所以走确认卡，而不是折叠起来的结果条。折叠会把唯一需要行动的东西藏进一个要展开的框里。
+  if (payload.eventId !== undefined) {
+    return <EventConfirmCard eventId={payload.eventId} fallbackTitle={payload.summary ?? '小栖在等你确认一件事'} />
+  }
   let detail = ''
   if (payload.result !== undefined) {
     // 字符串已经是给用户读的文本（服务端裁剪过），直接显示 ——

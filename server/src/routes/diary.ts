@@ -12,12 +12,14 @@ import type { ContentAuthor, DiaryVisibility } from '@shared/types'
 import {
   createUserDiary,
   deleteUserDiary,
+  getCompanionDiaryView,
   getDiaryView,
   importDiaryIfAbsent,
   listDiaryViews,
   updateUserDiary,
 } from '../db/diary.js'
 import { RequestError } from '../lib/errors.js'
+import { requestDiaryAccess } from '../services/event-inbox.js'
 
 const TITLE_MAX = 120
 const CONTENT_MAX = 10_000
@@ -127,5 +129,27 @@ export function registerDiaryRoutes(app: FastifyInstance): void {
       if (importDiaryIfAbsent(importItem(entry))) imported += 1
     }
     return { imported, skipped: raw.length - imported }
+  })
+
+  /**
+   * 北北请求查看某篇 AI 日记（SPEC §3.4.3，Phase 6.5 P1）。
+   *
+   * ⚠️ 这个端点**不会**开放任何东西 —— 它只在事件收件箱里挂一条待 AI 决策的请求。
+   * 「点一下就能看到 AI 的私密日记」是绝对不能出现的语义：那等于权限模型不存在。
+   * 真正的开放发生在 AI 调用 `diary_allow_access` 之后。
+   *
+   * 幂等：同一篇日记已有待决请求时返回那一条，不重复挂（用户连点两下不该让 AI 收到两条）。
+   */
+  app.post<{ Params: { id: string } }>('/api/diary/:id/request-access', async (request, reply) => {
+    // 先分辨「不存在」与「已开放」：前者 404（对调用方就是没有这篇），后者是 400（状态不允许）
+    const target = getCompanionDiaryView(request.params.id)
+    if (target === null) throw new RequestError(ErrorCodes.NotFound, '这篇日记不存在，或者不是小栖写的')
+    if (target.visibility === 'open') {
+      throw new RequestError(ErrorCodes.BadRequest, '这篇日记已经开放了，直接看就行')
+    }
+    const result = requestDiaryAccess(request.params.id)
+    if (!result.ok) throw new RequestError(ErrorCodes.BadRequest, result.error)
+    reply.code(201)
+    return { event: result.event }
   })
 }

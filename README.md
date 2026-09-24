@@ -82,13 +82,16 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npm run probe:phase3b` | Eventide + mock OpenAI + 使用隔离 DB 的 server | Phase 3B 全链：结算 / 事件 / 梦境 / BudgetGuard / 唤醒 / 独处 / 通知 / 钱包（21 项） |
 | `npm run probe:phase4` | mock OpenAI + 使用隔离 DB 的 server | Phase 4 全链：月历 / 补价 / 历史价格 / 钱包 / 通知 / 运行 / Push 降级（16 项） |
 | `npm run probe:phase5` | mock OpenAI + 使用隔离 DB 的 server | Phase 5 媒体 / 工具 API：ASR、视觉描述、图片生成、TTS 音频流、上传大小与 MIME 拒绝、无 MCP 空态与非法工具调用（8 项） |
-| `npm run probe:ai-runtime` | mock MCP + mock OpenAI + 使用隔离 DB 的 server | **Phase 6.5 AI 运行时**：能力快照 / 工具绑定白名单 / **工具调用闭环（成功与失败）** / `tool_calls` 协议回传 / `tools_list` 自我认知 / 状态摘要可读 / 不出现 `[object Object]`（49 项） |
+| `npm run probe:ai-runtime` | mock MCP + mock OpenAI + 使用隔离 DB 的 server | **Phase 6.5 AI 运行时**：能力快照 / 工具绑定白名单 / **工具调用闭环（成功与失败）** / `tool_calls` 协议回传 / `tools_list` 自我认知 / 状态摘要可读 / 不出现 `[object Object]`（50 项） |
 | `npm run probe:diary` | 使用隔离 DB 的 server | **Phase 6.5 共同生活数据**：日记 / 留言板的**权限边界** —— 私密日记不下发正文、改删 AI 内容返回 404、拒绝 ≠ 删除、迁移入口幂等、排序与输入校验（40 项） |
+| `npm run probe:event-inbox` | mock MCP + mock OpenAI + 使用隔离 DB 的 server | **Phase 6.5 事件收件箱 / 日记权限 / 日记·留言板工具**：confirm 工具**挂起不执行**、决策只能做一次、**用户不能替 AI 决定**、参数不合法不挂卡、结果只注入一次（66 项）。一键：`bash .workbuddy/run-p1-verify.sh` |
 
 > `probe-ai-runtime.ts` 的前两节**不需要服务**（分片累加器、状态可读化、绑定白名单是纯逻辑），
 > 后面才打 HTTP —— 所以哪怕 server 没起，也能先看纯逻辑那部分过不过。
-> 它的 mock 上游场景由消息里的 `[[tool]]` / `[[tool:名字]]` 触发，**不写标记就是普通聊天**，
-> 所以既有脚本不受影响。
+> 它的 mock 上游场景由消息里的 `[[tool]]` / `[[tool:名字]]` / `[[tool:名字 {"k":"v"}]]` 触发，
+> **不写标记就是普通聊天**，所以既有脚本不受影响。
+> 带参数那种形式是 Phase 6.5 P1 加的 —— 写类工具（写日记 / 留言）的参数是必需的，
+> 不能带参数就等于永远验不了它们。
 
 > `probe-nocturne-live.ts` 读 `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`（也可写进 `server/.env`），
 > 默认**不打印**记忆正文（那是本人记忆），要看加 `NOCTURNE_PROBE_PREVIEW=1`。

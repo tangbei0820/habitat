@@ -18,6 +18,7 @@ import { registerCapabilityRoutes } from './routes/capabilities.js'
 import { registerChatRoutes } from './routes/chat.js'
 import { registerDiagnosticRoutes } from './routes/diagnostics.js'
 import { registerDiaryRoutes } from './routes/diary.js'
+import { registerInboxRoutes } from './routes/inbox.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerProviderRoutes } from './routes/providers.js'
 import { registerMemoryRoutes } from './routes/memory.js'
@@ -90,6 +91,9 @@ registerCapabilityRoutes(app, capabilityService)
 // 共同生活数据（Phase 6.5 起服务端权威）：AI 也在服务端跑，日记 / 留言板放这里才谈得上共用一份数据
 registerDiaryRoutes(app)
 registerMomentRoutes(app)
+// 事件收件箱（Phase 6.5 P1）：AI 想写东西要北北确认、北北想看日记要 AI 决定 —— 两件事的载体。
+// ⚠️ 挂在 /api/inbox 而不是 /api/events —— 后者是 Eventide 的状态事件流水（automation.ts）
+registerInboxRoutes(app)
 
 // LLM 方案：**服务端 SQLite 是权威源**（见 db/profiles.ts）。
 // 环境变量 HABITAT_LLM_PROFILES 仅作**首次种子**：从未导入过时一次性导入，之后改 .env 不再生效

@@ -370,7 +370,45 @@ Life 月历与账本是查询模型，不复制事实表：月历按 `event_log.
 而 upgrade 只跑一次。）
 
 ⚠️ **迁移上来的旧日记一律标 `author='user'`**，所以北北已写好的日记不会因迁移变成只读。
-AI 的日记只能由 AI 侧写入（Phase 6.5 P1 的工具层），用户接口**不接受 `author` 入参**（SPEC §3.4.2）。
+AI 的日记只能由 AI 侧写入（P1 的工具层，`db/diary.ts` 的 `createCompanionDiary`），
+用户接口**不接受 `author` 入参**（SPEC §3.4.2）。
 
-**待补（本轮范围外）**：日记的「查看请求」实体（`diary_access_request`）与 AI 的允许 / 拒绝决策，
-属 Phase 6.5 P1 的事件收件箱；`Diary` 的数据层与权限字段已就位，缺的是流转。
+---
+
+## 12. Phase 6.5 事件收件箱（服务端 SQLite，T-037）
+
+一张表承载**两个方向的待决**：
+
+| 事件类型 | 谁发起 | **谁决定** | 决定后发生什么 |
+| --- | --- | --- | --- |
+| `tool_confirm` | AI 想写日记 / 留言 | **北北**（`decider='user'`） | 真写入（允许）或什么都不做（拒绝） |
+| `diary_access_request` | 北北想看某篇私密日记 | **AI**（`decider='companion'`） | 该篇转 `open`（允许）或保持私密（拒绝） |
+
+| 表 | 字段 | 关键不变量 |
+|---|---|---|
+| `runtime_event` | `id` / `kind` / `decider` / `status` / `title` / `detail` / `payload_json` / `result` / `result_delivered_at` / `capability_id` / `target_id` / `created_at` / `decided_at` | `decider` **就是权限位**；`pending` 之外一律终态 |
+
+字段约定：
+
+- `decider`：`'user' | 'companion'`。它说清了**这条在等谁** —— 注入模型上下文只取 `companion` 的待决，
+  前端确认卡只认 `user` 的。两边都拿不到对方的。
+- `status`：`pending` / `approved`（批准**且执行成功**）/ `denied`（被拒，无副作用）/ `failed`（批准了但没做成）。
+  **`denied` 与 `failed` 必须分开**：前者是决定，后者是故障。给用户看的文案完全不同，
+  混在一起会让人以为是自己点错了。
+- `payload_json`：执行器要用的数据（工具名 + 参数 / 日记 id）。**刻意不进对外的 `RuntimeEvent` 形状** ——
+  那个形状会直接序列化下发前端，把执行载荷放进去等于让它跟着接口一起露出去。
+- `target_id`：指向的业务对象（日记 id）。存在的理由很实际：日记页要能显示「这一篇你已经请求过了」，
+  而前端拿不到 `payload`，只能靠这个字段自己匹配（否则用户只能靠「点了没反应」判断，那是最差的反馈）。
+- `result_delivered_at`：已决结果是否已注入过模型。**只注入一次** —— 重复说「北北已经允许你写日记了」
+  既费 token，又会让它以为要再写一篇。
+
+**为什么不用 `notification` 表**（Phase 4 已在用）：那张是**单向广播**（AI 主动唤醒你，只读、只能标已读），
+这张是**双向待决**（有状态、有决策、有执行结果）。合并之后「已读」与「已决定」会变成同一个字段，
+而它们根本不是一回事。
+
+**接口为什么不叫 `/api/events`**：那个路径已经是 Eventide 的**状态事件流水**（`event_log`）。
+两者语义不同 —— 那张是「发生过什么」，这张是「等你决定什么」。所以用 `/api/inbox`。
+
+**决策只能做一次**：`settleEvent()` 带 `status='pending'` 条件更新，已决的返回 `null` 并让调用方报错。
+这不是顺手加的校验 —— 确认卡点两下就会写两篇日记。同一条纪律的另一个面是
+「**拒绝不等于删掉**」：拒绝只改事件状态，绝不动日记本身。

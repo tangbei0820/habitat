@@ -52,6 +52,28 @@ export function deleteUserMoment(id: string): boolean {
   return true
 }
 
+/**
+ * AI 留言（Phase 6.5 P1）。
+ *
+ * `author` 固定 `companion`，**不接受入参** —— 与 `createUserMoment` 对称：
+ * 每条留言的作者由它的入口决定，不由调用方声明。让调用方传，就等于把
+ * 「用户产不出 AI 留言、AI 产不出用户留言」这条交给每个调用方自觉。
+ *
+ * 留言板没有可见性过滤，所以这里不需要第二个「AI 视角」出口。
+ */
+export function createCompanionMoment(content: string): Moment {
+  const at = Date.now()
+  const row: MomentRow = {
+    id: `moment-${randomUUID()}`,
+    content,
+    author: 'companion',
+    createdAt: at,
+    updatedAt: at,
+  }
+  db.insert(moment).values(row).run()
+  return toMoment(row)
+}
+
 /** 搬迁专用，语义同 `importDiaryIfAbsent`：已存在则跳过，不覆盖。 */
 export function importMomentIfAbsent(row: MomentRow): boolean {
   const existing = db.select({ id: moment.id }).from(moment).where(eq(moment.id, row.id)).get()

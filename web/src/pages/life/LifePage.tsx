@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import type { LifeLedgerView, LifeMonthSummary, LifeRuntimeView, NotificationRecord, PushStatus } from '@shared/types'
+import type { LifeLedgerView, LifeMonthSummary, LifeRuntimeView, NotificationRecord, PushStatus, RuntimeEvent } from '@shared/types'
+import { listEvents } from '../../db/events'
+import { EventConfirmCard } from '../../features/chat/EventConfirmCard'
 import {
   addPriceSnapshot, addWalletTransaction, loadLifeDay, loadLifeLedger, loadLifeMonth,
   loadLifeRuntime, loadNotifications, loadPushStatus, markAllNotificationsRead,
@@ -9,10 +11,10 @@ import {
 import { browserPushSupported, currentPushSubscription, disablePush, enablePush } from '../../features/life/push'
 import { useOnlineStatus } from '../../features/offline/useOnlineStatus'
 
-type LifeTab = 'calendar' | 'ledger' | 'notifications' | 'runtime'
+type LifeTab = 'calendar' | 'ledger' | 'notifications' | 'events' | 'runtime'
 const TABS: Array<{ id: LifeTab; label: string }> = [
   { id: 'calendar', label: '月历' }, { id: 'ledger', label: '账本' },
-  { id: 'notifications', label: '通知' }, { id: 'runtime', label: '运行' },
+  { id: 'notifications', label: '通知' }, { id: 'events', label: '事件' }, { id: 'runtime', label: '运行' },
 ]
 
 function initialMonth(): string {
@@ -103,6 +105,33 @@ function NotificationsView() {
   return <div className="space-y-3"><ErrorLine value={error}/><Panel><div className="flex items-center justify-between"><div><h2 className="font-medium">Web Push</h2><p className="text-xs" style={{ color: 'var(--color-text-dim)' }}>{!browserPushSupported() ? '当前浏览器不支持' : !push?.configured ? '服务端尚未配置 VAPID，站内通知仍可用' : subscribed ? '已启用' : '可选启用'}</p>{push?.lastError && <p className="mt-1 text-xs" style={{ color: 'var(--color-danger)' }}>最近失败：{push.lastError}</p>}</div><button disabled={!browserPushSupported() || !push?.configured} onClick={() => void togglePush()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">{subscribed ? '关闭' : '启用'}</button></div></Panel><div className="flex items-center justify-between"><span className="text-sm">未读 {items?.filter((item) => item.readAt === null).length ?? 0}</span><button className="text-sm underline" onClick={() => void markAllNotificationsRead().then(refresh).catch(report)}>全部已读</button></div><LoadingOrEmpty loading={items === null && error === null} empty={items?.length === 0}>{items?.map((item) => <button key={item.id} className="block w-full text-left" onClick={() => item.readAt === null && void markNotificationRead(item.id).then(refresh).catch(report)}><Panel className={item.readAt === null ? 'border-l-4' : 'opacity-70'}><div className="flex justify-between gap-3"><strong>{item.title}</strong><small>{dateTime(item.createdAt)}</small></div><p className="mt-1 whitespace-pre-wrap text-sm">{item.body}</p></Panel></button>)}</LoadingOrEmpty></div>
 }
 
+/**
+ * 事件收件箱（Phase 6.5 P1）。
+ *
+ * 与「通知」tab 的区别值得说清：通知是 AI 主动跟你说的话（单向、只读、读过就完了）；
+ * 事件是**一件等着被决定的事**（双向、有状态、决定之后会真的执行）。
+ * 所以这里对「等北北确认」的条目直接渲染确认卡 —— 那件事需要动手，不是一个可读可不读的提醒。
+ */
+function eventStatusLabel(event: RuntimeEvent): string {
+  if (event.status === 'pending') return event.decider === 'user' ? '等你确认' : '等小栖决定'
+  if (event.status === 'approved') return '已完成'
+  if (event.status === 'denied') return '已拒绝'
+  return '执行失败'
+}
+
+function EventsView() {
+  const [items, setItems] = useState<RuntimeEvent[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const refresh = useCallback(() => listEvents().then(setItems), [])
+  useEffect(() => { void refresh().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))) }, [refresh])
+  const waitingForMe = (items ?? []).filter((item) => item.decider === 'user' && item.status === 'pending')
+  const rest = (items ?? []).filter((item) => !(item.decider === 'user' && item.status === 'pending'))
+  return <div className="space-y-3"><ErrorLine value={error}/><LoadingOrEmpty loading={items === null && error === null} empty={items?.length === 0}>
+    <>{waitingForMe.length > 0 && <><h2 className="text-sm font-semibold">等着你点头（{waitingForMe.length}）</h2>{waitingForMe.map((item) => <EventConfirmCard key={item.id} eventId={item.id} fallbackTitle={item.title} onDecided={() => void refresh().catch(() => undefined)}/>)}</>}
+    {rest.length > 0 && <><h2 className="text-sm font-semibold">其它事件</h2>{rest.map((item) => <Panel key={item.id}><div className="flex justify-between gap-3"><strong>{item.title}</strong><small>{dateTime(item.createdAt)}</small></div>{item.detail !== '' && <p className="mt-1 whitespace-pre-wrap text-sm" style={{ color: 'var(--color-text-dim)' }}>{item.detail}</p>}<p className="mt-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>{eventStatusLabel(item)}{item.result !== null ? ` · ${item.result}` : ''}</p></Panel>)}</>}</>
+  </LoadingOrEmpty></div>
+}
+
 function statusLabel(ok: boolean, configured = true): string { return !configured ? '未配置' : ok ? '正常' : '异常' }
 function RuntimeView() {
   const online = useOnlineStatus()
@@ -119,5 +148,5 @@ export function LifePage() {
   const [params, setParams] = useSearchParams(); const requested = params.get('tab')
   const tab: LifeTab = TABS.some((item) => item.id === requested) ? requested as LifeTab : 'calendar'
   const [month, setMonth] = useState(initialMonth())
-  return <div className="px-4 py-6"><h1 className="mb-4 text-lg font-semibold">生活</h1><div className="mb-4 grid grid-cols-4 rounded-xl p-1" style={{ background: 'var(--color-surface-alt)' }}>{TABS.map((item) => <button key={item.id} onClick={() => setParams(item.id === 'calendar' ? {} : { tab: item.id })} className="rounded-lg px-2 py-2 text-sm" style={tab === item.id ? { background: 'var(--color-surface)', color: 'var(--color-text)' } : { color: 'var(--color-text-dim)' }}>{item.label}</button>)}</div>{tab === 'calendar' && <CalendarView month={month} setMonth={setMonth}/>} {tab === 'ledger' && <LedgerView month={month}/>} {tab === 'notifications' && <NotificationsView/>} {tab === 'runtime' && <RuntimeView/>}</div>
+  return <div className="px-4 py-6"><h1 className="mb-4 text-lg font-semibold">生活</h1><div className="mb-4 grid grid-cols-5 rounded-xl p-1" style={{ background: 'var(--color-surface-alt)' }}>{TABS.map((item) => <button key={item.id} onClick={() => setParams(item.id === 'calendar' ? {} : { tab: item.id })} className="rounded-lg px-2 py-2 text-sm" style={tab === item.id ? { background: 'var(--color-surface)', color: 'var(--color-text)' } : { color: 'var(--color-text-dim)' }}>{item.label}</button>)}</div>{tab === 'calendar' && <CalendarView month={month} setMonth={setMonth}/>} {tab === 'ledger' && <LedgerView month={month}/>} {tab === 'notifications' && <NotificationsView/>} {tab === 'events' && <EventsView/>} {tab === 'runtime' && <RuntimeView/>}</div>
 }

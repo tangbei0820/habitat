@@ -107,6 +107,15 @@ export interface ToolResultBlock {
     result?: unknown
     source?: string
     label?: string
+    /**
+     * 待确认事件的 id（Phase 6.5 P1，仅 `confirm` 级工具会有）。
+     *
+     * 有这个字段就说明**这次调用没有真的执行** —— 服务端把它挂成了一条待北北确认的事件，
+     * 卡片要据此渲染「允许 / 拒绝」按钮，而不是显示「已完成」。
+     * ⚠️ 不要用 `ok` 判断是否需要确认：挂起是**成功**的调用（`ok: true`），
+     * 只是结果还没发生。把「挂起」混进 `ok` 里会让模型以为它失败了，从而重试。
+     */
+    eventId?: string
   }
   order: number
 }
@@ -275,6 +284,73 @@ export interface DiaryView {
   readable: boolean
   /** 当前用户能否编辑 / 删除（只有 `author='user'` 的日记可以） */
   editable: boolean
+}
+
+/* ---------- Event Inbox · 事件收件箱（Phase 6.5 P1，服务端权威） ---------- */
+
+/**
+ * 事件类型。**两种事件的决策方相反**，这正是收件箱是「双向」的原因：
+ *
+ * - `tool_confirm` —— AI 想写日记 / 留言，**等北北点确认**（决策方 = user）
+ * - `diary_access_request` —— 北北想看某篇私密日记，**等 AI 决定放不放**（决策方 = companion）
+ *
+ * 把两者放进同一张表而不是各建一套，是因为它们的生命周期完全一样
+ * （创建 → 待决 → 决策 → 执行 → 结果回灌），只有「谁来点这个按钮」不同。
+ */
+export type RuntimeEventKind = 'tool_confirm' | 'diary_access_request'
+
+/** 决策方：谁有权对这一条做出决定。 */
+export type RuntimeEventDecider = 'companion' | 'user'
+
+/**
+ * 事件状态。
+ *
+ * `pending` 之外一律是**终态**：决策只能做一次，重复决策返回错误而不是静默覆盖
+ * （否则卡片点两下就会写两篇日记）。
+ */
+export type RuntimeEventStatus =
+  | 'pending'
+  /** 已批准且**真的执行成功** */
+  | 'approved'
+  /** 被决策方拒绝（不执行任何副作用） */
+  | 'denied'
+  /** 批准了，但执行时失败（例如正文超长）—— 与 `denied` 分开，因为原因完全不同 */
+  | 'failed'
+
+/**
+ * 事件收件箱里的一条。
+ *
+ * ⚠️ `title` / `detail` 是**给人看的**；执行载荷（工具名 + 参数、或日记 id）刻意不在这里 ——
+ * 本形状会直接下发前端，把执行载荷放进来等于让它跟着接口露出去。
+ */
+export interface RuntimeEvent {
+  id: string
+  kind: RuntimeEventKind
+  decider: RuntimeEventDecider
+  status: RuntimeEventStatus
+  /** 一句话（卡片标题 / 收件箱列表行） */
+  title: string
+  /** 展开详情，服务端已裁剪 */
+  detail: string
+  createdAt: number
+  decidedAt: number | null
+  /** 执行结果（给模型读的一段话）；未执行时为 `null` */
+  result: string | null
+  /**
+   * 结果是否已注入过模型上下文。
+   * 已决事件**只告诉模型一次** —— 每轮重复「北北已经允许你写日记了」既费 token 又会让它重复动作。
+   */
+  resultDelivered: boolean
+  /** 涉及的能力 id（如 `diary.create`），前端据此显示图标/分组 */
+  capabilityId: string | null
+  /**
+   * 这条事件**指向哪个业务对象**（日记 id / 留言 id；指向不明确时为 `null`）。
+   *
+   * 存在的理由很实际：日记页要能显示「这一篇你已经请求过了」。
+   * 而执行载荷（`payload`）刻意不下发，前端就得靠这个字段自己匹配 ——
+   * 没有它，用户只能靠「点了没反应」来判断，那是最差的一种反馈。
+   */
+  targetId: string | null
 }
 
 /**

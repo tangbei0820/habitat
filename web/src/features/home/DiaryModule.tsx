@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { DiaryView } from '@shared/types'
+import { listEvents, requestDiaryAccess } from '../../db/events'
 import { createDiary, deleteDiary, listDiaries, updateDiary } from '../../db/home'
 
 function todayKey(): string {
@@ -18,8 +19,9 @@ function todayKey(): string {
  * 所以「编辑 / 删除」按 `item.editable` 显示，而不是「这一页的日记都能改」——
  * 后者会把 AI 的私密日记当成用户的普通内容（SPEC §6.2 明确区分这两者）。
  *
- * ⚠️ 「请求查看」的交互属于 Phase 6.5 P1 的权限流转（事件收件箱），本版还没接；
- * 现在只把权限状态如实显示出来，不做一个点了没反应的按钮。
+ * 「请求查看」（Phase 6.5 P1）：点了只**挂一条待小栖决定的请求**，不直接解锁。
+ * 所以按钮之后的状态是「已请求，等小栖回话」而不是「已解锁」—— 界面上不能替它回答。
+ * 已经请求过的那几篇，靠事件里的 `targetId` 认出来（见 RuntimeEvent 注释）。
  */
 export function DiaryModule() {
   const [items, setItems] = useState<DiaryView[]>([])
@@ -28,11 +30,18 @@ export function DiaryModule() {
   const [entryDate, setEntryDate] = useState(todayKey)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [requestedIds, setRequestedIds] = useState<ReadonlySet<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   async function refresh(): Promise<void> {
-    setItems(await listDiaries())
+    // 日记与「待小栖决定的请求」一起拉：少了后者，用户点完按钮看不出任何变化
+    const [diaries, pending] = await Promise.all([
+      listDiaries(),
+      listEvents({ decider: 'companion', status: 'pending' }),
+    ])
+    setItems(diaries)
+    setRequestedIds(new Set(pending.map((item) => item.targetId).filter((id): id is string => id !== null)))
   }
 
   useEffect(() => {
@@ -87,6 +96,22 @@ export function DiaryModule() {
     }
   }
 
+  /**
+   * 请求查看某篇小栖的日记。
+   *
+   * ⚠️ 成功之后**只是刷新列表**，不要写「已解锁」之类的反馈 ——
+   * 这个动作只挂了一条待它决定的请求（服务端返回的就是一条 `pending` 事件）。
+   */
+  async function askToRead(id: string): Promise<void> {
+    try {
+      await requestDiaryAccess(id)
+      setError(null)
+      await refresh()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return (
     <div className="space-y-4">
       <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
@@ -123,9 +148,28 @@ export function DiaryModule() {
               {item.readable ? (
                 <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.content}</p>
               ) : (
-                <p className="mt-2 text-sm" style={{ color: 'var(--color-text-dim)' }}>
-                  {item.visibility === 'locked' ? '这一篇被小栖锁着。' : '小栖还没决定要不要把这一篇给你看。'}
-                </p>
+                <div className="mt-2 space-y-2">
+                  <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>
+                    {item.visibility === 'locked' ? '这一篇被小栖锁着。' : '小栖还没决定要不要把这一篇给你看。'}
+                  </p>
+                  {/* 只有小栖写的日记才谈得上「请求查看」—— 请求一篇自己的日记是没有意义的 */}
+                  {item.author === 'companion' &&
+                    (requestedIds.has(item.id) ? (
+                      <p className="text-xs" style={{ color: 'var(--color-text-dim)' }} data-testid="diary-access-pending">
+                        已经问过小栖了，等它回话。
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="diary-request-access"
+                        onClick={() => void askToRead(item.id)}
+                        className="rounded-full border px-3 py-1.5 text-xs"
+                        style={{ borderColor: 'var(--color-border)' }}
+                      >
+                        请求查看
+                      </button>
+                    ))}
+                </div>
               )}
               {item.editable && (
                 <div className="mt-3 flex justify-end gap-3 text-xs">

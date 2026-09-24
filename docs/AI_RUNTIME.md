@@ -1,7 +1,8 @@
 # AI_RUNTIME · AI 运行时（能力 / 上下文 / 工具）
 
-> 状态：**Phase 6.5 · P0 已落地**（能力注册 / 运行时上下文 / 工具绑定 / 工具认知闭环）。
-> P1（Event Inbox、日记权限、留言板 Tool）与 P2（LLM 页面 App Launcher、头像开关）尚未开始。
+> 状态：**Phase 6.5 · P1 已落地**（Event Inbox / 日记权限流转 / 日记·留言板 Tool + **挂起式确认卡**）。
+> P0（能力注册 / 运行时上下文 / 工具绑定 / 工具认知闭环）此前已完成；
+> P2（LLM 页面 App Launcher、头像开关）尚未开始。
 >
 > 这份文档回答一个问题：**AI 凭什么知道自己会什么、又凭什么真的做到。**
 > 它存在的理由就是本 Phase 要修的那个现象 —— 工具明明执行成功，模型下一轮却说
@@ -47,10 +48,14 @@
 
 | 级别 | 含义 | 本阶段实况 |
 | --- | --- | --- |
-| `autonomous` | AI 可自主调用，无需用户在旁 | 只读三能力 + `tools.list` |
-| `confirm` | 须先过用户确认卡 | **已声明，但一律不绑**（协议未落地） |
-| `user-only` | 仅用户可发起 | 保留语义 |
-| `unavailable` | 依赖未就绪 / 阶段未实施 | 写类能力当前全在这个状态 |
+| `autonomous` | AI 可自主调用，无需用户在旁 | 记忆读 / 记忆搜 / 状态读 / 日记的读与列 / 允许·拒绝查看 / `tools.list` |
+| `confirm` | 须先过用户确认卡 | **已绑给模型**（P1）：调用不会执行，而是**挂起**成一条待确认事件 |
+| `user-only` | 仅用户可发起 | 保留语义；**不绑** —— 连「怎么调」都不让模型知道 |
+| `unavailable` | 依赖未就绪 / 阶段未实施 | `memory.write`（实例的写工具未接入） |
+
+> ⚠️ P0 时 `confirm` 一律不绑（那时协议没落地，放给模型等于没闸门）。
+> **P1 起要绑** —— 不绑模型就永远不知道「我可以请求写日记」，它会以为这件事根本做不到。
+> 闸门从「不给它知道」移到了**执行层**：见 §4.5。
 
 ### 2.2 当前能力表
 
@@ -60,10 +65,18 @@
 | `memory.search` | memory | autonomous | `memory_search` | 可用（需 Nocturne ready） |
 | `memory.write` | memory | confirm | — | 未实施（本阶段只读接入） |
 | `state.read` | state | autonomous | `state_read` | 可用（需 Eventide） |
-| `diary.create/update/list_own/read_own` | diary | — | — | P1 |
-| `diary.allow_access/deny_access` | diary | — | — | P1 |
-| `messageboard.write` | board | confirm | — | P1 |
+| `diary.create` | diary | confirm | `diary_create` | 可用 · **挂起待确认** |
+| `diary.update` | diary | confirm | `diary_update` | 可用 · **挂起待确认** |
+| `diary.list_own` | diary | autonomous | `diary_list_own` | 可用 |
+| `diary.read_own` | diary | autonomous | `diary_read_own` | 可用 |
+| `diary.allow_access` | diary | autonomous | `diary_allow_access` | 可用（AI 自己决定放不放） |
+| `diary.deny_access` | diary | autonomous | `diary_deny_access` | 可用 |
+| `messageboard.write` | board | confirm | `messageboard_write` | 可用 · **挂起待确认** |
 | `tools.list` | tools | autonomous | `tools_list` | 可用 |
+
+> 日记 / 留言板的能力**没有外部依赖**（权威存储就是本机 SQLite，见 `DATA_MODEL.md` §11），
+> 所以它们只受「阶段是否实施」约束 —— 这也是 `registry.ts` 里 `NOT_IMPLEMENTED_YET`
+> 从八条缩到一条的原因。
 
 ### 2.3 工具名为什么不等于 MCP 工具名
 
@@ -82,6 +95,7 @@ AI 那边**零感知**。这条在 T-031（工具面 0/5 命中）之后才变�
 [runtime_rules]                  ← 恒定：规则三条
 [runtime_capabilities]           ← 由 Registry 生成（**不许写死**）
 [nocturne_memory]                ← 仅会话开头注入一次
+[runtime_events]                 ← 待 AI 决策的请求 + 上次请求的结果（仅 P1 起，有事才注入）
 [eventide_state]                 ← 每轮
 [对话历史]
 ```
@@ -133,6 +147,68 @@ POST /api/chat
 `MAX_TOOL_ROUNDS = 3`。模型可能陷入「调工具 → 看结果 → 再调同样的工具」的打转，
 每一轮都是真金白银。到顶后停止续跑并 warn —— 已有内容照常返回，只是不再给它机会。
 
+### 4.5 确认卡：**挂起，而不是暂停流**
+
+`confirm` 级工具（见 §2.1）要用户点头才能执行。实现它有一条**不能选的路**：
+在流里停下来等用户点按钮。
+
+不能选的理由是硬的：
+- SSE 是**单向**的，服务端没有回传通道，等不到那个点击；
+- 就算挂得住，用户刷新一下、关掉页面，这次生成就废了；
+- 服务端**不存聊天记录**（§6.2），没有「上次挂到哪」可以恢复。
+
+所以走的是**挂起式**，把「决定」与「执行」拆成两次独立请求：
+
+```
+模型调 diary_create
+  → 服务端**不执行**，只建一条待确认事件（decider = user）
+  → 回灌给模型：「已提请北北确认 …… 这次调用还没有执行」
+  → 同时发 tool-call 帧（带 eventId）→ 前端渲染确认卡按钮
+用户点「允许」
+  → POST /api/inbox/:id/decide → 服务端**这时才写日记** → 事件转 approved
+  → 卡片自己刷新成「你已允许」
+下一轮对话
+  → 结果经 [runtime_events] 段注入模型：「北北已确认，日记《…》已写入」
+```
+
+三个容易做错的地方：
+
+1. **回灌文本必须明确说「还没执行」**。含糊其辞，模型下一轮就会宣称「我已经写好了」——
+   而北北还没点。那正是本 Phase 要修的「说的和事实不符」。
+2. **挂起算 `ok: true`**。它不是失败。回灌成失败，模型会以为要重试 ——
+   于是北北收到一串一模一样的确认卡。
+3. **参数不合法时不挂事件**，当场以 `ok: false` 回灌。挂一张注定失败的卡，
+   只是让用户白点一次；模型自己改一个字就能过。
+
+### 4.6 事件段（`context/event-context.ts`）
+
+确认卡是异步的，模型发起之后那一轮就结束了。**得有渠道把结果带回来**，
+否则它会顺着往下编（「我写的日记你看到了吗」）—— 它不是撒谎，是真的不知道。
+
+两种段、两种送达策略：
+
+| 段 | 内容 | 注入频率 |
+| --- | --- | --- |
+| `# 等待你决定的事` | `decider='companion'` 且 `pending` 的事件 | **每轮**（本来就是还没做的事，重复提醒是对的） |
+| `# 你之前那些请求的结果` | 已决、且结果尚未送达的事件 | **只一次**，之后标记 `resultDeliveredAt` |
+
+⚠️ 那个标记**不在组装上下文时打**，而是由 `routes/chat.ts` 在响应头真的发出之后调
+`markResultsDelivered()`。在组装时打会漏掉一种情况：上游密钥没配 / 不可达时，
+组装早就跑完了、标记也打了，但本轮根本没发出去 —— 模型永远失去那条信息。
+
+### 4.7 两个决策方向（Event Inbox 是双向的）
+
+| 事件类型 | 谁发起 | **谁决定** | 决定后发生什么 |
+| --- | --- | --- | --- |
+| `tool_confirm` | AI 想写日记 / 留言 | **北北**（`decider='user'`） | 真写入（允许）或什么都不做（拒绝） |
+| `diary_access_request` | 北北想看某篇私密日记 | **AI**（`decider='companion'`） | 该篇转 `open`（允许）或保持私密（拒绝） |
+
+两个方向**都有权限检查，且方向相反**：
+- 北北不能替 AI 决定放不放日记（那等于自己给自己开门）——HTTP 端点会拒绝 `decider` 不匹配的请求；
+- AI 不能替北北确认「北北同意写这篇日记」——工具层硬编码 `decider='companion'`，模型传不进来。
+
+这条是 P1 最该守住的东西（`probe-event-inbox.ts` 里专门有一条断言盯着它）。
+
 ---
 
 ## 5. 状态可读化（`shared/state-summary.ts`）
@@ -157,7 +233,17 @@ cd server && npx tsx scripts/probe-ai-runtime.ts
 
 # 上下文注入顺序（需 mock 上游 + server；加 EVENTIDE_URL 可验注入态）
 cd server && EXPECT_EVENTIDE=injected npx tsx scripts/probe-chat-context.ts
+
+# P1：事件收件箱 / 日记权限流转 / 日记·留言板工具（一键：bash .workbuddy/run-p1-probe.sh）
+cd server && npx tsx scripts/probe-event-inbox.ts
 ```
+
+`probe-event-inbox.ts` 盯的是**三条不能破的边界**，而不是接口通不通：
+挂起时日记**还没被写** · 决策**只能做一次** · 北北**不能替 AI 决定**放不放日记。
+另加一条链路证明：模型真能从聊天流里调通这些工具（光有工具定义不算）。
+
+⚠️ mock 上游的工具触发支持带参数：`[[tool:diary_create {"title":"…","content":"…"}]]`。
+没有它写类工具永远验不了 —— 它们的参数是必需的。
 
 `probe-ai-runtime.ts` 覆盖：分片累加器边界 / 状态可读化不出现 `[object Object]` / 工具绑定只收真可用的 /
 能力快照不许静默 / 工具调用闭环（成功与失败两条路） / 上游报文里 `tool_calls` 确实回传 /
@@ -167,9 +253,11 @@ cd server && EXPECT_EVENTIDE=injected npx tsx scripts/probe-chat-context.ts
 
 ---
 
-## 7. 待办（不在 P0 范围，已记 TASKS）
+## 7. 待办（不在 P0/P1 范围，已记 TASKS）
 
 - `FIELD_LABELS` 词典**未与真实 Eventide 的键集核对过**（键名不符时自动回退原键名，不会显示错值）
 - 工具卡片与助手气泡的时间顺序（见 `DATA_MODEL.md` §3.2 末）
-- 确认卡（`confirm` 级别）与逐次授权协议 —— 落地前写类工具一律不绑
+- **`memory.write` 仍未接入** —— Nocturne 实例的写工具（`hold`）没接，所以写记忆还是 `unavailable`。
+  真要写时按 `hold` 的 `kind` 设计入参（见 `docs/MEMORY.md`）
+- 确认卡的**过期 / 撤回**未做：挂了很久的请求会一直留在收件箱里（目前无害，但该有个上限）
 - `docs/PRODUCT_SPEC.md` §9.7「AI 自主工具调用暂不启用」需要随本层落地而订正

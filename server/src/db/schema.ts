@@ -7,6 +7,9 @@ import type {
   AutomationPolicy,
   ContentAuthor,
   DiaryVisibility,
+  RuntimeEventDecider,
+  RuntimeEventKind,
+  RuntimeEventStatus,
 } from '@shared/types'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
@@ -278,3 +281,48 @@ export const moment = sqliteTable('moment', {
 
 export type MomentRow = typeof moment.$inferSelect
 export type NewMoment = typeof moment.$inferInsert
+
+/**
+ * Event Inbox · 事件收件箱（Phase 6.5 P1）。
+ *
+ * 为什么需要它：**AI 与北北之间有两件必须异步决定的事** ——
+ *   1. AI 想写日记 / 留言 → 需要北北点确认（`confirm` 级能力）
+ *   2. 北北想看某篇私密日记 → 需要 AI 决定放不放
+ *
+ * 两件事都不能在「模型正在流式回复」的那一瞬间等答案：SSE 是单向的，
+ * 挂住等用户点按钮会超时、刷新即丢。所以本层把**决定**与**执行**拆开：
+ * 模型发起 → 挂成一条事件（不产生副作用）→ 决策方决定 → 执行 → 结果回灌模型。
+ *
+ * `decider` 是本表的关键：**它说清了这条事件究竟等着谁**。注入模型上下文时
+ * 只取 `decider='companion'` 的待决事件；前端确认卡只认 `decider='user'` 的。
+ *
+ * ⚠️ 与 `notification` 表的分工：那张是**单向广播**（AI 主动唤醒你，只读、只能标已读）；
+ * 这张是**双向待决**（有状态、有决策、有执行结果）。别把两者合并 ——
+ * 合并后「已读」与「已决定」会变成同一个字段，而它们根本不是一回事。
+ */
+export const runtimeEvent = sqliteTable('runtime_event', {
+  id: text('id').primaryKey(),
+  kind: text('kind', { enum: ['tool_confirm', 'diary_access_request'] })
+    .$type<RuntimeEventKind>()
+    .notNull(),
+  decider: text('decider', { enum: ['companion', 'user'] }).$type<RuntimeEventDecider>().notNull(),
+  status: text('status', { enum: ['pending', 'approved', 'denied', 'failed'] })
+    .$type<RuntimeEventStatus>()
+    .notNull(),
+  title: text('title').notNull(),
+  detail: text('detail').notNull(),
+  /** 执行器要用的数据（工具名 + 参数 / 日记 id）。**不是给人看的。** */
+  payloadJson: text('payload_json').notNull(),
+  /** 已决事件的执行结果（给模型读的一段话）；未执行时为 null */
+  result: text('result'),
+  /** 结果是否已注入过模型上下文（只注入一次，见 shared/types.ts 的说明） */
+  resultDeliveredAt: integer('result_delivered_at'),
+  capabilityId: text('capability_id'),
+  /** 事件指向的业务对象（日记 id 等）。前端靠它判断「这篇是否已请求过」—— 见 shared/types.ts */
+  targetId: text('target_id'),
+  createdAt: integer('created_at').notNull(),
+  decidedAt: integer('decided_at'),
+})
+
+export type RuntimeEventRow = typeof runtimeEvent.$inferSelect
+export type NewRuntimeEventRow = typeof runtimeEvent.$inferInsert

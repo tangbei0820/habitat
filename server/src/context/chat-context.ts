@@ -7,17 +7,21 @@
  *   [运行规则 runtime_rules]         ← 恒定，永远注入
  *   [能力清单 runtime_capabilities]  ← 由 Capability Registry 生成（不许写死）
  *   [长期记忆 nocturne_memory]       ← 仅新会话开头注入一次
+ *   [事件 runtime_events]            ← 待 AI 决策的请求 + 上次请求的结果（Phase 6.5 P1）
  *   [状态卡 eventide_state]          ← 每轮
  *   [对话历史]
  *
  * 顺序有讲究：人格/世界规则必须在最前，否则临时上下文会被当成「用户刚说的话」；
- * 能力清单必须早于任何工具调用，这样模型在决定要不要调工具时已经知道有什么。
+ * 能力清单必须早于任何工具调用，这样模型在决定要不要调工具时已经知道有什么；
+ * 事件段紧随其后（「会什么」和「记得什么」是背景，「等你处理什么」是待办），
+ * 但不能落到对话历史之后 —— 那里会被读成「用户刚说的话」。
  *
  * 各段都是**增强项**：任一环节失败都降级为「少一段」，绝不阻塞回复 ——
  * 这条纪律从 Phase 3 沿用至今，本 Phase 不动它。
  */
 import type { CapabilitySnapshot } from '@shared/capabilities.js'
 import type { LlmChatMessage, MemoryProvider, StateProvider, StateTickOptions } from '@shared/providers.js'
+import { buildEventContext } from './event-context.js'
 import { RUNTIME_RULES_TEXT, renderCapabilityBlock } from './runtime-context.js'
 
 export type EventideContextState = 'injected' | 'not-configured' | 'empty' | 'unavailable'
@@ -29,6 +33,8 @@ export interface ChatContextResult {
   messages: LlmChatMessage[]
   eventide: EventideContextState
   memory: MemoryContextState
+  /** 本轮注入的「已决事件结果」id —— 调用方**在流真正发出之后**才标记为已送达（见 event-context.ts 头部） */
+  deliveredEventIds: string[]
   error: string | null
 }
 
@@ -125,6 +131,14 @@ export async function assembleChatContext(
     blocks.push({ role: 'system', name: 'nocturne_memory', content: memory.text })
   }
 
+  // 事件段（Phase 6.5 P1）：待 AI 决策的请求 + 它上次请求的结果。
+  // 放在能力清单之后、状态卡之前 —— 「会什么」和「记得什么」是背景，「等你处理什么」是待办，
+  // 待办该在背景之后出现，否则会被当成又一段背景知识划过去。
+  const eventContext = buildEventContext()
+  if (eventContext.block !== null) {
+    blocks.push({ role: 'system', name: 'runtime_events', content: eventContext.block })
+  }
+
   // Eventide 状态卡：失败只降级，不影响上面几段的真实性（能力清单与它无关）
   let eventide: EventideContextState = 'not-configured'
   let error: string | null = null
@@ -149,5 +163,11 @@ export async function assembleChatContext(
     }
   }
 
-  return { messages: injectSystemBlocks(messages, blocks), eventide, memory: memory.state, error }
+  return {
+    messages: injectSystemBlocks(messages, blocks),
+    eventide,
+    memory: memory.state,
+    deliveredEventIds: eventContext.deliveredIds,
+    error,
+  }
 }

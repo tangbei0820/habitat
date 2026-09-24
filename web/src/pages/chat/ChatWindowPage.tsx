@@ -566,6 +566,8 @@ export function ChatWindowPage() {
         source: call.source,
         label: call.label,
         ...(call.detail === undefined ? {} : { result: call.detail }),
+        // 挂起的事件 id：块里**必须**存下来，否则刷新后确认卡拿不到事件（只剩一句「等待确认」的文字）
+        ...(call.eventId === undefined ? {} : { eventId: call.eventId }),
       },
       order: 0,
     }
