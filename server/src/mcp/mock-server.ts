@@ -90,6 +90,10 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
       }
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
+        onsessionclosed: (sessionId) => {
+          transports.delete(sessionId)
+          servers.delete(sessionId)
+        },
       })
       // 注意：sessionId 在处理 initialize 时才生成，connect 必须无条件执行
       const mcp = createMcpServer()

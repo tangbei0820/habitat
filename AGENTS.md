@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar ⚠️ **实测线上跑的是 nginx/1.18.0，不是 Caddy**（T-022），选型待北北确认                      |
-| 当前阶段 | **Phase 6 打磨进行中**：T-028 PWA（可安装 + 离线外壳）｜T-029 离线只读｜T-030 导入导出增强 已完成；**动画 / 过渡效果待与 UI 一起做**｜Phase 3A 记忆（T-031）已按真实工具面收敛为**只读两方法**，真机复跑待北北 |
+| 当前阶段 | **Phase 6 打磨进行中**：T-028 PWA｜T-029 离线只读｜T-030 导入导出增强｜T-032 验收基础设施收口 已完成；**动画 / 过渡效果待与 UI 一起做**｜Phase 3A 记忆（T-031）已按真实工具面收敛为**只读两方法**，真机复跑待北北 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -174,7 +174,7 @@ habitat/
 - Phase 3B Eventide：✅ 完成（状态 + 互动结算 + 事件 / 梦境 + BudgetGuard + 唤醒 / 独处 + 钱包）
 - Phase 4 Life：✅ 完成（月历 / 账本 / 通知 / 运行 + PriceSnapshot / Web Push）
 - Phase 5 高级能力：✅ 完成（异步语音 / TTS / 图片 / 富消息块 / Mini Terminal）
-- Phase 6 打磨：🚧 进行中（T-028 PWA / T-029 离线只读 / T-030 导入导出增强 已完成；**动画与过渡效果待与 UI 一起做**）
+- Phase 6 打磨：🚧 进行中（T-028 PWA / T-029 离线只读 / T-030 导入导出增强 / T-032 验收基础设施收口 已完成；**动画与过渡效果待与 UI 一起做**）
 
 **UX 收口横切（依 `PRODUCT_SPEC` §7）**：**P0 ✅ 全部收口（14 项）** —— 消息对象操作 + 跨模块内容流转 + 会话置顶 / 聊天设置 + 会话分组（T-015~T-018）
 **P1（6 项）**：输入区快捷栏 ✅ + 请求回复拆开 ✅（T-019）｜留言板 Widget ✅ + 倒数日 Widget ✅（T-020，**Dexie 升 v9 / 备份升 v7**）｜收藏分类 ✅ + 相册分类 ✅（T-021，**Dexie 升 v10 / 备份升 v8**）｜**P1 全部完成**｜P2 未开始
@@ -195,6 +195,10 @@ habitat/
   - ⏭ **刻意没做**：动画 / 过渡效果（北北要求留到与 UI 一起做）；离线发送队列（只做只读，不建排队语义）
   - 📌 验收排布：`run-front-verify.sh` 现在含 **6 支**（chat / providers / home / export / offline + 组二 diagnostics）；
     PWA 单独一条 `run-pwa-verify.sh`（打生产构建）。**别并发跑**，`verify-home` 的整页导航对机器负载敏感（详见 `docs/TASKS.md` 待优化）
+
+- ✅ **验收基础设施收口（T-032）**：mock MCP 的 GET / DELETE 会话头已纳入 5 项生命周期探针，DELETE 会释放服务端会话映射；
+  `verify-home` 自清浏览器站点数据并只把整页导航等待放宽到 60s，`verify-export` 自建「从未备份」前提，避免旧浏览器状态制造假红。
+  当前整套前端回归：chat 140 / providers 22 / home 75 / export 17 / offline 38 / diagnostics 36，全部通过。
 
 **Phase 5 高级能力（T-027，已收口）**
 

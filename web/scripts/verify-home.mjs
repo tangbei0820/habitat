@@ -5,6 +5,7 @@
  */
 const CDP = process.env.VERIFY_CDP ?? 'http://127.0.0.1:9222'
 const APP = process.env.VERIFY_APP ?? 'http://127.0.0.1:5174'
+const NAVIGATION_TIMEOUT = 60000
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const targets = await (await fetch(`${CDP}/json/list`)).json()
@@ -62,7 +63,7 @@ async function waitFor(expression, label, timeout = 30000) {
 async function navigate(path, text) {
   await send('Page.navigate', { url: `${APP}${path}` })
   await sleep(500)
-  await waitFor(`document.body.innerText.includes(${JSON.stringify(text)})`, `${path} 就绪`)
+  await waitFor(`document.body.innerText.includes(${JSON.stringify(text)})`, `${path} 就绪`, NAVIGATION_TIMEOUT)
 }
 
 async function setValue(selector, value) {
@@ -104,6 +105,8 @@ function check(label, ok, detail = '') {
 
 await send('Runtime.enable')
 await send('Page.enable')
+// 每轮自建干净前提，避免固定浏览器 profile 残留的 IndexedDB / localStorage 让失败点漂移。
+await send('Storage.clearDataForOrigin', { origin: new URL(APP).origin, storageTypes: 'all' })
 
 /**
  * ⚠️ 开场先清空本地库。

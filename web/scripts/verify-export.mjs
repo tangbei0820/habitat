@@ -129,6 +129,8 @@ consoleLogs.length = 0
 
 await send('Page.navigate', { url: APP })
 await waitFor('document.body.innerText.includes("新建")', '聊天列表挂载')
+// 本条验收要证明「从未做过全量备份」时的初始状态；不能继承人工使用或上一轮验收留下的设备级时间戳。
+await evaluate(`localStorage.removeItem('habitat:last-export-at')`)
 
 /* ---------- 一、造一段真对话（导出要有内容，才能验到条数） ---------- */
 await clickContains('新建')

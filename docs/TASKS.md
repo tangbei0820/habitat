@@ -96,13 +96,13 @@
 - [x] ~~**`--bottom-nav-height` 是估的 4rem**~~ —— 已修（T-008）：`BottomNav` 用 `ResizeObserver` 实测自身高度后写回 `--bottom-nav-height`，改图标 / 字号自动跟随，不再需要手动同步。
 - [x] ~~**思维链整段存进 `metadata.reasoning`，无长度上限**~~ —— 已修（T-008）：`db/chat.ts` 加 `capReasoning()` / `REASONING_LIMIT = 32000`，超限保留头尾并插入截断说明（头尾各半 —— 开头是推理起点、结尾是结论，中间最适合丢）。写入路径（`addVersion`、流式草稿、收尾定性）统一走它。
 - [ ] **验收脚本的断言绑定了 mock 的固定回复文案** —— 改 `mock-openai.ts` 的回复就要同步改 `web/scripts/verify-chat.mjs` 的断言。→ 让 mock 回显请求内容，断言改成检查回显。
-- [ ] **`verify-home.mjs` 对机器负载敏感**（T-028~T-030 实测）—— 它每换一个 Home 子模块都做一次**整页导航**（`Page.navigate`），而 `navigate()` 的就绪等待是 30s 硬超时。同一条流水线里还并行跑着别的验收 / 无头浏览器时，vite dev 冷启动（本机实测 27.8s）+ 模块图加载会逼近这个上限，症状是**失败点会漂移**（一次卡在「学习记录刷新保留」、一次卡在「/home/works 就绪」），空闲时同一条命令 **75/75 全过**。→ 要么把导航类等待放宽到 60s，要么在流水线里先给 vite 预热（把 `/home/*` 各 curl 一遍）再跑。
+- [x] ~~**`verify-home.mjs` 对机器负载敏感**~~ —— 已修（T-032）：仅把 `Page.navigate` 后的页面就绪等待放宽到 60s；普通交互断言仍保留 30s，避免真回归被整体长超时掩盖。流水线继续串行，README 已同步。
 - [ ] **CDP 验收脚本有两条「流水线级」约束，目前靠注释口头传承** —— ① `Runtime.enable` 会把**上一个会话**的 console 消息重放一遍，不清桶的话「控制台零异常」会被上游脚本的报错污染成假红；② 新建会话后「路由变了 ≠ 输入框已挂载」，`setValue` 会**静默**返回 `'missing'`，后面白等 30s 才超时、且报错完全指不到原因。两条都已写进 `verify-export.mjs` / `verify-offline.mjs` 的注释。→ 写到第三个脚本时该把 `waitFor` / `setValue` / 清桶抽成 `web/scripts/lib/` 的公共 helper。
 - [ ] **`probe-nocturne-live.ts` 默认不打印 boot 正文** —— 那是本人记忆，默认只打印字数（要看得加 `NOCTURNE_PROBE_PREVIEW=1`）。代价是排查「召回内容对不对」时得多敲一个环境变量。→ 保持现状；若日后要做召回质量评估，应改成写文件而不是打屏。
 - [ ] ⚠️ **本机对 `SNI=beiyan.cc` 存在 TLS 客户端分界线**（T-022 实测）—— 带 SNI 时 **Node 20（OpenSSL 3.0.15）连续 6/6 `ECONNRESET`**，而 Node 22（OpenSSL 3.5.5）与 Git Bash 的 openssl 3.5.7 **6/6 通过**；**不带 SNI（裸 IP）时两个版本都通**；换 9 组 TLS 参数（TLS1.2/1.3、`ecdhCurve`、`ciphers`、ALPN）**全部无效**。→ 机制从外部判不了（疑似链路 DPI 按 ClientHello 特征重置连接）。**影响很直接：habitat `server` 必须跑 Node 20（`better-sqlite3` ABI），所以本地开发时用 server 连 `beiyan.cc` 会失败。** ✅ **已由北北在沙箱外终端复核确认**（同报 `ERR ECONNRESET`），排除本环境出口代理干扰，是真实现象；**生产为同机内网直连，不受影响**（见 `docs/DEPLOYMENT.md` §4）。
 - [x] ~~**`ApiProfilePublic.hasKey` 语义有歧义**~~ —— 已修（T-005）：新增 `keySource`（`stored` / `env` / `missing` / `not-required`），UI 文案据此分别渲染「密钥已保存」/「密钥来自环境变量」/「缺密钥，现在调不通」/「无需密钥」。`hasKey` 保留（= `keySource !== 'missing'`），不破坏既有契约。
 - [ ] **`modelMap.embedding` 槽位暂时无人消费** —— T-027 已消费 `tts / transcription / vision / image`；embedding 留给真正需要向量模型的检索能力，不为清单好看空调用。
-- [ ] **mock MCP 的 GET / DELETE 分支取错 session id** —— `mock-server.ts` 的 POST 分支正确地读 `req.headers['mcp-session-id']`，但 GET / DELETE 分支读的是 `url.searchParams.get('sessionId')`；官方 SDK 明确是**发 header**（见 `node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js:427`）。后果：SSE 流与显式关会话两条路径必然 400（目前 Gateway 没用到，所以没暴露）。→ 统一改读 header。
+- [x] ~~**mock MCP 的 GET / DELETE 分支取错 session id**~~ —— 已随 T-031 修正、T-032 补齐验收：三种方法统一读取 `mcp-session-id` header；`probe-mock.ts` 现在实跑 GET SSE 与 SDK 的 `terminateSession()`，并确认 DELETE 后服务端释放会话。
 - [x] ~~**`ApiProfile` 的权威存储还在环境变量**~~ —— 已改（T-005）：权威源换成**服务端 SQLite**（`api_profile` / `api_secret` 两表），`HABITAT_LLM_PROFILES` 降级为**首次种子**（仅在表为空时导入一次）。`LlmRegistry` 对外接口一字未改，调用方无感。
   > ⚠️ **这是对 §6.2 的有意偏离**：§6.2 写 `ApiProfile` 应「本地（前端 Dexie）+ 服务端同步副本」。理由：只有服务端能真正发起调用，双写只会引入一致性问题（两份数据谁赢、离线改了怎么办），而方案管理是低频操作、离线时也无法「测试连接」。→ 若日后真需要离线查看方案，再补本地只读副本。
 - [x] **删除方案后的历史 `usage_record.profile_id` 保留显示** —— T-026 已定：钱确实花过，不能随方案删除；已有费用与价格快照继续可追溯，无法识别 provider 的旧未定价记录保持“未定价”，不猜测补价。
@@ -1493,3 +1493,29 @@ breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delt
 - ⏳ **真机验证待北北在服务器上跑** `probe-nocturne-live.ts`（本沙箱连不上公网 `beiyan.cc`）
 - 🔴 该实例**无任何鉴权层**（T-022 风险 1）—— 记忆库仍对公网开放，未处理
 - 📌 实例血统存疑：`serverInfo` 自称 Nocturne，部署留档记 Ombre Brain v1.30.0 —— **以实测工具面为准**
+
+---
+
+### T-032 · 2026-09-24 · Phase 6 验收基础设施收口 —— **完成**
+
+**范围**：只修验收可靠性与 mock 协议生命周期，不改产品交互、不改业务数据结构，也不提前做动画 / UI。
+
+**落地**
+
+- `probe-mock.ts` 从「能连上、能列工具」扩成 5 项生命周期探针：握手拿 session、真实工具面、GET SSE、
+  SDK `terminateSession()` 的 DELETE、关闭后拒绝复用；GET / DELETE 都实测 `mcp-session-id` header。
+- mock MCP 在 DELETE 时同步释放 `transports` / `servers` 映射，避免显式关闭后内存里仍挂着失效会话。
+- `verify-home.mjs` 开工先通过 CDP 清掉本站残留的 IndexedDB / localStorage，再把**整页导航**等待从 30s 放宽到 60s；
+  普通交互仍是 30s，真卡死不会被统一长超时掩盖。
+- `verify-export.mjs` 显式清掉设备级「上次导出」时间，自建「从未备份」前提，不再依赖浏览器碰巧干净。
+
+**验收（全部实跑）**
+
+- mock MCP 生命周期探针：**5/5**
+- 前端整套串行回归：chat **140/140**、providers **22/22**、home **75/75**、export **17/17**、
+  offline **38/38**、diagnostics **36/36**
+- 两端 `typecheck`、`git diff --check` 通过
+
+**待优化**：CDP 公共 helper 与 mock 回复去固定文案仍保留在上方清单；本切片不顺手扩成验收框架重构。
+
+**下一步**：Phase 6 继续按剩余清单切片；动画 / 过渡效果仍留给 UI 一起做。

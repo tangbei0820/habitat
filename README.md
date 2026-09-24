@@ -68,7 +68,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 
 | 脚本 | 前置 | 覆盖 |
 | --- | --- | --- |
-| `npx tsx scripts/probe-mock.ts` | mock MCP :3333 | MCP 客户端连通自检（握手 + `tools/list`） |
+| `npx tsx scripts/probe-mock.ts` | mock MCP :3333 | MCP 会话生命周期（握手 + `tools/list` + GET SSE + DELETE，共 5 项） |
 | `npx tsx scripts/probe-llm.ts` | mock 上游 :3334 | LLM 方案 / Adapter 全链（32 项） |
 | `npx tsx scripts/probe-providers.ts` | mock 上游 + server（自定 `HABITAT_DB_PATH`） | 方案 CRUD / 密钥进出 / 参数校验（52 项） |
 | `npx tsx scripts/probe-diagnostics.ts` | server（须与脚本用**同一个** `HABITAT_DB_PATH`） | 诊断查询端点（48 项） |
@@ -108,9 +108,8 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 bash .workbuddy/run-front-verify.sh    # 日志 /tmp/front-verify.log
 ```
 
-> ⚠️ **别把两支脚本并发跑**。`verify-home` 每换一个 Home 子模块都做一次**整页导航**，
-> 就绪等待是 30s 硬超时；本机实测高负载时（vite dev 冷启动要 27.8s）会逼近上限并超时，
-> 而且**失败点会漂移**（空闲时同一条命令 75/75 全过）。跑的时候别同时在跑别的验收或浏览器。
+> ⚠️ **别把两条流水线并发跑**。`verify-home` 每换一个 Home 子模块都做一次**整页导航**；
+> 导航等待已单独放宽到 60s，但并行占用同一台机器仍会制造无意义的慢测与噪音。
 
 ### PWA
 
