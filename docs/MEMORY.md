@@ -72,13 +72,22 @@ sudo grep -rn "location.*mcp" /etc/nginx/sites-enabled/
 
 **先拿一手事实，再谈怎么改** —— 侦察脚本（**不假设任何工具名**，且**不调用任何工具**）：
 
+三个脚本，**输出口径一致，挑顺手的用**：
+
+| 脚本 | 在哪跑 | 要什么 | 说明 |
+| --- | --- | --- | --- |
+| `probe-nocturne-tools.ts` | 开发机 | 仓库 + tsx | 输出最全（serverInfo / 会话 id / 对照表） |
+| `probe-nocturne-tools-standalone.mjs` | **任何机器** | 只要 Node 18+ | 零依赖单文件；不用仓库、不用 npm |
+| `probe-nocturne-tools-quick.sh` | **Linux 服务器** | 只要 `curl` + `python3` | 最短，整块粘贴即可 |
+
 ```bash
 # 【开发机】有仓库 + tsx
 cd server
 MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' npx tsx scripts/probe-nocturne-tools.ts
 
-# 【服务器】仓库还没同步过去时用这个：零依赖单文件，Node 18+ 直接跑，什么都不用装
-node probe-nocturne-tools-standalone.mjs http://127.0.0.1:8000/mcp
+# 【服务器】仓库没同步过去时，两个零依赖版任选 ——
+node probe-nocturne-tools-standalone.mjs http://127.0.0.1:8000/mcp   # 要 Node 18+
+bash probe-nocturne-tools-quick.sh http://127.0.0.1:8000/mcp         # 只要 curl + python3
 ```
 
 它会打印 serverInfo / 会话 id / 能力声明，以及**每个工具的名字 + 说明 + 参数 + 必填**，
@@ -132,7 +141,7 @@ node probe-nocturne-tools-standalone.mjs http://127.0.0.1:8000/mcp
 | 客户端代码（打**真实** server，只读） | `cd server && npx tsx scripts/probe-nocturne-demo.ts` | 25/25 |
 | 本地全链（mock，**含写路径**） | 起 `dev:mock-mcp` + `dev:server` 后 `npx tsx scripts/probe-memory.ts` | 24/24 |
 | **自部署实例 · 工具面**（不假设工具名，只读） | `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' npx tsx scripts/probe-nocturne-tools.ts` | ⏳ **待北北实跑**（本沙箱连不上外网） |
-| **同上，但在服务器上跑**（推荐：内网直连、免密钥、免三件套） | `node probe-nocturne-tools-standalone.mjs http://127.0.0.1:8000/mcp` | ⏳ 同上（`.mjs` 零依赖版，无需仓库/tsx） |
+| **同上，但在服务器上跑**（推荐：内网直连、免密钥、免装东西） | `node probe-nocturne-tools-standalone.mjs http://127.0.0.1:8000/mcp`，或 `bash probe-nocturne-tools-quick.sh`（只要 curl + python3） | ⏳ 同上 |
 | **自部署实例 · 全链**（反代 / Namespace / 工具调用） | `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' MCP_NOCTURNE_NAMESPACE=habitat npx tsx scripts/probe-nocturne-live.ts` | ⛔ **受阻** —— 它假设的是**官方**工具名；实例对不上会从 §6 起整段失败。**先跑上一行拿真实工具面** |
 
 ⚠️ 后两条的地址是**加密钥的那条**（`/mcp-<密钥>`），不是公开的 `/mcp` —— 后者被 nginx 特意 404 掉了（见「入口地址」）。
