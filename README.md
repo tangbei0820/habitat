@@ -75,7 +75,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npx tsx scripts/probe-diag-retention.ts` | **不需要 server**（自带一次性临时库，跑完自删） | 诊断日志保留策略（15 项） |
 | `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆**只读**链路：`breath`(boot) / `trace`(search) 两路径、参数边界、已移除的写端点应 404、诊断留痕（21 项） |
 | `npx tsx scripts/probe-nocturne-tools.ts` | **任何** Nocturne 实例（`MCP_NOCTURNE_URL`） | 工具面事实采集 / **漂移检测**：只握手 + `tools/list`，**不调用任何工具**；另有零依赖版 `.mjs` 与只要 `curl+python3` 的 `.sh` |
-| `MCP_NOCTURNE_URL=… npx tsx scripts/probe-nocturne-live.ts` | **自己部署的实例** + 反代已转发 `/mcp-<密钥>` | 反向代理 / Bearer Token（配置后含无凭据对照）/ `X-Namespace` / 工具面 / 只读纪律（真机 **25/25**；默认遮蔽秘密路径） |
+| `MCP_NOCTURNE_URL=… npx tsx scripts/probe-nocturne-live.ts` | **自己部署的实例** + 反代已转发 `/mcp-<密钥>` | 反向代理 / Bearer Token（含无凭据对照）/ `X-Namespace` / 工具面 / 只读纪律（真机 **26/26**；默认遮蔽秘密路径） |
 | ~~`npx tsx scripts/probe-nocturne-demo.ts`~~ | ~~**公网**（Nocturne 官方只读 Demo）~~ | ⛔ **已废弃**（其工具面假设与自部署实例 0/2 命中，脚本已清空实现） |
 | `npm run probe:eventide` | Eventide sidecar :8234；可选 `PROBE_SERVER` | 真实 Eventide revision / 建态 / 时间推进 / 并发串行 / SQLite 恢复 / 故障降级；配置 server 时共 19 项 |
 | `npm run probe:chat-context` | mock OpenAI + server；注入态另需 Eventide | 读取 mock 收到的真实报文，验证状态卡顺序 / 历史不变 / 持久化；注入 7 项、降级 3 项 |

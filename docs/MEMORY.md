@@ -1,11 +1,11 @@
 # MEMORY · 记忆系统接入
 
-状态：**Phase 3A 只读链路完成**。本地 mock 全链探针 21/21，自部署实例专项验真 25/25；接口已按**自部署实例的真实工具面**收敛为**只读两方法**（2026-09-24，T-031 / T-033）。
+状态：**Phase 3A 完成**。本地 mock 全链探针 21/21，自部署实例含鉴权专项验真 26/26；接口已按**自部署实例的真实工具面**收敛为**只读两方法**（2026-09-24，T-031 / T-033 / T-034）。
 
 - ✅ **工具面已查明并对齐**：实例真实 9 个工具，Habitat 只用其中 2 个只读工具（`breath` / `trace`）。旧适配层那 5 个名字（源自官方 Demo）**0/5 命中**，已整段重写。
 - ✅ **写类端点已撤掉**：实例虽有写工具（`hold` / `wander_mark` / `drive`），但 Habitat 这一阶段**只读接入**，`/api/memory` 只留 `GET boot` + `GET search`。
-- ✅ **真机只读验真完成**：Streamable HTTP session、9 工具工具面、`breath` / `trace` 两条实际调用均通过，**25/25**；未调用任何写工具。
-- 🔴 **该实例仍没有服务端鉴权层**（`/health`、`/dashboard`、`/api/*` 无凭据可达），见文末 T-022 风险 1 —— 需服务器权限设置 `OMBRE_ADMIN_TOKEN` 后再做有 / 无凭据对照。
+- ✅ **真机只读与鉴权验真完成**：Streamable HTTP session、9 工具、`breath` / `trace`、无 Token 拒绝均通过，**26/26**；未调用任何写工具。
+- ✅ **生产已锁门**：现有 `OMBRE_API_PASSWORD` 保护 Dashboard/API；宿主 nginx 对轮换后的秘密 MCP 路径校验 Bearer。无 / 错 Token 401，正确 Token 200。
 
 对接对象：已部署的 Nocturne（MCP，SSE / Streamable HTTP）。
 职责边界：世界书 = 永远注入的设定；Nocturne = 按需召回的经历；AI 日记 = AI 自己的生活记录。
@@ -23,8 +23,8 @@
 ⚠️ **`https://beiyan.cc/mcp` 返回 404 是「设计如此」，不是反代坏了。**
 
 部署时对 MCP 做了一层加固：公开的 `/mcp` 一律 404，**只有知道一串密钥的人才能进**。
-当前访问控制只有「路径 = 密码」。它解释了现网为什么能连通，**不能替代正式 Bearer Token**；
-生产收口后还应设置 `OMBRE_ADMIN_TOKEN`，并在 Habitat 侧配置同值 `MCP_NOCTURNE_TOKEN`。
+生产访问控制是两层：「秘密路径」隐藏入口，宿主 nginx 再校验 Bearer；Habitat 通过 `MCP_NOCTURNE_TOKEN` 携带凭据。
+Dashboard/API 使用实例自己的 `OMBRE_API_PASSWORD` + session cookie，和 MCP Bearer 是两套边界。
 
 | 项 | 值 |
 | --- | --- |
@@ -38,7 +38,7 @@
 ```bash
 # server/.env
 MCP_NOCTURNE_URL=https://beiyan.cc/mcp-<密钥>
-MCP_NOCTURNE_TOKEN=<与服务端 OMBRE_ADMIN_TOKEN 相同的值>
+MCP_NOCTURNE_TOKEN=<与宿主 nginx MCP Bearer 校验相同的值>
 ```
 
 **在服务器上确认加固是否还在**：
@@ -155,7 +155,7 @@ bash probe-nocturne-tools-quick.sh http://127.0.0.1:8000/mcp         # 只要 cu
 | 验什么 | 命令 | 结果 |
 | --- | --- | --- |
 | 本地全链（mock，**只读两路径**） | 起 `dev:mock-mcp` + `dev:server` 后 `cd server && npx tsx scripts/probe-memory.ts` | ✅ **21/21**（2026-09-24） |
-| **自部署实例 · 全链**（反代 / Namespace / 工具面 / 只读纪律） | `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' MCP_NOCTURNE_NAMESPACE=habitat npx tsx scripts/probe-nocturne-live.ts` | ✅ **25/25**（2026-09-24）；实际调用仅 `breath` + `trace` |
+| **自部署实例 · 全链**（反代 / Bearer / Namespace / 工具面 / 只读纪律） | `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' MCP_NOCTURNE_TOKEN='<token>' MCP_NOCTURNE_NAMESPACE=habitat npx tsx scripts/probe-nocturne-live.ts` | ✅ **26/26**（2026-09-24）；无 Token 被拒，实际调用仅 `breath` + `trace` |
 | **自部署实例 · 工具面**（只握手，不调用工具） | `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' npx tsx scripts/probe-nocturne-tools.ts` | ✅ 真机 9 工具与适配层 2/2 命中 |
 | **同上，但在服务器上跑**（推荐：内网直连、免密钥、免装东西） | `node probe-nocturne-tools-standalone.mjs http://127.0.0.1:8000/mcp`，或 `bash probe-nocturne-tools-quick.sh http://127.0.0.1:8000/mcp` | ✅ 两个零依赖版均已实跑通过 |
 | ~~客户端代码对官方 Demo~~ | ~~`npx tsx scripts/probe-nocturne-demo.ts`~~ | ⛔ **已废弃**（工具面假设是错的，脚本已清空实现） |
@@ -221,11 +221,8 @@ T-022 当时没看到那份加固记录（`.mcp_hardening.json`），才把「�
 
 ### 两个未结风险
 
-1. 🔴 **该实例没有任何鉴权层** —— `/health`、`/dashboard`、`/api/*` 全部**无凭据 200**，且带 `access-control-allow-origin: *`。
-   dashboard 页面里可枚举约 30 个接口，含 `/api/buckets`、`/api/search`、`/api/config`、`/api/import/upload`
-   （最后这个**从路径名看是写操作，没有实测**）。
-   → 记忆库当前对公网开放，需加一层鉴权（反代 basic auth / Cloudflare Access / 限制来源）。
-   ⚠️ 体检只做到**状态码级**，没有读取任何记忆内容。
+1. ✅ **鉴权已在 T-034 结清** —— T-022 当时记录的裸奔状态已失效：Dashboard/API 由 `OMBRE_API_PASSWORD` + session cookie 保护；
+   秘密 MCP 路径由宿主 nginx 校验 Bearer；公开 `/mcp` 继续 404。无 / 错 Bearer 401、正确 Bearer initialize 200。
 2. ⚠️ **TLS 客户端分界线**：带 `SNI=beiyan.cc` 时 **Node 20 连续 6/6 `ECONNRESET`**，Node 22 与 openssl 3.5.7 均 6/6 通过；
    不带 SNI（裸 IP）时两个版本都通；换 9 组 TLS 参数全无效。
    ✅ **已由北北在沙箱外的终端复核确认**（同报 `ERR ECONNRESET`），排除本地出口代理干扰，是真实现象。

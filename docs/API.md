@@ -489,6 +489,6 @@ Web Push 仅是站内通知的尽力而为副本：VAPID 环境变量不完整�
 
 ## 待实现（按阶段）
 
-- Phase 3A 只读链路：自部署实例已完成 Namespace / 反代 / 会话 / `breath` / `trace` 真机 **25/25**；剩余生产部署安全项是设置 `OMBRE_ADMIN_TOKEN` 并做有 / 无凭据对照
+- Phase 3A：自部署实例已完成 Namespace / 反代 / 会话 / `breath` / `trace` 与生产鉴权真机 **26/26**；Dashboard/API 由 `OMBRE_API_PASSWORD` 保护，MCP Bearer 由宿主 nginx 校验
 - Phase 6：已完成；实时双工与带逐次授权的 AI 自主工具循环仍需独立协议，不属于本阶段欠项
 - 诊断日志的留存策略（表只增不减，目前没有清空 / 归档入口）

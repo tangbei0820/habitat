@@ -654,7 +654,7 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 验收：`probe-memory.ts` **21/21**（只读两路径 + 参数边界 + 已移除端点 404）；三个侦察脚本对 mock 全部 2/2、退出码 0；
   `probe-nocturne-live.ts` 经 McpGateway **23/24**（唯一失败项是 mock 无 `/health`，非代码问题），只读纪律通过（实际调用仅 `breath` + `trace`）；
   启动日志出现「Nocturne 工具面自检通过」；两端 typecheck 通过。
-- 后续 T-033 已完成真机 25/25；该实例的服务端鉴权仍需服务器权限设置 `OMBRE_ADMIN_TOKEN`（T-022 风险 1）。
+- 后续 T-033 已完成真机 25/25；T-034 已取得服务器权限并完成生产鉴权与 26/26 对照验收。
 
 ### Phase 6 · 验收基础设施与可靠性收口（T-032 / T-033）—— **完成**
 
@@ -662,7 +662,17 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 前端验收不再依赖浏览器“碰巧干净”：Home 开跑前清站点数据，Export 显式清设备级备份时间；PWA 的两条 PASS 输出改为真实成功说明。
 - MCP 从 HTTP 启动关键路径摘出：服务先监听，随后后台连接、自检并每 60 秒重试；不可达 MCP 下健康接口约 291ms 返回 200，状态明确为 `error`。
 - 自部署 Nocturne / Ombre Brain 完成只读专项验真 **25/25**：Streamable HTTP session、9 工具、`breath` / `trace` 两条实际调用均通过，未触碰写工具；探针默认遮蔽秘密路径。
-- 部署文档按现网定稿为双 nginx，Caddy 归档为早期方案；服务端鉴权口径校正为 `OMBRE_ADMIN_TOKEN`，与 Dashboard 首次设置分离。
+- 部署文档按现网定稿为双 nginx，Caddy 归档为早期方案；T-034 又按实机源码把鉴权口径校正为 `OMBRE_API_PASSWORD`（Dashboard/API）+ nginx Bearer（MCP）。
 - 最终回归：chat 140、providers 22、home 75、export 17、offline 38、diagnostics 36、PWA 25、本地记忆 21，全部通过；两端 typecheck 与生产构建通过。
 
-**Phase 6 至此完成。** 动画 / 过渡效果归后续 UI 专项；实时双工与 AI 自主工具循环归独立协议，不作为 Phase 6 欠项。生产部署仍有一项权限型关卡：取得服务器权限后设置 `OMBRE_ADMIN_TOKEN`、轮换秘密路径，并完成无凭据拒绝 / 有凭据全绿的对照验收。
+**Phase 6 至此完成。** 动画 / 过渡效果归后续 UI 专项；实时双工与 AI 自主工具循环归独立协议，不作为 Phase 6 欠项。生产部署鉴权关卡已在 T-034 结清。
+
+### Phase 3A · Nocturne 生产鉴权收口（T-034）—— **完成**
+
+- 通过新配置的 SSH 公钥登录实机，确认现网版本的 `OMBRE_API_PASSWORD` 已保护 Dashboard/API，未登录 `/api/config` 返回 401；早先记录的 `OMBRE_ADMIN_TOKEN` 不适用于该版本。
+- 当前版本没有 MCP 应用内 Bearer 开关，因此在宿主 nginx 的秘密 MCP location 加 Bearer 校验，并同时轮换路径与 Token；公开 `/mcp` 继续 404。
+- 凭据仅保存在服务器 root-only 文件；nginx 配置修改前备份、`nginx -t` 后平滑 reload。
+- 对照结果：健康 200、API 未登录 401、公开 MCP 404、秘密路径无 / 错 Token 均 401、正确 Token initialize 200。
+- Habitat 生产客户端全链 **26/26**：无 Token 拒绝、Namespace、9 工具工具面、`breath` / `trace` 两条只读调用均通过，未触碰写工具。
+
+**Phase 3A 至此完成。**

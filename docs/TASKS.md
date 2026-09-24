@@ -63,7 +63,7 @@
 - [ ] **相册用 data URL 存原图，容量增长较快** —— 现阶段单张已限 3 MB、格式白名单并校验真实 base64 体积，但 base64 本身约有 33% 膨胀，导出的 JSON 也会把原图一起带上。→ 真实照片量上来后改 Blob / OPFS + 缩略图，并补总容量提示；切换存储前必须先做无损迁移与备份兼容。
 - [x] **自部署实例只读全链已验** —— T-033 使用现有秘密路径与 `X-Namespace: habitat` 完成真实 Streamable HTTP session、9 工具工具面、`breath` / `trace` 两条只读调用，**25/25**；未调用写工具。公开 `/mcp` 的 404 是有意加固，不是链路故障。
   ⚠️ **2026-09-24 更正**：`/mcp` 的 404 **不是反代缺陷，是当初有意加固**（`location = /mcp { return 404; }` + 秘密路径 `/mcp-<密钥>` 转发，证据：本机 `MCP接入说明_Nocturne.md` / `.mcp_hardening.json`，均 2026-09-13）。**改用秘密路径即可，无需动服务器。** 而**真正**的拦路虎比反代更前置：适配层写死的工具名取自**官方 Demo**，与该自部署实例的实际工具面（Ombre Brain 血统）可能完全对不上 → 见 `docs/MEMORY.md`「自部署实例的工具面」，先跑 `probe-nocturne-tools.ts` 拿一手事实（**在服务器上跑更省事**：用零依赖版 `probe-nocturne-tools-standalone.mjs`，**内网直连** `http://127.0.0.1:8000/mcp` —— 加固只做在 nginx 那层，容器里就是朴素的 `/mcp`，连密钥路径都不用填，也不用装 tsx）。
-- [ ] 🔴 **自部署 Nocturne / Ombre Brain 实例没有服务端鉴权层**（T-022 / T-033 实测）—— `/dashboard`、`/api/*` 可无凭据访问，秘密路径只能隐藏 MCP 入口，不能替代鉴权。已按 v1.30 源码校正方案：需在部署环境设置 `OMBRE_ADMIN_TOKEN`，Habitat 配同值 `MCP_NOCTURNE_TOKEN`，重启后做无 Token 401/403、带 Token 全绿的对照验收。当前缺服务器 SSH / 部署控制台权限，不能安全代改。
+- [x] **自部署 Nocturne / Ombre Brain 生产鉴权已结清**（T-034）—— 实机源码确认现版本的 `OMBRE_API_PASSWORD` 已保护 Dashboard/API（未登录 `/api/config` 401）；MCP 没有应用内 Bearer 开关，故在宿主 nginx 的轮换秘密路径上加 Bearer 校验。无 / 错 Token 401、正确 Token initialize 200，Habitat 全链 **26/26**。
 - [x] **反代口径已统一为 nginx**（T-022 / T-033）—— 现网是宿主 nginx 1.18.0 + Nocturne 容器 nginx 两层；Caddy 只保留为早期方案记录。宿主层现有「公开 `/mcp` 404 + 秘密路径转发」是有效加固，不需要改成 Caddy。
   ⚠️ 关键定位：宿主 nginx 对多数路径是**通配转发到后端**（`/health/`、`/dashboard/` 回 **307** 是 FastAPI `redirect_slashes`；`/zzz-*`、`/index.html`、`/assets/` 回 **9 字节纯文本 404** 是 Starlette），**唯独 `/mcp`（含尾斜杠）回的是 nginx 自己的 162 字节 HTML 404 页** —— 说明它是**被单独拦下的**，连后端都没碰到。
   → 修法不是「新增一条 location」，而是**找到那条把它挡在外面的规则删掉/取代**；补的时候要带 `proxy_buffering off` / `proxy_cache off` / `proxy_http_version 1.1` / `proxy_read_timeout 86400s` / `chunked_transfer_encoding off` / `add_header X-Accel-Buffering no`（可直接照抄上游那份）。完整片段见 `docs/DEPLOYMENT.md` §3.2。
@@ -1068,7 +1068,7 @@
 
 1. 🔴 **该实例没有任何鉴权层** —— `/health`、`/dashboard`（339 KB 面板）、`/api/*` **全部无凭据 200**，且带 `access-control-allow-origin: *`。
    dashboard 页面里可枚举出约 30 个接口，含 `/api/buckets`、`/api/search`、`/api/config`、`/api/import/upload`（最后这个**从路径名看是写操作，没有实测**）。
-   → 记忆库当前对公网开放。**探测只做到状态码级，没有读取任何记忆内容。**
+   → 这是 T-022 当时的风险记录；**T-034 已完成 Dashboard/API 与 MCP 双边界鉴权**。当时探测只做到状态码级，没有读取任何记忆内容。
 2. ⚠️ **TLS 客户端分界线（本机实测）** —— 带 `SNI=beiyan.cc` 时 **Node 20（OpenSSL 3.0.15）连续 6/6 被 `ECONNRESET`**，
    而 Node 22（OpenSSL 3.5.5）与 Git Bash openssl 3.5.7 **6/6 通过**；**不带 SNI（裸 IP）时两个版本都通**。
    换 9 组 TLS 参数（TLS1.2/1.3、`ecdhCurve`、`ciphers`、ALPN）**全部无效**。
@@ -1093,7 +1093,7 @@
 
 **下一步（等北北）**：
 
-① **先开鉴权** —— 本段是 T-022 当时的旧判断；T-033 已按实例对应源码校正为：部署环境设置 `OMBRE_ADMIN_TOKEN`，重启 backend，Habitat 配同值 `MCP_NOCTURNE_TOKEN`。
+① **先开鉴权** —— 本段是 T-022 当时的旧判断；T-034 已按现网源码与能力完成：`OMBRE_API_PASSWORD` 保护 Dashboard/API，宿主 nginx Bearer 保护 MCP。
 ② **关键分水岭实验**：在服务器上 `curl -i -X POST http://127.0.0.1:<NGINX_PORT>/mcp`（带 `Accept: application/json, text/event-stream`）
 - **通** → 链路已通，**收口，不必改宿主 nginx**（生产是同机内网直连，公网 `/mcp` 可以不开 —— 少一个「含写工具」的暴露面）
 - **不通** → 查容器内那层：`docker exec <nginx容器> cat /etc/nginx/conf.d/default.conf`（可能版本较老，上游新版才有 `location /mcp`）
@@ -1490,7 +1490,7 @@ breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delt
 **遗留**
 
 - ✅ 真机验证已在 T-033 完成：`probe-nocturne-live.ts` **25/25**；反代 / 会话 / 真实工具面 / 两条只读调用均通过
-- 🔴 该实例**无任何鉴权层**（T-022 风险 1）—— 记忆库仍对公网开放，未处理
+- ✅ T-022 的鉴权风险已在 T-034 结清：Dashboard/API session 鉴权 + nginx MCP Bearer，对照验收 26/26
 - 📌 实例血统存疑：`serverInfo` 自称 Nocturne，部署留档记 Ombre Brain v1.30.0 —— **以实测工具面为准**
 
 ---
@@ -1521,7 +1521,7 @@ breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delt
 
 ---
 
-### T-033 · 2026-09-24 · Phase 6 收口：MCP 非阻塞启动 + Nocturne 真机验真 —— **完成（生产鉴权待权限）**
+### T-033 · 2026-09-24 · Phase 6 收口：MCP 非阻塞启动 + Nocturne 真机验真 —— **完成**
 
 **范围**：结清 Phase 6 必须项与 Phase 3A 真实链路证据；不新增产品功能、不改 Dexie、不触碰 Nocturne 写工具。
 
@@ -1531,7 +1531,7 @@ breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delt
 - `probe-memory.ts` 适配后台连接：最多等待 10 秒读取 ready 状态，避免把正常异步启动误报成失败。
 - Nocturne 专项探针默认遮蔽秘密路径，错误信息也不再回显完整入口；仅显式设置 `NOCTURNE_SHOW_SECRET=1` 才显示。
 - PWA 验收两条 PASS 输出改为真实成功说明，不再在成功时附带“未引入 / 没有脚本”的失败文案。
-- 部署口径定稿为实机双 nginx；Caddy 归档为早期方案。鉴权方案按 Ombre Brain v1.30 源码改为 `OMBRE_ADMIN_TOKEN`，与 Dashboard 首次设置明确分离。
+- 部署口径定稿为实机双 nginx；Caddy 归档为早期方案。后续 T-034 登录实机后进一步确认：当前版本用 `OMBRE_API_PASSWORD` 保护 Dashboard/API，MCP Bearer 需在宿主 nginx 落地。
 
 **验收（全部实跑）**
 
@@ -1546,4 +1546,30 @@ breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delt
 
 **结论**：Phase 6 的既定工程范围已完成；动画 / 过渡属于后续 UI 专项，实时双工与 AI 自主工具循环属于独立协议范围，均不作为 Phase 6 欠项。
 
-**唯一外部阻塞**：现网还未设置 `OMBRE_ADMIN_TOKEN`，且当前工作环境没有可用 SSH / 部署控制台权限。拿到权限后需同时：设置 Token、让 Habitat 配同值、重启、轮换秘密路径，并完成无凭据拒绝 / 有凭据 25/25 的对照验收。
+**后续状态**：上述生产鉴权已在 T-034 取得 SSH 权限后完成。
+
+---
+
+### T-034 · 2026-09-24 · Nocturne 生产鉴权与秘密路径轮换 —— **完成**
+
+**范围**：结清 T-022 最后的公网安全项；不改记忆数据，不调用写工具，不部署 Habitat 服务。
+
+**实机事实与决策**
+
+- 当前容器源码的官方鉴权变量是 `OMBRE_API_PASSWORD`，且容器内已有 28 字符配置：Dashboard 未登录、`/api/config` 均受 session-cookie 鉴权保护；`/health` 保持公开。
+- 此版本没有 MCP Bearer 开关，不能把 Dashboard 密码误当 MCP Token；因此在宿主 nginx 的秘密 MCP location 内校验 `Authorization: Bearer ...`。
+- MCP 秘密路径与 Bearer 同时轮换；公开 `/mcp` 继续 404。完整值只存服务器 `/root/.config/habitat/nocturne-mcp.env`（目录 700、文件 600），不进入仓库或验收日志。
+- nginx 站点配置权限收紧为 600；修改前留存 `/etc/nginx/sites-available/nocturne.bak-20260924-170956`，`nginx -t` 通过后平滑 reload。
+
+**验收**
+
+| 边界 | 结果 |
+| --- | --- |
+| `/health` | 200 |
+| `/api/config` 未登录 | 401 |
+| 公开 `/mcp` | 404 |
+| 秘密 MCP 路径：无 Token / 错 Token | 401 / 401 |
+| 秘密 MCP 路径：正确 Token initialize | 200 |
+| Habitat `probe-nocturne-live.ts` | **26/26**；包含无 Token 拒绝；实际工具调用仅 `breath` / `trace` |
+
+**结论**：T-022 的安全阻塞已结清，Phase 3A 完成。Habitat 将来部署到同机时，从 root-only 凭据文件注入 `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`，不得复制进仓库。

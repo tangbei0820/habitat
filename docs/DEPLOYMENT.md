@@ -105,9 +105,9 @@ dashboard 页面中可静态枚举出约 30 个接口（含 `/api/buckets`、`/a
 它只提供「知道密钥才能进」这一层保护，**没有第二道鉴权**。所以在补上服务端 Bearer Token 之前，
 相当于把一个**含写工具**的 MCP 端点挂在公网上，仅靠路径保密。
 
-> 2026-09-24 按该实例对应的 Ombre Brain v1.30 源码复核：全局服务鉴权由部署环境变量
-> **`OMBRE_ADMIN_TOKEN`** 控制；Dashboard 的首次设置 / 登录是另一套状态，不能替代 MCP/API 的服务端 Token。
-> Habitat 侧把同一值放在 **`MCP_NOCTURNE_TOKEN`**，凭据只进部署环境，不进仓库。
+> 2026-09-24 登录实机并按**当前部署源码**复核：`OMBRE_API_PASSWORD` 只负责 Dashboard 登录与 `/api/*`
+> 的 session-cookie 鉴权，现网早已配置并生效；这个版本没有 MCP Bearer 开关。因此 MCP 的 Bearer 校验落在宿主 nginx，
+> Habitat 侧把同一 Bearer 值放在 `MCP_NOCTURNE_TOKEN`。两类凭据都只留在服务器 root-only 配置，不进仓库。
 
 ---
 
@@ -218,9 +218,10 @@ location = /mcp-<新密钥> {
 
 ### 3.3 无论走哪条路：**先锁门，再开门**
 
-1. **开鉴权**：在 Nocturne / Ombre Brain 的实际部署环境中设置强随机 `OMBRE_ADMIN_TOKEN`，重建或重启 backend；不要把值写入仓库。
-2. 再按 3.1 / 3.2 处理 `/mcp`。
-3. Habitat 部署环境设置同值 `MCP_NOCTURNE_TOKEN`，再复验：
+1. **Dashboard/API**：在实例 `.env` 配置强密码 `OMBRE_API_PASSWORD` 并重建容器；未登录请求 `/api/config` 必须返回 401。现网已完成。
+2. **MCP**：当前 v1.30 部署没有 Bearer 开关，故在宿主 nginx 的秘密 MCP location 内校验
+   `Authorization: Bearer <token>`；配置文件须为 root-only，修改前备份，且必须 `nginx -t` 后再 reload。现网已完成。
+3. Habitat 部署环境设置对应 `MCP_NOCTURNE_TOKEN`，再复验：
    `cd server && MCP_NOCTURNE_URL=... MCP_NOCTURNE_TOKEN=... npx tsx scripts/probe-nocturne-live.ts`
    （在服务器上用 `http://127.0.0.1:<端口>/mcp`；在本机用公网地址会撞上 Node 20 的 TLS 问题，需换 Node 22 跑脚本）
 4. 做一次**有 / 无凭据对照**：无 Token 的 MCP 握手必须得到 401/403，带 Token 的探针必须全绿；Dashboard 首次设置另行完成。
@@ -256,9 +257,9 @@ location = /mcp-<新密钥> {
 
 ## 5. 验证状态（2026-09-24）
 
-**① 公网只读链路 —— 已完成：**
+**① 公网只读链路与鉴权 —— 已完成：**
 
-- [x] 使用现有秘密路径与 `X-Namespace: habitat` 完成 `probe-nocturne-live.ts`：**25/25**，
+- [x] 使用轮换后的秘密路径、Bearer 与 `X-Namespace: habitat` 完成 `probe-nocturne-live.ts`：**26/26**，
       Streamable HTTP session、9 工具工具面、`breath` / `trace` 两条只读调用均通过；实际调用未触碰写工具。
 - [x] serverInfo 实测为 **Ombre Brain v1.30.0**；以后以实测工具面为准，不再按旧 Demo 猜测。
 - [x] 探针默认遮蔽秘密路径，只有显式 `NOCTURNE_SHOW_SECRET=1` 才显示完整 URL。
@@ -269,14 +270,15 @@ location = /mcp-<新密钥> {
       `drive` / `undercurrent` / `trail_delta` / `trail_family`（与旧假设的 5 个名字**0/5 命中**）。
 - [x] 适配层已按真实工具面**重写为只读两方法**（`recall()` → `breath`、`search()` → `trace`）；
       `MemoryProvider` 的 `update` / `delete` 已**删除**（实例没有对应语义，且从未被调用）。见 `docs/MEMORY.md`「定稿映射」。
-- [x] 全链验真已完成：**25/25**；反代 / 会话 / 工具面 / 只读两路径均通过。
+- [x] 全链验真已完成：**26/26**；反代 / 会话 / 工具面 / 只读两路径 / 无 Token 拒绝均通过。
 - 🔁 以后实例**升级 / 换工具名**时：先跑 `probe-nocturne-tools*` 拿一手事实，再看适配层要不要动。
 
-**③ 鉴权 —— 安全项，仍未处理：**
+**③ 鉴权 —— 已完成（T-034）：**
 
-- [ ] 当前未配置 `OMBRE_ADMIN_TOKEN`；`/dashboard`、`/api/*` 仍可无凭据访问。
-- [ ] 需要服务器 SSH / 部署控制台权限后按 §3.3 设置 Token、重启并做有 / 无凭据对照。
-- [ ] 同时轮换一次 MCP 秘密路径；Dashboard 首次设置与服务端 Token 分开验收。
+- [x] `OMBRE_API_PASSWORD` 已配置：`/api/config` 未登录返回 401，`/health` 保持 200。
+- [x] MCP 秘密路径已轮换，并在宿主 nginx 增加 Bearer 校验：无 Token / 错 Token 均 401，正确 Token initialize 200。
+- [x] 完整 URL / Token 只存 `/root/.config/habitat/nocturne-mcp.env`（目录 700、文件 600）；nginx 站点配置收紧为 600。
+- [x] 修改前备份：`/etc/nginx/sites-available/nocturne.bak-20260924-170956`；`nginx -t` 通过后使用 reload，无服务中断。
 
 **④ 生产形态（真正部署时才需要）：**
 
