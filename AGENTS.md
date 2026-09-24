@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：**宿主 nginx 1.18.0** + habitat-server + Nocturne / Ombre Brain（容器 nginx）+ eventide-sidecar；Caddy 仅为早期方案记录                      |
-| 当前阶段 | **Phase 6.5 · AI Runtime Integration** —— **P0 / P1 / P2 均已完成**（T-035 能力注册 / 运行时上下文 / 工具绑定 / 工具闭环；T-036 日记与留言板迁服务端 + `author` 权限模型；T-037 事件收件箱 + 日记权限流转 + 日记·留言板 Tool + **挂起式确认卡**；T-038 **LLM 档案页 App Launcher + Chat 头像开关 —— 只动呈现层**）｜Phase 6 已完成（T-028~T-030 / T-032 / T-033）；Phase 3A 记忆链路与生产鉴权已完成真机 **26/26**（T-034） |
+| 当前阶段 | **Phase 6.5 已完成**（T-035 能力注册/工具闭环 → T-038 呈现层）｜**UI 换装进行中：6 批中的第 1 批（T-039 设计令牌 + 翻译层 + 整套积木）已完成**，第 2 批（换外壳）未开始 —— 见 `docs/UI_DESIGN.md` §5｜Phase 6 已完成（T-028~T-030 / T-032 / T-033）；Phase 3A 记忆链路与生产鉴权已完成真机 **26/26**（T-034） |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -132,7 +132,7 @@ habitat/
 | 世界书 / 角色设定 | `docs/PRODUCT_SPEC.md` §9.4 + 技术方案 §6.2 | character-card-spec-v2/v3、KI-CO |
 | Home 生活模块 | `docs/PRODUCT_SPEC.md` §3–5 + 技术方案 §8 | **每次只查当前正在施工的模块**：Journal、shared-page、dwell-on-something、memex |
 | 收藏 / 作品 / 相册跨模块联动 | `docs/PRODUCT_SPEC.md` §3.5–3.7 + §4 | 优先查看支持跨内容收纳、引用、归档的参考项目；只查与当前对象类型直接相关的项目 |
-| UI 页面 / 布局 / Widget | `docs/PRODUCT_SPEC.md` 对应模块 + 技术方案 §8 + `docs/UI_DESIGN.md` + `docs/栖息地_UI参考资料_v1.0.md` | 有明确产品参考时再查对应项目；不要遍历整个参考库 |
+| UI 页面 / 布局 / Widget | **视觉权威源 = `D:/我搓/designs/qixi-habitat/`（原型 + `tokens.css`）** + `docs/UI_DESIGN.md`（要点与批次进度）+ `docs/PRODUCT_SPEC.md` 对应模块 + 技术方案 §8 + `docs/栖息地_UI参考资料_v1.0.md` | 取色取值看原型；**不要通读原型**，做哪页读哪个 `screens-*.jsx` |
 | LLM 档案页 / 能力呈现 | `docs/PRODUCT_SPEC.md` §9.1 + `docs/AI_RUNTIME.md` §7 + `docs/API.md`（`GET /api/capabilities`） | 非交互新增类。⚠️ 内容**唯一来源**是能力面接口，**不许写死**；有界面才可点，没界面不做假入口 |
 | 长期记忆接入 | 技术方案 §7.1 / §9 风险1·5 + `docs/MEMORY.md` | Nocturne 为主；只有涉及实现取舍时再查 Paramecium / Ombre-Brain / kiwi-mem |
 | 状态系统 / 情绪 | `docs/PRODUCT_SPEC.md` 后续对应章节 + 技术方案 §0.1-4 / §7.2③ | Eventide 为主；需要设计行为模式时再查 Drivesoid / Tidefall / jiwen |
@@ -179,6 +179,11 @@ habitat/
 - Phase 5 高级能力：✅ 完成（异步语音 / TTS / 图片 / 富消息块 / Mini Terminal）
 - Phase 6 打磨：✅ 完成（T-028 PWA / T-029 离线只读 / T-030 导入导出增强 / T-032 验收基础设施 / T-033 可靠性收口）；**动画与过渡效果属于后续 UI 专项**
 - Phase 6.5 AI Runtime：✅ 完成（T-035 P0 能力注册与工具闭环 / T-036 P1 前置：日记·留言板迁服务端 / T-037 P1 事件收件箱与确认卡 / **T-038 P2 呈现层：LLM 档案页 App Launcher + Chat 头像开关**）
+- **UI 换装（按 `docs/UI_DESIGN.md` §5 的 6 批推进）**：✅ 第 1 批「打地基」（T-039 新令牌 + 翻译层 + 整套积木 + 32 图标 + 雨幕）｜⬜ 第 2~6 批未开始
+  - ⚠️ 第 1 批**只换配色**：底栏仍是旧的（emoji + 英文标签），页面布局一律未动
+  - ⚠️ 换装是**纯前端**的事（只有第 6 批可能碰服务端）：数据 / 备份格式 / 接口都不受影响
+  - 📌 视觉权威源 = `D:/我搓/designs/qixi-habitat/`（原型）。**别照抄它的叠放式换屏** —— 栖息地是真路由，改用 `.sub-layer` 只做动画、网址不变
+  - 📌 `theme/tokens.css` 是**过渡用的翻译层**（旧名转发到新令牌），全部换完即删
 
 **UX 收口横切（依 `PRODUCT_SPEC` §7）**：**P0 ✅ 全部收口（14 项）** —— 消息对象操作 + 跨模块内容流转 + 会话置顶 / 聊天设置 + 会话分组（T-015~T-018）
 **P1（6 项）**：输入区快捷栏 ✅ + 请求回复拆开 ✅（T-019）｜留言板 Widget ✅ + 倒数日 Widget ✅（T-020，**Dexie 升 v9 / 备份升 v7**）｜收藏分类 ✅ + 相册分类 ✅（T-021，**Dexie 升 v10 / 备份升 v8**）｜**P1 全部完成**｜P2 未开始
@@ -197,12 +202,12 @@ habitat/
   - **导入导出**：聊天设置里可导出**单会话**（Markdown 面向阅读 / JSON 与全量备份同构）；
     全量备份补「导入前覆盖警告 + 先导一份」与「久未导出提醒」；**单会话导出不计入「上次导出备份」**（`verify-export` 17/17）
   - ⏭ **刻意没做**：动画 / 过渡效果（北北要求留到与 UI 一起做）；离线发送队列（只做只读，不建排队语义）
-  - 📌 验收排布：`run-front-verify.sh` 现在含 **7 支**（home / chat / providers / llm / export / offline + 组二 diagnostics）；
+  - 📌 验收排布：`run-front-verify.sh` 现在含 **8 支**（home / chat / providers / llm / **tokens** / export / offline + 组二 diagnostics）；
     PWA 单独一条 `run-pwa-verify.sh`（打生产构建）。**别并发跑**，`verify-home` 的整页导航对机器负载敏感（详见 `docs/TASKS.md` 待优化）
 
 - ✅ **验收基础设施收口（T-032）**：mock MCP 的 GET / DELETE 会话头已纳入 5 项生命周期探针，DELETE 会释放服务端会话映射；
   `verify-home` 自清浏览器站点数据并只把整页导航等待放宽到 60s，`verify-export` 自建「从未备份」前提，避免旧浏览器状态制造假红。
-  当前整套前端回归：home 77 / chat 148 / providers 22 / llm 16 / export 17 / offline 38 / diagnostics 36，全部通过。
+  当前整套前端回归：home 77 / chat 148 / providers 22 / llm 16 / **tokens 24** / export 17 / offline 38 / diagnostics 36（共 **378 项**），全部通过。`verify-tokens` 是换装第 1 批新增的地基哨兵（令牌 / 翻译层 / 通用积木）。
 
 **Phase 6.5 呈现层（T-038，已收口）**
 
@@ -281,7 +286,12 @@ habitat/
 
 ### 下一步
 
-1. 🎨 **后续 UI 专项**：动画与过渡效果须与完整视觉方案一起做（`docs/UI_DESIGN.md` 被补充前不堆视觉细节，见铁律 6）
+1. 🎨 **UI 换装，第 2 批「换外壳」**（`docs/UI_DESIGN.md` §5 有完整批次表）：
+   胶囊底栏（对话 / 家 / 大脑 / 生活 / 设置）+ 欢迎页 + 子页面滑入动画。
+   ⚠️ 两条硬约束：**真网址一个不改**（滑入只是动画，刷新 / 后退 / 书签都要还能用）；
+   **`data-testid` 一个不删**（验收有 344 处依赖）。
+   ⚠️ 底栏换成「浮起胶囊」后要**重新量占位高度**（`--bottom-nav-height` 现在是按贴底一条算的），否则内容会被胶囊盖住。
+   ⚠️ 铁律 6 的前提已消失（视觉方案到位）—— 动画随批次落地，不再单独押后
 2. **Phase 6.5 收口后的收尾项**（都在 `docs/TASKS.md`，没有新的功能批次）：
    - ⏳ `memory.write` 仍未实施：Nocturne 实例的写工具（`hold`）没接。真要写时先读 `docs/MEMORY.md` 的工具面
    - ⏳ 确认卡**没有过期 / 撤回**机制；其**前端交互**（点按钮 / 刷新后状态还在）仍无人眼之外的覆盖

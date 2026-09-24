@@ -1,41 +1,56 @@
-/** Design Tokens（CSS 变量承载，支持运行时切换；docs/UI_DESIGN.md 补充前为临时取值） */
+/* ============================================================
+   旧令牌 → 新设计令牌的「翻译层」（UI 换装第 1 批 · 地基）
+   ============================================================
+
+   为什么要有这一层：
+   栖息地前端有 **551 处** 引用旧名字（`--color-text-dim` 161 处、
+   `--color-border` 137 处……）。如果直接改名，就要在换装的同时改 551 处代码，
+   一旦哪里漏了就会出现「字看不见了」，而且排查范围是整个前端。
+
+   所以换装分两步走：
+   ① 现在（第 1 批）：新配色一次性生效，旧名字全部指向新令牌 —— **旧代码一行不改**；
+   ② 后续各批：做到哪个页面，就把那个页面的旧名字顺手换成新名字，逐页收敛。
+
+   好处是每次只有一个小页面在动，出问题一眼就能定位。等全部换完，
+   这个文件就只剩一张对照表，可以整体删除（到时候会记进 docs/TASKS.md）。
+
+   ⚠️ 这里**不写具体色值**，全部是 `var()` 转发 —— 深色模式也跟着自动切，
+   不需要再维护一份暗色取值。
+   ============================================================ */
 
 :root {
-  --color-bg: #f6f5f2;
-  --color-surface: #ffffff;
-  --color-surface-alt: #efedE8;
-  --color-text: #1f1e1c;
-  --color-text-dim: #6f6d67;
-  --color-primary: #4a7a6f;
-  --color-primary-contrast: #ffffff;
-  --color-danger: #b3554d;
-  --color-border: #dddad3;
+  /* 底色 / 表面 */
+  --color-bg: var(--bg-base);
+  --color-surface: var(--bg-surface-solid);
+  --color-surface-alt: var(--bg-subtle);
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  /* 文字 */
+  --color-text: var(--text-primary);
+  --color-text-dim: var(--text-secondary);
 
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-6: 24px;
+  /* 强调 / 状态 */
+  --color-primary: var(--accent-strong);
+  --color-primary-contrast: var(--accent-on-strong);
+  --color-danger: var(--danger);
 
-  /* 底部导航占位高度：AppShell 用它给 fixed 底栏让位（原先硬编码 pb-16，导航一改就错位） */
+  /* 描边 */
+  --color-border: var(--border-soft);
+
+  /* ⚠️ 历史遗留：`--color-accent` 从来没有被定义过，但代码里用了 4 处
+     （生活页「选中日期」的描边 + 一条提示文字）。之前浏览器会把这种引用当作
+     无效值丢掉，于是描边退回 currentColor、提示文字退回默认色 —— 看着像"能跑"，
+     其实是坏的。这次顺手补齐，指向新的强调色。 */
+  --color-accent: var(--accent-strong);
+
+  /* 字体：旧名字转发到新字体栈 */
+  --font-family: var(--font-main);
+
+  /* 底部导航占位高度：AppShell 用它给 fixed 底栏让位。
+     换装第 2 批把底栏换成胶囊导航后会重新量一次（胶囊是浮起来的，占位方式要变）。 */
   --bottom-nav-height: 4rem;
-
-  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
-:root[data-theme='dark'] {
-  --color-bg: #161514;
-  --color-surface: #211f1d;
-  --color-surface-alt: #2a2825;
-  --color-text: #eceae5;
-  --color-text-dim: #a19d94;
-  --color-primary: #7fb5a7;
-  --color-primary-contrast: #16211e;
-  --color-danger: #d98a82;
-  --color-border: #3a3733;
-}
+/* 已废弃的旧令牌（换装第 1 批移除，全仓 **零引用**，删除无影响）
+   - `--radius-sm/md/lg`（6/10/16px）→ 改用新圆角阶梯 `--radius-xs/sm/md`（8/12/16px）
+   - `--space-1/2/3/4/6`          → 间距一律用 Tailwind 的 `p-*` / `gap-*`
+   保留这段注释是为了将来有人翻到旧样式引用时，知道该换成什么。 */

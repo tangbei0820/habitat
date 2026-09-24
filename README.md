@@ -105,6 +105,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `node web/scripts/verify-chat.mjs` | 聊天链路 / 消息对象操作 / 跨模块收录 / 会话置顶与设置 / 会话分组 / 消息块分发 / 分页 / 候选版本 / 输入区快捷栏与请求回复拆开 / **安全 HTML（sandbox + CSP）· widget · tab-group** / **录音预览与真实转写** / **图片理解与生成** / **Mini Terminal 空态** / **气泡头像开关（全局偏好、刷新后仍记住）**（148 项） |
 | `node web/scripts/verify-providers.mjs` | API 方案管理 UI（22 项） |
 | `node web/scripts/verify-llm.mjs` | **Phase 6.5 P2 · 小栖档案（App Launcher）**：卡片与服务端能力快照**逐条比对**（不写死能力名）、可用状态一致、不可用必给原因、有界面的模块真能启动、没界面的不做假入口（16 项） |
+| `node web/scripts/verify-tokens.mjs` | **UI 换装地基哨兵**：新设计令牌齐不齐、**翻译层（旧名 → 新令牌）逐条相等**、13 个通用积木类的**计算结果**（CSS 写了 ≠ 生效）、浅/深两套确实不同并各截一张图（24 项，**不需要 server**） |
 | `node web/scripts/verify-diagnostics.mjs` | 诊断日志面板（36 项） |
 | `node web/scripts/verify-home.mjs` | Home 十模块 + **主屏 Widget** + **收藏分类 / 相册分类** + 备份恢复（77 项，含备份 v8 的分类归属与旧版兼容） |
 | `node web/scripts/verify-life.mjs` | Life 四视图、移动端布局、价格 / 钱包入口、Push 降级、运行状态（15 项） |
@@ -114,7 +115,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 
 各脚本的**准确前置条件**写在**各自文件头的注释**里，跑之前先看一眼。
 
-组一六支（`home` / `chat` / `providers` / `llm` / `export` / `offline`）共用一套前置
+组一七支（`home` / `chat` / `providers` / `llm` / `tokens` / `export` / `offline`）共用一套前置
 （server:3100 + vite:5174 + CDP:9222），组二 `diagnostics` 另起一套（会重建库文件，端口错开），一键跑：
 
 ```bash
