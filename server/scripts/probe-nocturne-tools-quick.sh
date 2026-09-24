@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Nocturne MCP 工具面侦察 —— **超轻量版**（只要 curl + python3，不落任何代码文件）
+# Nocturne MCP 工具面事实采集 —— **超轻量版**（只要 curl + python3，不落任何代码文件）
 #
 # 场景：在**服务器**上、手边没有 habitat 仓库，也不想粘贴上百行的脚本。
 #       这段直接整块粘贴就能跑，输出：服务端自报的名字/版本 + 全部工具及其参数 + 对照表。
@@ -11,7 +11,12 @@
 #
 # ★ 只做 initialize 握手 + tools/list。**不调用任何工具**，不会读写记忆。
 #
-# 三个侦察脚本的分工（输出口径一致，随便挑）：
+# 用途 = **工具面漂移检测**（2026-09-24 那次侦察已收敛）：
+#   实例真实工具面 9 个：breath / trace / hold / wander / wander_mark / drive /
+#   undercurrent / trail_delta / trail_family；Habitat 只依赖 breath + trace。
+#   ⚠️ 本脚本不替代验收 —— 只读链路端到端验收是 scripts/probe-memory.ts。
+#
+# 三个脚本的分工（输出口径一致，随便挑）：
 #   probe-nocturne-tools.ts              开发机（要仓库 + tsx），输出最全
 #   probe-nocturne-tools-standalone.mjs  任何有 Node 18+ 的机器，零依赖
 #   probe-nocturne-tools-quick.sh        本文件：只要 curl + python3，最短
@@ -19,9 +24,16 @@
 set -u
 
 URL="${1:-http://127.0.0.1:8000/mcp}"
-HDR=/tmp/nocturne-init-hdr.txt
-BODY=/tmp/nocturne-init-body.txt
-RAW=/tmp/nocturne-tools-raw.txt
+
+# 临时文件目录：优先 TMPDIR，且必须已存在（Git Bash 下 /tmp 未必可写，
+# 直接用 `-D /tmp/x` 会被 MSYS 路径转换坑到，导致后面重定向读不到文件）。
+TMPD="${TMPDIR:-/tmp}"
+if [ ! -d "$TMPD" ] || [ ! -w "$TMPD" ]; then
+  TMPD=$(mktemp -d 2>/dev/null || echo ".")
+fi
+HDR="$TMPD/nocturne-init-hdr.txt"
+BODY="$TMPD/nocturne-init-body.txt"
+RAW="$TMPD/nocturne-tools-raw.txt"
 
 PY=$(command -v python3 || command -v python)
 if [ -z "${PY}" ]; then
@@ -105,8 +117,8 @@ if not tools:
     print(tools_raw[:1500])
     raise SystemExit(0)
 
-# 适配层 server/src/providers/nocturne-memory.ts 里写死的 5 个名字
-expected = ['read_memory', 'search_memory', 'create_memory', 'update_memory', 'delete_memory']
+# 适配层 server/src/providers/nocturne-memory.ts 的 NOCTURNE_TOOLS 映射表
+expected = ['breath', 'trace']
 
 print(f'\n共 {len(tools)} 个工具 ——\n')
 for t in tools:
@@ -123,13 +135,18 @@ for t in tools:
     print()
 
 names = {t.get('name') for t in tools}
-print('与适配层写死的 5 个名字对照：')
+print('与适配层依赖的 2 个名字对照：')
 for n in expected:
     print(f"  {'OK  ' if n in names else '缺失'} {n}")
 extra = [t.get('name') for t in tools if t.get('name') not in expected]
 if extra:
-    print(f"\n实例有、适配层不知道的 {len(extra)} 个：{'、'.join(extra)}")
+    print(f"\n实例有、适配层不用的 {len(extra)} 个：{'、'.join(extra)}")
 
 hit = len([n for n in expected if n in names])
-print(f'\n结果：{hit}/5 命中。' + ('工具面完全不同 —— 要重定映射，不是改字符串。' if hit == 0 else ''))
+if hit == len(expected):
+    print(f'\n结果：{hit}/{len(expected)} 全对上 —— 工具面无漂移。')
+    print('端到端验收请跑 scripts/probe-memory.ts（本脚本只做事实采集）。')
+else:
+    print(f'\n结果：{hit}/{len(expected)} 命中 —— 工具面漂移，要重定映射，不是改字符串。')
+    print('请把上面这份完整输出贴回 habitat 仓库。')
 PYEOF

@@ -1,6 +1,16 @@
 /**
  * 开发用 mock MCP server（技术方案 §9 风险1：先验证客户端代码再排真实链路）。
  * 零额外运行时依赖：node:http + 官方 SDK，独立进程 `npm run dev:mock-mcp`，默认 :3333。
+ *
+ * ⚠️ 2026-09-24 对齐真实实例的工具面：原先 mock 的是**官方 Demo v1.26** 那套
+ * （`read_memory` / `search_memory` / `create_memory` / …），而自部署实例用的是
+ * `breath` / `hold` / `trace` / `wander` / … 两套名字毫无交集。
+ * 于是本地 mock 全绿、线上一调就炸 —— mock 长得不像被测对象，验了等于没验。
+ *
+ * 现在只 mock 适配层实际要用的两个工具（`breath` + `trace`）加一个链路自检用的 `echo`。
+ * **改实例或升级后，先跑工具面侦察再回来同步这里**：
+ *   npm run probe:nocturne-tools        # 开发机
+ *   bash probe-nocturne-tools-quick.sh  # 服务器
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -8,11 +18,12 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 
-interface MockMemory { content: string; priority: number; disclosure: string; triggers: string[] }
-const memories = new Map<string, MockMemory>([
-  ['core://agent', { content: '我是用于 Habitat 验收的 mock 记忆。', priority: 0, disclosure: '启动时读取', triggers: [] }],
-])
-let memorySequence = 0
+/** mock 记忆：实例是「抽屉 + 关键词」模型，没有 URI 树，所以这里也不用 URI。 */
+interface MockMemory { kind: string; content: string }
+const memories: MockMemory[] = [
+  { kind: 'memory', content: '我是用于 Habitat 验收的 mock 记忆，北北晚上会去散步。' },
+  { kind: 'feel', content: '傍晚的风让人安静下来，适合散步。' },
+]
 
 function toolText(text: string): { content: Array<{ type: 'text'; text: string }> } {
   return { content: [{ type: 'text', text }] }
@@ -20,7 +31,7 @@ function toolText(text: string): { content: Array<{ type: 'text'; text: string }
 
 /** McpServer 与 transport 一一对应（Protocol 不允许复用连接），每个会话新建一个 */
 function createMcpServer(): McpServer {
-  const mcp = new McpServer({ name: 'habitat-mock-mcp', version: '0.1.0' })
+  const mcp = new McpServer({ name: 'habitat-mock-mcp', version: '0.2.0' })
   mcp.registerTool(
     'echo',
     {
@@ -31,69 +42,21 @@ function createMcpServer(): McpServer {
       content: [{ type: 'text', text: `mock echo: ${text}` }],
     }),
   )
-  mcp.registerTool('read_memory', { inputSchema: { uri: z.string() } }, async ({ uri }) => {
-    if (uri === 'system://boot') return toolText(`BOOT\n${memories.get('core://agent')?.content ?? ''}`)
-    const memory = memories.get(uri)
-    return toolText(memory === undefined ? `Error: Memory at '${uri}' not found.` : `${uri}\n${memory.content}`)
-  })
   mcp.registerTool(
-    'search_memory',
-    { inputSchema: { query: z.string(), domain: z.string().optional(), limit: z.number().int().min(1).max(100).default(10) } },
-    async ({ query, domain, limit }) => {
-      const found = [...memories.entries()]
-        .filter(([uri, memory]) => (domain === undefined || uri.startsWith(`${domain}://`)) && `${uri}\n${memory.content}`.includes(query))
-        .slice(0, limit)
-      return toolText(found.length === 0 ? 'No matching memories found across all domains.' : found.map(([uri, memory]) => `- ${uri}\n  ${memory.content}`).join('\n'))
-    },
+    'breath',
+    { description: '新窗或者Compact后读取记忆。', inputSchema: {} },
+    async () => toolText(`BREATH\n${memories.map((item) => `- [${item.kind}] ${item.content}`).join('\n')}`),
   )
   mcp.registerTool(
-    'create_memory',
-    { inputSchema: { parent_uri: z.string(), content: z.string(), priority: z.number().int().min(0), disclosure: z.string(), title: z.string().optional() } },
-    async ({ parent_uri, content, priority, disclosure, title }) => {
-      const leaf = title ?? String(++memorySequence)
-      const uri = `${parent_uri.replace(/\/$/, '')}/${leaf}`
-      if (memories.has(uri)) return toolText(`Error: Memory at '${uri}' already exists.`)
-      memories.set(uri, { content, priority, disclosure, triggers: [] })
-      return toolText(`Success: Memory created at '${uri}'`)
-    },
-  )
-  mcp.registerTool(
-    'update_memory',
-    { inputSchema: { uri: z.string(), old_string: z.string().optional(), new_string: z.string().optional(), append: z.string().optional(), priority: z.number().int().min(0).optional(), disclosure: z.string().optional() } },
-    async ({ uri, old_string, new_string, append, priority, disclosure }) => {
-      const memory = memories.get(uri)
-      if (memory === undefined) return toolText(`Error: Memory at '${uri}' not found.`)
-      if (old_string !== undefined) {
-        if (new_string === undefined || !memory.content.includes(old_string)) return toolText(`Error: Could not find any match for old_string in '${uri}'.`)
-        memory.content = memory.content.replace(old_string, new_string)
-      } else if (append !== undefined) memory.content += append
-      if (priority !== undefined) memory.priority = priority
-      if (disclosure !== undefined) memory.disclosure = disclosure
-      return toolText(`Success: Memory at '${uri}' updated`)
-    },
-  )
-  mcp.registerTool('delete_memory', { inputSchema: { uri: z.string() } }, async ({ uri }) => {
-    if (!memories.delete(uri)) return toolText(`Error: Memory at '${uri}' not found.`)
-    return toolText(`Success: Memory '${uri}' deleted.`)
-  })
-  mcp.registerTool(
-    'add_alias',
-    { inputSchema: { new_uri: z.string(), target_uri: z.string(), priority: z.number().int().min(0), disclosure: z.string() } },
-    async ({ new_uri, target_uri, priority, disclosure }) => {
-      const target = memories.get(target_uri)
-      if (target === undefined) return toolText(`Error: Memory at '${target_uri}' not found.`)
-      memories.set(new_uri, { ...target, priority, disclosure, triggers: [...target.triggers] })
-      return toolText(`Success: Alias '${new_uri}' now points to same memory as '${target_uri}'`)
-    },
-  )
-  mcp.registerTool(
-    'manage_triggers',
-    { inputSchema: { uri: z.string(), add: z.array(z.string()).optional(), remove: z.array(z.string()).optional() } },
-    async ({ uri, add = [], remove = [] }) => {
-      const memory = memories.get(uri)
-      if (memory === undefined) return toolText(`Error: Memory at '${uri}' not found.`)
-      memory.triggers = [...new Set([...memory.triggers, ...add])].filter((item) => !remove.includes(item))
-      return toolText(`Keywords for '${uri}': ${memory.triggers.join(', ') || '(none)'}`)
+    'trace',
+    { description: '按关键词搜索记忆。', inputSchema: { query: z.string(), limit: z.number().int().min(1).max(100).default(15) } },
+    async ({ query, limit }) => {
+      const found = memories.filter((item) => item.content.includes(query)).slice(0, limit)
+      return toolText(
+        found.length === 0
+          ? '没有匹配的记忆。'
+          : found.map((item) => `- [${item.kind}] ${item.content}`).join('\n'),
+      )
     },
   )
   return mcp

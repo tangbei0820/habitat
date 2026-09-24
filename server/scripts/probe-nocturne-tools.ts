@@ -1,22 +1,27 @@
 /**
- * Nocturne MCP 工具面侦察（**无假设版**）
+ * Nocturne MCP 工具面事实采集（**无假设版**）
  *
  * 与 `probe-nocturne-live.ts` 的分工 —— 差别很关键：
- *   live 版把「这个实例应该有哪些工具」**写死**了（read_memory / search_memory / create_memory …），
- *   实例的工具面一旦与那份假设不同，它只会打一堆 ✗，却**读不出实例到底有什么**。
+ *   live 版把「这个实例应该有哪些工具」**写死**了（现在是 breath / trace），
+ *   实例的工具面一旦漂移，它只会打一堆 ✗，却**读不出实例到底有什么**。
  *   本脚本相反：**不假设任何工具名**，只做两件事 —— 握手 + listTools，然后把工具面原样摊开。
  *
  * 纪律：**绝不调用任何工具**（不读、不写）。跑一万次也不会动到你的记忆。
  *
- * 它为什么存在（2026-09-24 发现）：
- *   Habitat 的适配层 `src/providers/nocturne-memory.ts` 是按「官方 Nocturne 只读 Demo」
- *   的工具名写的（`.env.example` 里那行 `MCP_NOCTURNE_URL=https://misaligned.top/mcp`），
- *   而北北自部署的实例自称 **Ombre Brain v1.30.0**，工具名是
- *   `breath` / `hold` / `trace` / `wander` / `wander_mark` / `drive` / `undercurrent` /
- *   `trail_delta` / `trail_family`。
- *   两者若对不上，**不是改几个字符串的事** —— 是适配层要说另一种话、甚至数据模型都不一样
- *   （URI 树 vs 记忆抽屉 + 九维驱动 + Trail 家族）。
- *   所以先用本脚本拿到「实例真实工具面」这一手事实，再谈怎么改。
+ * 它为什么存在（2026-09-24 发现 → 同日已收敛）：
+ *   Habitat 的适配层原先按「官方 Nocturne 只读 Demo」的工具名写
+ *   （`.env.example` 里那行 `MCP_NOCTURNE_URL=https://misaligned.top/mcp`），
+ *   而北北自部署的实例自称 **Nocturne**（部署留档记 **Ombre Brain v1.30.0**），
+ *   真实工具面是 `breath` / `trace` / `hold` / `wander` / `wander_mark` / `drive` /
+ *   `undercurrent` / `trail_delta` / `trail_family` —— 与旧假设 **0/5 命中**。
+ *   旧适配层要的 5 个名一个都不在，所以那次不是「改几个字符串」，是接口要重设计。
+ *
+ *   收敛结果（现在）：`MemoryProvider` 只留只读两方法 —— `recall()`→`breath`（无参）、
+ *   `search()`→`trace(query, limit)`；写类端点全部撤掉。见 `src/providers/nocturne-memory.ts`。
+ *
+ * 📌 本脚本现在的用途 = **漂移检测**：实例升级 / 换血统 / 改工具名时，先跑它看一手事实，
+ *    再决定要不要动适配层。对照表 `HABITAT_EXPECTED` 与适配层保持同步。
+ *    ⚠️ 它**不替代验收** —— 只读链路的端到端验收是 `scripts/probe-memory.ts`。
  *
  * 用法（两处也可先写进 `server/.env`；真实环境变量优先于 .env）：
  *   cd server
@@ -43,14 +48,12 @@ const SHOW_SECRET = process.env.NOCTURNE_SHOW_SECRET === '1'
 
 /**
  * Habitat 适配层目前**写死**在代码里的工具名 —— 用来做「期望 vs 实际」对照。
- * 这份清单的出处：`src/providers/nocturne-memory.ts` 的 callText() 调用点。
+ * 这份清单的出处：`src/providers/nocturne-memory.ts` 的 `NOCTURNE_TOOLS` 映射表。
+ * ⚠️ 改适配层时同步改这里，否则本脚本的对照会失真。
  */
 const HABITAT_EXPECTED: ReadonlyArray<{ name: string; usedBy: string }> = [
-  { name: 'read_memory', usedBy: 'recall() / read()' },
-  { name: 'search_memory', usedBy: 'search()' },
-  { name: 'create_memory', usedBy: 'create()' },
-  { name: 'update_memory', usedBy: 'update()' },
-  { name: 'delete_memory', usedBy: 'delete()' },
+  { name: 'breath', usedBy: 'recall()（读全部，无参数）' },
+  { name: 'trace', usedBy: 'search(query, limit)（关键词搜）' },
 ]
 
 /** 密钥路径打码：/mcp-bff094f6…4af2d088 —— 保留头尾足以核对，中间不落地 */
@@ -208,14 +211,14 @@ for (const tool of tools) {
 }
 
 /* ------------------------------------------------------------------ 3. 期望 vs 实际 */
-console.log('=== 3. Habitat 期望 vs 实例实际 ===')
+console.log('=== 3. 适配层期望 vs 实例实际 ===')
 const missing = HABITAT_EXPECTED.filter((item) => !toolNames.includes(item.name))
 const presentExpected = HABITAT_EXPECTED.filter((item) => toolNames.includes(item.name))
 
 if (missing.length === 0) {
-  console.log('  ✓ 适配层写死的 5 个工具名，实例**全部都有** —— 适配层不用改，接着修别的。')
+  console.log(`  ✓ 适配层依赖的 ${HABITAT_EXPECTED.length} 个工具，实例**全部都有** —— 工具面无漂移。`)
 } else {
-  console.log(`  ✗ 适配层写死的工具名里，有 ${missing.length} / ${HABITAT_EXPECTED.length} 个实例**没有**：`)
+  console.log(`  ⚠️ 适配层依赖的工具里，有 ${missing.length} / ${HABITAT_EXPECTED.length} 个实例**没有**（工具面漂移）：`)
   for (const item of missing) console.log(`      · ${item.name}  （适配层用于 ${item.usedBy}）`)
   if (presentExpected.length > 0) {
     console.log(`  · 实例确实有的：${presentExpected.map((item) => item.name).join(', ')}`)
@@ -224,11 +227,11 @@ if (missing.length === 0) {
   if (unknownToUs.length > 0) {
     console.log(`  · 实例有、而适配层从未听说过的工具：${unknownToUs.join(', ')}`)
   }
-  console.log('\n  ⚠️ 这不是「改几个字符串」能解决的：工具名对不上，通常意味着**数据模型也不同**。')
-  console.log('     适配层现在假设的是「URI 树 + read/create/update/delete」（system://boot、parent_uri、old_string…），')
-  console.log('     若实例是 Ombre Brain 血统，它就是「记忆抽屉 + 关键词轨迹 + 九维驱动」，')
-  console.log('     → 该改的是 `src/providers/nocturne-memory.ts` 的**整套语义**，不是替换工具名。')
-  console.log('     先把上面这份「实例真实工具面」贴出来，再定映射。')
+  console.log('\n  ⚠️ 工具面漂移通常**不是改几个字符串**能解决的 —— 名字变了往往意味着数据模型也变了。')
+  console.log('     适配层现在走的是「breath 读全部 + trace 关键词搜」这套语义（见 src/providers/nocturne-memory.ts）。')
+  console.log('     先把上面这份「实例真实工具面」和适配层的调用点对齐，确认新名字怎么承载同一件事，')
+  console.log('     再改 `NOCTURNE_TOOLS` 映射表；改完同步更新本脚本的 HABITAT_EXPECTED。')
+  console.log('     若新实例的语义确实不同（例如 URI 树 / 九维驱动），那就是接口要重新设计，先停下来跟北北确认。')
 }
 
 /* ------------------------------------------------------------------ 证据 */
@@ -242,6 +245,7 @@ console.log('  实际调用   : (无 —— 本脚本不调用任何工具)')
 
 console.log('\n=== 汇总 ===')
 console.log(`  链路     : ${handshakeError === null ? '通' : '不通'}`)
-console.log(`  工具面   : ${missing.length === 0 ? '与适配层假设一致' : '与适配层假设不一致（需重写适配层，见 §3）'}`)
+console.log(`  工具面   : ${missing.length === 0 ? '与适配层期望一致' : '与适配层期望不一致（漂移，见 §3）'}`)
+console.log('  端到端验收: 本脚本不做 —— 只读链路验收请跑 scripts/probe-memory.ts')
 
 await client.close().catch(() => undefined)

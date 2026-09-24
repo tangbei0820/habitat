@@ -1,11 +1,11 @@
 # MEMORY · 记忆系统接入
 
-状态：**Phase 3A 施工中**。本地 mock 全链探针 24/24；客户端代码已用官方只读 Demo 打真实 server 验真（25/25，见 `docs/TASKS.md` T-013）。
+状态：**Phase 3A 施工中**。本地 mock 全链探针 21/21；接口已按**自部署实例的真实工具面**收敛为**只读两方法**（2026-09-24，T-031）。
 
-自部署实例（2026-09-24 更正）：
-- ✅ 进程、证书、DNS 都好；**`/mcp` 的 404 不是故障，是当初有意加固**（T-022 误判为反代缺陷）→ 真正入口是**秘密路径**，见下「入口地址」。
-- ⛔ 另有一个**比反代更前置**的拦路虎：适配层**写死**的工具名（取自官方 Demo）与该实例**实际工具面**可能完全对不上 → 见下「自部署实例的工具面」。
-- 🔴 **鉴权缺失**仍未处理（`/health`、`/dashboard`、`/api/*` 无凭据 200），见 T-022 风险 1。
+- ✅ **工具面已查明并对齐**：实例真实 9 个工具，Habitat 只用其中 2 个只读工具（`breath` / `trace`）。旧适配层那 5 个名字（源自官方 Demo）**0/5 命中**，已整段重写。
+- ✅ **写类端点已撤掉**：实例虽有写工具（`hold` / `wander_mark` / `drive`），但 Habitat 这一阶段**只读接入**，`/api/memory` 只留 `GET boot` + `GET search`。
+- ⏳ **待北北在服务器上跑一次真机验证**（本沙箱连不上公网 `beiyan.cc`）：`probe-nocturne-live.ts`，见「复验方式」。
+- 🔴 **该实例没有任何鉴权层**（`/health`、`/dashboard`、`/api/*` 无凭据 200），见文末 T-022 风险 1 —— **未处理**。
 
 对接对象：已部署的 Nocturne（MCP，SSE / Streamable HTTP）。
 职责边界：世界书 = 永远注入的设定；Nocturne = 按需召回的经历；AI 日记 = AI 自己的生活记录。
@@ -54,31 +54,60 @@ sudo grep -rn "location.*mcp" /etc/nginx/sites-enabled/
 > 为什么用秘密路径而不是 Bearer / Basic Auth：秘密路径对客户端**零要求**（只填 URL），兼容性最好；
 > 部分客户端遇到 401 会误触发 OAuth 流程而连不上。两者可叠加，不冲突。
 
-## 自部署实例的工具面 —— 比反代更前置的拦路虎（2026-09-24 发现）
+## 自部署实例的工具面（2026-09-24 实测 · 已收敛）
 
-**适配层假设的工具名源自「官方只读 Demo」，而北北部署的是另一个血统。**
+### 一手事实：实例真实有 9 个工具
 
-| 来源 | serverInfo | 工具名 |
+北北在服务器上**内网直连** `http://127.0.0.1:8000/mcp` 跑 `curl` 拿到（serverInfo 自称 **Nocturne**；
+部署留档记 **Ombre Brain v1.30.0** —— 血统存疑，但**工具面是实测的，以实测为准**）：
+
+| 工具 | 干什么 | Habitat 用不用 |
 | --- | --- | --- |
-| 官方只读 Demo（T-013 实测 · `misaligned.top`） | `Nocturne Memory Interface` v1.26.0 | `read_memory` / `search_memory` / `create_memory` / `update_memory` / `delete_memory` / `add_alias` / `manage_triggers` |
-| **北北自部署实例**（部署记录 2026-09-13） | 自称 **Ombre Brain v1.30.0** | `breath` / `hold` / `trace` / `wander` / `wander_mark` / `drive` / `undercurrent` / `trail_delta` / `trail_family` |
+| `breath` | 无参，把记忆整个取回来（新窗 / Compact 后读） | ✅ `recall()` 就用它 |
+| `trace` | `query` + `limit`，按关键词搜记忆 | ✅ `search()` 就用它 |
+| `hold` | 写记忆（`kind` 区分 memory / feel / writing / unresolved / window / letter …） | ❌ 本阶段只读 |
+| `wander` | 按 `mode` 翻记忆抽屉 | ❌ |
+| `wander_mark` | 给抽屉表态（认 / 不认 / 悬置） | ❌ |
+| `drive` | 九维驱动模型（`drive_key`） | ❌ |
+| `undercurrent` | 情绪天气 | ❌ |
+| `trail_delta` / `trail_family` | 轨迹（Trail）家族 | ❌ |
 
-`server/src/providers/nocturne-memory.ts` 把 5 个工具名**写死**在代码里。若实例工具面确如上表第二行：
+对照旧适配层写死的 5 个名字 `read_memory` / `search_memory` / `create_memory` / `update_memory` / `delete_memory`
+—— **0/5 命中**。
 
-- 链路修通之后，`recall()` / `search()` 会直接报 `MCP_TOOL_CALL_FAILED`（工具不存在）；
-- **这不是「改几个字符串」** —— 数据模型都不一样：
-  适配层假设的是 **URI 树**（`system://boot`、`parent_uri`、`old_string`/`new_string` 补丁、read-before-update），
-  实例实际是 **记忆抽屉 + 关键词轨迹 + Trail 家族 + 九维驱动**（`hold` 用 `kind` 区分 memory/feel/writing/unresolved/window/letter）。
+### 为什么当时不能只改字符串
 
-**先拿一手事实，再谈怎么改** —— 侦察脚本（**不假设任何工具名**，且**不调用任何工具**）：
+数据模型根本不同：
 
-三个脚本，**输出口径一致，挑顺手的用**：
+- 旧适配层假设的是 **URI 树**：`system://boot`、`parent_uri`、`old_string`/`new_string` 补丁、update 前必须先 read；
+- 实例实际是 **记忆抽屉 + 关键词轨迹 + 九维驱动**：`hold` 用 `kind` 分类，**没有 URI 概念，也没有「原地编辑」「删除」这两套语义**。
 
-| 脚本 | 在哪跑 | 要什么 | 说明 |
-| --- | --- | --- | --- |
-| `probe-nocturne-tools.ts` | 开发机 | 仓库 + tsx | 输出最全（serverInfo / 会话 id / 对照表） |
-| `probe-nocturne-tools-standalone.mjs` | **任何机器** | 只要 Node 18+ | 零依赖单文件；不用仓库、不用 npm |
-| `probe-nocturne-tools-quick.sh` | **Linux 服务器** | 只要 `curl` + `python3` | 最短，整块粘贴即可 |
+所以处理方式是**收敛接口**，不是替换工具名（结论见下）。
+
+### 定稿映射（`server/src/providers/nocturne-memory.ts` 的 `NOCTURNE_TOOLS`）
+
+| `MemoryProvider` 方法 | 实例工具 | 说明 |
+| --- | --- | --- |
+| `recall()` | `breath` | 无参数；新窗 / Compact 后读记忆全文 |
+| `search(query, {limit})` | `trace` | 入参 `query`（必填）+ `limit`（可选） |
+| `verifyToolFace()` | `tools/list` | 启动期自检：上面两个工具缺了就告警，只列清单不调用 |
+
+**被撤掉的方法**：`read(uri)` / `create` / `update` / `delete` —— 一共 4 个。理由：
+实例没有 URI，也没有「编辑 / 删除」语义；这 4 个方法**从未被任何调用方使用**（全仓核查过）。
+`MemoryCreateInput` / `MemoryUpdateInput` 两个类型一并删除；`MemorySearchOptions` 去掉 `domain`（实例不认这个参数）。
+
+> ⚠️ **只读是本阶段的刻意选择**，不是能力缺失：实例的 `hold` 完全能写。
+> 等 Phase 4「Life / AI 日记」真需要写记忆时，再加写方法，届时按 `hold` 的 `kind` 设计入参。
+
+### 侦察脚本 —— 现在是「漂移检测」，不是验收
+
+三个脚本**输出口径一致，挑顺手的用**；它们**绝不调用任何工具**（只握手 + `tools/list`）：
+
+| 脚本 | 在哪跑 | 要什么 |
+| --- | --- | --- |
+| `probe-nocturne-tools.ts` | 开发机 | 仓库 + tsx |
+| `probe-nocturne-tools-standalone.mjs` | **任何机器** | 只要 Node 18+ |
+| `probe-nocturne-tools-quick.sh` | **Linux 服务器 / Git Bash** | 只要 `curl` + `python3` |
 
 ```bash
 # 【开发机】有仓库 + tsx
@@ -90,64 +119,53 @@ node probe-nocturne-tools-standalone.mjs http://127.0.0.1:8000/mcp   # 要 Node 
 bash probe-nocturne-tools-quick.sh http://127.0.0.1:8000/mcp         # 只要 curl + python3
 ```
 
-它会打印 serverInfo / 会话 id / 能力声明，以及**每个工具的名字 + 说明 + 参数 + 必填**，
-并把「适配层写死的 5 个名字」与「实例真实有的名字」逐条对照。
-（`NOCTURNE_SHOW_SECRET=1` 才会完整打印密钥路径，默认打码，防截图外泄。）
+把「适配层依赖的 2 个名字」与「实例真实有的名字」逐条对照，并打印每个工具的名字 + 说明 + 参数 + 必填。
+（`NOCTURNE_SHOW_SECRET=1` 才完整打印密钥路径，默认打码防截图外泄。）
 
-> **两个脚本输出口径一致**，随便用哪个；`.mjs` 那个只是为了在「没有仓库的机器」上也能跑。
+**什么时候再跑它**：实例升级 / 换血统 / 改了工具名 → 先跑它拿一手事实，再决定动不动适配层。
+**它不替代验收** —— 只读链路的端到端验收是 `scripts/probe-memory.ts`。
+
 > **在服务器上跑还有两个额外好处**：① 走**内网直连** `http://127.0.0.1:8000/mcp`
 > —— 加固只做在 nginx 那层，容器里就是朴素的 `/mcp`，**连密钥路径都不用填**；
 > ② 绕开「本机 Node 20 带 SNI 连 `beiyan.cc` 会 `ECONNRESET`」那个坑。
 
-拿到输出后的**大致**映射（**待实例 schema 确认**）：
+## 历史留档：官方只读 Demo 的协议事实（T-013 · 2026-09-23）
 
-| 适配层方法 | 现在期望的工具 | 若是 Ombre Brain 血统，大概对应 |
-| --- | --- | --- |
-| `recall()` → `read('system://boot')` | `read_memory` | `breath`（「把记忆取回来」，语义最接近） |
-| `search(query)` | `search_memory` | `trace`（关键词搜索） |
-| `read(uri)` | `read_memory` | `wander`（按 `mode` 翻阅，**没有 URI 概念**） |
-| `create(input)` | `create_memory` | `hold`（写记忆） |
-| `update(input)` | `update_memory` | ❓ 可能无直接对应 |
-| `delete(uri)` | `delete_memory` | ❓ 可能无直接对应 |
+> ⚠️ **2026-09-24 起本节仅为历史记录，不再是我们的对接对象。**
+> 当时据它写死了适配层工具名，实测才发现自部署实例是另一套（见上节）——
+> 「按官方 Demo 的工具名写适配层」这个前提本身是错的，对应脚本 `probe-nocturne-demo.ts` 已废弃。
+> 下面这些**协议层**事实（传输形态 / 会话 id / 返回是面向模型的文本）仍然通用，**工具名那一栏已作废**。
 
-⚠️ 最后两行是**真问题**：若实例没有「原地编辑 / 删除」语义，那 `MemoryProvider` 接口本身
-（`shared/providers.ts` 里的 `update` / `delete`）要不要保留就得**重新界定** ——
-那是设计决策，不是适配层内部能自行消化的。→ 待侦察结果出来后再定。
-
-## 已验证的真实协议事实（T-013 · 2026-09-23）
-
-来源：Nocturne 官方只读 Demo `https://misaligned.top/mcp` —— 官方声明为**只读模式，仅开放 `read_memory` 与 `search_memory`**，所以「不写入外部数据」由服务端物理保证。全部经我们自己的 `McpGateway` 实跑。
+来源：Nocturne 官方只读 Demo `https://misaligned.top/mcp`（`.env.example` 里那行）。当时经我们自己的 `McpGateway` 实跑。
 
 | 项 | 实测值 |
 | --- | --- |
 | 传输 | **Streamable HTTP**，`initialize` 正常下发 `mcp-session-id`（确认不是 SSE 降级） |
 | serverInfo | `Nocturne Memory Interface` v1.26.0 |
 | 协商协议版本 | `2025-06-18` |
-| 官方工具全量 | 7 个：`read_memory` / `create_memory` / `update_memory` / `delete_memory` / `add_alias` / `manage_triggers` / `search_memory` |
-| `read_memory` 入参 | `uri` |
-| `search_memory` 入参 | `query`、`domain`、`limit` —— 与 `MemorySearchOptions` **逐字对上** |
+| 工具面 | 7 个（`read_memory` / `create_memory` / `update_memory` / `delete_memory` / `add_alias` / `manage_triggers` / `search_memory`）—— **❌ 已作废，见上节实测** |
 | 握手耗时 | 公网 Demo 2.2–4.6s（同机自部署可忽略） |
 
-**只读视图**（走 `read_memory` 的 uri）：`system://boot`（启动身份）/ `system://index/<domain>` / `system://recent` / `system://glossary` / `system://diagnostic/<domain>`。
-
-⚠️ **`update_memory` 刻意没有全量替换**（只有 Patch / Append），且更新与删除都要求**先读全文**。适配层 `NocturneMemoryProvider` 已在 `update()` / `delete()` 里强制先 `read()` —— 调用方不必自己记这条前置条件。
-⚠️ **不依赖它的内部 schema**（对齐 §9 风险 5）：Nocturne 工具返回的是**面向模型的文本**，适配层只抽取 text 块（`textFromToolResult`），不解析其库结构。
+⚠️ **不依赖实例的内部 schema**（对齐 §9 风险 5）：Nocturne 工具返回的是**面向模型的文本**，适配层只抽取 text 块（`textFromToolResult`），不解析其库结构。
 ⚠️ **文本型 `Error:` 会被识别成失败** —— 工具返回 `isError` 或正文以 `Error:` 开头时抛 `MCP_TOOL_CALL_FAILED`，不让错误伪装成成功。
 
 ## 复验方式
 
 | 验什么 | 命令 | 结果 |
 | --- | --- | --- |
-| 客户端代码（打**真实** server，只读） | `cd server && npx tsx scripts/probe-nocturne-demo.ts` | 25/25 |
-| 本地全链（mock，**含写路径**） | 起 `dev:mock-mcp` + `dev:server` 后 `npx tsx scripts/probe-memory.ts` | 24/24 |
-| **自部署实例 · 工具面**（不假设工具名，只读） | `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' npx tsx scripts/probe-nocturne-tools.ts` | ⏳ **待北北实跑**（本沙箱连不上外网） |
-| **同上，但在服务器上跑**（推荐：内网直连、免密钥、免装东西） | `node probe-nocturne-tools-standalone.mjs http://127.0.0.1:8000/mcp`，或 `bash probe-nocturne-tools-quick.sh`（只要 curl + python3） | ⏳ 同上 |
-| **自部署实例 · 全链**（反代 / Namespace / 工具调用） | `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' MCP_NOCTURNE_NAMESPACE=habitat npx tsx scripts/probe-nocturne-live.ts` | ⛔ **受阻** —— 它假设的是**官方**工具名；实例对不上会从 §6 起整段失败。**先跑上一行拿真实工具面** |
+| 本地全链（mock，**只读两路径**） | 起 `dev:mock-mcp` + `dev:server` 后 `cd server && npx tsx scripts/probe-memory.ts` | ✅ **21/21**（2026-09-24） |
+| **自部署实例 · 全链**（反代 / Token / Namespace / 工具面 / 只读纪律） | `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' MCP_NOCTURNE_NAMESPACE=habitat npx tsx scripts/probe-nocturne-live.ts` | ⏳ **待北北实跑**（本沙箱连不上公网） |
+| **自部署实例 · 工具面**（只握手，不调用工具） | `cd server && MCP_NOCTURNE_URL='https://beiyan.cc/mcp-<密钥>' npx tsx scripts/probe-nocturne-tools.ts` | ✅ 脚本已对 mock 实跑通过；真机待北北 |
+| **同上，但在服务器上跑**（推荐：内网直连、免密钥、免装东西） | `node probe-nocturne-tools-standalone.mjs http://127.0.0.1:8000/mcp`，或 `bash probe-nocturne-tools-quick.sh http://127.0.0.1:8000/mcp` | ✅ 两个零依赖版均已实跑通过 |
+| ~~客户端代码对官方 Demo~~ | ~~`npx tsx scripts/probe-nocturne-demo.ts`~~ | ⛔ **已废弃**（工具面假设是错的，脚本已清空实现） |
 
-⚠️ 后两条的地址是**加密钥的那条**（`/mcp-<密钥>`），不是公开的 `/mcp` —— 后者被 nginx 特意 404 掉了（见「入口地址」）。
-⚠️ 第 1、4 条依赖公网可达，属**专项验证**（换环境时当连通性体检用），不并入常规回归。
-⚠️ **本机 Node 20 带 SNI 连 `beiyan.cc` 会 `ECONNRESET`**（见文末 T-022 风险 2）—— 所以后两条在**本机**可能连不上，
+⚠️ 实例侧那几条的地址是**加密钥的那条**（`/mcp-<密钥>`），不是公开的 `/mcp` —— 后者被 nginx 特意 404 掉了（见「入口地址」）。
+⚠️ 这几条依赖公网可达，属**专项验证**（换环境时当连通性体检用），不并入常规回归。
+⚠️ **本机 Node 20 带 SNI 连 `beiyan.cc` 会 `ECONNRESET`**（见文末 T-022 风险 2）—— 所以在本机可能连不上，
    属已知的本地环境限制，不是配置错；端到端联调放服务器上做。
+
+> 💡 **在服务器上跑 `probe-nocturne-live.ts`**：仓库要同步过去。若嫌麻烦，先在服务器上跑零依赖的
+> `probe-nocturne-tools-standalone.mjs`，只验工具面（那通常是最需要确认的一环）。
 
 ## 自部署实例体检（T-022 · 2026-09-23）
 
@@ -211,4 +229,4 @@ T-022 当时没看到那份加固记录（`.mcp_hardening.json`），才把「�
    ✅ **已由北北在沙箱外的终端复核确认**（同报 `ERR ECONNRESET`），排除本地出口代理干扰，是真实现象。
    机制疑似链路层 DPI 针对 OpenSSL 3.0.x 的 ClientHello，未最终证实。
    **影响面**：仅「在**本机**用 Node 20 的 server 连**公网** beiyan.cc」；生产为同机内网直连，**不受影响**。
-   本地开发连远程实例这条路暂时不通 —— 走 `probe-nocturne-demo.ts` 或 `dev:mock-mcp`，端到端联调放服务器上做。
+   本地开发连远程实例这条路暂时不通 —— 本地一律走 `dev:mock-mcp` + `probe-memory.ts`，端到端联调放服务器上做。

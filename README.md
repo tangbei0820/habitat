@@ -73,9 +73,10 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npx tsx scripts/probe-providers.ts` | mock 上游 + server（自定 `HABITAT_DB_PATH`） | 方案 CRUD / 密钥进出 / 参数校验（52 项） |
 | `npx tsx scripts/probe-diagnostics.ts` | server（须与脚本用**同一个** `HABITAT_DB_PATH`） | 诊断查询端点（48 项） |
 | `npx tsx scripts/probe-diag-retention.ts` | **不需要 server**（自带一次性临时库，跑完自删） | 诊断日志保留策略（15 项） |
-| `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆链路、read-before-write、诊断留痕（24 项） |
-| `npx tsx scripts/probe-nocturne-demo.ts` | **公网**（Nocturne 官方只读 Demo） | 真实 Streamable HTTP 握手 / 工具清单 / `system://boot`（25 项） |
-| `MCP_NOCTURNE_URL=… npx tsx scripts/probe-nocturne-live.ts` | **自己部署的实例** + 反代已转发 `/mcp` | 反向代理 / Bearer Token（含「不带 Token 再握一次」对照）/ `X-Namespace` / 工具面 / 只读纪律（⛔ 当前受阻，见 `docs/MEMORY.md`） |
+| `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆**只读**链路：`breath`(boot) / `trace`(search) 两路径、参数边界、已移除的写端点应 404、诊断留痕（21 项） |
+| `npx tsx scripts/probe-nocturne-tools.ts` | **任何** Nocturne 实例（`MCP_NOCTURNE_URL`） | 工具面事实采集 / **漂移检测**：只握手 + `tools/list`，**不调用任何工具**；另有零依赖版 `.mjs` 与只要 `curl+python3` 的 `.sh` |
+| `MCP_NOCTURNE_URL=… npx tsx scripts/probe-nocturne-live.ts` | **自己部署的实例** + 反代已转发 `/mcp-<密钥>` | 反向代理 / Bearer Token（含「不带 Token 再握一次」对照）/ `X-Namespace` / 工具面 / 只读纪律（⏳ 真机复跑待北北，见 `docs/MEMORY.md`） |
+| ~~`npx tsx scripts/probe-nocturne-demo.ts`~~ | ~~**公网**（Nocturne 官方只读 Demo）~~ | ⛔ **已废弃**（其工具面假设与自部署实例 0/2 命中，脚本已清空实现） |
 | `npm run probe:eventide` | Eventide sidecar :8234；可选 `PROBE_SERVER` | 真实 Eventide revision / 建态 / 时间推进 / 并发串行 / SQLite 恢复 / 故障降级；配置 server 时共 19 项 |
 | `npm run probe:chat-context` | mock OpenAI + server；注入态另需 Eventide | 读取 mock 收到的真实报文，验证状态卡顺序 / 历史不变 / 持久化；注入 7 项、降级 3 项 |
 | `npm run probe:phase3b` | Eventide + mock OpenAI + 使用隔离 DB 的 server | Phase 3B 全链：结算 / 事件 / 梦境 / BudgetGuard / 唤醒 / 独处 / 通知 / 钱包（21 项） |
@@ -83,8 +84,8 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npm run probe:phase5` | mock OpenAI + 使用隔离 DB 的 server | Phase 5 媒体 / 工具 API：ASR、视觉描述、图片生成、TTS 音频流、上传大小与 MIME 拒绝、无 MCP 空态与非法工具调用（8 项） |
 
 > `probe-nocturne-live.ts` 读 `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`（也可写进 `server/.env`），
-> 默认**不打印** `system://boot` 正文（那是本人记忆），要看加 `NOCTURNE_PROBE_PREVIEW=1`。
-> 握手失败时它会**先把报错翻译成「卡在哪一层」**（404 → 反代缺 location；401/403 → Token；`ECONNRESET` → 链路；证书 → 链不完整）。
+> 默认**不打印**记忆正文（那是本人记忆），要看加 `NOCTURNE_PROBE_PREVIEW=1`。
+> 握手失败时它会**先把报错翻译成「卡在哪一层」**（404 → 秘密路径没带对；401/403 → Token；`ECONNRESET` → 链路；证书 → 链不完整）。
 
 ### 端到端（前端，无头 Edge + CDP）
 
@@ -137,7 +138,8 @@ bash .workbuddy/run-pwa-verify.sh      # build → vite preview:5284 → 无头 
   （症状：`curl` 返回 `000`，而 vite 日志写着 listening）。
 - **后台进程在同一终端命令结束后会被回收**：起 mock / server 与执行验收脚本要写在**同一条命令**里；
   整条流水线较长时用「后台任务 + 输出落日志文件」再另开命令 tail，别硬塞进一条前台命令（会被超时杀掉且输出全丢）。
-- **`probe-nocturne-demo.ts` 依赖公网**，不并入常规回归 —— 它的定位是「风险 1 专项验证 + 换环境时的连通性体检」。
+- **`probe-nocturne-live.ts` 依赖公网可达**，不并入常规回归 —— 它的定位是「风险 1 专项验证 + 换环境时的连通性体检」。
+  `probe-nocturne-demo.ts` **已废弃**（工具面假设是错的，脚本已清空实现）。
 - **`verify-chat.mjs` 的语音条断言要求无头 Edge 带假麦克风**：起浏览器时须加
   `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`（`.workbuddy/run-front-verify.sh` 已带）。
   缺了这两个开关，`getUserMedia` 拿不到流，录音相关的断言会全线失败 —— 那是环境问题，不是功能坏了。

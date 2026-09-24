@@ -11,7 +11,7 @@ import { GatewayError, McpGateway } from './mcp/gateway.js'
 import { loadMcpRegistry } from './mcp/registry.js'
 import { ProviderError } from './providers/errors.js'
 import { LlmRegistry, loadProfiles } from './providers/registry.js'
-import { NocturneMemoryProvider } from './providers/nocturne-memory.js'
+import { NOCTURNE_TOOLS, NocturneMemoryProvider } from './providers/nocturne-memory.js'
 import { loadEventideStateProvider } from './providers/eventide-state.js'
 import { registerChatRoutes } from './routes/chat.js'
 import { registerDiagnosticRoutes } from './routes/diagnostics.js'
@@ -118,6 +118,21 @@ if (pruned > 0) app.log.info({ pruned }, '诊断日志超出保留上限，已�
 
 // 启动即连接 MCP server；单个失败不阻塞启动（状态机 + 诊断表已留痕）
 await gateway.connectAll()
+
+// 记忆适配层要用的工具，实例上是否真的存在。缺了**不阻塞启动** —— 主动行为的 recall()
+// 本来就有降级（recall 失败时改用「长期记忆当前不可用」），但必须在日志里说清楚。
+// 这条自检是有来历的：适配层的 5 个工具名曾按**官方 Demo** 写死，而实例上一套完全不同的
+// 名字，一个都不存在，直到 2026-09-24 手工对工具面才发现（链路因此从未真正跑通过）。
+// 以后让启动日志自己把这件事讲出来，不要靠人去猜。
+const missingMemoryTools = await memoryProvider.verifyToolFace()
+if (missingMemoryTools.length > 0) {
+  app.log.warn(
+    { missing: missingMemoryTools, expected: Object.values(NOCTURNE_TOOLS) },
+    'Nocturne 实例缺少记忆适配层需要的工具，记忆功能不可用 —— 先跑 npm run probe:nocturne-tools 核对工具面',
+  )
+} else if (Object.keys(NOCTURNE_TOOLS).length > 0) {
+  app.log.info({ tools: Object.values(NOCTURNE_TOOLS) }, 'Nocturne 工具面自检通过')
+}
 
 const port = Number(process.env.PORT ?? 3000)
 const host = process.env.HOST ?? '0.0.0.0'

@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：Caddy 反代 + habitat-server + Nocturne + eventide-sidecar ⚠️ **实测线上跑的是 nginx/1.18.0，不是 Caddy**（T-022），选型待北北确认                      |
-| 当前阶段 | **Phase 6 打磨进行中**：T-028 PWA（可安装 + 离线外壳）｜T-029 离线只读｜T-030 导入导出增强 已完成；**动画 / 过渡效果待与 UI 一起做**｜Phase 3A 自部署 Nocturne 验真暂停为部署前关卡（T-022） |
+| 当前阶段 | **Phase 6 打磨进行中**：T-028 PWA（可安装 + 离线外壳）｜T-029 离线只读｜T-030 导入导出增强 已完成；**动画 / 过渡效果待与 UI 一起做**｜Phase 3A 记忆（T-031）已按真实工具面收敛为**只读两方法**，真机复跑待北北 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -149,7 +149,8 @@ habitat/
 
 | #  | 风险                       | 对策在哪                                           |
 | -- | ------------------------ | ---------------------------------------------- |
-| 1  | **MCP 握手 / 请求捕捉失败**（有前科） | 技术方案 §7.2②、§9-1。先用 Nocturne 公共 demo 验证客户端代码    |
+| 1  | **MCP 握手 / 请求捕捉失败**（有前科） | 技术方案 §7.2②、§9-1。本地先用 mock MCP 验客户端；接真实例**先跑工具面侦察**（`probe-nocturne-tools*`），再对适配层 |
+| 1b | **工具面漂移**（实例改名 / 换血统）  | 工具名集中在一张映射表 + `verifyToolFace()` 启动自检；排查 → `docs/MEMORY.md` |
 | 2  | **SSE 过反代被缓冲** → 假死      | §9-2。Caddy 默认友好；nginx 必须 `proxy_buffering off` |
 | 3  | 未备案限制公网形态                | §9-3。相对路径 + 环境变量 base URL，零改动切换                |
 | 4  | Eventide 是库不是服务 + 非商业许可  | §9-4。sidecar 隔离；不随产物分发                         |
@@ -212,20 +213,18 @@ habitat/
   - 已定语义（`PRODUCT_SPEC` §3.5.4 / §3.7.3）：**单归属**（一条内容最多属于一个分类，多维度标记留给后续的「标签」，不让分类兼任）；**删分类不删内容**（同事务把类内归属置 `null`）；**未分类是兜底区**（也收指向不存在分类的脏数据）；相册的**「移出相册」与「删除照片」是两个动作**，措辞不混用
   - 顺带把 `GroupNameSheet` 提升为通用 `components/NameSheet.tsx`（会话分组 / 收藏分类 / 相册三处共用，testid 统一为 `name-sheet-*`），并给收藏 / 相册条目补上「⋯」菜单（与会话行同一套做法）
 
-**Phase 3A（施工中，未结清）**
+**Phase 3A（只读打通已完成 T-031；真机复跑待北北）**
 
-- MemoryProvider → ToolGateway → Nocturne MCP 已落地；Nocturne 官方只读 Demo 已真实验通（T-013）
-- **自部署实例已体检，但链路不通**（T-022，2026-09-23）：进程活着（`/health` 200）、443 证书链完整、80 被阿里云按未备案域名拦截
-- ⛔ **当前唯一阻塞项：宿主 nginx 把 `/mcp` 单独挡在门外** —— 链路上**有两个 nginx**（宿主 apt nginx 1.18.0 + Nocturne 容器 `nginx:alpine`），
-  **上游那层已把 `/mcp` 配好（连反缓冲指令都齐），缺的是宿主那层**；且宿主对其它路径是**通配转发**的，唯独 `/mcp` 例外
-  （证据：`/health/`、`/dashboard/` 回 **307**（FastAPI 特征），`/zzz-*`、`/index.html` 回 **9 字节纯文本 404**（Starlette），
-  而 `/mcp` 回的是 **nginx 自己的 HTML 404 页**）。→ 修法是**找到那条拦截规则删掉/取代**，不是新增 location
-- 🔴 体检同时发现：**该实例没有任何鉴权层**（`/dashboard` 与 `/api/*` 无凭据 200，含写接口）→ 记忆库当前对公网开放。
-  **建议顺序：先用 `config.json` 的 `api_token` 把门锁上，再处理 `/mcp`** —— 一举两得（同时拿到 MCP 要的那把凭据）
-- ⭐ **但别急着改宿主 nginx**：生产形态是 habitat-server 与 Nocturne **同机内网直连**，**根本不经过宿主那层**
-  （容器内 nginx 上游已把 `/mcp` 配好）→ **公网可以不开 `/mcp`**（少一个「含写工具」的暴露面），
-  且本机 Node 20 连公网本来就被 `ECONNRESET`，开公网收益有限。**关键分水岭实验：服务器上 `curl -i -X POST http://127.0.0.1:<NGINX_PORT>/mcp` 通不通**
-- 完整拓扑 / 接入路径 A·B / Node 20 TLS 分界线的影响面 → **`docs/DEPLOYMENT.md`**；结论摘要 → `docs/MEMORY.md`；任务记录 → `docs/TASKS.md` T-022
+- ✅ **接口已按实例真实工具面收敛**（T-031，2026-09-24）：`MemoryProvider` 只剩只读两方法 ——
+  `recall()` → `breath`（无参）、`search(query,{limit})` → `trace`；`/api/memory` 只剩 `GET boot` + `GET search`。
+  原 4 个写端点与方法已删除（实例没有 uri / 编辑 / 删除语义，且从未被调用）。映射表与理由 → `docs/MEMORY.md`
+- ✅ **工具面自检**：适配层 `verifyToolFace()` + 启动期 warn（不阻塞）。实例改名 / 换血统时会明确报出来，
+  排查用三个零依赖侦察脚本（`probe-nocturne-tools.{ts,mjs,sh}`，只握手不调用工具）→ `docs/MEMORY.md`
+- ⚠️ **`/mcp` 的 404 不是故障**：那是 2026-09-13 有意加的秘密路径加固（公开 `/mcp` 一律 404，
+  真入口是 `/mcp-<32位密钥>`）；T-022 曾误判为反代缺陷。生产形态是同机内网直连 `http://127.0.0.1:8000/mcp`，**连密钥都不用填**
+- ⏳ **唯一遗留验证**：北北在服务器上重跑 `probe-nocturne-live.ts`（本沙箱连不上公网 `beiyan.cc`）
+- 🔴 该实例**没有任何鉴权层**（`/health`、`/dashboard`、`/api/*` 无凭据 200，含写接口）→ 记忆库当前对公网开放，**未处理**
+- 完整拓扑 / 接入路径 → **`docs/DEPLOYMENT.md`**；结论摘要 → `docs/MEMORY.md`；任务记录 → `docs/TASKS.md` T-022 / T-031
 
 **Phase 3B Eventide（T-023 起）**
 
@@ -261,7 +260,8 @@ habitat/
 1. 🔵 **Phase 6 打磨（进行中）**：PWA / 离线只读 / 导入导出增强已落地。
    **下一步是动画与过渡效果 —— 但它必须与 UI 一起做**（`docs/UI_DESIGN.md` 被补充前不堆视觉细节，见铁律 6）；
    其余按 `PRODUCT_SPEC` / `TASKS` 剩余偏差切片，不把实时通话或 AI 自主工具循环顺手塞进打磨
-2. ⏸ **部署前关卡 · Phase 3A 自部署 Nocturne**：服务器上开启 `api_token`、验证内网 `/mcp`、重跑 `probe-nocturne-live.ts`；详见 `docs/DEPLOYMENT.md` §3
+2. ⏳ **Phase 3A 真机复跑（唯一遗留）**：北北在服务器上跑 `probe-nocturne-live.ts`，确认反代 / 会话 / 只读两路径真机通；
+   顺带处理那个**公网无鉴权**的洞（T-022 风险 1）。详见 `docs/MEMORY.md`「复验方式」
 3. PRODUCT_SPEC P2 的 AI 自主日记 / 留言现在已有主动行为底座，但应按各自权限模型单独施工，不能直接把独处记录冒充成日记或留言
 
 动手前：先读 `PRODUCT_SPEC` 对应章节 + `TASKS.md` 待优化清单，

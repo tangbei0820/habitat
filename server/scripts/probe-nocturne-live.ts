@@ -9,7 +9,8 @@
  *   以及这个实例真实开放了哪些工具。
  *
  * ⚠️ 两者有一个关键差别，它决定了本脚本的纪律：
- *   Demo 是**服务端物理只读**（只下发 2 个读工具），而自部署实例是**完整 7 个工具、含写**。
+ *   Demo 是**服务端物理只读**（只下发 2 个读工具），而自部署实例是**完整 9 个工具、含写**
+ *   （`hold` 写记忆、`wander_mark` 表态、`drive` 调驱动 …）。
  *   也就是说「不写坏数据」**没有服务端兜底**，只能靠本脚本自己守住 ——
  *   全程只调读工具，并用记录型包装断言「实际发出的调用」确实落在读工具内。
  *
@@ -19,9 +20,15 @@
  *     npx tsx scripts/probe-nocturne-live.ts
  *
  * ⚠️ 地址是**加密钥的那条**（`/mcp-<密钥>`），不是公开的 `/mcp` —— 后者被 nginx 特意 404 掉了。
- *    本脚本假设的工具名（read_memory / search_memory / …）取自**官方 Demo**；
- *    若自部署实例是别的血统（例如 Ombre Brain 的 breath / hold / trace …），
- *    §6 起会整段失败 —— **那属于「工具面对不上」，先跑 `probe-nocturne-tools.ts` 拿真实工具面**。
+ *    服务器上（仓库不在手边）用内网直连 `http://127.0.0.1:8000/mcp`，免密钥。
+ *
+ * 工具面（2026-09-24 实测收敛，不再是「官方 Demo 的读 2 写 5」）：
+ *   实例真实开放 9 个 —— `breath` / `trace` / `hold` / `wander` / `wander_mark` /
+ *   `drive` / `undercurrent` / `trail_delta` / `trail_family`；
+ *   Habitat 只**依赖其中 2 个只读工具**：`recall()`→`breath`（无参）、`search()`→`trace(query, limit)`。
+ *   写成常量的是下面 READ_TOOLS / WRITE_TOOLS 两张表 —— 与
+ *   `src/providers/nocturne-memory.ts` 的 `NOCTURNE_TOOLS` 保持同步。
+ *   ⚠️ 若工具名漂移，§6 起会失败 —— 先跑 `probe-nocturne-tools*.{ts,mjs,sh}` 拿一手事实。
  *
  * `NOCTURNE_PROBE_PREVIEW=1` 才会打印 boot 正文前 80 字 —— 默认不打印，那是你本人的记忆内容。
  * 退出码非 0 表示有断言失败。标 ⚠️ 的是**警告**（部署事实，不算我们代码的错）。
@@ -40,10 +47,11 @@ const TOKEN = (process.env.MCP_NOCTURNE_TOKEN ?? '').trim()
 const NAMESPACE = (process.env.MCP_NOCTURNE_NAMESPACE ?? '').trim()
 const PREVIEW = process.env.NOCTURNE_PROBE_PREVIEW === '1'
 
-const READ_TOOLS = ['read_memory', 'search_memory']
-/** 官方 Demo 不开放、但自部署实例应当具备的写类工具 */
-const WRITE_TOOLS = ['create_memory', 'update_memory', 'delete_memory', 'add_alias', 'manage_triggers']
-const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS]
+/** Habitat 只依赖的只读工具（`recall()` / `search()` 的落点） */
+const READ_TOOLS = ['breath', 'trace']
+/** 实例具备、但 Habitat 只读接入**绝不调用**的写类工具（§9 会断言一次都没发出） */
+const WRITE_TOOLS = ['hold', 'wander', 'wander_mark', 'drive']
+const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS, 'undercurrent', 'trail_delta', 'trail_family']
 
 // 带上 pid，避免两个验真进程并行时互删/争抢同一个 SQLite 文件。
 const DB_PATH = `./data/probe-nocturne-live-${process.pid}.db`
@@ -110,6 +118,13 @@ function schemaProps(schema: unknown): string[] {
   const props = (schema as { properties?: unknown }).properties
   if (typeof props !== 'object' || props === null) return []
   return Object.keys(props as Record<string, unknown>)
+}
+
+/** 取 inputSchema.required（拿不到就是空数组） */
+function schemaRequired(schema: unknown): string[] {
+  if (typeof schema !== 'object' || schema === null) return []
+  const required = (schema as { required?: unknown }).required
+  return Array.isArray(required) ? required.map((item) => String(item)) : []
 }
 
 /** 从正文里取一个词当搜索词 —— 避免把实例里的内容写死在断言里 */
@@ -290,11 +305,15 @@ check(
 )
 
 /* ---------------------------------------------------------------- 6. 工具清单 */
-console.log('\n=== 6. 工具清单（自部署实例 vs 官方 Demo 的只读模式）===')
+console.log('\n=== 6. 工具清单（实例真实工具面 vs Habitat 依赖的子集）===')
 const listed = (await gateway.listTools('nocturne')) as Array<{ serverId: string; tools: ToolSummary[] }>
 const tools = listed[0]?.tools ?? []
 const names = tools.map((tool) => tool.name).sort()
-check('清单至少包含两个读工具', READ_TOOLS.every((name) => names.includes(name)), names.join(', ') || '(空)')
+check(
+  '适配层依赖的只读工具都在清单里',
+  READ_TOOLS.every((name) => names.includes(name)),
+  names.join(', ') || '(空)',
+)
 check(
   '每个工具都下发了 description',
   tools.length > 0 && tools.every((tool) => typeof tool.description === 'string' && tool.description.trim() !== ''),
@@ -312,13 +331,18 @@ if (foundWriteTools.length > 0) {
 }
 const unknownTools = names.filter((name) => !ALL_TOOLS.includes(name))
 if (unknownTools.length > 0) warn('出现已知清单之外的工具（版本可能已变）', unknownTools.join(', '))
-const readTool = tools.find((tool) => tool.name === 'read_memory')
-const searchTool = tools.find((tool) => tool.name === 'search_memory')
-check('read_memory 的 schema 声明了 uri 参数', schemaProps(readTool?.inputSchema).includes('uri'), schemaProps(readTool?.inputSchema).join(', '))
-check('search_memory 的 schema 声明了 query 参数', schemaProps(searchTool?.inputSchema).includes('query'), schemaProps(searchTool?.inputSchema).join(', '))
+const breathTool = tools.find((tool) => tool.name === 'breath')
+const traceTool = tools.find((tool) => tool.name === 'trace')
+const breathRequired = schemaRequired(breathTool?.inputSchema)
+check('breath 不要求任何必填参数（它读「全部」）', breathRequired.length === 0, breathRequired.join(', ') || '(无必填)')
+check(
+  'trace 的 schema 声明了 query 参数',
+  schemaProps(traceTool?.inputSchema).includes('query'),
+  schemaProps(traceTool?.inputSchema).join(', '),
+)
 
-/* ---------------------------------------------------------------- 7. system://boot */
-console.log('\n=== 7. system://boot（经适配器 → tools/call）===')
+/* ---------------------------------------------------------------- 7. recall() → breath */
+console.log('\n=== 7. recall() → breath（经适配器 → tools/call）===')
 let bootText = ''
 let bootError: string | null = null
 try {
@@ -326,7 +350,7 @@ try {
 } catch (err) {
   bootError = errMessage(err)
 }
-check('read_memory("system://boot") 未报错', bootError === null, bootError ?? '')
+check('recall()（→ breath，无参）未报错', bootError === null, bootError ?? '')
 check('返回非空文本', bootText.trim().length > 0, `${bootText.trim().length} 字`)
 if (bootText.trim().length > 0) {
   info('boot 正文长度', `${bootText.trim().length} 字`)
@@ -334,8 +358,8 @@ if (bootText.trim().length > 0) {
   else info('正文未打印', '要看加 NOCTURNE_PROBE_PREVIEW=1')
 }
 
-/* ---------------------------------------------------------------- 8. search_memory */
-console.log('\n=== 8. search_memory（附加只读路径）===')
+/* ---------------------------------------------------------------- 8. search() → trace */
+console.log('\n=== 8. search() → trace（附加只读路径）===')
 const query = deriveQuery(bootText)
 let searchText = ''
 let searchError: string | null = null
@@ -344,14 +368,15 @@ try {
 } catch (err) {
   searchError = errMessage(err)
 }
-check(`search_memory(query="${query}", limit=3) 未报错`, searchError === null, searchError ?? '')
+check(`search(query="${query}", limit=3) 未报错`, searchError === null, searchError ?? '')
 check('返回非空文本', searchText.trim().length > 0, `${searchText.trim().length} 字`)
 
 /* ---------------------------------------------------------------- 9. 只读纪律 */
 console.log('\n=== 9. 只读纪律（本次到底发出过什么调用）===')
 const callNames = calls.map((call) => call.name)
 check('实际发出的调用全部落在读工具内', callNames.every((name) => READ_TOOLS.includes(name)), callNames.join(', ') || '(没发出调用)')
-check('至少发出 2 次读调用（boot + search）', calls.length >= 2, `calls=${calls.length}`)
+check('一次写工具都没调用过', !callNames.some((name) => WRITE_TOOLS.includes(name)), callNames.join(', ') || '(没发出调用)')
+check('至少发出 2 次读调用（breath + trace）', calls.length >= 2, `calls=${calls.length}`)
 const toolCallLog = listMcpDiagnostics({ serverId: 'nocturne', handshake: false, limit: 100 })
 const loggedCallCount = toolCallLog.entries.filter((entry) => entry.method === 'tools/call').length
 check('每次读调用都在诊断表留痕', loggedCallCount === calls.length, `留痕 ${loggedCallCount} 条 / 实际 ${calls.length} 次`)

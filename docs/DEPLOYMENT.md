@@ -262,15 +262,15 @@ location = /mcp-<新密钥> {
   - ✅ 通了 → ① 完成，接着看 ②。
 - [ ] 宿主机 nginx 的加固是否还在：`sudo grep -rn -i "mcp" /etc/nginx/`（判读表见 §3.2）
 
-**② 工具面对不对得上 —— 比 ① 更关键（这才是真正的拦路虎）：**
+**② 工具面对不对得上 —— 已于 2026-09-24 查明并对齐（T-031）：**
 
-- [ ] 自部署实例**实际暴露哪些工具、参数与必填是什么** —— 就是 ① 那条命令的输出。
-      已知部署记录（2026-09-13）称其为 **Ombre Brain v1.30.0**，工具名是
-      `breath` / `hold` / `trace` / `wander` / `wander_mark` / `drive` / `undercurrent` / `trail_delta` / `trail_family`，
-      与适配层写死的 `read_memory` / `search_memory` / `create_memory` / `update_memory` / `delete_memory` **可能完全不同**。
-- [ ] 若确实不一致 → **适配层要重写**（`server/src/providers/nocturne-memory.ts`），
-      并且要先定一个设计问题：`MemoryProvider` 的 `update` / `delete` 在新数据模型下还成不成立
-      （见 `docs/MEMORY.md`「自部署实例的工具面」）。
+- [x] ~~自部署实例实际暴露哪些工具~~ → **实测 9 个**：`breath` / `trace` / `hold` / `wander` / `wander_mark` /
+      `drive` / `undercurrent` / `trail_delta` / `trail_family`（与旧假设的 5 个名字**0/5 命中**）。
+- [x] 适配层已按真实工具面**重写为只读两方法**（`recall()` → `breath`、`search()` → `trace`）；
+      `MemoryProvider` 的 `update` / `delete` 已**删除**（实例没有对应语义，且从未被调用）。见 `docs/MEMORY.md`「定稿映射」。
+- [ ] **唯一遗留**：在服务器上重跑一次全链验真 `npx tsx scripts/probe-nocturne-live.ts`
+      （验证反代 / 会话 / 只读两路径真机通；仓库需先同步到服务器）
+- 🔁 以后实例**升级 / 换工具名**时：先跑 `probe-nocturne-tools*` 拿一手事实，再看适配层要不要动。
 
 **③ 鉴权 —— 安全项，仍未处理：**
 

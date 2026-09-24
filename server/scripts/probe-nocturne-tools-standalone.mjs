@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 /**
- * Nocturne MCP 工具面侦察 —— **零依赖单文件版**（只用 Node 内置能力）
+ * Nocturne MCP 工具面事实采集 —— **零依赖单文件版**（只用 Node 内置能力）
  *
  * 为什么有这个版本：
  *   `probe-nocturne-tools.ts` 要 habitat 仓库 + tsx 才能跑，适合「本机开发机」。
  *   但真正需要侦察的时刻往往是「在服务器上、仓库还没同步过去」——
  *   这时 `cd server` 会找不到目录，`npx tsx` 还要现下载。本文件把依赖降到 0：
  *   Node 18+ 直接 `node probe-nocturne-tools-standalone.mjs` 即可。
+ *
+ * 它现在的用途 = **工具面漂移检测**（2026-09-24 那次侦察已收敛）：
+ *   实例真实工具面是 `breath` / `trace` / `hold` / `wander` / `wander_mark` / `drive` /
+ *   `undercurrent` / `trail_delta` / `trail_family`；Habitat 只依赖其中两个只读工具。
+ *   实例升级 / 换血统时先跑它看一手事实，再决定要不要动适配层。
+ *   ⚠️ 它**不替代验收** —— 只读链路端到端验收是 `scripts/probe-memory.ts`。
  *
  * ★ 它**不调用任何工具**：只做 initialize 握手 + tools/list。
  *   跑一万次也不会读、不会写你的记忆。
@@ -25,8 +31,8 @@ const TOKEN = (process.env.MCP_NOCTURNE_TOKEN ?? '').trim()
 const SHOW_SECRET = process.env.NOCTURNE_SHOW_SECRET === '1'
 const TIMEOUT_MS = Number(process.env.NOCTURNE_PROBE_TIMEOUT_MS ?? 20000)
 
-/** 适配层 `server/src/providers/nocturne-memory.ts` 里**写死的** 5 个工具名。用于逐条对照。 */
-const EXPECTED = ['read_memory', 'search_memory', 'create_memory', 'update_memory', 'delete_memory']
+/** 适配层 `server/src/providers/nocturne-memory.ts` 的 `NOCTURNE_TOOLS` 映射表。用于逐条对照。 */
+const EXPECTED = ['breath', 'trace']
 
 const maskedUrl = SHOW_SECRET ? RAW_URL : RAW_URL.replace(/\/(mcp)-[A-Za-z0-9_-]{6,}/, '/$1-******')
 
@@ -206,21 +212,21 @@ tools.forEach((t, i) => {
   if (topRequired.length > 0) console.log(`    顶层必填 : ${topRequired.join(', ')}`)
 })
 
-/* ---------- 四、与适配层写死的名字对照 ---------- */
+/* ---------- 四、与适配层映射表对照 ---------- */
 const realNames = new Set(tools.map((t) => t.name))
 console.log('')
 console.log(line)
-console.log(' 与适配层写死的 5 个名字对照')
-console.log('   （来源：server/src/providers/nocturne-memory.ts）')
+console.log(` 与适配层依赖的 ${EXPECTED.length} 个工具名对照`)
+console.log('   （来源：server/src/providers/nocturne-memory.ts 的 NOCTURNE_TOOLS）')
 console.log(line)
 for (const name of EXPECTED) {
   const hit = realNames.has(name)
-  console.log(`  ${hit ? '✅' : '❌'} ${name}${hit ? '' : '   ← 实例里没有这个名字'}`)
+  console.log(`  ${hit ? '✅' : '❌'} ${name}${hit ? '' : '   ← 实例里没有这个名字（工具面漂移）'}`)
 }
 const extra = tools.map((t) => t.name).filter((n) => !EXPECTED.includes(n))
 if (extra.length > 0) {
   console.log('')
-  console.log(`  实例有、适配层不知道的（${extra.length} 个）：`)
+  console.log(`  实例有、适配层不用的（${extra.length} 个）：`)
   for (const n of extra) console.log(`    + ${n}`)
 }
 
@@ -228,13 +234,14 @@ const matched = EXPECTED.filter((n) => realNames.has(n)).length
 console.log('')
 console.log(line)
 if (matched === EXPECTED.length) {
-  console.log(` 结论：5/5 全对上 —— 适配层的工具名假设成立，链路可直接用。`)
+  console.log(` 结论：${EXPECTED.length}/${EXPECTED.length} 全对上 —— 工具面无漂移，适配层可用。`)
+  console.log('       端到端验收请跑 scripts/probe-memory.ts（本脚本只做事实采集，不调用任何工具）。')
 } else if (matched === 0) {
-  console.log(` 结论：0/5 —— 工具面完全不同（${tools.length} 个工具无一命中）。`)
+  console.log(` 结论：0/${EXPECTED.length} —— 工具面完全不同（${tools.length} 个工具无一命中）。`)
   console.log('       这不是改字符串的事：要重新映射语义，可能还要重定 MemoryProvider 接口。')
   console.log('       请把上面这份完整输出贴回 habitat 仓库，按真实工具面定映射。')
 } else {
-  console.log(` 结论：${matched}/5 命中 —— 部分对得上，需要逐个核对语义是否一致。`)
+  console.log(` 结论：${matched}/${EXPECTED.length} 命中 —— 部分对得上，需要逐个核对语义是否一致。`)
   console.log('       请把上面这份完整输出贴回 habitat 仓库。')
 }
 console.log(line)

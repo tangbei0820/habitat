@@ -634,3 +634,24 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 单会话导出**不**计入「上次导出备份」时间 —— 它不含日记 / 相册 / 账本，拿它当备份是错觉。
 - 不引入任何外部导出格式；Dexie 仍 v10、备份格式仍 v8，本轮三条切片**零 schema 改动**。
 - `verify-export` 17/17；四支原有前端验收（chat 140 / providers 22 / home 75 / diagnostics 36）无回归；两端 typecheck、生产构建、`git diff --check` 通过。
+
+### Phase 3A · Nocturne 只读打通：按真实工具面收敛接口（T-031）—— **完成**
+
+- 根因：适配层写死的 5 个工具名取自**官方 Demo**，而北北自部署实例的真实工具面是
+  `breath` / `trace` / `hold` / `wander` / `wander_mark` / `drive` / `undercurrent` / `trail_delta` / `trail_family` —— **0/5 命中**。
+  实例**没有 uri 概念，也没有「原地编辑 / 删除」语义**，所以这不是改字符串，是接口要重设计。
+- `MemoryProvider` 收敛为**只读两方法**：`recall()`（→ `breath`，无参）+ `search(query,{limit})`（→ `trace`）；
+  `read` / `create` / `update` / `delete` 四个方法与 `MemoryCreateInput` / `MemoryUpdateInput` 删除（全仓核查确认从未被调用），
+  `MemorySearchOptions` 去掉实例不认的 `domain`。
+- `/api/memory` 同步砍到两个只读端点（`GET boot` / `GET search`）；原四个写端点**直接移除**，不留返回 500 的占位。
+- 适配层把工具名集中成一张 `NOCTURNE_TOOLS` 映射表，并新增 `verifyToolFace()`；`main.ts` 在连接后跑一次自检
+  （缺失只 warn 不阻塞 —— 记忆挂掉不该拖垮服务）。
+- mock MCP 的工具面从 7 个假 memory 工具换成实例真实形状（`breath` + `trace`，保留 `echo` 验链路），
+  本地验收从此验的是真形状。
+- 五个 Nocturne 脚本同步定位：三个侦察脚本的对照表改成 `breath`/`trace` 并改称「工具面漂移检测」；
+  `probe-nocturne-live.ts` 读写工具表改真实名；`probe-nocturne-demo.ts` **废弃**（其工具面假设本身是错的）。
+- 修 `probe-nocturne-tools-quick.sh` 真实 bug：临时文件写死 `/tmp`，Git Bash 下 `curl -D /tmp/x` 之后读不回来 → 改用 `$TMPDIR` + 可用性回退。
+- 验收：`probe-memory.ts` **21/21**（只读两路径 + 参数边界 + 已移除端点 404）；三个侦察脚本对 mock 全部 2/2、退出码 0；
+  `probe-nocturne-live.ts` 经 McpGateway **23/24**（唯一失败项是 mock 无 `/health`，非代码问题），只读纪律通过（实际调用仅 `breath` + `trace`）；
+  启动日志出现「Nocturne 工具面自检通过」；两端 typecheck 通过。
+- 遗留：真机验证待北北在服务器上跑 `probe-nocturne-live.ts`（本沙箱连不上公网）；该实例**仍无任何鉴权层**（T-022 风险 1，未处理）。

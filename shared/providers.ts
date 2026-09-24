@@ -80,7 +80,7 @@ export interface LLMProvider {
   listModels(opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<string[]>
 }
 
-/* ---------- Memory（§7.1）：Nocturne 文本型 URI 图谱契约 ---------- */
+/* ---------- Memory（§7.1）：Nocturne 文本型记忆契约 ---------- */
 
 export interface MemoryTextResult {
   /** Nocturne 工具返回的是给模型阅读的文本，不依赖其内部数据库 schema。 */
@@ -88,36 +88,35 @@ export interface MemoryTextResult {
 }
 
 export interface MemorySearchOptions {
-  domain?: string
   limit?: number
 }
 
-export interface MemoryCreateInput {
-  parentUri: string
-  content: string
-  priority: number
-  disclosure: string
-  title?: string
-}
-
-export interface MemoryUpdateInput {
-  uri: string
-  /** 精确 / `...` 块匹配；必须和 newString 同时出现。 */
-  oldString?: string
-  newString?: string
-  /** 与替换模式互斥。Nocturne 刻意不提供全文覆盖。 */
-  append?: string
-  priority?: number
-  disclosure?: string
-}
-
+/**
+ * 记忆能力面（**只读**）。
+ *
+ * ⚠️ 2026-09-24 对齐真实实例后收敛。原设计按「URI 图谱」假设了六个方法
+ * （`read(uri)` / `create(parentUri)` / `update(oldString,newString)` / `delete(uri)` …），
+ * 但自部署实例**没有 URI 概念，也没有「更新正文」「删除」这两套语义**
+ * （实测工具面见 `docs/MEMORY.md`「自部署实例的工具面」）——六个方法里只有
+ * 「读一堆」与「按关键词搜」有对应工具，其余全是空中楼阁。
+ *
+ * 所以这里**直接删掉**，不做「保留方法但调用即抛错」的假接口：假接口会让调用方
+ * 以为自己能用，等真跑起来才发现不行，比没有更糟。
+ *
+ * 写入（实例的 `hold`）等做记忆页时一并定义 —— 它的 `kind` 决定记忆进哪个抽屉，
+ * 是产品决策而非机械映射，届时若需扩接口属设计变更，别顺手加回来。
+ */
 export interface MemoryProvider {
-  search(query: string, options?: MemorySearchOptions): Promise<MemoryTextResult>
+  /** 新窗 / Compact 后读取记忆全文（实例工具：`breath`，无参数）。 */
   recall(): Promise<MemoryTextResult>
-  read(uri: string): Promise<MemoryTextResult>
-  create(input: MemoryCreateInput): Promise<MemoryTextResult>
-  update(input: MemoryUpdateInput): Promise<MemoryTextResult>
-  delete(uri: string): Promise<MemoryTextResult>
+  /** 按关键词搜索记忆（实例工具：`trace`，入参 `query` + `limit`）。 */
+  search(query: string, options?: MemorySearchOptions): Promise<MemoryTextResult>
+  /**
+   * 工具面自检：实例是否真的提供上面两个工具。只做 `tools/list`，不调用任何工具。
+   * 返回**缺失**的工具名（空数组 = 齐了）；实例未配置或连不上时也返回空数组，
+   * 那种情况的告警归健康检查管，不在这里重复吵。
+   */
+  verifyToolFace(): Promise<string[]>
 }
 
 export interface StateTickOptions {

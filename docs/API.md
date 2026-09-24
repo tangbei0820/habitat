@@ -309,7 +309,7 @@ profile_id / service / model / prompt_tokens / completion_tokens / total_tokens 
 
 > `serverId` 传一个不存在的服务**不是错误** —— 返回空页（`total: 0`），因为它是个筛选条件而不是资源标识。
 
-## Phase 3A 已实现（长期记忆 · 经 MCP 单通道）
+## Phase 3A 已实现（长期记忆 · 经 MCP 单通道 · **只读**）
 
 前端只走到这里；服务端内部统一走 `MemoryProvider` → `ToolGateway` → Nocturne MCP
 （**不用 Nocturne 的 REST**，见 `AGENTS.md` §3 铁律 4）。
@@ -321,15 +321,22 @@ interface MemoryTextResult { text: string }
 ```
 
 即 Nocturne 工具返回的**给模型阅读的文本** —— 栖息地不解析、不依赖它的内部 schema
-（技术方案 §9 风险 5 的对策）。`uri` 一律是 `domain://path` 形式，且 **`system://` 是只读视图**，
-任何写操作都会被拒。
+（技术方案 §9 风险 5 的对策）。
+
+⚠️ **只有两个端点，且全是只读**（2026-09-24 对齐自部署实例的真实工具面后收敛）。
+原先的 `GET read` / `POST` / `PATCH` / `DELETE` 四个写端点**已移除** ——
+实例既没有 `uri` 概念，也没有「原地编辑 / 删除」语义，那四个端点从来不可能工作，
+且前端一个都没调用过。留着返回 500 只会让人误以为「配好就能用」。
+
+> 只读是**本阶段的刻意选择**：实例的 `hold` / `wander_mark` / `drive` 都能写，
+> 但 Phase 3A 不做写记忆。详见 `docs/MEMORY.md` 的「定稿映射」。
 
 ### `GET /api/memory/boot`
 
-一次性取回「开机记忆」（Nocturne 的 `system://boot` 视图）。无参数。
+一次性取回全部长期记忆（实例工具 `breath`，**无参数**）。新窗 / 会话开头用它。
 
 ```json
-{ "text": "# Core Memories\nLoaded: 3/3\n..." }
+{ "text": "- [memory] 我是用于 Habitat 验收的 mock 记忆，北北晚上会去散步。\n- [feel] 傍晚的风让人安静下来，适合散步。" }
 ```
 
 ### `GET /api/memory/search`
@@ -337,60 +344,23 @@ interface MemoryTextResult { text: string }
 | 查询参数 | 说明 | 取值 |
 | --- | --- | --- |
 | `q` | 检索词，**必填** | 1–500 字 |
-| `domain` | 限定域（可选） | `^[A-Za-z_][A-Za-z0-9_]*$`；省略 = 全域 |
-| `limit` | 条数（可选） | 1–100 的整数；省略 = 交给 Nocturne 默认 |
+| `limit` | 条数（可选） | 1–100 的整数；省略 = 交给实例默认 |
 
-### `GET /api/memory/read`
-
-| 查询参数 | 说明 |
-| --- | --- |
-| `uri` | **必填**，`domain://path` |
-
-### `POST /api/memory` —— 新建记忆节点
-
-| 字段 | 必填 | 约束 |
-| --- | --- | --- |
-| `parentUri` | ✅ | `domain://path`；**不接受 `system://`** |
-| `content` | ✅ | ≤ 100 000 字 |
-| `priority` | ✅ | 0–1 000 000 的整数 |
-| `disclosure` | ✅ | ≤ 2 000 字（对模型披露可见性的说明） |
-| `title` | — | ≤ 120 字，**且只允许 `[A-Za-z0-9_-]`**（会被当成路径段） |
-
-成功返回 **201** + `MemoryTextResult`。
-
-### `PATCH /api/memory` —— 修改
-
-`uri` 必填（同样拒绝 `system://`）。三种修改模式：
-
-| 模式 | 字段 | 说明 |
-| --- | --- | --- |
-| 替换 | `oldString` + `newString` | 精确 / `...` 块匹配；**两者必须同时提供** |
-| 追加 | `append` | 与替换模式**互斥** |
-| 元信息 | `priority` / `disclosure` | 可单独提供 |
-
-- 至少要提供一项修改，否则 400
-- **没有「全文覆盖」** —— Nocturne 刻意不提供该语义（避免误删整段）
-
-### `DELETE /api/memory`
-
-| 查询参数 | 说明 |
-| --- | --- |
-| `uri` | **必填**，`domain://path`（不接受 `system://`） |
+**没有 `domain` 参数** —— 实例的 `trace` 不认这个维度（原设计按「域」划分是错的假设，已删除）。
 
 | 非法输入 | 状态码 | code |
 | --- | --- | --- |
-| `uri` 不是 `domain://path` 形式 | 400 | `BAD_REQUEST` |
-| 对 `system://` 发起写（POST / PATCH / DELETE） | 400 | `BAD_REQUEST` |
-| `q` / `uri` 缺失，或 `domain` 格式非法 | 400 | `BAD_REQUEST` |
+| `q` 缺失 / 非字符串 / 空串 / 超 500 字 | 400 | `BAD_REQUEST` |
 | `limit` 非 1–100 的整数 | 400 | `BAD_REQUEST` |
-| `title` 含白名单外的字符 | 400 | `BAD_REQUEST` |
-| `oldString` / `newString` 只给其一，或与 `append` 同时给 | 400 | `BAD_REQUEST` |
 | 同名参数重复传（被解析成数组） | 400 | `BAD_REQUEST` |
 | MCP 未配置 / 未 ready / 工具调用失败 | **502** | `MCP_HANDSHAKE_FAILED` / `MCP_TOOL_CALL_FAILED` |
 
-> ⚠️ 记忆端点**依赖外部 MCP server**。没配 `MCP_NOCTURNE_URL` 时它们全部返回 502
+> ⚠️ 记忆端点**依赖外部 MCP server**。没配 `MCP_NOCTURNE_URL` 时它们返回 502
 > （`{"error":{"code":"MCP_HANDSHAKE_FAILED","message":"MCP server 'nocturne' is not ready (state=error, lastError=not configured)"}}`）
 > —— 这是**设计行为而非故障**；真实状态看 `GET /api/health/mcp`。
+>
+> 工具面漂移（实例改名 / 换血统）也走这条路：启动期自检会 warn，调用时返回 `MCP_TOOL_CALL_FAILED`。
+> 排查见 `docs/MEMORY.md` 的「侦察脚本」。
 
 ## Phase 3B 已实现（Eventide 状态 + 主动行为）
 

@@ -1434,4 +1434,62 @@
 **本轮（T-028~T-030）共同结论**：三条都是前端侧能力，**Dexie 仍是 v10、备份格式仍是 v8 —— 零 schema 改动**。
 
 **下一阶段**：Phase 6 打磨继续按 `PRODUCT_SPEC` / 本文件剩余偏差切片；
-**动画与过渡效果留给 UI 一起做**（北北明确要求）。T-022 Nocturne 生产验真仍是部署前关卡（暂停中）。
+**动画与过渡效果留给 UI 一起做**（北北明确要求）。T-022 Nocturne 生产验真在 T-031 解开工具面死结后**可以继续推进**。
+
+---
+
+### T-031 · 2026-09-24 · Nocturne 只读打通：按真实工具面收敛接口 —— **完成**
+
+**起因**：北北在服务器上跑三个侦察脚本，贴回**实例一手工具面**：
+
+```
+breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delta / trail_family
+```
+
+适配层写死的 5 个名字（`read_memory` / `search_memory` / `create_memory` / `update_memory` / `delete_memory`，
+取自官方 Demo）→ **0/5 命中**。这不是「改几个字符串」：实例**没有 `uri` 概念，也没有「原地编辑 / 删除」语义**。
+
+**范围**：北北确认只做「只读打通」—— 不写记忆、不做 UI 记忆页，只把接口收敛到实例真有的两个只读工具。
+
+**收敛决策**
+
+1. **接口砍到两个方法** —— `recall()`（→ `breath`，无参）+ `search(query, {limit})`（→ `trace`）。
+   `read(uri)` / `create` / `update` / `delete` 四个方法一并删除：实例没有对应语义，且**全仓核查确认从未被调用**。
+   类型 `MemoryCreateInput` / `MemoryUpdateInput` 删除；`MemorySearchOptions` 去掉 `domain`（实例不认）。
+2. **路由同步砍到两个只读端点** —— 只留 `GET /api/memory/boot` 与 `GET /api/memory/search`。
+   原四个写端点**不留占位、直接移除**：留着返回 500 会让人误以为「配好就能用」。
+3. **工具名集中成一张映射表** —— 适配层只在一处写死工具名（`NOCTURNE_TOOLS`），
+   附带 `verifyToolFace()`：实例缺 `breath` / `trace` 时给出可读错误，而不是等到调用才 `MCP_TOOL_CALL_FAILED`。
+4. **启动期自检（warn 不阻塞）** —— `main.ts` 在 `gateway.connectAll()` 之后跑一次工具面自检，
+   缺失就 warn 并指向侦察脚本。不阻塞启动，因为记忆挂掉不该拖垮整个服务。
+5. **mock 也对齐真实形状** —— `src/mcp/mock-server.ts` 从 7 个 mock memory 工具换成 `breath` + `trace`
+   （保留 `echo` 验链路），这样本地验收验的就是**真形状**，不是自欺欺人的假形状。
+
+**落地**
+
+- `shared/providers.ts`：`MemoryProvider` 收敛为 `recall` / `search` / `verifyToolFace`
+- `server/src/providers/nocturne-memory.ts`：重写；集中 `NOCTURNE_TOOLS`；新增 `verifyToolFace()`
+- `server/src/routes/memory.ts`：重写为只读两端点
+- `server/src/mcp/mock-server.ts`：工具面改成实例真实形状 + 预置 mock 记忆
+- `server/src/main.ts`：连接后加工具面自检
+- `server/scripts/probe-memory.ts`：重写为只读验收（两路径 + 参数边界 + 已移除端点应 404）
+- 五个 Nocturne 脚本同步：`probe-nocturne-tools.{ts,mjs,sh}` 对照表改成 `breath` / `trace` 并定位为「漂移检测」；
+  `probe-nocturne-live.ts` 读写工具表改真实名；`probe-nocturne-demo.ts` **废弃**（它的工具面假设本身是错的）
+- `probe-nocturne-tools-quick.sh` 修一个真实 bug：临时文件写死 `/tmp`，Git Bash 下 `curl -D /tmp/x` 读不回来 → 改用 `$TMPDIR` + 可用性回退
+
+**验收（全部实跑）**
+
+| 项 | 结果 |
+| --- | --- |
+| `probe-memory.ts`（mock 起真 server，只读两路径 + 参数边界 + 写端点 404） | **21 passed / 0 failed** |
+| 启动期工具面自检 | 日志出现「Nocturne 工具面自检通过」 |
+| `probe-nocturne-tools.ts` / `-standalone.mjs` / `-quick.sh` 三版对 mock | 全部 **2/2 命中**、退出码 0、输出口径一致 |
+| `probe-nocturne-live.ts` 经 McpGateway 对 mock | **23/24**（唯一失败是 mock 无 `/health` 端点，非代码问题）；只读纪律通过：实际调用仅 `breath` + `trace` |
+| `probe-nocturne-demo.ts` | 按预期打印废弃提示并退出 1 |
+| 两端 `typecheck` | 通过（无残留引用） |
+
+**遗留**
+
+- ⏳ **真机验证待北北在服务器上跑** `probe-nocturne-live.ts`（本沙箱连不上公网 `beiyan.cc`）
+- 🔴 该实例**无任何鉴权层**（T-022 风险 1）—— 记忆库仍对公网开放，未处理
+- 📌 实例血统存疑：`serverInfo` 自称 Nocturne，部署留档记 Ombre Brain v1.30.0 —— **以实测工具面为准**
