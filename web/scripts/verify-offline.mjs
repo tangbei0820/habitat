@@ -287,6 +287,8 @@ try {
   //    页面标题字号大、渲染慢，同样不稳。更稳的是直接看路由。运行视图同理，用 query 参数判，别靠文本。
   await clickSelector('a[href="/life"]')
   await waitFor('location.pathname === "/life"', 'Life 页打开')
+  // 第 5 批起「生活」默认落在「生活痕迹」段，记录页签在「记录」段里 —— 先切过去
+  await clickText('记录')
   await clickText('运行')
   await waitFor('new URLSearchParams(location.search).get("tab") === "runtime"', '切到运行视图')
   // 运行态整块数据（server / Eventide / MCP / 主动行为）全部来自服务端、本地不缓存

@@ -13,10 +13,10 @@ import { ProviderForm } from './ProviderForm'
 import { useProviders } from './useProviders'
 import { useOnlineStatus } from '../offline/useOnlineStatus'
 
-const LABEL_STYLE = { color: 'var(--color-text-dim)' } as const
+const LABEL_STYLE = { color: 'var(--text-secondary)' } as const
 const SECTION_STYLE = {
-  borderColor: 'var(--color-border)',
-  backgroundColor: 'var(--color-surface)',
+  borderColor: 'var(--border-soft)',
+  backgroundColor: 'var(--bg-surface-solid)',
 } as const
 
 /**
@@ -47,8 +47,8 @@ function RowButton({ children, onClick, disabled = false, danger = false }: RowB
       disabled={disabled}
       className="rounded-md border px-2 py-1 text-xs"
       style={{
-        borderColor: danger ? 'var(--color-danger)' : 'var(--color-border)',
-        color: danger ? 'var(--color-danger)' : 'var(--color-text)',
+        borderColor: danger ? 'var(--danger)' : 'var(--border-soft)',
+        color: danger ? 'var(--danger)' : 'var(--text-primary)',
         opacity: disabled ? 0.5 : 1,
       }}
     >
@@ -99,13 +99,13 @@ function ProviderRow({
   const online = useOnlineStatus()
   const keyView = KEY_TEXT[profile.keySource]
   return (
-    <li className="rounded-md border p-3" style={{ borderColor: 'var(--color-border)' }}>
+    <li className="rounded-md border p-3" style={{ borderColor: 'var(--border-soft)' }}>
       <div className="flex items-center gap-2">
         <span className="truncate text-sm font-medium">{profile.name}</span>
         {profile.isActive && (
           <span
             className="shrink-0 rounded-full px-2 py-0.5 text-xs"
-            style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}
+            style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}
           >
             默认
           </span>
@@ -119,7 +119,7 @@ function ProviderRow({
       </p>
       <p
         className="flex items-center gap-1.5 text-xs"
-        style={{ color: profile.keySource === 'missing' ? 'var(--color-danger)' : 'var(--color-text-dim)' }}
+        style={{ color: profile.keySource === 'missing' ? 'var(--danger)' : 'var(--text-secondary)' }}
       >
         {keyView.Icon !== null && <keyView.Icon size={13} />}
         {keyView.text}
@@ -132,7 +132,7 @@ function ProviderRow({
           className="mt-1 flex items-center gap-1.5 text-xs"
           data-testid="provider-probe"
           data-probe-ok={String(probe.ok)}
-          style={{ color: probe.ok ? 'var(--color-primary)' : 'var(--color-danger)' }}
+          style={{ color: probe.ok ? 'var(--accent-strong)' : 'var(--danger)' }}
         >
           {probe.ok ? <IconCheck size={13} /> : <IconClose size={13} />}
           <span>{probeText(probe)}</span>
@@ -194,7 +194,7 @@ export function ProviderSettings() {
         <button
           type="button"
           className="rounded-full border px-3 py-1 text-xs"
-          style={{ borderColor: 'var(--color-border)' }}
+          style={{ borderColor: 'var(--border-soft)' }}
           onClick={() => {
             setCreating((value) => !value)
             setEditingId(null)
@@ -205,7 +205,7 @@ export function ProviderSettings() {
       </div>
 
       {ctrl.error !== null && (
-        <p className="mb-2 flex items-center gap-1.5 text-sm" style={{ color: 'var(--color-danger)' }}>
+        <p className="mb-2 flex items-center gap-1.5 text-sm" style={{ color: 'var(--danger)' }}>
           <IconAlert size={14} />
           <span>{ctrl.error}</span>
         </p>

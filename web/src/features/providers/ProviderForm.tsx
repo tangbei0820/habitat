@@ -23,11 +23,11 @@ const PRESETS: readonly Preset[] = [
 
 const INPUT_CLS = 'w-full rounded-md border px-3 py-2 text-sm'
 const INPUT_STYLE = {
-  borderColor: 'var(--color-border)',
-  backgroundColor: 'var(--color-bg)',
-  color: 'var(--color-text)',
+  borderColor: 'var(--border-soft)',
+  backgroundColor: 'var(--bg-base)',
+  color: 'var(--text-primary)',
 } as const
-const LABEL_STYLE = { color: 'var(--color-text-dim)' } as const
+const LABEL_STYLE = { color: 'var(--text-secondary)' } as const
 
 export interface ProviderFormProps {
   /** 传了就是编辑；不传就是新建 */
@@ -92,7 +92,7 @@ export function ProviderForm({ initial, busy, onSubmit, onCancel }: ProviderForm
   return (
     <form
       className="mb-3 rounded-md border p-3"
-      style={{ borderColor: 'var(--color-primary)', backgroundColor: 'var(--color-surface-alt)' }}
+      style={{ borderColor: 'var(--accent-strong)', backgroundColor: 'var(--bg-subtle)' }}
       onSubmit={handleSubmit}
     >
       <p className="mb-3 text-xs font-semibold" style={LABEL_STYLE}>
@@ -132,7 +132,7 @@ export function ProviderForm({ initial, busy, onSubmit, onCancel }: ProviderForm
             type="button"
             onClick={() => applyPreset(preset)}
             className="rounded-full border px-2 py-0.5 text-xs"
-            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }}
+            style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}
           >
             {preset.label}
           </button>
@@ -225,8 +225,8 @@ export function ProviderForm({ initial, busy, onSubmit, onCancel }: ProviderForm
           disabled={!canSubmit || busy}
           className="rounded-md px-4 py-2 text-sm"
           style={{
-            backgroundColor: 'var(--color-primary)',
-            color: 'var(--color-primary-contrast)',
+            backgroundColor: 'var(--accent-strong)',
+            color: 'var(--accent-on-strong)',
             opacity: !canSubmit || busy ? 0.5 : 1,
           }}
         >
@@ -237,7 +237,7 @@ export function ProviderForm({ initial, busy, onSubmit, onCancel }: ProviderForm
           onClick={onCancel}
           disabled={busy}
           className="rounded-md border px-4 py-2 text-sm"
-          style={{ borderColor: 'var(--color-border)' }}
+          style={{ borderColor: 'var(--border-soft)' }}
         >
           取消
         </button>

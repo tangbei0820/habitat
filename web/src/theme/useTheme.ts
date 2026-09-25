@@ -6,6 +6,8 @@ export type ThemeMode = 'light' | 'dark'
 interface ThemeState {
   mode: ThemeMode
   toggle: () => void
+  /** 设置页的分段控件用：直接指定目标模式，不用先算「当前是什么再翻转」 */
+  setMode: (mode: ThemeMode) => void
 }
 
 /** store → DOM 的唯一副作用出口，保证「状态」与「DOM 属性」永不脱钩 */
@@ -26,6 +28,7 @@ export const useTheme = create<ThemeState>()(
     (set, get) => ({
       mode: initialMode,
       toggle: () => set({ mode: get().mode === 'dark' ? 'light' : 'dark' }),
+      setMode: (mode) => set({ mode }),
     }),
     {
       name: 'habitat-theme',

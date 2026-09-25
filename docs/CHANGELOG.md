@@ -916,3 +916,20 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 **验收**：新增 `web/scripts/verify-home-skin.mjs` **14/14**（页头 / Bento 六格 / 空库诚实空态 / **真种数据必须吃库** / 全入口 10 个带图标无 emoji / 模块子页顶栏 / 无横向溢出 / 控制台无异常；
 脚本开头先清留言/倒数日/收藏/音乐四类数据 —— 流水线里 verify-home 会先留下数据，空态断言必须顺序无关）；
 全量回归 **442 项零失败**；两端 typecheck 通过。
+
+### UI 换装 · 第 5 批：生活两套并排 + 设置重新分组（T-043）
+
+**范围**：拍板口径 ——「生活」切「生活痕迹」（心情/睡眠/日记/一起听/雨）+「记录」（月历/账本/通知/事件/运行）两套并排；设置按设计重新分组。
+
+**web**
+
+- `pages/life/LifePage.tsx`：`.topbar` + `.seg` 两段开关；新 `TracesView`（Bento 五格）。数据口径（铁律：假数据不搬）——
+  心情/睡眠没有真实来源（Eventide bodyState 字段上游自定）→ **诚实空态**；日记 = 本周真篇数按作者分；
+  一起听/雨时长等第 6 批真播放接上才累计；设计稿的 7h12m / 心情曲线 / 3.5 小时 / 目标 8h 一格没搬。`?tab=` 老深链仍直达记录段。
+- `pages/setting/SettingPage.tsx` 重新分组：顶栏 + 住客信息卡 + 外观（主题 `.seg` 分段，切了真生效）/ API 方案 / 数据备份 / 高级（server·MCP 状态 + 诊断日志）；清掉「将在 Phase 3 接入」过期占位段。
+- `theme/useTheme.ts`：加 `setMode(mode)`。
+- 令牌：LifePage / SettingPage / BackupPanel / ProviderSettings / ProviderForm / DiagnosticPanel / App / index.css，共 **127 处** `--color-*` 清零。
+
+**验收**：新增 `web/scripts/verify-life-skin.mjs` **16/16**（两段开关 / 五格 / 四格诚实空态 / 占位数据零搬运 / 日记真计数 / 五页签齐全 / `?tab=` 深链 / 设置分组与住客卡 / 主题分段真生效 / 无溢出 / 控制台无异常）；
+`verify-life.mjs` 补进流水线（Phase 4 起一直缺席，本轮修正；进页先切「记录」段）并随动 `verify-offline.mjs`；
+全量回归 **488 项零失败**；两端 typecheck 通过。

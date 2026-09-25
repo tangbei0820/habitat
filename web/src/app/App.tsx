@@ -53,18 +53,18 @@ function HydrationGate({ children }: { children: ReactNode }) {
   }, [])
 
   if (state === 'loading') {
-    return <div className="p-6 text-center" style={{ color: 'var(--color-text-dim)' }}>正在唤醒栖息地…</div>
+    return <div className="p-6 text-center" style={{ color: 'var(--text-secondary)' }}>正在唤醒栖息地…</div>
   }
   if (state === 'failed') {
     return (
       <div className="p-6">
-        <h1 className="mb-2 text-lg font-semibold" style={{ color: 'var(--color-danger)' }}>
+        <h1 className="mb-2 text-lg font-semibold" style={{ color: 'var(--danger)' }}>
           本地数据加载失败
         </h1>
-        <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           请刷新页面重试。若反复出现，请备份后清理站点数据。
         </p>
-        <pre className="mt-4 overflow-auto rounded p-3 text-xs" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
+        <pre className="mt-4 overflow-auto rounded p-3 text-xs" style={{ backgroundColor: 'var(--bg-subtle)' }}>
           {error instanceof Error ? error.message : String(error)}
         </pre>
       </div>

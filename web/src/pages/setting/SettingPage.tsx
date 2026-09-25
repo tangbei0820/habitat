@@ -42,100 +42,134 @@ function useHealth<T>(fetcher: () => Promise<T>): {
 }
 
 export function SettingPage() {
-  const { mode, toggle } = useTheme()
+  const { mode, setMode } = useTheme()
   const server = useHealth<ServerHealth>(getServerHealth)
   const mcp = useHealth<McpHealth>(getMcpHealth)
 
   return (
-    <div className="px-4 py-6">
-      <h1 className="mb-4 text-lg font-semibold">设置</h1>
+    <div>
+      <div className="topbar">
+        <h1 className="t-h1">设置</h1>
+      </div>
 
-      <section
-        className="mb-4 rounded-lg border p-4"
-        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
-      >
-        <h2 className="mb-3 text-sm font-semibold" style={{ color: 'var(--color-text-dim)' }}>
-          外观
-        </h2>
-        <div className="flex items-center justify-between">
-          <span>主题</span>
-          <button
-            type="button"
-            onClick={toggle}
-            className="flex items-center gap-1.5 rounded-full border px-4 py-1 text-sm"
-            style={{ borderColor: 'var(--color-border)' }}
+      <div style={{ padding: '6px 20px 8px' }}>
+        {/* 住客信息（screens-setting.jsx 的门面卡） */}
+        <div className="card flex items-center" style={{ gap: 15, padding: '18px 20px' }}>
+          <div
+            className="flex flex-none items-center justify-center"
+            style={{
+              width: 52, height: 52, borderRadius: '50%',
+              background: 'linear-gradient(145deg, #8b95a3, #4c5560 72%)',
+              color: '#fff', fontSize: 21, fontWeight: 500,
+              boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.35)',
+            }}
           >
-            {mode === 'dark' ? <IconMoon size={14} /> : <IconSun size={14} />}
-            {mode === 'dark' ? '深色' : '浅色'}
-          </button>
+            栖
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="t-h2">住在这里的人</div>
+            <div className="t-caption" style={{ color: 'var(--text-tertiary)', marginTop: 3 }}>把日子过慢一点</div>
+          </div>
         </div>
-      </section>
+      </div>
 
-      <ProviderSettings />
-
-      <section
-        className="mb-4 rounded-lg border p-4"
-        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
-      >
-        <h2 className="mb-3 text-sm font-semibold" style={{ color: 'var(--color-text-dim)' }}>
-          系统状态
-        </h2>
-        {server.data && (
-          <p className="flex items-center gap-1.5 text-sm">
-            <IconCheck size={13} style={{ color: 'var(--color-primary)' }} />
-            <span>habitat-server：正常（{new Date(server.data.time).toLocaleTimeString()}）</span>
-          </p>
-        )}
-        {server.error !== null && (
-          <p className="flex flex-wrap items-center gap-1.5 text-sm" style={{ color: 'var(--color-danger)' }}>
-            <IconAlert size={14} />
-            <span>后端不可达：{server.error}</span>
-            <button type="button" className="underline" onClick={server.retry}>
-              重试
-            </button>
-          </p>
-        )}
-
-        <h3 className="mb-2 mt-4 text-sm font-semibold" style={{ color: 'var(--color-text-dim)' }}>
-          MCP 工具网关
-        </h3>
-        {mcp.data?.servers.map((s) => (
-          <div key={s.serverId} className="mb-1 flex flex-wrap items-center gap-1.5 text-sm">
-            {s.state === 'ready' ? (
-              <IconCheck size={13} style={{ color: 'var(--color-primary)' }} />
-            ) : (
-              <IconAlert size={13} style={{ color: 'var(--color-danger)' }} />
-            )}
-            <span>
-              {s.serverId}（{s.state}
-              {s.toolCount > 0 ? `，${s.toolCount} 个工具` : ''}）
+      <div className="px-5 pb-6">
+        {/* 外观 */}
+        <div className="setting-group-label">外观</div>
+        <section className="setting-group" style={{ marginTop: 0 }}>
+          <div className="setting-row">
+            <span className="inline-flex flex-none" style={{ color: 'var(--text-secondary)' }}>
+              {mode === 'dark' ? <IconMoon size={18} /> : <IconSun size={18} />}
             </span>
-            {s.lastError !== null && (
-              <span style={{ color: 'var(--color-danger)' }}> — {s.lastError}</span>
+            <div className="setting-row-main">
+              <div className="setting-row-title">主题</div>
+              <div className="setting-row-sub">深色适合雨夜</div>
+            </div>
+            <div className="seg">
+              <button
+                type="button"
+                data-testid="theme-light"
+                className={`seg-item${mode === 'light' ? ' is-on' : ''}`}
+                onClick={() => setMode('light')}
+              >
+                浅色
+              </button>
+              <button
+                type="button"
+                data-testid="theme-dark"
+                className={`seg-item${mode === 'dark' ? ' is-on' : ''}`}
+                onClick={() => setMode('dark')}
+              >
+                深色
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <ProviderSettings />
+
+        <BackupPanel />
+
+        {/* 高级：系统状态与诊断（design §17：诊断分层、低调） */}
+        <div className="setting-group-label">高级</div>
+        <section
+          className="setting-group mb-4"
+          style={{ marginTop: 0 }}
+        >
+          <div className="setting-row">
+            <div className="setting-row-main">
+              <div className="setting-row-title">habitat-server</div>
+            </div>
+            {server.data && (
+              <span className="flex items-center gap-1.5 text-sm">
+                <IconCheck size={13} style={{ color: 'var(--accent-strong)' }} />
+                正常（{new Date(server.data.time).toLocaleTimeString()}）
+              </span>
+            )}
+            {server.error !== null && (
+              <span className="flex flex-wrap items-center gap-1.5 text-sm" style={{ color: 'var(--danger)' }}>
+                <IconAlert size={14} />
+                不可达：{server.error}
+                <button type="button" className="underline" onClick={server.retry}>
+                  重试
+                </button>
+              </span>
             )}
           </div>
-        ))}
-        {mcp.error !== null && (
-          <p className="flex flex-wrap items-center gap-1.5 text-sm" style={{ color: 'var(--color-danger)' }}>
-            <IconAlert size={14} />
-            <span>MCP 健康检查失败：{mcp.error}</span>
-            <button type="button" className="underline" onClick={mcp.retry}>
-              重试
-            </button>
-          </p>
-        )}
-      </section>
+          <div className="setting-row">
+            <div className="setting-row-main">
+              <div className="setting-row-title">MCP 工具网关</div>
+              {mcp.data?.servers.map((s) => (
+                <div key={s.serverId} className="mb-1 flex flex-wrap items-center gap-1.5 text-sm">
+                  {s.state === 'ready' ? (
+                    <IconCheck size={13} style={{ color: 'var(--accent-strong)' }} />
+                  ) : (
+                    <IconAlert size={13} style={{ color: 'var(--danger)' }} />
+                  )}
+                  <span>
+                    {s.serverId}（{s.state}
+                    {s.toolCount > 0 ? `，${s.toolCount} 个工具` : ''}）
+                  </span>
+                  {s.lastError !== null && (
+                    <span style={{ color: 'var(--danger)' }}> — {s.lastError}</span>
+                  )}
+                </div>
+              ))}
+              {mcp.error !== null && (
+                <p className="flex flex-wrap items-center gap-1.5 text-sm" style={{ color: 'var(--danger)' }}>
+                  <IconAlert size={14} />
+                  <span>MCP 健康检查失败：{mcp.error}</span>
+                  <button type="button" className="underline" onClick={mcp.retry}>
+                    重试
+                  </button>
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
 
-      <DiagnosticPanel serverIds={mcp.data?.servers.map((s) => s.serverId) ?? []} />
-
-      <BackupPanel />
-
-      <section
-        className="rounded-lg border p-4 text-sm"
-        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-dim)' }}
-      >
-        记忆与状态模块（Nocturne / Eventide）将在 Phase 3 接入
-      </section>
+        <DiagnosticPanel serverIds={mcp.data?.servers.map((s) => s.serverId) ?? []} />
+      </div>
     </div>
   )
 }

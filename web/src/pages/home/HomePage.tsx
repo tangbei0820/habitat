@@ -108,7 +108,7 @@ export function HomePage() {
         <h1 className="t-h1">{greeting}，欢迎回来</h1>
       </header>
 
-      <div className="bento" style={{ paddingTop: 8 }}>
+      <div className="bento" style={{ paddingTop: 8, paddingBottom: 8 }}>
         {/* ① 小栖 · 现在（2×2） */}
         <div className="bento-cell ai-presence cell-2x2" style={{ gridRow: 'span 2', minHeight: 196, justifyContent: 'space-between' }}>
           <div className="flex items-center gap-2">

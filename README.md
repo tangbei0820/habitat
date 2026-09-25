@@ -104,6 +104,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | --- | --- |
 | `node web/scripts/verify-chat.mjs` | 聊天链路 / 消息对象操作 / 跨模块收录 / 会话置顶与设置 / 会话分组 / 消息块分发 / 分页 / 候选版本 / 输入区快捷栏与请求回复拆开 / **安全 HTML（sandbox + CSP）· widget · tab-group** / **录音预览与真实转写** / **图片理解与生成** / **Mini Terminal 空态** / **气泡头像开关（全局偏好、刷新后仍记住）**（148 项） |
 | `node web/scripts/verify-home-skin.mjs` | **UI 换装第 4 批 · 家页哨兵**：Bento 六格全是真数据或诚实空态（**真种数据必须吃库**）、「小栖 · 现在」是真实联网状态、全入口 10 个模块带图标、模块子页低存在感顶栏、移动端无溢出（14 项） |
+| `node web/scripts/verify-life-skin.mjs` | **UI 换装第 5 批 · 生活 + 设置哨兵**：生活「生活痕迹 / 记录」两套并排、无来源数据格诚实空态（占位数据零搬运）、日记真计数、设置重分组、主题分段切了真生效（16 项） |
 | `node web/scripts/verify-chat-skin.mjs` | **UI 换装第 3 批 · 对话页哨兵**：列表顶栏与胶囊按钮是真 SVG 图标、气泡方向与底色（用户黑右 / AI 白左）且圆角来自令牌（颜色解析成 rgb() 再比）、操作行常显可点（触屏路径）、输入胶囊停靠不遮消息、圆形发送键、**11 项能力入口齐**、界面无 emoji 图标（31 项） |
 | `node web/scripts/verify-providers.mjs` | API 方案管理 UI（24 项） |
 | `node web/scripts/verify-llm.mjs` | **Phase 6.5 P2 · 小栖档案（App Launcher）**：卡片与服务端能力快照**逐条比对**（不写死能力名）、可用状态一致、不可用必给原因、有界面的模块真能启动、没界面的不做假入口（16 项） |

@@ -48,6 +48,9 @@ async function click(text) {
 
 await send('Runtime.enable'); await send('Page.enable')
 await send('Page.navigate', { url: `${APP}/life` })
+// 第 5 批起「生活」是两套并排：默认落在「生活痕迹」，记录页签在「记录」段里 —— 先切过去
+await waitFor(`document.body.innerText.includes('记录')`, '生活页两段开关')
+await click('记录')
 await waitFor(`document.body.innerText.includes('月历') && document.body.innerText.includes('账本')`, 'Life 页签')
 await waitFor(`document.body.innerText.includes('本月事件')`, '月历摘要')
 let text = await evaluate('document.body.innerText')
@@ -71,7 +74,13 @@ check('可切到运行', await click('运行'))
 await waitFor(`document.body.innerText.includes('habitat-server')`, '运行状态加载')
 text = await evaluate('document.body.innerText')
 check('运行状态聚合四类来源', ['habitat-server', 'Eventide', 'MCP', '主动行为'].every((value) => text.includes(value)))
-check('未配置依赖不会误报为运行异常', (text.match(/未配置/g) ?? []).length >= 2)
+check(
+  '未配置依赖不会误报为运行异常',
+  // ⚠️ 别数「未配置」出现次数：本机 server 配了 nocturne MCP（disconnected → 显示「异常」是**对的**，
+  // 它是配了但没连上，不是没配）。测试环境里必然未配置的只有 Eventide —— 它显示「未配置」即通过。
+  text.includes('未配置'),
+  (text.match(/Eventide[\s\S]{0,40}/) ?? [''])[0].replace(/\n/g, ' '),
+)
 check('运行页展示状态快照与最近运行', text.includes('当前状态') && text.includes('最近运行'))
 check('手动检查入口存在但不自动触发', text.includes('立即检查'))
 

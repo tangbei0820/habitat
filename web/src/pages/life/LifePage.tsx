@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { useSearchParams } from 'react-router-dom'
 import type { LifeLedgerView, LifeMonthSummary, LifeRuntimeView, NotificationRecord, PushStatus, RuntimeEvent } from '@shared/types'
 import { listEvents } from '../../db/events'
+import { listDiaries } from '../../db/home'
 import { EventConfirmCard } from '../../features/chat/EventConfirmCard'
+import {
+  IconBook, IconDrop, IconHeart, IconMoon, IconNote,
+} from '../../components/qixi/Icons'
 import {
   addPriceSnapshot, addWalletTransaction, loadLifeDay, loadLifeLedger, loadLifeMonth,
   loadLifeRuntime, loadNotifications, loadPushStatus, markAllNotificationsRead,
@@ -33,14 +37,14 @@ function dateTime(value: number | null): string {
 }
 function money(cents: number): string { return `${(cents / 100).toFixed(2)} 元` }
 function Panel({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-xl border p-4 ${className}`} style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>{children}</section>
+  return <section className={`rounded-xl border p-4 ${className}`} style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-surface-solid)' }}>{children}</section>
 }
 function ErrorLine({ value }: { value: string | null }) {
-  return value === null ? null : <p className="rounded-lg p-3 text-sm" style={{ color: 'var(--color-danger)', background: 'var(--color-surface-alt)' }}>{value}</p>
+  return value === null ? null : <p className="rounded-lg p-3 text-sm" style={{ color: 'var(--danger)', background: 'var(--bg-subtle)' }}>{value}</p>
 }
 function LoadingOrEmpty({ loading, empty, children }: { loading: boolean; empty: boolean; children: ReactNode }) {
-  if (loading) return <p className="py-8 text-center text-sm" style={{ color: 'var(--color-text-dim)' }}>正在读取…</p>
-  if (empty) return <p className="py-8 text-center text-sm" style={{ color: 'var(--color-text-dim)' }}>这里还没有记录</p>
+  if (loading) return <p className="py-8 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>正在读取…</p>
+  if (empty) return <p className="py-8 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>这里还没有记录</p>
   return <>{children}</>
 }
 
@@ -66,15 +70,15 @@ function CalendarView({ month, setMonth }: { month: string; setMonth: (value: st
   }, [month])
   const summaries = new Map(summary?.days.map((day) => [day.dayKey, day]) ?? [])
   return <div className="space-y-3">
-    <div className="flex items-center justify-between"><button className="rounded-lg border px-3 py-2 text-sm" onClick={() => setMonth(moveMonth(month, -1))}>上月</button><div className="text-center"><strong>{month}</strong><p className="text-xs" style={{ color: 'var(--color-text-dim)' }}>{summary?.timeZone ?? '用户时区'}</p></div><button className="rounded-lg border px-3 py-2 text-sm" onClick={() => setMonth(moveMonth(month, 1))}>下月</button></div>
-    <button className="text-xs underline" style={{ color: 'var(--color-text-dim)' }} onClick={() => setMonth(initialMonth())}>回到本月</button><ErrorLine value={error}/>
-    <LoadingOrEmpty loading={loading} empty={false}><Panel><div className="grid grid-cols-7 gap-1 text-center text-xs" style={{ color: 'var(--color-text-dim)' }}>{'日一二三四五六'.split('').map((day) => <span key={day} className="py-1">{day}</span>)}{cells.map((day, index) => {
+    <div className="flex items-center justify-between"><button className="rounded-lg border px-3 py-2 text-sm" onClick={() => setMonth(moveMonth(month, -1))}>上月</button><div className="text-center"><strong>{month}</strong><p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{summary?.timeZone ?? '用户时区'}</p></div><button className="rounded-lg border px-3 py-2 text-sm" onClick={() => setMonth(moveMonth(month, 1))}>下月</button></div>
+    <button className="text-xs underline" style={{ color: 'var(--text-secondary)' }} onClick={() => setMonth(initialMonth())}>回到本月</button><ErrorLine value={error}/>
+    <LoadingOrEmpty loading={loading} empty={false}><Panel><div className="grid grid-cols-7 gap-1 text-center text-xs" style={{ color: 'var(--text-secondary)' }}>{'日一二三四五六'.split('').map((day) => <span key={day} className="py-1">{day}</span>)}{cells.map((day, index) => {
       if (day === null) return <span key={`empty-${index}`}/>
       const key = `${month}-${String(day).padStart(2, '0')}`; const item = summaries.get(key)
-      return <button key={key} onClick={() => selectDay(key)} className="min-h-14 rounded-lg border p-1 text-left" style={{ borderColor: selected === key ? 'var(--color-accent)' : 'var(--color-border)', background: item ? 'var(--color-surface-alt)' : 'transparent' }}><span>{day}</span>{item && <span className="mt-1 block text-[10px]" style={{ color: item.failedEventCount > 0 ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{item.eventCount}事 · {item.apiCalls}次</span>}</button>
+      return <button key={key} onClick={() => selectDay(key)} className="min-h-14 rounded-lg border p-1 text-left" style={{ borderColor: selected === key ? 'var(--accent-strong)' : 'var(--border-soft)', background: item ? 'var(--bg-subtle)' : 'transparent' }}><span>{day}</span>{item && <span className="mt-1 block text-[10px]" style={{ color: item.failedEventCount > 0 ? 'var(--danger)' : 'var(--text-secondary)' }}>{item.eventCount}事 · {item.apiCalls}次</span>}</button>
     })}</div></Panel>
     {summary && <div className="grid grid-cols-3 gap-2 text-center text-xs"><Panel><strong className="block text-base">{summary.totals.eventCount}</strong>本月事件</Panel><Panel><strong className="block text-base">{summary.totals.totalTokens}</strong>Token</Panel><Panel><strong className="block text-base">{money(summary.totals.pricedCostCents)}</strong>{summary.totals.unpricedCalls > 0 ? `另 ${summary.totals.unpricedCalls} 次未定价` : '已全部定价'}</Panel></div>}
-    {selected && <Panel><h2 className="mb-3 font-medium">{selected} 明细</h2>{detail === null ? <p className="text-sm">正在读取…</p> : detail.events.length + detail.usage.length === 0 ? <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>当天没有事实记录</p> : <div className="space-y-2 text-sm">{detail.events.map((event) => <div key={`event-${event.id}`} className="rounded-lg p-2" style={{ background: 'var(--color-surface-alt)' }}><strong>{event.eventType}</strong><span className="ml-2 text-xs">{dateTime(event.at)}</span></div>)}{detail.usage.map((usage) => <div key={`usage-${usage.id}`} className="rounded-lg p-2" style={{ background: 'var(--color-surface-alt)' }}><strong>{usage.service}</strong> · {usage.model}<span className="block text-xs">{usage.totalTokens} Token · {usage.cost === null ? '未定价' : money(usage.cost)}</span></div>)}</div>}</Panel>}
+    {selected && <Panel><h2 className="mb-3 font-medium">{selected} 明细</h2>{detail === null ? <p className="text-sm">正在读取…</p> : detail.events.length + detail.usage.length === 0 ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>当天没有事实记录</p> : <div className="space-y-2 text-sm">{detail.events.map((event) => <div key={`event-${event.id}`} className="rounded-lg p-2" style={{ background: 'var(--bg-subtle)' }}><strong>{event.eventType}</strong><span className="ml-2 text-xs">{dateTime(event.at)}</span></div>)}{detail.usage.map((usage) => <div key={`usage-${usage.id}`} className="rounded-lg p-2" style={{ background: 'var(--bg-subtle)' }}><strong>{usage.service}</strong> · {usage.model}<span className="block text-xs">{usage.totalTokens} Token · {usage.cost === null ? '未定价' : money(usage.cost)}</span></div>)}</div>}</Panel>}
     </LoadingOrEmpty>
   </div>
 }
@@ -87,12 +91,12 @@ function LedgerView({ month }: { month: string }) {
   useEffect(() => { setLedger(null); setError(null); void refresh().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))) }, [refresh])
   async function submitWallet(event: FormEvent) { event.preventDefault(); setError(null); setNotice(null); try { await addWalletTransaction(Number(walletDelta), walletReason.trim()); setWalletDelta(''); setWalletReason(''); setNotice('钱包流水已追加'); await refresh() } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) } }
   async function submitPrice(event: FormEvent) { event.preventDefault(); setError(null); setNotice(null); try { const result = await addPriceSnapshot({ provider: provider.trim(), model: model.trim(), promptCentsPerMillion: Number(promptPrice), completionCentsPerMillion: Number(completionPrice), validFrom: new Date(`${validDate}T00:00:00`).getTime() }); setNotice(`价格快照已新增，补价 ${result.repriced} 条`); await refresh() } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) } }
-  return <div className="space-y-3"><ErrorLine value={error}/>{notice && <p className="text-sm" style={{ color: 'var(--color-accent)' }}>{notice}</p>}<LoadingOrEmpty loading={ledger === null && error === null} empty={false}>{ledger && <>
-    <div className="grid grid-cols-2 gap-2 text-sm"><Panel><span style={{ color: 'var(--color-text-dim)' }}>本月 API</span><strong className="block text-xl">{ledger.summary.totals.apiCalls} 次</strong></Panel><Panel><span style={{ color: 'var(--color-text-dim)' }}>已定价费用</span><strong className="block text-xl">{money(ledger.summary.totals.pricedCostCents)}</strong><small>{ledger.summary.totals.unpricedCalls} 次未定价</small></Panel></div>
+  return <div className="space-y-3"><ErrorLine value={error}/>{notice && <p className="text-sm" style={{ color: 'var(--accent-strong)' }}>{notice}</p>}<LoadingOrEmpty loading={ledger === null && error === null} empty={false}>{ledger && <>
+    <div className="grid grid-cols-2 gap-2 text-sm"><Panel><span style={{ color: 'var(--text-secondary)' }}>本月 API</span><strong className="block text-xl">{ledger.summary.totals.apiCalls} 次</strong></Panel><Panel><span style={{ color: 'var(--text-secondary)' }}>已定价费用</span><strong className="block text-xl">{money(ledger.summary.totals.pricedCostCents)}</strong><small>{ledger.summary.totals.unpricedCalls} 次未定价</small></Panel></div>
     <Panel><h2 className="mb-2 font-medium">按服务</h2>{ledger.byService.length === 0 ? <p className="text-sm">暂无用量</p> : ledger.byService.map((item) => <div key={item.key} className="flex justify-between border-t py-2 text-sm"><span>{item.key}</span><span>{item.calls} 次 · {item.totalTokens} Token · {money(item.pricedCostCents)}{item.unpricedCalls > 0 ? ` +${item.unpricedCalls} 未定价` : ''}</span></div>)}</Panel>
-    <Panel><h2 className="mb-2 font-medium">按方案与模型</h2>{ledger.byModel.length === 0 ? <p className="text-sm">暂无用量</p> : ledger.byModel.map((item) => <div key={item.key} className="border-t py-2 text-sm"><strong>{item.key}</strong><small className="block" style={{ color: 'var(--color-text-dim)' }}>{item.calls} 次 · {item.totalTokens} Token · {money(item.pricedCostCents)}{item.unpricedCalls > 0 ? ` · ${item.unpricedCalls} 次未定价` : ''}</small></div>)}</Panel>
-    <Panel><h2 className="mb-2 font-medium">小栖钱包</h2><strong className="text-2xl">{ledger.wallet.balance}</strong><form className="mt-3 grid gap-2" onSubmit={(event) => void submitWallet(event)}><input required type="number" value={walletDelta} onChange={(event) => setWalletDelta(event.target.value)} placeholder="变化量：正数充值，负数支出" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><input required maxLength={200} value={walletReason} onChange={(event) => setWalletReason(event.target.value)} placeholder="原因（必填）" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><button className="rounded-lg px-3 py-2 text-sm text-white" style={{ background: 'var(--color-accent)' }}>追加流水</button></form><div className="mt-3 space-y-2">{ledger.walletTransactions.map((item) => <div key={item.id} className="flex justify-between text-sm"><span>{item.reason}<small className="block" style={{ color: 'var(--color-text-dim)' }}>{dateTime(item.createdAt)} · 余额 {item.balanceAfter}</small></span><strong style={{ color: item.delta >= 0 ? 'var(--color-accent)' : 'var(--color-danger)' }}>{item.delta >= 0 ? '+' : ''}{item.delta}</strong></div>)}</div></Panel>
-    <Panel><h2 className="font-medium">价格快照</h2><p className="mb-3 text-xs" style={{ color: 'var(--color-text-dim)' }}>单位：分 / 百万 Token。快照新增后不可修改。</p><form className="grid gap-2" onSubmit={(event) => void submitPrice(event)}><input required value={provider} onChange={(event) => setProvider(event.target.value)} placeholder="Provider" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><input required value={model} onChange={(event) => setModel(event.target.value)} placeholder="模型名" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><div className="grid grid-cols-2 gap-2"><input required min="0" type="number" value={promptPrice} onChange={(event) => setPromptPrice(event.target.value)} placeholder="输入单价" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><input required min="0" type="number" value={completionPrice} onChange={(event) => setCompletionPrice(event.target.value)} placeholder="输出单价" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/></div><input required type="date" value={validDate} onChange={(event) => setValidDate(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><button className="rounded-lg border px-3 py-2 text-sm">新增价格版本</button></form><div className="mt-3 space-y-2">{ledger.priceSnapshots.map((item) => <div key={item.id} className="text-sm"><strong>{item.provider} · {item.model}</strong><small className="block" style={{ color: 'var(--color-text-dim)' }}>输入 {item.promptCentsPerMillion} / 输出 {item.completionCentsPerMillion} · {new Date(item.validFrom).toLocaleDateString()}</small></div>)}</div></Panel>
+    <Panel><h2 className="mb-2 font-medium">按方案与模型</h2>{ledger.byModel.length === 0 ? <p className="text-sm">暂无用量</p> : ledger.byModel.map((item) => <div key={item.key} className="border-t py-2 text-sm"><strong>{item.key}</strong><small className="block" style={{ color: 'var(--text-secondary)' }}>{item.calls} 次 · {item.totalTokens} Token · {money(item.pricedCostCents)}{item.unpricedCalls > 0 ? ` · ${item.unpricedCalls} 次未定价` : ''}</small></div>)}</Panel>
+    <Panel><h2 className="mb-2 font-medium">小栖钱包</h2><strong className="text-2xl">{ledger.wallet.balance}</strong><form className="mt-3 grid gap-2" onSubmit={(event) => void submitWallet(event)}><input required type="number" value={walletDelta} onChange={(event) => setWalletDelta(event.target.value)} placeholder="变化量：正数充值，负数支出" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><input required maxLength={200} value={walletReason} onChange={(event) => setWalletReason(event.target.value)} placeholder="原因（必填）" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><button className="rounded-lg px-3 py-2 text-sm text-white" style={{ background: 'var(--accent-strong)' }}>追加流水</button></form><div className="mt-3 space-y-2">{ledger.walletTransactions.map((item) => <div key={item.id} className="flex justify-between text-sm"><span>{item.reason}<small className="block" style={{ color: 'var(--text-secondary)' }}>{dateTime(item.createdAt)} · 余额 {item.balanceAfter}</small></span><strong style={{ color: item.delta >= 0 ? 'var(--accent-strong)' : 'var(--danger)' }}>{item.delta >= 0 ? '+' : ''}{item.delta}</strong></div>)}</div></Panel>
+    <Panel><h2 className="font-medium">价格快照</h2><p className="mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>单位：分 / 百万 Token。快照新增后不可修改。</p><form className="grid gap-2" onSubmit={(event) => void submitPrice(event)}><input required value={provider} onChange={(event) => setProvider(event.target.value)} placeholder="Provider" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><input required value={model} onChange={(event) => setModel(event.target.value)} placeholder="模型名" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><div className="grid grid-cols-2 gap-2"><input required min="0" type="number" value={promptPrice} onChange={(event) => setPromptPrice(event.target.value)} placeholder="输入单价" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><input required min="0" type="number" value={completionPrice} onChange={(event) => setCompletionPrice(event.target.value)} placeholder="输出单价" className="rounded-lg border bg-transparent px-3 py-2 text-sm"/></div><input required type="date" value={validDate} onChange={(event) => setValidDate(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm"/><button className="rounded-lg border px-3 py-2 text-sm">新增价格版本</button></form><div className="mt-3 space-y-2">{ledger.priceSnapshots.map((item) => <div key={item.id} className="text-sm"><strong>{item.provider} · {item.model}</strong><small className="block" style={{ color: 'var(--text-secondary)' }}>输入 {item.promptCentsPerMillion} / 输出 {item.completionCentsPerMillion} · {new Date(item.validFrom).toLocaleDateString()}</small></div>)}</div></Panel>
   </>}</LoadingOrEmpty></div>
 }
 
@@ -102,7 +106,7 @@ function NotificationsView() {
   useEffect(() => { void refresh().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))) }, [refresh])
   async function togglePush() { setError(null); try { if (subscribed) await disablePush(); else if (push?.publicKey) await enablePush(push.publicKey); await refresh() } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) } }
   const report = (reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))
-  return <div className="space-y-3"><ErrorLine value={error}/><Panel><div className="flex items-center justify-between"><div><h2 className="font-medium">Web Push</h2><p className="text-xs" style={{ color: 'var(--color-text-dim)' }}>{!browserPushSupported() ? '当前浏览器不支持' : !push?.configured ? '服务端尚未配置 VAPID，站内通知仍可用' : subscribed ? '已启用' : '可选启用'}</p>{push?.lastError && <p className="mt-1 text-xs" style={{ color: 'var(--color-danger)' }}>最近失败：{push.lastError}</p>}</div><button disabled={!browserPushSupported() || !push?.configured} onClick={() => void togglePush()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">{subscribed ? '关闭' : '启用'}</button></div></Panel><div className="flex items-center justify-between"><span className="text-sm">未读 {items?.filter((item) => item.readAt === null).length ?? 0}</span><button className="text-sm underline" onClick={() => void markAllNotificationsRead().then(refresh).catch(report)}>全部已读</button></div><LoadingOrEmpty loading={items === null && error === null} empty={items?.length === 0}>{items?.map((item) => <button key={item.id} className="block w-full text-left" onClick={() => item.readAt === null && void markNotificationRead(item.id).then(refresh).catch(report)}><Panel className={item.readAt === null ? 'border-l-4' : 'opacity-70'}><div className="flex justify-between gap-3"><strong>{item.title}</strong><small>{dateTime(item.createdAt)}</small></div><p className="mt-1 whitespace-pre-wrap text-sm">{item.body}</p></Panel></button>)}</LoadingOrEmpty></div>
+  return <div className="space-y-3"><ErrorLine value={error}/><Panel><div className="flex items-center justify-between"><div><h2 className="font-medium">Web Push</h2><p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{!browserPushSupported() ? '当前浏览器不支持' : !push?.configured ? '服务端尚未配置 VAPID，站内通知仍可用' : subscribed ? '已启用' : '可选启用'}</p>{push?.lastError && <p className="mt-1 text-xs" style={{ color: 'var(--danger)' }}>最近失败：{push.lastError}</p>}</div><button disabled={!browserPushSupported() || !push?.configured} onClick={() => void togglePush()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">{subscribed ? '关闭' : '启用'}</button></div></Panel><div className="flex items-center justify-between"><span className="text-sm">未读 {items?.filter((item) => item.readAt === null).length ?? 0}</span><button className="text-sm underline" onClick={() => void markAllNotificationsRead().then(refresh).catch(report)}>全部已读</button></div><LoadingOrEmpty loading={items === null && error === null} empty={items?.length === 0}>{items?.map((item) => <button key={item.id} className="block w-full text-left" onClick={() => item.readAt === null && void markNotificationRead(item.id).then(refresh).catch(report)}><Panel className={item.readAt === null ? 'border-l-4' : 'opacity-70'}><div className="flex justify-between gap-3"><strong>{item.title}</strong><small>{dateTime(item.createdAt)}</small></div><p className="mt-1 whitespace-pre-wrap text-sm">{item.body}</p></Panel></button>)}</LoadingOrEmpty></div>
 }
 
 /**
@@ -128,7 +132,7 @@ function EventsView() {
   const rest = (items ?? []).filter((item) => !(item.decider === 'user' && item.status === 'pending'))
   return <div className="space-y-3"><ErrorLine value={error}/><LoadingOrEmpty loading={items === null && error === null} empty={items?.length === 0}>
     <>{waitingForMe.length > 0 && <><h2 className="text-sm font-semibold">等着你点头（{waitingForMe.length}）</h2>{waitingForMe.map((item) => <EventConfirmCard key={item.id} eventId={item.id} fallbackTitle={item.title} onDecided={() => void refresh().catch(() => undefined)}/>)}</>}
-    {rest.length > 0 && <><h2 className="text-sm font-semibold">其它事件</h2>{rest.map((item) => <Panel key={item.id}><div className="flex justify-between gap-3"><strong>{item.title}</strong><small>{dateTime(item.createdAt)}</small></div>{item.detail !== '' && <p className="mt-1 whitespace-pre-wrap text-sm" style={{ color: 'var(--color-text-dim)' }}>{item.detail}</p>}<p className="mt-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>{eventStatusLabel(item)}{item.result !== null ? ` · ${item.result}` : ''}</p></Panel>)}</>}</>
+    {rest.length > 0 && <><h2 className="text-sm font-semibold">其它事件</h2>{rest.map((item) => <Panel key={item.id}><div className="flex justify-between gap-3"><strong>{item.title}</strong><small>{dateTime(item.createdAt)}</small></div>{item.detail !== '' && <p className="mt-1 whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>{item.detail}</p>}<p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{eventStatusLabel(item)}{item.result !== null ? ` · ${item.result}` : ''}</p></Panel>)}</>}</>
   </LoadingOrEmpty></div>
 }
 
@@ -141,12 +145,105 @@ function RuntimeView() {
   async function checkNow() { setChecking(true); setError(null); try { await runAutomationCheck(); await refresh() } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) } finally { setChecking(false) } }
   const mcpUnconfigured = runtime?.mcp.servers.length === 0
     || runtime?.mcp.servers.every((server) => server.lastError === 'not configured') === true
-  return <div className="space-y-3"><ErrorLine value={error}/><LoadingOrEmpty loading={runtime === null && error === null} empty={false}>{runtime && <><div className="grid grid-cols-2 gap-2 text-sm"><Panel><span>habitat-server</span><strong className="block">{statusLabel(runtime.server.ok)}</strong></Panel><Panel><span>Eventide</span><strong className="block">{statusLabel(runtime.eventide.ok, runtime.eventide.configured)}</strong></Panel><Panel><span>MCP</span><strong className="block">{mcpUnconfigured ? '未配置' : statusLabel(runtime.mcp.ok)}</strong></Panel><Panel><span>主动行为</span><strong className="block">{runtime.automation.policy.enabled ? '已开启' : '已关闭'}</strong></Panel></div><Panel><h2 className="mb-2 font-medium">当前状态</h2>{runtime.bodyState === null ? <p className="text-sm">暂无 Eventide 快照</p> : <div className="grid grid-cols-2 gap-2 text-sm">{Object.entries(runtime.bodyState.payload).map(([key, value]) => <div key={key}><span style={{ color: 'var(--color-text-dim)' }}>{key}</span><strong className="ml-2">{String(value)}</strong></div>)}</div>}</Panel><Panel><div className="flex items-center justify-between"><h2 className="font-medium">主动行为运行态</h2><button disabled={checking || !online} onClick={() => void checkNow()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">{checking ? '检查中…' : '立即检查'}</button></div><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><span>最近互动<strong className="block">{dateTime(runtime.automation.runtime.lastCounterpartAt)}</strong></span><span>最近唤醒<strong className="block">{dateTime(runtime.automation.runtime.lastWakeAt)}</strong></span><span>连续未回复<strong className="block">{runtime.automation.runtime.unansweredWakes}</strong></span><span>时区<strong className="block">{runtime.automation.policy.timeZone}</strong></span></div></Panel><Panel><h2 className="mb-2 font-medium">最近运行</h2>{runtime.automation.runs.length === 0 ? <p className="text-sm">尚无运行记录</p> : runtime.automation.runs.map((run) => <div key={run.id} className="border-t py-2 text-sm"><strong>{run.kind} · {run.status}</strong><small className="block" style={{ color: 'var(--color-text-dim)' }}>{dateTime(run.at)}{run.reason ? ` · ${run.reason}` : ''}</small></div>)}</Panel></>}</LoadingOrEmpty></div>
+  return <div className="space-y-3"><ErrorLine value={error}/><LoadingOrEmpty loading={runtime === null && error === null} empty={false}>{runtime && <><div className="grid grid-cols-2 gap-2 text-sm"><Panel><span>habitat-server</span><strong className="block">{statusLabel(runtime.server.ok)}</strong></Panel><Panel><span>Eventide</span><strong className="block">{statusLabel(runtime.eventide.ok, runtime.eventide.configured)}</strong></Panel><Panel><span>MCP</span><strong className="block">{mcpUnconfigured ? '未配置' : statusLabel(runtime.mcp.ok)}</strong></Panel><Panel><span>主动行为</span><strong className="block">{runtime.automation.policy.enabled ? '已开启' : '已关闭'}</strong></Panel></div><Panel><h2 className="mb-2 font-medium">当前状态</h2>{runtime.bodyState === null ? <p className="text-sm">暂无 Eventide 快照</p> : <div className="grid grid-cols-2 gap-2 text-sm">{Object.entries(runtime.bodyState.payload).map(([key, value]) => <div key={key}><span style={{ color: 'var(--text-secondary)' }}>{key}</span><strong className="ml-2">{String(value)}</strong></div>)}</div>}</Panel><Panel><div className="flex items-center justify-between"><h2 className="font-medium">主动行为运行态</h2><button disabled={checking || !online} onClick={() => void checkNow()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">{checking ? '检查中…' : '立即检查'}</button></div><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><span>最近互动<strong className="block">{dateTime(runtime.automation.runtime.lastCounterpartAt)}</strong></span><span>最近唤醒<strong className="block">{dateTime(runtime.automation.runtime.lastWakeAt)}</strong></span><span>连续未回复<strong className="block">{runtime.automation.runtime.unansweredWakes}</strong></span><span>时区<strong className="block">{runtime.automation.policy.timeZone}</strong></span></div></Panel><Panel><h2 className="mb-2 font-medium">最近运行</h2>{runtime.automation.runs.length === 0 ? <p className="text-sm">尚无运行记录</p> : runtime.automation.runs.map((run) => <div key={run.id} className="border-t py-2 text-sm"><strong>{run.kind} · {run.status}</strong><small className="block" style={{ color: 'var(--text-secondary)' }}>{dateTime(run.at)}{run.reason ? ` · ${run.reason}` : ''}</small></div>)}</Panel></>}</LoadingOrEmpty></div>
+}
+
+/**
+ * 生活痕迹（设计稿 screens-life.jsx）：心情 / 睡眠 / 日记 / 一起听 / 雨。
+ *
+ * ⚠️ 数据口径（铁律：假数据一律不搬）：设计稿里的「7h12m 睡眠」「心情曲线」「3.5 小时」全是占位。
+ *  心情 / 睡眠目前**没有任何真实来源**（Eventide 的 bodyState 快照字段由上游自定，不保证有这些键），
+ *  所以这两格诚实空态；日记是本周真篇数（按作者分）；一起听 / 雨的时长要等第 6 批真播放接上才有得计。
+ */
+function TracesView() {
+  const [weekDiary, setWeekDiary] = useState<{ companion: number; user: number } | null>(null)
+  useEffect(() => {
+    listDiaries()
+      .then((items) => {
+        const from = new Date()
+        from.setDate(from.getDate() - 6)
+        const floor = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`
+        const week = items.filter((item) => item.entryDate >= floor)
+        setWeekDiary({
+          companion: week.filter((item) => item.author === 'companion').length,
+          user: week.filter((item) => item.author === 'user').length,
+        })
+      })
+      .catch(() => setWeekDiary(null))
+  }, [])
+  const emptyCell = (label: string, icon: ReactNode, text: string) => (
+    <div className="bento-cell">
+      <div className="cell-label">{icon} {label}</div>
+      <div className="t-caption" style={{ color: 'var(--text-tertiary)' }}>{text}</div>
+    </div>
+  )
+  return (
+    <div className="bento" style={{ paddingTop: 8, paddingBottom: 8 }}>
+      {/* 心情 · 本周：还没有真实来源，诚实空态 */}
+      {emptyCell('心情 · 本周', <IconHeart size={13} />, '还没有心情记录')}
+
+      {/* 睡眠：同上 */}
+      {emptyCell('睡眠', <IconMoon size={13} />, '还没有睡眠记录')}
+
+      {/* 日记：本周真篇数，按作者分 */}
+      <div className="bento-cell">
+        <div className="cell-label"><IconBook size={13} /> 日记</div>
+        <div>
+          <span style={{ fontSize: 30, fontWeight: 700 }}>{weekDiary === null ? 0 : weekDiary.companion + weekDiary.user}</span>
+          <span className="t-caption" style={{ color: 'var(--text-secondary)', marginLeft: 4 }}>篇</span>
+        </div>
+        <span className="t-caption" style={{ color: 'var(--text-secondary)' }}>
+          {weekDiary === null ? '日记还空着' : `小栖写了 ${weekDiary.companion} 篇，你 ${weekDiary.user} 篇`}
+        </span>
+      </div>
+
+      {/* 一起听 / 雨：时长统计等第 6 批真播放接上才开始累计 */}
+      {emptyCell('一起听', <IconNote size={13} />, '还没一起听过歌')}
+      {emptyCell('雨', <IconDrop size={13} />, '还没听过雨声')}
+
+      <div className="t-caption" style={{ gridColumn: 'span 2', textAlign: 'center', color: 'var(--text-tertiary)', paddingBottom: 4 }}>
+        数据只记录，不评判。
+      </div>
+    </div>
+  )
 }
 
 export function LifePage() {
-  const [params, setParams] = useSearchParams(); const requested = params.get('tab')
+  const [params, setParams] = useSearchParams()
+  const requested = params.get('tab')
   const tab: LifeTab = TABS.some((item) => item.id === requested) ? requested as LifeTab : 'calendar'
+  // 两套并排（拍板）：默认「生活痕迹」；老链接 ?tab=… 仍然直达「记录」里对应的那页（不丢书签）
+  const view: 'traces' | 'records' = params.get('view') === 'records' || requested !== null ? 'records' : 'traces'
   const [month, setMonth] = useState(initialMonth())
-  return <div className="px-4 py-6"><h1 className="mb-4 text-lg font-semibold">生活</h1><div className="mb-4 grid grid-cols-5 rounded-xl p-1" style={{ background: 'var(--color-surface-alt)' }}>{TABS.map((item) => <button key={item.id} onClick={() => setParams(item.id === 'calendar' ? {} : { tab: item.id })} className="rounded-lg px-2 py-2 text-sm" style={tab === item.id ? { background: 'var(--color-surface)', color: 'var(--color-text)' } : { color: 'var(--color-text-dim)' }}>{item.label}</button>)}</div>{tab === 'calendar' && <CalendarView month={month} setMonth={setMonth}/>} {tab === 'ledger' && <LedgerView month={month}/>} {tab === 'notifications' && <NotificationsView/>} {tab === 'events' && <EventsView/>} {tab === 'runtime' && <RuntimeView/>}</div>
+  const switchTo = (next: 'traces' | 'records') => {
+    if (next === 'records') setParams(tab === 'calendar' ? { view: 'records' } : { view: 'records', tab })
+    else setParams({})
+  }
+  return (
+    <div>
+      <div className="topbar">
+        <div>
+          <div className="t-h1">生活</div>
+          <div className="t-caption" style={{ color: 'var(--text-tertiary)', marginTop: 3 }}>这一周的栖居痕迹</div>
+        </div>
+      </div>
+      <div style={{ padding: '0 20px' }}>
+        <div className="seg" data-testid="life-view-switch" style={{ marginBottom: 12 }}>
+          <button type="button" className={`seg-item${view === 'traces' ? ' is-on' : ''}`} onClick={() => switchTo('traces')}>生活痕迹</button>
+          <button type="button" className={`seg-item${view === 'records' ? ' is-on' : ''}`} onClick={() => switchTo('records')}>记录</button>
+        </div>
+        {view === 'traces' && <TracesView />}
+        {view === 'records' && (
+          <div className="pb-6">
+            <div className="mb-4 grid grid-cols-5 rounded-xl p-1" style={{ background: 'var(--bg-subtle)' }}>{TABS.map((item) => <button key={item.id} onClick={() => setParams(item.id === 'calendar' ? { view: 'records' } : { view: 'records', tab: item.id })} className="rounded-lg px-2 py-2 text-sm" style={tab === item.id ? { background: 'var(--bg-surface-solid)', color: 'var(--text-primary)' } : { color: 'var(--text-secondary)' }}>{item.label}</button>)}</div>
+            {tab === 'calendar' && <CalendarView month={month} setMonth={setMonth}/>}
+            {tab === 'ledger' && <LedgerView month={month}/>}
+            {tab === 'notifications' && <NotificationsView/>}
+            {tab === 'events' && <EventsView/>}
+            {tab === 'runtime' && <RuntimeView/>}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }

@@ -119,12 +119,12 @@ export function BackupPanel() {
   return (
     <section
       className="mb-4 rounded-lg border p-4"
-      style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+      style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}
     >
-      <h2 className="mb-3 text-sm font-semibold" style={{ color: 'var(--color-text-dim)' }}>
+      <h2 className="mb-3 text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
         数据备份
       </h2>
-      <p className="mb-3 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+      <p className="mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
         导出全部本地聊天与共同生活记录（JSON 文件）。换浏览器 / 清站点数据前先导一份。
         <br />
         日记与留言板存在服务端，<strong>不在这份本地备份里</strong> —— 它们随服务端数据一起备份（sqlite 文件）。
@@ -137,7 +137,7 @@ export function BackupPanel() {
           onClick={() => void handleExport()}
           disabled={busy}
           className="rounded-full border px-3 py-1 text-sm disabled:opacity-50"
-          style={{ borderColor: 'var(--color-border)' }}
+          style={{ borderColor: 'var(--border-soft)' }}
         >
           导出备份
         </button>
@@ -155,14 +155,14 @@ export function BackupPanel() {
           onClick={() => fileRef.current?.click()}
           disabled={busy}
           className="rounded-full border px-3 py-1 text-sm disabled:opacity-50"
-          style={{ borderColor: 'var(--color-border)' }}
+          style={{ borderColor: 'var(--border-soft)' }}
         >
           选择备份文件…
         </button>
 
         {pendingFile !== null && (
           <>
-            <span className="text-xs" style={{ color: 'var(--color-text-dim)' }}>
+            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
               {pendingFile.name}（{Math.max(1, Math.round(pendingFile.size / 1024))} KB）
             </span>
             <button
@@ -171,7 +171,7 @@ export function BackupPanel() {
               onClick={() => void handleImport()}
               disabled={busy}
               className="rounded-full px-3 py-1 text-sm disabled:opacity-50"
-              style={{ backgroundColor: 'var(--color-danger)', color: '#fff' }}
+              style={{ backgroundColor: 'var(--danger)', color: '#fff' }}
             >
               {busy ? '导入中…' : '确认导入（覆盖现有数据）'}
             </button>
@@ -183,7 +183,7 @@ export function BackupPanel() {
                 if (fileRef.current !== null) fileRef.current.value = ''
               }}
               className="text-xs underline"
-              style={{ color: 'var(--color-text-dim)' }}
+              style={{ color: 'var(--text-secondary)' }}
             >
               取消
             </button>
@@ -196,7 +196,7 @@ export function BackupPanel() {
         <div
           data-testid="backup-import-warning"
           className="mt-3 rounded border p-2 text-xs"
-          style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}
+          style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}
         >
           导入会<strong>整体覆盖</strong>当前全部本地数据，现有会话、日记、相册等都会被替换且不可撤销。
           <button
@@ -211,11 +211,11 @@ export function BackupPanel() {
       )}
 
       {/* 上次导出时间 / 久未导出提醒 */}
-      <p data-testid="backup-last-export" className="mt-3 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+      <p data-testid="backup-last-export" className="mt-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
         {lastExportAt === null ? '这台设备还没有导出过备份' : `上次导出：${describeAge(stale ?? 0)}`}
       </p>
       {shouldRemind && (
-        <p data-testid="backup-stale-hint" className="mt-1 text-xs" style={{ color: 'var(--color-danger)' }}>
+        <p data-testid="backup-stale-hint" className="mt-1 text-xs" style={{ color: 'var(--danger)' }}>
           {stale === null
             ? `本地已经有数据了，建议导出一份留在自己手里 —— 清站点数据或换浏览器都会让它们消失。`
             : `已经 ${stale} 天没导出了，中间产生的内容还只在这台设备的浏览器里。`}
@@ -225,7 +225,7 @@ export function BackupPanel() {
       {message !== null && (
         <p
           className="mt-3 flex items-center gap-1.5 text-xs"
-          style={{ color: isError ? 'var(--color-danger)' : 'var(--color-text-dim)' }}
+          style={{ color: isError ? 'var(--danger)' : 'var(--text-secondary)' }}
         >
           {isError && <IconAlert size={13} />}
           <span>{message}</span>

@@ -135,23 +135,23 @@ export function DiagnosticPanel({ serverIds = [] }: DiagnosticPanelProps) {
   return (
     <section
       className="mb-4 rounded-lg border p-4"
-      style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+      style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}
     >
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--color-text-dim)' }}>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
           诊断日志
         </h2>
         <button
           type="button"
           onClick={() => setReloadTick((t) => t + 1)}
           className="rounded-full border px-3 py-1 text-xs"
-          style={{ borderColor: 'var(--color-border)' }}
+          style={{ borderColor: 'var(--border-soft)' }}
         >
           刷新
         </button>
       </div>
 
-      <p className="mb-3 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+      <p className="mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
         MCP 握手与每次工具调用全量留痕（服务端 SQLite，逐条可回放）
       </p>
 
@@ -162,7 +162,7 @@ export function DiagnosticPanel({ serverIds = [] }: DiagnosticPanelProps) {
             value={serverId}
             onChange={(e) => setServerId(e.target.value)}
             className="rounded border px-2 py-1"
-            style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)' }}
+            style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-base)' }}
           >
             <option value="">全部</option>
             {serverIds.map((id) => (
@@ -179,7 +179,7 @@ export function DiagnosticPanel({ serverIds = [] }: DiagnosticPanelProps) {
             value={phase}
             onChange={(e) => setPhase(e.target.value as PhaseFilter)}
             className="rounded border px-2 py-1"
-            style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg)' }}
+            style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-base)' }}
           >
             {PHASE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -199,22 +199,22 @@ export function DiagnosticPanel({ serverIds = [] }: DiagnosticPanelProps) {
         </label>
       </div>
 
-      <p className="mb-2 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+      <p className="mb-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
         共 {state.total} 条
         {state.errorCount > 0 && (
-          <span style={{ color: 'var(--color-danger)' }}>，其中 {state.errorCount} 条有错</span>
+          <span style={{ color: 'var(--danger)' }}>，其中 {state.errorCount} 条有错</span>
         )}
         {state.entries.length < state.total && `（已载入 ${state.entries.length} 条）`}
       </p>
 
       {loading && (
-        <p className="text-xs" style={{ color: 'var(--color-text-dim)' }}>
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           读取中…
         </p>
       )}
 
       {error !== null && (
-        <p className="flex flex-wrap items-center gap-1.5 text-xs" style={{ color: 'var(--color-danger)' }}>
+        <p className="flex flex-wrap items-center gap-1.5 text-xs" style={{ color: 'var(--danger)' }}>
           <IconAlert size={13} />
           <span>读取失败：{error}</span>
           <button type="button" className="underline" onClick={() => setReloadTick((t) => t + 1)}>
@@ -224,7 +224,7 @@ export function DiagnosticPanel({ serverIds = [] }: DiagnosticPanelProps) {
       )}
 
       {!loading && error === null && state.entries.length === 0 && (
-        <p className="text-xs" style={{ color: 'var(--color-text-dim)' }}>
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           没有符合条件的记录
         </p>
       )}
@@ -235,15 +235,15 @@ export function DiagnosticPanel({ serverIds = [] }: DiagnosticPanelProps) {
             <li
               key={entry.id}
               className="border-b py-2 last:border-b-0"
-              style={{ borderColor: 'var(--color-border)' }}
+              style={{ borderColor: 'var(--border-soft)' }}
             >
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className="font-mono" style={{ color: 'var(--color-text-dim)' }}>
+                <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>
                   {formatAt(entry.at)}
                 </span>
                 <span
                   className="flex items-center gap-1"
-                  style={{ color: 'var(--color-text-dim)' }}
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {entry.direction === 'out' ? (
                     <IconChevronRight size={13} />
@@ -253,27 +253,27 @@ export function DiagnosticPanel({ serverIds = [] }: DiagnosticPanelProps) {
                   {describeDir(entry.direction)}
                 </span>
                 <span>{METHOD_LABELS[entry.method] ?? entry.method}</span>
-                <span className="font-mono" style={{ color: 'var(--color-text-dim)' }}>
+                <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>
                   {entry.method}
                 </span>
                 {entry.handshake && (
                   <span
                     className="rounded px-1"
-                    style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-dim)' }}
+                    style={{ backgroundColor: 'var(--bg-subtle)', color: 'var(--text-secondary)' }}
                   >
                     握手
                   </span>
                 )}
-                <span style={{ color: 'var(--color-text-dim)' }}>{entry.serverId}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{entry.serverId}</span>
                 {entry.latencyMs !== null && (
-                  <span style={{ color: 'var(--color-text-dim)' }}>{entry.latencyMs}ms</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{entry.latencyMs}ms</span>
                 )}
                 {entry.httpStatus !== null && (
-                  <span style={{ color: 'var(--color-text-dim)' }}>HTTP {entry.httpStatus}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>HTTP {entry.httpStatus}</span>
                 )}
               </div>
               {entry.error !== null && (
-                <p className="mt-1 break-all" style={{ color: 'var(--color-danger)' }}>
+                <p className="mt-1 break-all" style={{ color: 'var(--danger)' }}>
                   {entry.error}
                 </p>
               )}
@@ -288,7 +288,7 @@ export function DiagnosticPanel({ serverIds = [] }: DiagnosticPanelProps) {
           onClick={() => void loadMore()}
           disabled={loadingMore}
           className="mt-3 rounded-full border px-3 py-1 text-xs disabled:opacity-50"
-          style={{ borderColor: 'var(--color-border)' }}
+          style={{ borderColor: 'var(--border-soft)' }}
         >
           {loadingMore ? '加载中…' : '加载更早的记录'}
         </button>
