@@ -72,28 +72,28 @@ export function CountdownModule() {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={(event) => void submit(event)} className="grid gap-2 rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+      <form onSubmit={(event) => void submit(event)} className="grid gap-2 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
         <label htmlFor="countdown-title" className="text-sm font-medium">新倒数日</label>
-        <input id="countdown-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={80} placeholder="例如：相识纪念日" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--color-border)' }} />
-        <input aria-label="目标日期" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--color-border)' }} />
-        <button type="submit" disabled={title.trim() === '' || targetDate === ''} className="mt-1 justify-self-end rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}>添加</button>
+        <input id="countdown-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={80} placeholder="例如：相识纪念日" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
+        <input aria-label="目标日期" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
+        <button type="submit" disabled={title.trim() === '' || targetDate === ''} className="mt-1 justify-self-end rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>添加</button>
       </form>
-      {error !== null && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>}
-      {loading ? <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>正在读取倒数日…</p> : items.length === 0 ? (
-        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }}>还没有需要一起期待的日子。</p>
+      {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+      {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在读取倒数日…</p> : items.length === 0 ? (
+        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>还没有需要一起期待的日子。</p>
       ) : (
         <ul className="space-y-2">
           {items.map((item) => {
             const days = dayDistance(item.targetDate)
             const isOnHome = onHomeId === item.id
             return (
-              <li key={item.id} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+              <li key={item.id} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="break-words text-sm font-medium">{item.title}</p>
-                    <p className="mt-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>{item.targetDate}</p>
+                    <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{item.targetDate}</p>
                   </div>
-                  <strong className="shrink-0 text-sm" style={{ color: days < 0 ? 'var(--color-text-dim)' : 'var(--color-primary)' }}>{distanceLabel(days)}</strong>
+                  <strong className="shrink-0 text-sm" style={{ color: days < 0 ? 'var(--text-secondary)' : 'var(--accent-strong)' }}>{distanceLabel(days)}</strong>
                 </div>
                 <div className="mt-3 flex items-center justify-end gap-3 text-xs">
                   <button
@@ -105,14 +105,14 @@ export function CountdownModule() {
                     title={isOnHome ? '点击从主屏撤下' : '放到主屏作为 Widget'}
                     onClick={() => void toggleHome(item)}
                     className="shrink-0"
-                    style={{ color: isOnHome ? 'var(--color-primary)' : 'var(--color-text-dim)' }}
+                    style={{ color: isOnHome ? 'var(--accent-strong)' : 'var(--text-secondary)' }}
                   >
                     <span className="flex items-center gap-1">
                       {isOnHome && <IconCheck size={13} />}
                       {isOnHome ? '已在主屏' : '上主屏'}
                     </span>
                   </button>
-                  <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} className="shrink-0" style={{ color: deleting === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deleting === item.id ? '确认？' : '删除'}</button>
+                  <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} className="shrink-0" style={{ color: deleting === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deleting === item.id ? '确认？' : '删除'}</button>
                 </div>
               </li>
             )

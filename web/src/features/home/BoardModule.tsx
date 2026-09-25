@@ -79,17 +79,17 @@ export function BoardModule() {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={(event) => void submit(event)} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+      <form onSubmit={(event) => void submit(event)} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
         <label htmlFor="board-draft" className="mb-2 block text-sm font-medium">留下一句话</label>
-        <textarea id="board-draft" value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={500} rows={3} placeholder="记下此刻想说的话…" className="w-full resize-none rounded-lg border bg-transparent p-3 text-sm" style={{ borderColor: 'var(--color-border)' }} />
+        <textarea id="board-draft" value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={500} rows={3} placeholder="记下此刻想说的话…" className="w-full resize-none rounded-lg border bg-transparent p-3 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
         <div className="mt-2 flex items-center justify-between gap-3">
-          <span className="text-xs" style={{ color: 'var(--color-text-dim)' }}>{draft.length}/500</span>
-          <button type="submit" disabled={draft.trim() === ''} className="rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}>留言</button>
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{draft.length}/500</span>
+          <button type="submit" disabled={draft.trim() === ''} className="rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>留言</button>
         </div>
       </form>
 
       <div className="flex items-center justify-between gap-3 text-xs">
-        <span style={{ color: 'var(--color-text-dim)' }}>主屏 Widget：展示最近 3 条留言</span>
+        <span style={{ color: 'var(--text-secondary)' }}>主屏 Widget：展示最近 3 条留言</span>
         <button
           type="button"
           data-testid="board-home-toggle"
@@ -98,7 +98,7 @@ export function BoardModule() {
           title={onHome ? '点击从主屏移除' : '把留言板放到主屏'}
           onClick={() => void toggleHome()}
           className="shrink-0"
-          style={{ color: onHome ? 'var(--color-primary)' : 'var(--color-text-dim)' }}
+          style={{ color: onHome ? 'var(--accent-strong)' : 'var(--text-secondary)' }}
         >
           <span className="flex items-center gap-1">
             {onHome && <IconCheck size={13} />}
@@ -107,21 +107,21 @@ export function BoardModule() {
         </button>
       </div>
 
-      {error !== null && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>}
-      {loading ? <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>正在读取留言…</p> : items.length === 0 ? (
-        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }}>还没有留言。第一条就从今天开始。</p>
+      {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+      {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在读取留言…</p> : items.length === 0 ? (
+        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>还没有留言。第一条就从今天开始。</p>
       ) : (
         <ul className="space-y-2">
           {items.map((item) => (
-            <li key={item.id} data-testid="moment-item" data-author={item.author} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+            <li key={item.id} data-testid="moment-item" data-author={item.author} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
               <p className="whitespace-pre-wrap break-words text-sm">{item.content}</p>
-              <div className="mt-3 flex items-center justify-between gap-3 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+              <div className="mt-3 flex items-center justify-between gap-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
                 <span>
-                  {item.author === 'companion' && <span style={{ color: 'var(--color-primary)' }}>小栖 · </span>}
+                  {item.author === 'companion' && <span style={{ color: 'var(--accent-strong)' }}>小栖 · </span>}
                   <time>{new Date(item.createdAt).toLocaleString('zh-CN')}</time>
                 </span>
                 {item.author === 'user' && (
-                  <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} style={{ color: deleting === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deleting === item.id ? '确认删除？' : '删除'}</button>
+                  <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} style={{ color: deleting === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deleting === item.id ? '确认删除？' : '删除'}</button>
                 )}
               </div>
             </li>

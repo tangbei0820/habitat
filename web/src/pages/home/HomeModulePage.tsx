@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { useSlideIn } from '../../components/qixi/useSlideIn'
+import { IconChevronLeft } from '../../components/qixi/Icons'
 import { homeModuleName } from '../../features/home/modules'
 import { BoardModule } from '../../features/home/BoardModule'
 import { CountdownModule } from '../../features/home/CountdownModule'
@@ -27,9 +28,9 @@ function moduleContent(module: string | undefined, name: string) {
     <div
       className="rounded-lg border p-6 text-center text-sm"
       style={{
-        borderColor: 'var(--color-border)',
-        backgroundColor: 'var(--color-surface)',
-        color: 'var(--color-text-dim)',
+        borderColor: 'var(--border-soft)',
+        backgroundColor: 'var(--bg-surface-solid)',
+        color: 'var(--text-secondary)',
       }}
     >
       「{name}」模块将在 Phase 2 后续切片接入
@@ -45,12 +46,21 @@ export function HomeModulePage() {
   return (
     // key={module}：换模块时强制重挂，进场动画才会重播
     // （同一个组件实例改 class 不会重放 animation）
-    <div key={module} className={`px-4 py-6 ${slide}`}>
-      <Link to="/home" className="text-sm" style={{ color: 'var(--color-primary)' }}>
-        ‹ 返回首页
-      </Link>
-      <h1 className="mb-4 mt-2 text-lg font-semibold">{name}</h1>
-      {moduleContent(module, name)}
+    <div key={module} className={slide}>
+      {/* 顶栏与对话页同一套低存在感帽子：返回是图标按钮，不占一行文字 */}
+      <div className="topbar">
+        <Link
+          to="/home"
+          aria-label="返回首页"
+          data-testid="module-back"
+          className="icon-btn"
+          style={{ flex: 'none' }}
+        >
+          <IconChevronLeft size={20} />
+        </Link>
+        <h1 className="topbar-title">{name}</h1>
+      </div>
+      <div className="px-5 pb-6 pt-2">{moduleContent(module, name)}</div>
     </div>
   )
 }

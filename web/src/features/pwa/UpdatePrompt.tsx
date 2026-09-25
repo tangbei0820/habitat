@@ -15,9 +15,9 @@ export function UpdatePrompt() {
     <div
       data-testid="app-update-prompt"
       className="flex items-center justify-between gap-3 border-b px-4 py-2 text-sm"
-      style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-alt)' }}
+      style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-subtle)' }}
     >
-      <span style={{ color: 'var(--color-text)' }}>
+      <span style={{ color: 'var(--text-primary)' }}>
         {needRefresh ? '有新版本可用' : '已缓存，断网也能打开'}
       </span>
 
@@ -28,7 +28,7 @@ export function UpdatePrompt() {
             data-testid="app-update-apply"
             onClick={applyUpdate}
             className="rounded-full px-3 py-1 text-xs"
-            style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}
+            style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}
           >
             刷新
           </button>
@@ -38,7 +38,7 @@ export function UpdatePrompt() {
           data-testid="app-update-dismiss"
           onClick={dismiss}
           className="text-xs underline"
-          style={{ color: 'var(--color-text-dim)' }}
+          style={{ color: 'var(--text-secondary)' }}
         >
           {needRefresh ? '稍后' : '知道了'}
         </button>

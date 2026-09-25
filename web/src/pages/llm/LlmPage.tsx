@@ -64,12 +64,12 @@ export function LlmPage() {
   return (
     <div className="px-4 py-6">
       <h1 className="text-lg font-semibold">小栖档案</h1>
-      <p className="mt-1 text-sm" style={{ color: 'var(--color-text-dim)' }}>
+      <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
         小栖现在会做的事，以及你能去哪里看。
       </p>
 
       {state === 'loading' && (
-        <p data-testid="llm-loading" className="mt-6 text-sm" style={{ color: 'var(--color-text-dim)' }}>
+        <p data-testid="llm-loading" className="mt-6 text-sm" style={{ color: 'var(--text-secondary)' }}>
           正在读取小栖的能力面…
         </p>
       )}
@@ -78,7 +78,7 @@ export function LlmPage() {
         <div
           data-testid="llm-error"
           className="mt-6 rounded-lg border p-4 text-sm"
-          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-danger)' }}
+          style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)', color: 'var(--danger)' }}
         >
           <p>读不到能力面：{error}</p>
           <button
@@ -86,7 +86,7 @@ export function LlmPage() {
             data-testid="llm-retry"
             onClick={load}
             className="mt-2 rounded-lg border px-3 py-1.5 text-sm"
-            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            style={{ borderColor: 'var(--border-soft)', color: 'var(--text-primary)' }}
           >
             重试
           </button>
@@ -95,13 +95,13 @@ export function LlmPage() {
 
       {state === 'ready' && (
         <>
-          <p data-testid="llm-summary" className="mt-3 text-sm" style={{ color: 'var(--color-text-dim)' }}>
+          <p data-testid="llm-summary" className="mt-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
             共 {capabilities.length} 项能力 · 当前可用 {enabledCount} 项
             {enabledCount < capabilities.length && '（灰色项标了用不了的原因）'}
           </p>
 
           {grouped.length === 0 ? (
-            <p data-testid="llm-empty" className="mt-6 text-sm" style={{ color: 'var(--color-text-dim)' }}>
+            <p data-testid="llm-empty" className="mt-6 text-sm" style={{ color: 'var(--text-secondary)' }}>
               服务端还没有登记任何能力。
             </p>
           ) : (
@@ -112,7 +112,7 @@ export function LlmPage() {
             </div>
           )}
 
-          <p className="mt-6 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+          <p className="mt-6 text-xs" style={{ color: 'var(--text-secondary)' }}>
             这份档案由服务端按依赖真实情况生成，界面不做改动。小栖在对话里怎么用它，见 Chat；它产生了什么，见 Home 与生活。
           </p>
         </>

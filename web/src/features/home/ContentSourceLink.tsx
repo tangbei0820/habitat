@@ -20,9 +20,9 @@ export function ContentSourceLink({ item }: { item: BaseObject }) {
     : null
   const href = `/chat/${encodeURIComponent(item.sessionId)}?message=${encodeURIComponent(item.sourceId)}`
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
       <span>来源：聊天{actor === null ? '' : ` · ${actor}`}{timestamp === null ? '' : ` · ${timestamp}`}</span>
-      <Link to={href} className="underline underline-offset-2" style={{ color: 'var(--color-primary)' }}>
+      <Link to={href} className="underline underline-offset-2" style={{ color: 'var(--accent-strong)' }}>
         查看来源
       </Link>
     </div>

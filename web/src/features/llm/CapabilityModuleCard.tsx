@@ -16,7 +16,7 @@ function StatusDot({ enabled }: { enabled: boolean }) {
     <span
       aria-hidden
       className="mr-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full align-middle"
-      style={{ backgroundColor: enabled ? 'var(--color-primary)' : 'var(--color-text-dim)' }}
+      style={{ backgroundColor: enabled ? 'var(--accent-strong)' : 'var(--text-secondary)' }}
     />
   )
 }
@@ -28,18 +28,18 @@ function CapabilityRow({ capability }: { capability: CapabilitySnapshot }) {
       data-testid={`capability-${capability.id}`}
       data-enabled={String(enabled)}
       className="border-t pt-2 first:border-t-0 first:pt-0"
-      style={{ borderColor: 'var(--color-border)' }}
+      style={{ borderColor: 'var(--border-soft)' }}
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
-        <span className="font-medium" style={{ color: enabled ? 'var(--color-text)' : 'var(--color-text-dim)' }}>
+        <span className="font-medium" style={{ color: enabled ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
           <StatusDot enabled={enabled} />
           {capability.label}
         </span>
-        <span className="text-xs" style={{ color: 'var(--color-text-dim)' }}>
+        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           {AUTONOMY_LABELS[capability.autonomy]}
         </span>
       </div>
-      <p className="mt-0.5 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+      <p className="mt-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
         {capability.summary}
       </p>
       {/*
@@ -47,12 +47,12 @@ function CapabilityRow({ capability }: { capability: CapabilitySnapshot }) {
         显示成灰但不说为什么，用户只会以为界面坏了。
       */}
       {!enabled && capability.reason !== undefined && (
-        <p data-testid={`capability-reason-${capability.id}`} className="mt-0.5 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+        <p data-testid={`capability-reason-${capability.id}`} className="mt-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
           为什么现在用不了：{capability.reason}
         </p>
       )}
       {enabled && capability.toolName !== undefined && (
-        <p className="mt-0.5 text-xs" style={{ color: 'var(--color-text-dim)' }}>
+        <p className="mt-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
           工具：<code>{capability.toolName}</code>
         </p>
       )}
@@ -73,25 +73,25 @@ export function CapabilityModuleCard({
     <>
       <div className="flex items-center justify-between gap-2">
         <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-          <QixiIcon name={meta.icon} size={17} style={{ color: 'var(--color-primary)' }} />
+          <QixiIcon name={meta.icon} size={17} style={{ color: 'var(--accent-strong)' }} />
           {meta.name}
         </h2>
         {launch !== null ? (
           <span
             className="flex shrink-0 items-center gap-0.5 text-xs"
-            style={{ color: 'var(--color-primary)' }}
+            style={{ color: 'var(--accent-strong)' }}
           >
             {launch.label}
             <IconChevronRight size={13} />
           </span>
         ) : (
-          <span className="shrink-0 text-right text-xs" style={{ color: 'var(--color-text-dim)' }}>
+          <span className="shrink-0 text-right text-xs" style={{ color: 'var(--text-secondary)' }}>
             暂无界面
           </span>
         )}
       </div>
       {launch === null && meta.noPageHint !== undefined && (
-        <p className="mt-1 text-xs" style={{ color: 'var(--color-text-dim)' }}>{meta.noPageHint}</p>
+        <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{meta.noPageHint}</p>
       )}
       <ul className="mt-3 grid gap-2">
         {capabilities.map((capability) => (
@@ -102,8 +102,8 @@ export function CapabilityModuleCard({
   )
 
   const cardStyle = {
-    borderColor: 'var(--color-border)',
-    backgroundColor: 'var(--color-surface)',
+    borderColor: 'var(--border-soft)',
+    backgroundColor: 'var(--bg-surface-solid)',
   } as const
 
   // 不可点的模块用 div：`<a>` 会被读屏与键盘当成可进入的入口

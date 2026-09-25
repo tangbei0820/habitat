@@ -63,15 +63,15 @@ export function ActionSheet({
         data-testid="action-sheet"
         className="safe-bottom relative mx-2 mb-2 overflow-hidden rounded-2xl"
         style={{
-          backgroundColor: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
+          backgroundColor: 'var(--bg-surface-solid)',
+          border: '1px solid var(--border-soft)',
         }}
       >
         {title !== undefined && title !== '' && (
           <p
             data-testid="action-sheet-title"
             className="truncate px-4 pt-3 pb-2 text-xs"
-            style={{ color: 'var(--color-text-dim)' }}
+            style={{ color: 'var(--text-secondary)' }}
           >
             {title}
           </p>
@@ -84,8 +84,8 @@ export function ActionSheet({
             onClick={() => onSelect(action.id)}
             className="block w-full px-4 py-3 text-left text-sm"
             style={{
-              borderBottom: '1px solid var(--color-border)',
-              color: action.danger === true ? 'var(--color-danger)' : 'var(--color-text)',
+              borderBottom: '1px solid var(--border-soft)',
+              color: action.danger === true ? 'var(--danger)' : 'var(--text-primary)',
             }}
           >
             {action.label}

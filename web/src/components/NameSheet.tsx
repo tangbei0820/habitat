@@ -54,12 +54,12 @@ export function NameSheet({
         data-testid="name-sheet"
         onSubmit={(event) => void submit(event)}
         className="safe-bottom w-full max-w-md rounded-t-2xl border p-4 shadow-xl sm:rounded-2xl"
-        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+        style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}
       >
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 id="name-sheet-title" className="font-semibold">{title}</h2>
-            <p className="mt-0.5 text-xs" style={{ color: 'var(--color-text-dim)' }}>{hint}</p>
+            <p className="mt-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>{hint}</p>
           </div>
           <button
             type="button"
@@ -83,7 +83,7 @@ export function NameSheet({
             maxLength={maxLength}
             placeholder={`最多 ${maxLength} 字`}
             className="w-full rounded-lg border bg-transparent px-3 py-2 text-sm outline-none"
-            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            style={{ borderColor: 'var(--border-soft)', color: 'var(--text-primary)' }}
           />
         </label>
 
@@ -96,7 +96,7 @@ export function NameSheet({
             data-testid="name-sheet-save"
             disabled={saving || trimmed === ''}
             className="rounded-lg px-4 py-2 text-sm disabled:opacity-40"
-            style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}
+            style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}
           >
             {saving ? '保存中…' : '保存'}
           </button>

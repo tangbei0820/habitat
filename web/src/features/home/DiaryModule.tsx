@@ -114,34 +114,34 @@ export function DiaryModule() {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+      <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold">{editingId === null ? '写一篇日记' : '编辑日记'}</h2>
-          {editingId !== null && <button type="button" onClick={resetForm} className="text-xs" style={{ color: 'var(--color-text-dim)' }}>取消编辑</button>}
+          {editingId !== null && <button type="button" onClick={resetForm} className="text-xs" style={{ color: 'var(--text-secondary)' }}>取消编辑</button>}
         </div>
-        <label htmlFor="diary-date" className="text-xs" style={{ color: 'var(--color-text-dim)' }}>日期</label>
-        <input id="diary-date" type="date" value={entryDate} onChange={(event) => setEntryDate(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--color-border)' }} />
+        <label htmlFor="diary-date" className="text-xs" style={{ color: 'var(--text-secondary)' }}>日期</label>
+        <input id="diary-date" type="date" value={entryDate} onChange={(event) => setEntryDate(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
         <label htmlFor="diary-title" className="sr-only">日记标题</label>
-        <input id="diary-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} placeholder="今天发生了什么？" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--color-border)' }} />
+        <input id="diary-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} placeholder="今天发生了什么？" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
         <label htmlFor="diary-content" className="sr-only">日记正文</label>
-        <textarea id="diary-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={10000} rows={7} placeholder="慢慢写，不着急……" className="w-full resize-y rounded-lg border bg-transparent p-3 text-sm leading-6" style={{ borderColor: 'var(--color-border)' }} />
+        <textarea id="diary-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={10000} rows={7} placeholder="慢慢写，不着急……" className="w-full resize-y rounded-lg border bg-transparent p-3 text-sm leading-6" style={{ borderColor: 'var(--border-soft)' }} />
         <div className="flex items-center justify-between gap-3">
-          <span className="text-xs" style={{ color: 'var(--color-text-dim)' }}>{content.length}/10000</span>
-          <button type="submit" disabled={title.trim() === '' || content.trim() === '' || entryDate === ''} className="rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}>{editingId === null ? '保存日记' : '保存修改'}</button>
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{content.length}/10000</span>
+          <button type="submit" disabled={title.trim() === '' || content.trim() === '' || entryDate === ''} className="rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>{editingId === null ? '保存日记' : '保存修改'}</button>
         </div>
       </form>
 
-      {error !== null && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>}
-      {loading ? <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>正在翻开日记……</p> : items.length === 0 ? (
-        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }}>还没有日记。今天可以成为第一页。</p>
+      {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+      {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在翻开日记……</p> : items.length === 0 ? (
+        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>还没有日记。今天可以成为第一页。</p>
       ) : (
         <ul className="space-y-3">
           {items.map((item) => (
-            <li key={item.id} data-testid="diary-item" data-author={item.author} data-readable={item.readable ? 'true' : 'false'} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+            <li key={item.id} data-testid="diary-item" data-author={item.author} data-readable={item.readable ? 'true' : 'false'} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
               <div className="flex items-center justify-between gap-3">
-                <time className="text-xs" style={{ color: 'var(--color-text-dim)' }}>{item.entryDate}</time>
+                <time className="text-xs" style={{ color: 'var(--text-secondary)' }}>{item.entryDate}</time>
                 {item.author === 'companion' && (
-                  <span className="text-xs" style={{ color: 'var(--color-text-dim)' }}>小栖的日记</span>
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>小栖的日记</span>
                 )}
               </div>
               <h3 className="mt-1 font-medium">{item.title}</h3>
@@ -149,13 +149,13 @@ export function DiaryModule() {
                 <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.content}</p>
               ) : (
                 <div className="mt-2 space-y-2">
-                  <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>
+                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     {item.visibility === 'locked' ? '这一篇被小栖锁着。' : '小栖还没决定要不要把这一篇给你看。'}
                   </p>
                   {/* 只有小栖写的日记才谈得上「请求查看」—— 请求一篇自己的日记是没有意义的 */}
                   {item.author === 'companion' &&
                     (requestedIds.has(item.id) ? (
-                      <p className="text-xs" style={{ color: 'var(--color-text-dim)' }} data-testid="diary-access-pending">
+                      <p className="text-xs" style={{ color: 'var(--text-secondary)' }} data-testid="diary-access-pending">
                         已经问过小栖了，等它回话。
                       </p>
                     ) : (
@@ -164,7 +164,7 @@ export function DiaryModule() {
                         data-testid="diary-request-access"
                         onClick={() => void askToRead(item.id)}
                         className="rounded-full border px-3 py-1.5 text-xs"
-                        style={{ borderColor: 'var(--color-border)' }}
+                        style={{ borderColor: 'var(--border-soft)' }}
                       >
                         请求查看
                       </button>
@@ -173,8 +173,8 @@ export function DiaryModule() {
               )}
               {item.editable && (
                 <div className="mt-3 flex justify-end gap-3 text-xs">
-                  <button type="button" onClick={() => startEditing(item)} style={{ color: 'var(--color-primary)' }}>编辑</button>
-                  <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--color-danger)' : 'var(--color-text-dim)' }}>{deletingId === item.id ? '确认删除？' : '删除'}</button>
+                  <button type="button" onClick={() => startEditing(item)} style={{ color: 'var(--accent-strong)' }}>编辑</button>
+                  <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deletingId === item.id ? '确认删除？' : '删除'}</button>
                 </div>
               )}
             </li>

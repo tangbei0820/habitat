@@ -8,7 +8,7 @@ type BoardView = Extract<HomeWidgetView, { kind: 'board' }>
 type CountdownView = Extract<HomeWidgetView, { kind: 'countdown' }>
 
 function cardStyle() {
-  return { borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }
+  return { borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }
 }
 
 /** 留言板 Widget：最近几条留言 + 进模块页（SPEC §3.2.2 的 v0.1 范围） */
@@ -17,20 +17,20 @@ function BoardWidget({ view }: { view: BoardView }) {
     <section data-testid="home-widget-board" className="rounded-xl border p-4" style={cardStyle()}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-sm font-medium">
-          <IconMail size={15} style={{ color: 'var(--color-primary)' }} />
+          <IconMail size={15} style={{ color: 'var(--accent-strong)' }} />
           留言板
         </span>
         <Link
           to="/home/board"
           className="flex shrink-0 items-center gap-0.5 text-xs"
-          style={{ color: 'var(--color-primary)' }}
+          style={{ color: 'var(--accent-strong)' }}
         >
           查看全部
           <IconChevronRight size={13} />
         </Link>
       </div>
       {view.notes.length === 0 ? (
-        <p className="text-xs" style={{ color: 'var(--color-text-dim)' }}>还没有留言。写下第一句，这里就会出现。</p>
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>还没有留言。写下第一句，这里就会出现。</p>
       ) : (
         <ul className="space-y-1">
           {view.notes.map((note) => (
@@ -38,7 +38,7 @@ function BoardWidget({ view }: { view: BoardView }) {
               {/* 作者的区分要到 Phase 3 小栖能主动留言时才真正用得上，但位置现在留好：
                   等留言真的来自两边之后再补这一笔，等于要回头改所有展示点 */}
               {note.author === 'companion' && (
-                <span className="shrink-0 text-xs" style={{ color: 'var(--color-text-dim)' }}>小栖</span>
+                <span className="shrink-0 text-xs" style={{ color: 'var(--text-secondary)' }}>小栖</span>
               )}
               <span className="min-w-0 flex-1 truncate">{note.content}</span>
             </li>
@@ -54,12 +54,12 @@ function CountdownWidget({ view }: { view: CountdownView }) {
   const days = dayDistance(view.day.targetDate)
   return (
     <Link to="/home/countdown" data-testid="home-widget-countdown" className="flex items-center gap-3 rounded-xl border p-4" style={cardStyle()}>
-      <IconTimer size={20} style={{ color: 'var(--color-primary)' }} />
+      <IconTimer size={20} style={{ color: 'var(--accent-strong)' }} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{view.day.title}</span>
-        <span className="mt-1 block text-xs" style={{ color: 'var(--color-text-dim)' }}>{view.day.targetDate}</span>
+        <span className="mt-1 block text-xs" style={{ color: 'var(--text-secondary)' }}>{view.day.targetDate}</span>
       </span>
-      <strong className="shrink-0 text-sm" style={{ color: days < 0 ? 'var(--color-text-dim)' : 'var(--color-primary)' }}>
+      <strong className="shrink-0 text-sm" style={{ color: days < 0 ? 'var(--text-secondary)' : 'var(--accent-strong)' }}>
         {distanceLabel(days)}
       </strong>
     </Link>

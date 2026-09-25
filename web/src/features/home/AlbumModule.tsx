@@ -236,21 +236,21 @@ export function AlbumModule() {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+      <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
         <h2 className="text-sm font-semibold">放进一张照片</h2>
         <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)} className="text-sm" />
-        <p className="text-xs" style={{ color: 'var(--color-text-dim)' }}>PNG / JPEG / WebP / GIF，单张不超过 3 MB；照片保存在当前浏览器并进入备份。</p>
-        {selected !== null && <img src={selected.dataUrl} alt="待保存预览" className="max-h-56 w-full rounded-lg object-contain" style={{ backgroundColor: 'var(--color-surface-alt)' }} />}
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>PNG / JPEG / WebP / GIF，单张不超过 3 MB；照片保存在当前浏览器并进入备份。</p>
+        {selected !== null && <img src={selected.dataUrl} alt="待保存预览" className="max-h-56 w-full rounded-lg object-contain" style={{ backgroundColor: 'var(--bg-subtle)' }} />}
         <label htmlFor="photo-title" className="sr-only">照片名称</label>
-        <input id="photo-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} placeholder="照片名称" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--color-border)' }} />
-        <label htmlFor="photo-date" className="text-xs" style={{ color: 'var(--color-text-dim)' }}>拍摄日期</label>
-        <input id="photo-date" type="date" value={takenAt} onChange={(event) => setTakenAt(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--color-border)' }} />
+        <input id="photo-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} placeholder="照片名称" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
+        <label htmlFor="photo-date" className="text-xs" style={{ color: 'var(--text-secondary)' }}>拍摄日期</label>
+        <input id="photo-date" type="date" value={takenAt} onChange={(event) => setTakenAt(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
         <label htmlFor="photo-caption" className="sr-only">照片说明</label>
-        <textarea id="photo-caption" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={500} rows={2} placeholder="这张照片的故事（可选）" className="resize-none rounded-lg border bg-transparent p-3 text-sm" style={{ borderColor: 'var(--color-border)' }} />
-        <button type="submit" disabled={busy || selected === null || title.trim() === '' || takenAt === ''} className="justify-self-end rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}>{busy ? '保存中…' : '保存照片'}</button>
+        <textarea id="photo-caption" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={500} rows={2} placeholder="这张照片的故事（可选）" className="resize-none rounded-lg border bg-transparent p-3 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
+        <button type="submit" disabled={busy || selected === null || title.trim() === '' || takenAt === ''} className="justify-self-end rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>{busy ? '保存中…' : '保存照片'}</button>
       </form>
 
-      {error !== null && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>}
+      {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
 
       <CategoryBar
         noun="相册"
@@ -276,19 +276,19 @@ export function AlbumModule() {
       />
 
       {loading ? (
-        <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>正在翻看相册……</p>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在翻看相册……</p>
       ) : items.length === 0 ? (
-        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }}>相册还是空的。第一张照片会留住一个开始。</p>
+        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>相册还是空的。第一张照片会留住一个开始。</p>
       ) : filteredOut ? (
-        <p data-testid="photo-filter-empty" className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }}>这个筛选下还没有照片。</p>
+        <p data-testid="photo-filter-empty" className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>这个筛选下还没有照片。</p>
       ) : (
         <ul className="grid grid-cols-2 gap-3">
           {visible.map((item) => (
-            <li key={item.id} data-testid={`photo-row-${item.id}`} className="overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+            <li key={item.id} data-testid={`photo-row-${item.id}`} className="overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
               <img src={item.imageDataUrl} alt={item.title} className="aspect-square w-full object-cover" loading="lazy" />
               <div className="p-3">
                 <h3 className="break-words text-sm font-medium">{item.title}</h3>
-                <time className="mt-1 block text-xs" style={{ color: 'var(--color-text-dim)' }}>{item.takenAt}</time>
+                <time className="mt-1 block text-xs" style={{ color: 'var(--text-secondary)' }}>{item.takenAt}</time>
                 {item.caption !== null && <p className="mt-2 break-words text-xs">{item.caption}</p>}
                 <ContentSourceLink item={item} />
                 <div className="mt-3 flex justify-end">
@@ -298,7 +298,7 @@ export function AlbumModule() {
                       data-testid={`photo-confirm-${item.id}`}
                       onClick={() => void remove(item.id)}
                       className="rounded border px-2 py-0.5 text-xs"
-                      style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
+                      style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
                     >
                       确认删除？
                     </button>
@@ -309,7 +309,7 @@ export function AlbumModule() {
                       aria-label={`照片操作：${item.title}`}
                       onClick={() => setSheet({ kind: 'item', id: item.id })}
                       className="px-2 text-sm"
-                      style={{ color: 'var(--color-text-dim)' }}
+                      style={{ color: 'var(--text-secondary)' }}
                     >
                       ⋯
                     </button>
@@ -325,7 +325,7 @@ export function AlbumModule() {
         <p
           data-testid="list-toast"
           className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full px-4 py-2 text-sm"
-          style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text)' }}
+          style={{ backgroundColor: 'var(--bg-subtle)', color: 'var(--text-primary)' }}
         >
           {toast}
         </p>

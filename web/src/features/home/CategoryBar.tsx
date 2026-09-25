@@ -172,8 +172,8 @@ export function CategoryBar({
 
   function chipStyle(active: boolean): CSSProperties {
     return active
-      ? { backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }
-      : { borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }
+      ? { backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }
+      : { borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }
   }
 
   return (
@@ -186,7 +186,7 @@ export function CategoryBar({
               data-testid="create-category"
               onClick={() => setNameTarget({ mode: 'create' })}
               className="shrink-0 rounded-full border px-3 py-1 text-xs"
-              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }}
+              style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}
             >
               ＋ 新建{noun}
             </button>
@@ -234,14 +234,14 @@ export function CategoryBar({
           aria-label={`管理${noun}`}
           onClick={() => setManage({ kind: 'list' })}
           className="shrink-0 px-2 text-sm"
-          style={{ color: 'var(--color-text-dim)' }}
+          style={{ color: 'var(--text-secondary)' }}
         >
           ⋯
         </button>
       </div>
 
       {error !== null && (
-        <p data-testid="category-error" className="text-xs" style={{ color: 'var(--color-danger)' }}>
+        <p data-testid="category-error" className="text-xs" style={{ color: 'var(--danger)' }}>
           {error}
         </p>
       )}

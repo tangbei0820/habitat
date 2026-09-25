@@ -15,15 +15,15 @@ export function OfflineBanner() {
     <div
       data-testid="offline-banner"
       className="flex items-center gap-2 border-b px-4 py-2 text-sm"
-      style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-alt)' }}
+      style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-subtle)' }}
     >
       <span
         className="shrink-0 rounded-full px-2 py-0.5 text-xs"
-        style={{ backgroundColor: 'var(--color-border)', color: 'var(--color-text)' }}
+        style={{ backgroundColor: 'var(--border-soft)', color: 'var(--text-primary)' }}
       >
         离线
       </span>
-      <span style={{ color: 'var(--color-text-dim)' }}>
+      <span style={{ color: 'var(--text-secondary)' }}>
         本地内容照常可看；需要联网的动作（发消息、生成、朗读等）暂时不可用
       </span>
     </div>

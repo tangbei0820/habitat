@@ -900,3 +900,19 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 **验收**：新增 `web/scripts/verify-chat-skin.mjs` **31/31**（列表顶栏与胶囊真图标 / 气泡方向底色圆角来自令牌（颜色用探针元素解析成 rgb() 再比）/ 操作行常显可点 / 输入胶囊停靠不遮消息 / 圆形发送键 / 11 项能力入口齐 / 界面无 emoji 图标）；全量回归 **442 项零失败**（home 77 / chat 148 / skin 31 / providers 24 / llm 16 / tokens 24 / shell 31 / export 17 / offline 38 / diagnostics 36）；两端 typecheck 通过。
 
 **刻意不做的**：设计稿的假数据（未读数、占位会话名）一律不搬；输入区没照抄 `position:absolute` 悬浮（沉浸式页面里跟虚拟列表打架，用文档流停靠，偏离已写进 CSS 注释与 `UI_DESIGN.md` §4）。
+
+### UI 换装 · 第 4 批：家页换皮（T-042）
+
+**范围**：家 = 6 格 Bento + 一行全入口（拍板口径，10 个模块一个不漏）+ 模块子页顶栏 + 家/大脑令牌清零。
+
+**web**
+
+- `pages/home/HomePage.tsx` 重写：低存在感页头（日期行 + 问候语）+ Bento 六格 + 全入口胶囊行。六格数据口径（铁律：假数据不搬）——
+  小栖·现在 = 真联网状态（不搬「在窗边听雨」占位心情）；留言板/倒数日/最近收藏 = 最新一条；一起听 = 最近一首**只做入口**（假播放进度条不搬，真播放第 6 批接）；
+  小栖的日记 = 本周篇数（全局「请求查看」按钮不搬 —— 真机制在日记模块按篇发起，全局按钮是假入口）。
+- `pages/home/HomeModulePage.tsx`：子页挂与对话页同款 `.topbar`（图标返回 + `.topbar-title`）。
+- 令牌：`features/home/*` 13 个文件 + 大脑（`pages/llm` / `features/llm`）+ `ActionSheet` / `NameSheet` / `UpdatePrompt` / `OfflineBanner`，共 **282 处** `--color-*` 清零。
+
+**验收**：新增 `web/scripts/verify-home-skin.mjs` **14/14**（页头 / Bento 六格 / 空库诚实空态 / **真种数据必须吃库** / 全入口 10 个带图标无 emoji / 模块子页顶栏 / 无横向溢出 / 控制台无异常；
+脚本开头先清留言/倒数日/收藏/音乐四类数据 —— 流水线里 verify-home 会先留下数据，空态断言必须顺序无关）；
+全量回归 **442 项零失败**；两端 typecheck 通过。

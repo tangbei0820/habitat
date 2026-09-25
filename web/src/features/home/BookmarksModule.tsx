@@ -196,18 +196,18 @@ export function BookmarksModule() {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+      <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
         <h2 className="text-sm font-semibold">收藏一个链接</h2>
         <label htmlFor="bookmark-title" className="sr-only">收藏名称</label>
-        <input id="bookmark-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} placeholder="收藏名称" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--color-border)' }} />
+        <input id="bookmark-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} placeholder="收藏名称" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
         <label htmlFor="bookmark-url" className="sr-only">链接地址</label>
-        <input id="bookmark-url" type="url" inputMode="url" value={href} onChange={(event) => setHref(event.target.value)} placeholder="https://example.com" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--color-border)' }} />
+        <input id="bookmark-url" type="url" inputMode="url" value={href} onChange={(event) => setHref(event.target.value)} placeholder="https://example.com" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
         <label htmlFor="bookmark-note" className="sr-only">备注</label>
-        <textarea id="bookmark-note" value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} rows={2} placeholder="为什么想留下它？（可选）" className="resize-none rounded-lg border bg-transparent p-3 text-sm" style={{ borderColor: 'var(--color-border)' }} />
-        <button type="submit" disabled={title.trim() === '' || href.trim() === ''} className="justify-self-end rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-primary-contrast)' }}>加入收藏</button>
+        <textarea id="bookmark-note" value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} rows={2} placeholder="为什么想留下它？（可选）" className="resize-none rounded-lg border bg-transparent p-3 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
+        <button type="submit" disabled={title.trim() === '' || href.trim() === ''} className="justify-self-end rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>加入收藏</button>
       </form>
 
-      {error !== null && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>}
+      {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
 
       <CategoryBar
         noun="分类"
@@ -232,19 +232,19 @@ export function BookmarksModule() {
       />
 
       {loading ? (
-        <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>正在整理收藏……</p>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在整理收藏……</p>
       ) : items.length === 0 ? (
-        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }}>还没有收藏。遇到想再回来的地方，就放在这里。</p>
+        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>还没有收藏。遇到想再回来的地方，就放在这里。</p>
       ) : filteredOut ? (
-        <p data-testid="bookmark-filter-empty" className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-dim)' }}>这个筛选下还没有收藏。</p>
+        <p data-testid="bookmark-filter-empty" className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>这个筛选下还没有收藏。</p>
       ) : (
         <ul className="space-y-2">
           {visible.map((item) => (
-            <li key={item.id} data-testid={`bookmark-row-${item.id}`} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+            <li key={item.id} data-testid={`bookmark-row-${item.id}`} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
               {item.targetType === 'external-link' ? (
-                <a href={item.targetId} target="_blank" rel="noreferrer" className="font-medium underline decoration-1 underline-offset-4" style={{ color: 'var(--color-primary)' }}>{item.title}</a>
+                <a href={item.targetId} target="_blank" rel="noreferrer" className="font-medium underline decoration-1 underline-offset-4" style={{ color: 'var(--accent-strong)' }}>{item.title}</a>
               ) : <p className="font-medium">{item.title}</p>}
-              <p className="mt-1 break-all text-xs" style={{ color: 'var(--color-text-dim)' }}>{item.targetId}</p>
+              <p className="mt-1 break-all text-xs" style={{ color: 'var(--text-secondary)' }}>{item.targetId}</p>
               {item.note !== null && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{item.note}</p>}
               <ContentSourceLink item={item} />
               <div className="mt-3 flex justify-end">
@@ -254,7 +254,7 @@ export function BookmarksModule() {
                     data-testid={`bookmark-confirm-${item.id}`}
                     onClick={() => void remove(item.id)}
                     className="rounded border px-2 py-0.5 text-xs"
-                    style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
+                    style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
                   >
                     确认删除？
                   </button>
@@ -265,7 +265,7 @@ export function BookmarksModule() {
                     aria-label={`收藏操作：${item.title}`}
                     onClick={() => setSheet({ kind: 'item', id: item.id })}
                     className="px-2 text-sm"
-                    style={{ color: 'var(--color-text-dim)' }}
+                    style={{ color: 'var(--text-secondary)' }}
                   >
                     ⋯
                   </button>
@@ -280,7 +280,7 @@ export function BookmarksModule() {
         <p
           data-testid="list-toast"
           className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full px-4 py-2 text-sm"
-          style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text)' }}
+          style={{ backgroundColor: 'var(--bg-subtle)', color: 'var(--text-primary)' }}
         >
           {toast}
         </p>
