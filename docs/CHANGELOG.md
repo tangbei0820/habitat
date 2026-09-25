@@ -949,3 +949,10 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 **验收**：新增 `verify-batch6-skin.mjs` **29/29**（含真音频播放落盘、无链接拒绝、任务勾删、独处计时/落盘、沉浸无底栏、无溢出）；挂进流水线（verify-life-skin 之后，autoplay 旗标随动）；全量回归 **517 项零失败**；两端 typecheck 通过。
 
 **第 6 批随动修复（同日全量回归暴露）**：`verify-home` / `verify-chat` 的 Dexie 版本断言升 v12；`run-front-verify.sh` 的 server 验收库改为**每轮唯一文件名**（`rm` 被 WorkBuddy 安全删除拦截静默吞掉导致库残留、搬迁断言连挂）+ `VERIFY_DB` 随动；`verify-offline` 补两段开关挂载等待（clickText 不重试的竞速）。连跑两轮 517 项零失败。
+
+### 换装收尾 · 删除 `theme/tokens.css` 翻译层（T-045）
+
+- 551 处旧令牌引用随 6 批换装清零后，翻译层按第 1 批预定整体删除；`index.css` 摘掉 @import。
+- 非转发项 `--bottom-nav-height` 迁入 `qixi/tokens.css`（兜底初值，BottomNav 实测回写）。
+- `qixi/tokens.css` 现在是全前端唯一的设计变量定义处。
+- `verify-tokens.mjs` 职责反转：改验「翻译层删净」（11 个旧名必须失活 + 文件不存在 + 无 @import），23/23 通过。

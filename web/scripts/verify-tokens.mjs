@@ -1,19 +1,18 @@
 /**
- * 栖息地 UI 换装 · 第 1 批（地基）验收：设计令牌 + 翻译层 + 通用积木。
+ * 栖息地 UI 换装验收：设计令牌 + 通用积木。
  *
  * 前置：Vite 起在 VERIFY_APP（默认 :5174）+ 带 remote-debugging-port 的 Edge。
  *      **本支不需要 server** —— 它验的是"衣服到没到"，不是数据。（流水线里跟着组一跑也无害）
  *
- * 为什么值得单独给令牌写一支脚本：
- * 这次换装要在**不改 551 处旧代码**的前提下把新配色铺开，靠的就是 theme/tokens.css
- * 那层「翻译层」（旧名 `--color-bg` → 新令牌 `--bg-base`）。
- * 翻译层一旦哪条断了，症状是**某个页面某处字看不见**，很难一眼找到源头。
- * 所以在开工第一步就把它钉住：每条转发都逐字比对，断了立刻红。
+ * 历史：第 1 批靠 theme/tokens.css 翻译层（旧名 `--color-bg` → `--bg-base`）在不改
+ * 551 处旧代码的前提下铺开新配色，本脚本当时逐条比对转发。换装 6 批走完（T-045）
+ * 旧引用清零、翻译层删除 —— 本脚本反转职责：钉住「翻译层删干净、老名彻底失活」，
+ * 防止哪次回退把文件加回来却没人发现。
  *
- * ⚠️ 这里断言的是**相对关系**（旧名 === 新名）而不是具体色值 —— 色值将来会调，
+ * ⚠️ 这里断言的是**相对关系**（如深浅主题必须不同）而不是具体色值 —— 色值将来会调，
  *    相对关系不该变。只有"浅色和深色必须不同"这类约束才写死。
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const CDP = process.env.VERIFY_CDP ?? 'http://127.0.0.1:9222'
@@ -95,50 +94,46 @@ const newTokens = await readTokens(NEW_TOKENS)
 const missingNew = NEW_TOKENS.filter((name) => newTokens[name] === '')
 check('新设计令牌全部有值', missingNew.length === 0, missingNew.join(',') || `共 ${NEW_TOKENS.length} 个`)
 
-/* ---------- 2. 翻译层：旧名逐条指到新名 ---------- */
-const PAIRS = [
-  ['--color-bg', '--bg-base'],
-  ['--color-surface', '--bg-surface-solid'],
-  ['--color-surface-alt', '--bg-subtle'],
-  ['--color-text', '--text-primary'],
-  ['--color-text-dim', '--text-secondary'],
-  ['--color-primary', '--accent-strong'],
-  ['--color-primary-contrast', '--accent-on-strong'],
-  ['--color-danger', '--danger'],
-  ['--color-border', '--border-soft'],
-  ['--font-family', '--font-main'],
+/* ---------- 2. 翻译层已删净：老名必须彻底失活 ---------- */
+const LEGACY_NAMES = [
+  '--color-bg', '--color-surface', '--color-surface-alt', '--color-text', '--color-text-dim',
+  '--color-primary', '--color-primary-contrast', '--color-danger', '--color-border',
+  '--color-accent', '--font-family',
 ]
-const pairNames = [...new Set(PAIRS.flat())]
-const pairValues = await readTokens(pairNames)
-const broken = PAIRS.filter(([oldName, newName]) => norm(pairValues[oldName]) !== norm(pairValues[newName]))
+const legacyValues = await readTokens(LEGACY_NAMES)
+const stillAlive = LEGACY_NAMES.filter((name) => legacyValues[name] !== '')
 check(
-  '翻译层 10 条转发全部接通（旧名 === 新名）',
-  broken.length === 0,
-  broken.map(([a, b]) => `${a}(${pairValues[a]}) ≠ ${b}(${pairValues[b]})`).join(' | ') || `${PAIRS.length} 条`,
+  '翻译层删净：11 个旧令牌名全部失活（getComputedStyle 读不到值）',
+  stillAlive.length === 0,
+  stillAlive.map((name) => `${name}=${legacyValues[name]}`).join(' | ') || `${LEGACY_NAMES.length} 个全空`,
 )
+{
+  const tokensFile = fileURLToPath(new URL('../src/theme/tokens.css', import.meta.url))
+  const indexCss = readFileSync(fileURLToPath(new URL('../src/index.css', import.meta.url)), 'utf8')
+  // 只查 @import 行 —— 注释里提一嘴"当年删过它"是允许的
+  const stillImported = indexCss.split('\n').some((line) => line.trim().startsWith('@import') && line.includes('theme/tokens.css'))
+  check('theme/tokens.css 文件已删、index.css 不再 import 它',
+    !existsSync(tokensFile) && !stillImported,
+    existsSync(tokensFile) ? '文件还在' : (stillImported ? 'index.css 还有 @import' : '已删净'))
+}
 
-/* ---------- 3. 历史遗留：--color-accent 之前根本没定义 ---------- */
-const legacyAccent = await readTokens(['--color-accent'])
-check('历史遗留的 --color-accent 已补齐（此前 4 处引用全部失效）', legacyAccent['--color-accent'] !== '' && norm(legacyAccent['--color-accent']) === norm(pairValues['--accent-strong']), `--color-accent = ${legacyAccent['--color-accent'] || '(空)'}`)
-
-/* ---------- 4. 旧组件的容器仍拿到占位高度（AppShell 依赖） ---------- */
+/* ---------- 2b. 布局占位没被一起带走 ---------- */
 const navHeight = await readTokens(['--bottom-nav-height'])
-check('--bottom-nav-height 仍在（底部导航占位依赖它）', navHeight['--bottom-nav-height'] !== '', navHeight['--bottom-nav-height'])
+check('--bottom-nav-height 仍有兜底值（AppShell 占位 + BottomNav 实测回写依赖）', navHeight['--bottom-nav-height'] !== '', navHeight['--bottom-nav-height'])
 
 /* ---------- 5. 新配色已经铺到真实页面上 ---------- */
 const lightBg = await evaluate(`getComputedStyle(document.body).backgroundColor`)
 check('浅色下 body 用的是新底色 --bg-base', lightBg === 'rgb(243, 243, 245)', `body = ${lightBg}`)
 await shot('verify-tokens-light.png')
 
-/* ---------- 6. 深色模式：新令牌与旧别名必须**一起**跟随 ---------- */
+/* ---------- 6. 深色模式：新令牌必须跟随切换 ---------- */
 await applyTheme('dark')
 await new Promise((resolve) => setTimeout(resolve, 400))
-const darkTokens = await readTokens(['--bg-base', '--text-primary', '--color-bg', '--color-text', '--color-surface'])
+const darkTokens = await readTokens(['--bg-base', '--text-primary'])
 const darkBodyBg = await evaluate(`getComputedStyle(document.body).backgroundColor`)
 check('深色下 --bg-base 取到深色值', darkTokens['--bg-base'] === '#121212', darkTokens['--bg-base'])
 check('深色下 body 底色跟着变', darkBodyBg === 'rgb(18, 18, 18)', `body = ${darkBodyBg}`)
-check('深色下旧别名自动跟随（说明不是只有新名在切）', norm(darkTokens['--color-bg']) === norm(darkTokens['--bg-base']) && norm(darkTokens['--color-text']) === norm(darkTokens['--text-primary']), `--color-bg=${darkTokens['--color-bg']} --color-text=${darkTokens['--color-text']}`)
-check('深色不是把浅色值照抄一份', norm(darkTokens['--bg-base']) !== norm(pairValues['--bg-base']), `${pairValues['--bg-base']} → ${darkTokens['--bg-base']}`)
+check('深色不是把浅色值照抄一份', norm(darkTokens['--bg-base']) !== norm(newTokens['--bg-base']), `${newTokens['--bg-base']} → ${darkTokens['--bg-base']}`)
 await shot('verify-tokens-dark.png')
 await applyTheme('light')
 await new Promise((resolve) => setTimeout(resolve, 300))
@@ -218,5 +213,5 @@ await send('Emulation.clearDeviceMetricsOverride')
 ws.close()
 
 const passed = results.filter((result) => result.ok).length
-console.log(`\n设计地基（令牌 / 翻译层 / 积木）：${passed}/${results.length} passed`)
+console.log(`\n设计地基（令牌 / 翻译层删净 / 积木）：${passed}/${results.length} passed`)
 if (passed !== results.length) process.exitCode = 1

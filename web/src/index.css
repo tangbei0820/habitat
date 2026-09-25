@@ -2,10 +2,9 @@
 /* 换装第 1 批起的加载顺序（顺序有讲究，别调换）：
    1) qixi/tokens.css      新设计令牌 —— 唯一的权威取值来源
    2) qixi/components.css  新设计组件样式（通用积木 / 导航 / 气泡 / Bento / 玻璃 / 雨幕）
-   3) theme/tokens.css     旧令牌 → 新令牌的「翻译层」，必须排在 1) 之后    */
+   （曾经的第 3 项 theme/tokens.css「翻译层」已在换装 6 批全部完成后删除 —— T-045）  */
 @import "./theme/qixi/tokens.css";
 @import "./theme/qixi/components.css";
-@import "./theme/tokens.css";
 
 html,
 body,
