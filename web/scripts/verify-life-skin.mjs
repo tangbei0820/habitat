@@ -165,6 +165,8 @@ await shot('shot-skin-life-traces.png')
    ================================================================ */
 check('可切到「记录」段', await clickText('记录') === 'ok')
 await waitFor(`document.body.innerText.includes('月历') && document.body.innerText.includes('账本')`, '记录段页签')
+// 月历摘要的「本月事件 N」是异步拉事件后再渲染的 —— 只等页签会撞竞速（流水线慢机上报过一次）
+await waitFor(`document.body.innerText.includes('本月事件')`, '月历摘要渲染', 15000)
 const recordTabs = await evaluate(`(() => {
   const text = document.body.innerText
   return ['月历', '账本', '通知', '事件', '运行'].every((value) => text.includes(value)) &&

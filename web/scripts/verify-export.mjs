@@ -190,6 +190,30 @@ check('导出备份后记下「上次导出：今天」', true, await textOf('[d
 await sleep(400)
 check('刚导出过就不再提醒', (await exists('[data-testid="backup-stale-hint"]')) === false)
 
+/* ---------- 三b、备份 v10：第 6 批两张表必须进备份（T-046） ---------- */
+// 走 db 层直接种一行时长 + 一条任务，再 exportAll → importAll 往返，证明「进得去也回得来」。
+// 不走 UI 下载按钮：那是浏览器下载目录的事，断言不到内容。
+{
+  const roundtrip = await evaluate(`(async () => {
+    const dbm = await import('/src/db/db.ts')
+    const backupLib = await import('/src/lib/backup.ts')
+    const now = Date.now()
+    await dbm.db.listenSessions.put({ id: 'music:2026-09-25', kind: 'music', dayKey: '2026-09-25', seconds: 95, updatedAt: now, createdAt: now })
+    await dbm.db.studyTasks.put({ id: 'task-verify-roundtrip', dayKey: '2026-09-25', label: '验收往返任务', done: false, createdAt: now })
+    const backup = await backupLib.exportAll()
+    const exported = { version: backup.version, listen: backup.listenSessions.length, tasks: backup.studyTasks.length }
+    await backupLib.importAll(backup)
+    const listenRow = await dbm.db.listenSessions.get('music:2026-09-25')
+    const taskRow = await dbm.db.studyTasks.get('task-verify-roundtrip')
+    const msgCount = await dbm.db.messages.count()
+    return { ...exported, listenOk: listenRow !== undefined && listenRow.seconds === 95, taskOk: taskRow !== undefined && taskRow.label === '验收往返任务', msgCount }
+  })()`)
+  check('备份格式已升 v10', roundtrip.version === 10, `v${roundtrip.version}`)
+  check('一起听时长进了备份', roundtrip.listen >= 1 && roundtrip.listenOk, `listenSessions ${roundtrip.listen} 条`)
+  check('学习任务进了备份', roundtrip.tasks >= 1 && roundtrip.taskOk, `studyTasks ${roundtrip.tasks} 条`)
+  check('v10 往返导入不丢既有数据（消息还在）', roundtrip.msgCount >= 2, `${roundtrip.msgCount} 条消息`)
+}
+
 /* ---------- 四、导入前的覆盖警告 ---------- */
 const doc = await send('DOM.getDocument')
 const queried = await send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: 'input[type="file"]' })

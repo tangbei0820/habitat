@@ -2263,3 +2263,24 @@ AI 不能替北北确认（工具层硬编码 `decider='companion'`，模型传�
 **踩坑提醒（重复踩）**：同文件多处 Edit **并行发会「报成功却不落盘」**（T-037 已记，本次
 改 verify-tokens.mjs 第 6 节又踩一次）—— 必须串行发 + grep 验证落盘。后台起的 vite/Edge
 **随命令结束被回收**，单跑哨兵必须「起环境 + 跑脚本」并成一条命令。
+
+### T-046~T-049 · 2026-09-25 · 部署前收尾（数据 / 运行形态 / PWA 验收 / runbook）—— **完成**
+
+**背景**：换装收官后、上 VPS 前，把四件「部署后才发现会出事」的事提前做掉。
+
+| 项 | 交付 | 说明 |
+| --- | --- | --- |
+| T-046 备份白名单 | `lib/backup.ts` **v9→v10** | `listenSessions` / `studyTasks` 进备份（导出+校验器+整体替换事务+计数）；旧版导入按空处理（那时功能不存在）；`verify-export` 增 4 条：v10 断言 + 种数据 exportAll→importAll 往返 + 往返不丢既有消息；`verify-home` 备份断言随动 v10；`DATA_MODEL.md` 备份表补 v10 行 |
+| T-047 server 生产运行 | `server/package.json` `start` = `tsx src/index.ts` | 原 `node dist/index.js` 指向不存在的 dist（tsconfig noEmit + `@shared` 别名，tsc 直出跑不了）→ 拍板 tsx 直跑（与 dev 同一条代码路径，tsx 解析别名）；**Node 20 实跑 health 200 验证过** |
+| T-048 生产构建 + PWA 冒烟 | 新 `web/scripts/verify-prod.mjs`（**10 条**，挂流水线） | 此前 SW/生产构建**零自动化覆盖**。验：sw.js 并入 web-push 处理器 + 预缓存非空（静态）、SW 注册激活 + 作用域根、manifest 字段、**断网重载外壳仍在**（离线=只读）、断网 `/api/` 拿不到 HTML 兜底（denylist 生效）；流水线自起 `vite preview :4173` 跑完即收 |
+| T-049 部署 runbook | `docs/DEPLOYMENT.md` **§6**（habitat 本体） | 构建产物清单 / 部署步骤 / **systemd unit 样例** / **nginx 站点片段**（子域 + SPA try_files + sw.js 不缓存 + assets 强缓存 + /api SSE 反缓冲）/ `.env` 必填清单（CORS 收紧、MCP 内网直连）/ **部署后 7 条验收清单**（含 Android PWA 真机项） |
+
+**本批踩坑**
+
+- `verify-prod` 捡现成 tab 在流水线里会撞怪目标（「Target does not support metrics override」→「navigated or closed」）→ **改用 `PUT /json/new` 新建专用 tab，跑完 `/json/close`**，与前面的脚本彻底隔离。
+- README 此前 python 插行用 `\\n` 写成了**字面量反斜杠 n**，表格断成一行 —— 已修（含 T-044 埋的一处）；以后往 md 表格插行一律用真换行。
+
+**验收**：全量回归 **531 项零失败**（517 + verify-export 4 + verify-prod 10）；两端 typecheck 过。
+
+**部署就绪结论**：代码与验收侧已就绪。上服务器剩的都是**实机操作**（按 DEPLOYMENT §6 打勾）：
+DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 配置、`server/.env` 填值（CORS/MCP 内网地址/Token）、部署后 7 条清单。

@@ -956,3 +956,11 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 非转发项 `--bottom-nav-height` 迁入 `qixi/tokens.css`（兜底初值，BottomNav 实测回写）。
 - `qixi/tokens.css` 现在是全前端唯一的设计变量定义处。
 - `verify-tokens.mjs` 职责反转：改验「翻译层删净」（11 个旧名必须失活 + 文件不存在 + 无 @import），23/23 通过。
+
+### 部署前收尾（T-046~T-049）
+
+- **备份格式 v10**：`listenSessions` / `studyTasks` 进备份（导出/校验/整体替换/计数全链），旧版导入按空处理；`verify-export` 增 v10 往返断言。
+- **server 生产运行形态定稿**：`npm start` = `tsx src/index.ts`（tsx 解析 `@shared` 别名，与 dev 同路径；Node 20 实跑验证）。
+- **新增 `verify-prod.mjs`（10 条，挂流水线）**：生产构建 + PWA 冒烟 —— SW 注册激活/作用域、manifest、断网重载外壳仍在（离线=只读）、断网 `/api/` 无 HTML 兜底。此前 SW 零自动化覆盖。
+- **`docs/DEPLOYMENT.md` §6**：habitat 本体部署 runbook（构建产物 / systemd / nginx 子域站点片段 / env 清单 / 部署后验收 7 条）。
+- 全量回归 **531 项零失败**；两端 typecheck 通过。**结论：代码侧部署就绪，剩实机操作按 §6 打勾。**

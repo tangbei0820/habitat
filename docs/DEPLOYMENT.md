@@ -284,3 +284,135 @@ location = /mcp-<新密钥> {
 
 - [ ] `NGINX_PORT` 的实际取值（compose 默认 80）
 - [ ] 内网直连地址（`http://127.0.0.1:<端口>/mcp`）—— 生产 `MCP_NOCTURNE_URL` 指向它，不走公网 TLS
+
+---
+
+## 6. habitat 本体部署（T-049 · 部署 runbook）
+
+> 目标机器：阿里云 ECS（同机已有 Nocturne）。**habitat-server 只监听回环**，公网只暴露 nginx 的 443。
+> 运行身份约定：`/srv/habitat` 为部署目录；服务以专用用户或 root 均可（个人单机），下面按 root 示例。
+
+### 6.1 产物与运行形态（已定稿）
+
+| 件 | 形态 | 说明 |
+| --- | --- | --- |
+| web | **静态构建产物** `web/dist/`（含 `sw.js` / `manifest.webmanifest`） | 本地 `npm run build` 产出后随仓库/上传到服务器；nginx 直接伺服 |
+| server | **tsx 直跑**（`npm start` = `tsx src/index.ts`，T-047 定稿） | 不做 tsc 产出（`@shared` 别名 + noEmit，tsx 与 dev 同一条代码路径）；依赖 tsx 随 server 依赖安装 |
+| 数据 | `server/data/habitat.db`（SQLite） | **部署前先备份旧库**：`cp data/habitat.db data/habitat.db.bak-$(date +%F)` |
+
+⚠️ **Node 版本**：server 必须 **Node 20**（`better-sqlite3` ABI，装依赖即编译，**绝不 `npm rebuild`**）。
+web 构建本地做，服务器不需要 Node 22。
+
+### 6.2 部署步骤（全量更新）
+
+```bash
+# ① 服务器上拉代码（首次：git clone 到 /srv/habitat）
+cd /srv/habitat && git pull
+
+# ② 依赖（首次或 lockfile 变更时；在 server/ 内执行，让原生模块对着本机 Node 20 编译）
+cd server && npm install && cd ..
+
+# ③ web 构建（服务器上构建亦可，vite 6 支持 Node 20/22；或本地构建后只同步 dist/）
+npm run build   # 根 package.json 的 build = npm --prefix web run build
+
+# ④ 数据库备份 + 环境变量（首次：cp server/.env.example server/.env 后按 6.4 填写）
+# ⑤ 重启服务
+sudo systemctl restart habitat-server
+```
+
+### 6.3 systemd 服务（`/etc/systemd/system/habitat-server.service`）
+
+```ini
+[Unit]
+Description=habitat-server (Fastify + better-sqlite3)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/habitat/server
+# tsx 直跑（T-047）；Node 20 路径按实机 which node 调整
+ExecStart=/usr/bin/npx tsx src/index.ts
+EnvironmentFile=/srv/habitat/server/.env
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启用：`sudo systemctl daemon-reload && sudo systemctl enable --now habitat-server`。
+验证：`curl -s http://127.0.0.1:3000/api/health` → `{"ok":true,...}`。
+
+### 6.4 `.env` 必填项（完整清单见 `server/.env.example`）
+
+| 变量 | 生产取值 | 说明 |
+| --- | --- | --- |
+| `PORT=3000` / `HOST=127.0.0.1` | ⚠️ HOST 必须回环 | 公网只走 nginx |
+| `CORS_ORIGIN=https://<habitat 域名>` | **必填收紧** | 留空 = 反射任意来源（技术方案 §9-3 明令禁止） |
+| `HABITAT_DB_PATH=./data/habitat.db` | 默认即可 | 备份=停服后拷文件 |
+| `MCP_NOCTURNE_URL` | `http://127.0.0.1:<NGINX_PORT>/mcp`（**内网直连**，见 §3.1/§4） | 不走公网 TLS，绕开 Node 20 SNI 问题 |
+| `MCP_NOCTURNE_TOKEN` | 同宿主 nginx 秘密路径的 Bearer | 见 §3.3 |
+| `EVENTIDE_URL` | 暂留空 | sidecar 未部署；留空不影响启动 |
+| `WEB_PUSH_*` | 可选 | 三项齐全才启用推送 |
+| LLM 密钥 | **不进 .env**：设置页填（`api_secret` 表优先，只进不出） | `HABITAT_LLM_PROFILES` 仅首次种子 |
+
+### 6.5 nginx 站点（`/etc/nginx/sites-available/habitat`）
+
+PWA 的 SW 作用域要求应用挂在**根路径** —— 用**子域**（推荐，如 `habitat.beiyan.cc`，Cloudflare
+加一条 A/CNAME 记录即可；证书用 certbot 签），不要挂在 Nocturne 域名的子路径下。
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name habitat.beiyan.cc;
+    ssl_certificate     /etc/letsencrypt/live/habitat.beiyan.cc/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/habitat.beiyan.cc/privkey.pem;
+
+    # ---- web 静态产物（SPA） ----
+    root /srv/habitat/web/dist;
+    index index.html;
+    location / {
+        try_files $uri /index.html;          # SPA 深链兜底（路由在客户端）
+    }
+    # SW 与 manifest 不缓存（更新即时可见；SW 自己管 precache）
+    location = /sw.js               { add_header Cache-Control "no-cache"; }
+    location = /manifest.webmanifest { add_header Cache-Control "no-cache"; }
+    location /assets/               { add_header Cache-Control "public, max-age=31536000, immutable"; }
+
+    # ---- API 反代（含 SSE：反缓冲两件套缺一不可，见 §4） ----
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        add_header X-Accel-Buffering no;
+    }
+}
+
+server {
+    listen 80;
+    server_name habitat.beiyan.cc;
+    return 301 https://$host$request_uri;
+}
+```
+
+改完 `sudo nginx -t && sudo systemctl reload nginx`（reload 不断流）。
+
+> ⚠️ **Cloudflare 代理（橙云）与 SSE**：CF 对单次 HTTP 响应有 ~100 秒空闲超时，
+> 长流式回复可能被掐。 Habitat 的聊天是分片流式（持续有字节）通常没事；若遇到
+> 「流到一半断」，把该子域在 Cloudflare 里切**灰云**（DNS only）直连 ECS 即可。
+
+### 6.6 部署后验收清单（照着打勾）
+
+1. [ ] `curl -s https://<域名>/api/health` → `{"ok":true,...}`（过 nginx 的链路通）
+2. [ ] 浏览器打开 `https://<域名>/`，设置页填 LLM key，发一轮消息（流式正常、无 CORS 报错）
+3. [ ] DevTools → Application：SW `activated`，Manifest 无告警；地址栏出现「安装」
+4. [ ] 断网（DevTools offline）重载：外壳照常打开、本地数据可看、发消息提示离线（**离线=只读**）
+5. [ ] 设置页导出备份 → 清站点数据 → 导入备份：数据回来（备份格式当前 **v10**）
+6. [ ] 记忆链路：设置页 MCP 状态显示 nocturne ready（内网 URL + Token）；对 AI 说「记住一件事」走一遍
+7. [ ] Android 手机 Chrome 打开 → 「安装应用」→ 桌面图标启动独立窗口（PWA 真机验收，**本机测不了**）

@@ -212,8 +212,8 @@ habitat/
 
 - ✅ **验收基础设施收口（T-032）**：mock MCP 的 GET / DELETE 会话头已纳入 5 项生命周期探针，DELETE 会释放服务端会话映射；
   `verify-home` 自清浏览器站点数据并只把整页导航等待放宽到 60s，`verify-export` 自建「从未备份」前提，避免旧浏览器状态制造假红。
-  当前整套前端回归：home 77 / **home-skin 14** / **life 16** / **life-skin 16** / **batch6-skin 29** / chat 148 / **chat-skin 31** / providers 24 / llm 16 / **tokens 24** / **shell 31** / export 17 / offline 38 / diagnostics 36（共 **517 项**），全部通过。
-  `verify-tokens` 是换装第 1 批新增的地基哨兵（令牌 / 通用积木；翻译层删除后 T-045 反转职责为「钉住删净」）；`verify-shell` 是第 2 批新增的外壳哨兵（底栏 / 欢迎页 / 滑入 / **界面无 emoji**）；`verify-chat-skin` 是第 3 批新增的对话页哨兵（气泡方向底色 / 操作行常显 / 输入胶囊 / 能力入口）；`verify-home-skin` 是第 4 批新增的家页哨兵（Bento 真数据 / 诚实空态 / 全入口 / 模块子页顶栏）；`verify-life-skin` 是第 5 批新增的生活+设置哨兵（两套并排 / 诚实空态 / 设置重分组 / 主题分段真生效）；`verify-batch6-skin` 是第 6 批新增的真播放/伴学/独处哨兵（音频时长落盘 / 无链接明说拒绝 / 任务加勾删 / 程序化雨声落盘 / 沉浸无底栏），**必须排在 verify-life-skin 之后**（它写 listenSessions）。注意 **/life 默认落在「生活痕迹」段**，要验记录页签先点「记录」。
+  当前整套前端回归：home 77 / **home-skin 14** / **life 16** / **life-skin 16** / **batch6-skin 29** / chat 148 / **chat-skin 31** / providers 24 / llm 16 / **tokens 23** / **shell 31** / **export 21** / **prod 10** / offline 38 / diagnostics 36（共 **531 项**），全部通过。
+  `verify-tokens` 是换装第 1 批新增的地基哨兵（令牌 / 通用积木；翻译层删除后 T-045 反转职责为「钉住删净」）；`verify-shell` 是第 2 批新增的外壳哨兵（底栏 / 欢迎页 / 滑入 / **界面无 emoji**）；`verify-chat-skin` 是第 3 批新增的对话页哨兵（气泡方向底色 / 操作行常显 / 输入胶囊 / 能力入口）；`verify-home-skin` 是第 4 批新增的家页哨兵（Bento 真数据 / 诚实空态 / 全入口 / 模块子页顶栏）；`verify-life-skin` 是第 5 批新增的生活+设置哨兵（两套并排 / 诚实空态 / 设置重分组 / 主题分段真生效）；`verify-batch6-skin` 是第 6 批新增的真播放/伴学/独处哨兵（音频时长落盘 / 无链接明说拒绝 / 任务加勾删 / 程序化雨声落盘 / 沉浸无底栏），**必须排在 verify-life-skin 之后**（它写 listenSessions）；`verify-prod` 是部署前新增的生产构建+PWA 冒烟哨兵（SW 注册/断网外壳/`/api` 无 HTML 兜底），**自起 vite preview :4173**，且用 `PUT /json/new` 开专用 tab（流水线中段捡现成 tab 会撞怪目标）。注意 **/life 默认落在「生活痕迹」段**，要验记录页签先点「记录」。
 
 **Phase 6.5 呈现层（T-038，已收口）**
 
@@ -293,6 +293,7 @@ habitat/
 
 ### 下一步
 
+0. 🚀 **部署上 VPS**：代码与验收侧已就绪（T-046~T-049），照 `docs/DEPLOYMENT.md` §6 的步骤 + 7 条验收清单做实机操作（DNS 子域 / certbot / systemd / nginx / `.env`）。
 1. **Phase 6.5 收口后的收尾项**（都在 `docs/TASKS.md`，没有新的功能批次）：
    - ⏳ `memory.write` 仍未实施：Nocturne 实例的写工具（`hold`）没接。真要写时先读 `docs/MEMORY.md` 的工具面
    - ⏳ 确认卡**没有过期 / 撤回**机制；其**前端交互**（点按钮 / 刷新后状态还在）仍无人眼之外的覆盖

@@ -13,11 +13,13 @@ import type {
   ChatSession,
   CountdownDay,
   HomeWidget,
+  ListenSession,
   MusicTrack,
   Photo,
   PhotoCollection,
   ReadingNote,
   StudyRecord,
+  StudyTask,
   SessionGroup,
   WishlistItem,
 } from '@shared/types'
@@ -37,7 +39,7 @@ export const BACKUP_FORMAT = 'habitat-backup'
  * ⚠️ 但**旧备份（v2–v8）里带着它们**，导入时不能丢：走 `legacyUploads` 转存到服务端，
  * 详见 `importAll` 与 `db/legacy-upload.ts`。
  */
-export const BACKUP_VERSION = 9
+export const BACKUP_VERSION = 10
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -57,6 +59,8 @@ export interface HabitatBackup {
   musicTracks: MusicTrack[]
   studyRecords: StudyRecord[]
   homeWidgets: HomeWidget[]
+  listenSessions: ListenSession[]
+  studyTasks: StudyTask[]
 }
 
 export interface BackupCounts {
@@ -74,13 +78,15 @@ export interface BackupCounts {
   musicTracks: number
   studyRecords: number
   homeWidgets: number
+  listenSessions: number
+  studyTasks: number
   /** 从**旧备份**（v2–v8）里救出来、转存进中转表等服务端接收的条数。新备份（v9）恒为 0。 */
   legacyDiaries: number
   legacyMoments: number
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, sessionGroups, messages, wishlist, countdowns, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, musicTracks, studyRecords, homeWidgets] = await Promise.all([
+  const [sessions, sessionGroups, messages, wishlist, countdowns, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, musicTracks, studyRecords, homeWidgets, listenSessions, studyTasks] = await Promise.all([
     db.sessions.toArray(),
     db.sessionGroups.toArray(),
     db.messages.toArray(),
@@ -95,6 +101,8 @@ export async function exportAll(): Promise<HabitatBackup> {
     db.musicTracks.toArray(),
     db.studyRecords.toArray(),
     db.homeWidgets.toArray(),
+    db.listenSessions.toArray(),
+    db.studyTasks.toArray(),
   ])
   return {
     format: BACKUP_FORMAT,
@@ -114,6 +122,8 @@ export async function exportAll(): Promise<HabitatBackup> {
     musicTracks,
     studyRecords,
     homeWidgets,
+    listenSessions,
+    studyTasks,
   }
 }
 
@@ -348,6 +358,30 @@ function looksLikeStudyRecord(value: unknown): value is StudyRecord {
 }
 
 /**
+ * v10 新增：一起听 / 听雨的时长行（id = `kind:dayKey`，一天一行累加秒数）。
+ * seconds 为 0 的行不该存在（写入方 0 秒不落库），但备份语义是「回到那一刻」，见到也照收。
+ */
+function looksLikeListenSession(value: unknown): value is ListenSession {
+  return (
+    isRecord(value) && typeof value.id === 'string' &&
+    (value.kind === 'music' || value.kind === 'rain') &&
+    typeof value.dayKey === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.dayKey) &&
+    Number.isInteger(value.seconds) && (value.seconds as number) >= 0 &&
+    Number.isFinite(value.updatedAt) && Number.isFinite(value.createdAt)
+  )
+}
+
+/** v10 新增：今天的三件小事（按天归组，隔天自动是新的一页） */
+function looksLikeStudyTask(value: unknown): value is StudyTask {
+  return (
+    isRecord(value) && typeof value.id === 'string' &&
+    typeof value.dayKey === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.dayKey) &&
+    typeof value.label === 'string' && value.label.length > 0 &&
+    typeof value.done === 'boolean' && Number.isFinite(value.createdAt)
+  )
+}
+
+/**
  * 恢复备份：**整体替换**现有数据（导入语义是「回到备份那一刻」，不是合并）。
  * 先完整校验再动库 —— 校验不过一行都不写，避免半导入状态。
  */
@@ -489,6 +523,18 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：存在无法识别的分类或相册')
   }
 
+  // v10 新增一起听时长与学习任务；旧版导入时按空处理 —— 那时这两个功能还不存在。
+  const listenSessionsRaw = version >= 10 ? raw.listenSessions : []
+  const studyTasksRaw = version >= 10 ? raw.studyTasks : []
+  if (!Array.isArray(listenSessionsRaw) || !Array.isArray(studyTasksRaw)) {
+    throw new Error('备份内容损坏：listenSessions / studyTasks 必须是数组')
+  }
+  const listenSessions = listenSessionsRaw.filter(looksLikeListenSession)
+  const studyTasks = studyTasksRaw.filter(looksLikeStudyTask)
+  if (listenSessions.length !== listenSessionsRaw.length || studyTasks.length !== studyTasksRaw.length) {
+    throw new Error('备份内容损坏：存在无法识别的听音时长或学习任务')
+  }
+
   // 旧备份里的日记 / 留言转存进中转表：它们已经不属本地库了，但也不能就这么丢掉。
   // 用 `bulkPut`（而非 bulkAdd）：这张表是**待上传队列**，可能还有上一次没传完的残留，
   // 而「整体替换」语义只针对本地库，不该顺手把队列清空。
@@ -507,7 +553,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     })),
   ]
 
-  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.wishlist, db.countdowns, db.bookmarks, db.bookmarkCategories, db.artworks, db.photos, db.photoCollections, db.readingNotes, db.musicTracks, db.studyRecords, db.homeWidgets, db.legacyUploads], async () => {
+  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.wishlist, db.countdowns, db.bookmarks, db.bookmarkCategories, db.artworks, db.photos, db.photoCollections, db.readingNotes, db.musicTracks, db.studyRecords, db.homeWidgets, db.listenSessions, db.studyTasks, db.legacyUploads], async () => {
     await db.sessions.clear()
     await db.sessionGroups.clear()
     await db.messages.clear()
@@ -522,6 +568,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.musicTracks.clear()
     await db.studyRecords.clear()
     await db.homeWidgets.clear()
+    await db.listenSessions.clear()
+    await db.studyTasks.clear()
     if (legacyRows.length > 0) await db.legacyUploads.bulkPut(legacyRows)
     await db.sessions.bulkAdd(sessions)
     await db.sessionGroups.bulkAdd(sessionGroups)
@@ -537,6 +585,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.musicTracks.bulkAdd(musicTracks)
     await db.studyRecords.bulkAdd(studyRecords)
     await db.homeWidgets.bulkAdd(homeWidgets)
+    await db.listenSessions.bulkAdd(listenSessions)
+    await db.studyTasks.bulkAdd(studyTasks)
   })
   return {
     sessions: sessions.length,
@@ -553,6 +603,8 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     musicTracks: musicTracks.length,
     studyRecords: studyRecords.length,
     homeWidgets: homeWidgets.length,
+    listenSessions: listenSessions.length,
+    studyTasks: studyTasks.length,
     legacyDiaries: legacyDiaries.length,
     legacyMoments: legacyMoments.length,
   }

@@ -1,5 +1,5 @@
 /**
- * Phase 2 Home 完整验收：八个生活模块 + 主屏 Widget + Dexie v12 持久化 / 备份 v9。
+ * Phase 2 Home 完整验收：八个生活模块 + 主屏 Widget + Dexie v12 持久化 / 备份 v10。
  * 前置：vite + 无头 Edge CDP；用 Node >= 22 运行（需全局 WebSocket）。
  * 请使用隔离的浏览器 profile：验收最后会导入一份空 v1 备份来验兼容性。
  *
@@ -1042,7 +1042,7 @@ const backupCheck = await evaluate(`(async () => {
     legacyV7BookmarkCategoryId: legacyV7Bookmark === undefined ? 'no-row' : legacyV7Bookmark.categoryId,
   }
 })()`)
-check('备份 v9 覆盖八类本地 Home 数据并可整体恢复（日记 / 留言板已归服务端）', backupCheck.version === 9 && backupCheck.exportedHome >= 7 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
+check('备份 v10 覆盖八类本地 Home 数据并可整体恢复（日记 / 留言板已归服务端）', backupCheck.version === 10 && backupCheck.exportedHome >= 7 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
 check(
   '备份 v7 带走会话分组与归属（含折叠状态）',
   backupCheck.exportedGroups === 1 &&

@@ -21,7 +21,7 @@
     "probe:diary": "tsx scripts/probe-diary.ts",
     "probe:event-inbox": "tsx scripts/probe-event-inbox.ts",
     "typecheck": "tsc --noEmit",
-    "start": "node dist/index.js"
+    "start": "tsx src/index.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
