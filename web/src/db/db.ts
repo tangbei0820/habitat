@@ -12,7 +12,9 @@ import type {
   ReadingNote,
   MusicTrack,
   SessionGroup,
+  ListenSession,
   StudyRecord,
+  StudyTask,
   WishlistItem,
 } from '@shared/types'
 
@@ -82,6 +84,10 @@ export class HabitatDb extends Dexie {
   homeWidgets!: Table<HomeWidget, string>
   /** 搬迁中转表：启动流程把旧表搬完、服务端确认后就清空，之后一直是空的 */
   legacyUploads!: Table<LegacyUpload, string>
+  /** 第 6 批：一起听 / 听雨 的本周时长（kind + dayKey 一天一行，秒数累加） */
+  listenSessions!: Table<ListenSession, string>
+  /** 第 6 批：学习伴学的「今天的三件小事」（按天归组，隔天自动是新的一页） */
+  studyTasks!: Table<StudyTask, string>
 
   constructor() {
     super('habitat-db')
@@ -252,6 +258,11 @@ export class HabitatDb extends Dexie {
         homeWidgets: 'id, &kind, createdAt',
         legacyUploads: 'id, kind, createdAt',
       })
+    // 第 6 批（一起听真播放 / 学习伴学）：时长统计与今日任务。同样不需要 upgrade 回调。
+    this.version(12).stores({
+      listenSessions: 'id, kind, dayKey, createdAt',
+      studyTasks: 'id, dayKey, createdAt',
+    })
     // 刻意没有 .upgrade()：搬迁不在版本变化时做，而在每次启动时做（见上方注释与 legacy-upload.ts）。
     // 也不在这里声明 diaries / moments —— 声明了也删不掉它们，省掉能少一份「以为删了」的误解。
   }

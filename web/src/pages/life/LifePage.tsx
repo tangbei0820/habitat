@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { LifeLedgerView, LifeMonthSummary, LifeRuntimeView, NotificationRecord, PushStatus, RuntimeEvent } from '@shared/types'
 import { listEvents } from '../../db/events'
+import { weekListenSeconds } from '../../db/listen'
 import { listDiaries } from '../../db/home'
 import { EventConfirmCard } from '../../features/chat/EventConfirmCard'
 import {
@@ -153,10 +154,12 @@ function RuntimeView() {
  *
  * ⚠️ 数据口径（铁律：假数据一律不搬）：设计稿里的「7h12m 睡眠」「心情曲线」「3.5 小时」全是占位。
  *  心情 / 睡眠目前**没有任何真实来源**（Eventide 的 bodyState 快照字段由上游自定，不保证有这些键），
- *  所以这两格诚实空态；日记是本周真篇数（按作者分）；一起听 / 雨的时长要等第 6 批真播放接上才有得计。
+ *  所以这两格诚实空态；日记是本周真篇数（按作者分）；一起听 / 雨的时长来自 `listenSessions`
+ *  （第 6 批：真播放 / 程序化雨声落盘），格子本身是真入口 —— 没听过也能点进去。
  */
 function TracesView() {
   const [weekDiary, setWeekDiary] = useState<{ companion: number; user: number } | null>(null)
+  const [listen, setListen] = useState<{ music: number; rain: number } | null>(null)
   useEffect(() => {
     listDiaries()
       .then((items) => {
@@ -170,7 +173,17 @@ function TracesView() {
         })
       })
       .catch(() => setWeekDiary(null))
+    Promise.all([weekListenSeconds('music'), weekListenSeconds('rain')])
+      .then(([music, rain]) => setListen({ music, rain }))
+      .catch(() => setListen(null))
   }, [])
+  /** 秒数 → 人话：0 秒回到诚实空态；不足一分钟说「刚开了个头」，够一小时带小时 */
+  const listenText = (seconds: number, empty: string): string => {
+    if (seconds <= 0) return empty
+    if (seconds < 60) return '本周刚开了个头'
+    const minutes = Math.floor(seconds / 60)
+    return minutes < 60 ? `本周 ${minutes} 分钟` : `本周 ${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`
+  }
   const emptyCell = (label: string, icon: ReactNode, text: string) => (
     <div className="bento-cell">
       <div className="cell-label">{icon} {label}</div>
@@ -197,9 +210,19 @@ function TracesView() {
         </span>
       </div>
 
-      {/* 一起听 / 雨：时长统计等第 6 批真播放接上才开始累计 */}
-      {emptyCell('一起听', <IconNote size={13} />, '还没一起听过歌')}
-      {emptyCell('雨', <IconDrop size={13} />, '还没听过雨声')}
+      {/* 一起听 / 雨：真时长（第 6 批落盘）+ 真入口；没听过也是能点的入口 */}
+      <Link to="/home/music" className="bento-cell pressable" data-testid="traces-music">
+        <div className="cell-label"><IconNote size={13} /> 一起听</div>
+        <div className="t-caption" style={{ color: (listen?.music ?? 0) > 0 ? 'var(--text-secondary)' : 'var(--text-tertiary)' }}>
+          {listenText(listen?.music ?? 0, '还没一起听过歌')}
+        </div>
+      </Link>
+      <Link to="/solo" className="bento-cell pressable" data-testid="traces-rain">
+        <div className="cell-label"><IconDrop size={13} /> 雨</div>
+        <div className="t-caption" style={{ color: (listen?.rain ?? 0) > 0 ? 'var(--text-secondary)' : 'var(--text-tertiary)' }}>
+          {listenText(listen?.rain ?? 0, '还没听过雨声')}
+        </div>
+      </Link>
 
       <div className="t-caption" style={{ gridColumn: 'span 2', textAlign: 'center', color: 'var(--text-tertiary)', paddingBottom: 4 }}>
         数据只记录，不评判。

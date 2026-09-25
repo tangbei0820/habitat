@@ -14,6 +14,7 @@ import { ChatWindowPage } from '../pages/chat/ChatWindowPage'
 import { HomePage } from '../pages/home/HomePage'
 import { HomeModulePage } from '../pages/home/HomeModulePage'
 import { LifePage } from '../pages/life/LifePage'
+import { SoloPage } from '../pages/solo/SoloPage'
 import { LlmPage } from '../pages/llm/LlmPage'
 import { SettingPage } from '../pages/setting/SettingPage'
 import { WelcomePage } from '../pages/welcome/WelcomePage'
@@ -90,6 +91,7 @@ const router = createBrowserRouter(
         { path: '/home/:module', element: <HomeModulePage /> },
         { path: '/llm', element: <LlmPage /> },
         { path: '/life', element: <LifePage /> },
+        { path: '/solo', element: <SoloPage /> },
         { path: '/setting', element: <SettingPage /> },
         { path: '*', element: <Navigate to="/chat" replace /> },
       ],

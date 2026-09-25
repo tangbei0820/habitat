@@ -345,7 +345,7 @@ const dbInfo = await evaluate(`(async () => {
 })()`)
 const dbState = JSON.parse(dbInfo)
 // ⚠️ 只比「升到了 v9」分不出「v9 的 stores 写错了」，所以顺带验这次迁移该带来的东西
-check('Dexie 已升到 v11（IndexedDB 版本 110）', dbState.version === 110, dbInfo)
+check('Dexie 已升到 v12（IndexedDB 版本 120；v12 = 第 6 批的听音时长 / 学习任务两表）', dbState.version === 120, dbInfo)
 check(
   'v3 的三元复合索引已建出',
   Array.isArray(dbState.indexes) && dbState.indexes.includes('[sessionId+createdAt+id]'),
@@ -1265,7 +1265,7 @@ check(
     savedSettings.session?.updatedAt === 2000,
   JSON.stringify(savedSettings),
 )
-check('会话设置不牵动 schema（v11 由搬迁中转表带来）', savedSettings.version === 110, String(savedSettings.version))
+check('会话设置不牵动 schema（v12 = 第 6 批两表）', savedSettings.version === 120, String(savedSettings.version))
 
 const appliedSettings = await evaluate(`(() => {
   const area = document.querySelector('[data-testid="chat-message-area"]')

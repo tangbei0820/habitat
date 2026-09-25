@@ -448,6 +448,31 @@ export interface StudyRecord extends BaseObject {
   durationMinutes: number
 }
 
+/* ---------- 学习伴学 · 今日任务（第 6 批；纯本地，按天归组） ---------- */
+
+export interface StudyTask {
+  id: string
+  /** 归属哪一天（YYYY-MM-DD）；隔天自动就是新的一页，昨天的任务不追到今天 */
+  dayKey: string
+  label: string
+  done: boolean
+  createdAt: number
+}
+
+/* ---------- 一起听 / 听雨 · 时长统计（第 6 批；纯本地，一天一行累加秒数） ---------- */
+
+export type ListenKind = 'music' | 'rain'
+
+export interface ListenSession {
+  /** `${kind}:${dayKey}` —— 一天一行，秒数往上累加 */
+  id: string
+  kind: ListenKind
+  dayKey: string
+  seconds: number
+  updatedAt: number
+  createdAt: number
+}
+
 /* ---------- LLM 方案（§6.2 ApiProfile / §7.1 多方案管理） ---------- */
 
 /** 适配器类型。§7.1：以 OpenAI Chat Completions 兼容协议为最小公分母，后续可加原生适配器 */

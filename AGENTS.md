@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：**宿主 nginx 1.18.0** + habitat-server + Nocturne / Ombre Brain（容器 nginx）+ eventide-sidecar；Caddy 仅为早期方案记录                      |
-| 当前阶段 | **Phase 6.5 已完成**（T-035 能力注册/工具闭环 → T-038 呈现层）｜**UI 换装进行中：6 批中的第 1~5 批已完成**（T-039 令牌地基；T-040 外壳；T-041 对话页 + `verify-chat-skin`；T-042 家页 Bento + `verify-home-skin`；T-043 生活两套并排 + 设置重分组 + `verify-life-skin`），**第 6 批（补未落成功能：一起听真播放 / 学习伴学 / 独处空间）未开始** —— 见 `docs/UI_DESIGN.md` §5｜Phase 6 已完成（T-028~T-030 / T-032 / T-033）；Phase 3A 记忆链路与生产鉴权已完成真机 **26/26**（T-034） |
+| 当前阶段 | **Phase 6.5 已完成**（T-035 能力注册/工具闭环 → T-038 呈现层）｜**UI 换装 6 批全部完成**（T-039 令牌地基；T-040 外壳；T-041 对话页 + `verify-chat-skin`；T-042 家页 Bento + `verify-home-skin`；T-043 生活两套并排 + 设置重分组 + `verify-life-skin`；T-044 一起听真播放 / 学习伴学 / 独处空间 + `verify-batch6-skin`）—— 见 `docs/UI_DESIGN.md` §5｜Phase 6 已完成（T-028~T-030 / T-032 / T-033）；Phase 3A 记忆链路与生产鉴权已完成真机 **26/26**（T-034） |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -179,7 +179,7 @@ habitat/
 - Phase 5 高级能力：✅ 完成（异步语音 / TTS / 图片 / 富消息块 / Mini Terminal）
 - Phase 6 打磨：✅ 完成（T-028 PWA / T-029 离线只读 / T-030 导入导出增强 / T-032 验收基础设施 / T-033 可靠性收口）；**动画与过渡效果属于后续 UI 专项**
 - Phase 6.5 AI Runtime：✅ 完成（T-035 P0 能力注册与工具闭环 / T-036 P1 前置：日记·留言板迁服务端 / T-037 P1 事件收件箱与确认卡 / **T-038 P2 呈现层：LLM 档案页 App Launcher + Chat 头像开关**）
-- **UI 换装（按 `docs/UI_DESIGN.md` §5 的 6 批推进）**：✅ 第 1 批「打地基」（T-039 新令牌 + 翻译层 + 整套积木 + 32 图标 + 雨幕）｜✅ 第 2 批「换外壳」（T-040 胶囊底栏 + 欢迎页 + 子页面滑入 + 界面 emoji 全量换 SVG，图标补到 48 个）｜✅ 第 3 批「对话页换皮」（T-041，`verify-chat-skin` 31 条）｜✅ 第 4 批「家页换皮」（T-042 Bento 6 格 + 全入口，`verify-home-skin` 14 条）｜✅ 第 5 批「生活 + 设置换皮」（T-043 两套并排 + 重分组，`verify-life-skin` 16 条）｜⬜ 第 6 批未开始
+- **UI 换装（按 `docs/UI_DESIGN.md` §5 的 6 批推进）**：✅ 第 1 批「打地基」（T-039 新令牌 + 翻译层 + 整套积木 + 32 图标 + 雨幕）｜✅ 第 2 批「换外壳」（T-040 胶囊底栏 + 欢迎页 + 子页面滑入 + 界面 emoji 全量换 SVG，图标补到 48 个）｜✅ 第 3 批「对话页换皮」（T-041，`verify-chat-skin` 31 条）｜✅ 第 4 批「家页换皮」（T-042 Bento 6 格 + 全入口，`verify-home-skin` 14 条）｜✅ 第 5 批「生活 + 设置换皮」（T-043 两套并排 + 重分组，`verify-life-skin` 16 条）｜✅ 第 6 批「补未落成功能」（T-044 真播放 / 伴学 / 独处，`verify-batch6-skin` 29 条）—— **换装收官，下一步=删 `theme/tokens.css` 翻译层**
   - ⚠️ 底栏标签第 2 批已由**英文改中文**（对话 / 家 / 大脑 / 生活 / 设置）—— **写新验收时别按英文串找 Tab**
   - ⚠️ **根路径会拐弯**：`/` 在「本次会话没进过」时先去 `/welcome`，进过才重定向 `/chat`（标记在 `sessionStorage`，PWA 每次冷启动都会看到）。
     所以**验收脚本一律直达目标路径**（`/chat`、`/home`、`/setting`），别导航到根路径等聊天列表 —— 会停在欢迎页等到超时。
@@ -212,8 +212,8 @@ habitat/
 
 - ✅ **验收基础设施收口（T-032）**：mock MCP 的 GET / DELETE 会话头已纳入 5 项生命周期探针，DELETE 会释放服务端会话映射；
   `verify-home` 自清浏览器站点数据并只把整页导航等待放宽到 60s，`verify-export` 自建「从未备份」前提，避免旧浏览器状态制造假红。
-  当前整套前端回归：home 77 / **home-skin 14** / **life 16** / **life-skin 16** / chat 148 / **chat-skin 31** / providers 24 / llm 16 / **tokens 24** / **shell 31** / export 17 / offline 38 / diagnostics 36（共 **488 项**），全部通过。
-  `verify-tokens` 是换装第 1 批新增的地基哨兵（令牌 / 翻译层 / 通用积木）；`verify-shell` 是第 2 批新增的外壳哨兵（底栏 / 欢迎页 / 滑入 / **界面无 emoji**）；`verify-chat-skin` 是第 3 批新增的对话页哨兵（气泡方向底色 / 操作行常显 / 输入胶囊 / 能力入口）；`verify-home-skin` 是第 4 批新增的家页哨兵（Bento 真数据 / 诚实空态 / 全入口 / 模块子页顶栏）；`verify-life-skin` 是第 5 批新增的生活+设置哨兵（两套并排 / 诚实空态 / 设置重分组 / 主题分段真生效）。注意 **/life 默认落在「生活痕迹」段**，要验记录页签先点「记录」。
+  当前整套前端回归：home 77 / **home-skin 14** / **life 16** / **life-skin 16** / **batch6-skin 29** / chat 148 / **chat-skin 31** / providers 24 / llm 16 / **tokens 24** / **shell 31** / export 17 / offline 38 / diagnostics 36（共 **517 项**），全部通过。
+  `verify-tokens` 是换装第 1 批新增的地基哨兵（令牌 / 翻译层 / 通用积木）；`verify-shell` 是第 2 批新增的外壳哨兵（底栏 / 欢迎页 / 滑入 / **界面无 emoji**）；`verify-chat-skin` 是第 3 批新增的对话页哨兵（气泡方向底色 / 操作行常显 / 输入胶囊 / 能力入口）；`verify-home-skin` 是第 4 批新增的家页哨兵（Bento 真数据 / 诚实空态 / 全入口 / 模块子页顶栏）；`verify-life-skin` 是第 5 批新增的生活+设置哨兵（两套并排 / 诚实空态 / 设置重分组 / 主题分段真生效）；`verify-batch6-skin` 是第 6 批新增的真播放/伴学/独处哨兵（音频时长落盘 / 无链接明说拒绝 / 任务加勾删 / 程序化雨声落盘 / 沉浸无底栏），**必须排在 verify-life-skin 之后**（它写 listenSessions）。注意 **/life 默认落在「生活痕迹」段**，要验记录页签先点「记录」。
 
 **Phase 6.5 呈现层（T-038，已收口）**
 
@@ -293,7 +293,7 @@ habitat/
 
 ### 下一步
 
-1. 🎨 **UI 换装，第 6 批「补未落成功能」**（`docs/UI_DESIGN.md` §5 有完整批次表）：一起听真播放 → 学习伴学 → 独处空间 ——
+1. 🧹 **删 `theme/tokens.css` 翻译层收尾**（换装 6 批已全完成，旧名引用应已清零）——
    ⚠️ 沿用第 3 批的四条硬约束：**真网址一个不改**；**`data-testid` 一个不删**（验收有 344 处依赖，靠文案断言的逐个改成读属性）；
    界面**不再新增 emoji**（一律 `<QixiIcon name="…" />`）；假数据一律不搬（没数据就空态）。
    ⚠️ **别按「发送 / 停止 / ‹ › / ⋯」这类短文案找按钮** —— 顶栏与对话页的图标化已完成，定位走 `data-testid`。

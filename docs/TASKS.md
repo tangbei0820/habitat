@@ -2183,3 +2183,57 @@ AI 不能替北北确认（工具层硬编码 `decider='companion'`，模型传�
 
 - ⏳ 第 6 批未开始（一起听真播放 / 学习伴学 / 独处空间）
 - ⏳ 心情 / 睡眠两格等有了真实来源（Eventide 快照带这些字段，或将来做记录入口）再点亮；一起听 / 雨的时长统计随第 6 批真播放一起做
+
+### T-044 · 2026-09-25 · UI 换装第 6 批：一起听真播放 + 学习伴学 + 独处空间 —— **完成**
+
+**背景**：换装收官批（6/6）。补三个设计稿里有、栖息地里还是空壳的功能。铁律不变：
+**没有真实来源的数据一格不搬** —— 「小栖也在听」「小栖点评」「复习卡片」这类没有任何机制
+支撑的文案/模块，全都没做。
+
+**本批交付**
+
+| 项 | 文件 | 说明 |
+| --- | --- | --- |
+| 数据层 | `shared/types.ts` + `web/src/db/db.ts`（**v12**）+ `db/listen.ts` + `db/studyTasks.ts` | 新表 `listenSessions`（kind+dayKey 一天一行累加秒数）、`studyTasks`（按天归组）。⚠️ 两表**暂不在备份白名单**（`lib/backup.ts` 逐表枚举 v8，加表要升格式，本批刻意不碰，见遗留） |
+| 一起听真播放 | `web/src/features/home/MusicModule.tsx` 重写 | `<audio>` 真播 `externalUrl`（进度/时长/上下首都是真控件）；播放中每 15 秒 + 暂停/切歌/离开页面都把秒数落盘；**没链接的曲目播不了且明说原因**，不装假进度条；「收下一首歌」原能力字段没动（verify-home 依赖）；「小栖也在听」不搬 |
+| 学习伴学 | `web/src/features/home/StudyModule.tsx` 增两张卡 | 「今天的三件小事」（真存 Dexie，加/勾/删，隔天自动新页 —— 昨天没做完的不追今天，那会从「陪你」变「催你」）+「一周节奏」（真 studyRecords 聚合，没学的天是矮格子）；原 CRUD 表单没动 |
+| 独处空间 | `web/src/pages/solo/SoloPage.tsx` + `App.tsx` 路由 | `/solo` 沉浸页（**无胶囊底栏**，FULLSCREEN_ROUTE 加 solo —— 设计稿只有返回键）：呼吸圆计时（5/10/15 分钟）+ **程序化雨声**（Web Audio 白噪+低通+起伏，零音频资产）+ 轮换短句；秒数落盘 kind='rain' |
+| 生活痕迹点亮 | `web/src/pages/life/LifePage.tsx` | 「一起听」「雨」两格从诚实空态升级为**真时长 + 真入口**（`<Link>` 进音乐模块/独处页）；0 秒时仍显示空态文案；心情/睡眠仍诚实空态（本批没有给它们造来源） |
+| 换皮哨兵 | `web/scripts/verify-batch6-skin.mjs`（新，**29 条**） | 见下 |
+
+**验收随动**
+
+- `run-front-verify.sh`：挂 `verify-batch6-skin`（**必须在 verify-life-skin 之后** —— 它写 listenSessions，排前面会弄脏 life-skin 的空态断言）；EDGE 启动加 `--autoplay-policy=no-user-gesture-required`（无头下 `audio.play()` 否则被策略拒）。`run-skin-verify.sh` 同步加旗标。
+- `verify-life-skin.mjs` 的「一起听/雨空态」断言兼容新格（0 秒时文案不变），无需改。
+
+**验收（全部实跑）**
+
+| 项 | 结果 |
+| --- | --- |
+| `verify-batch6-skin.mjs`（新增，29 条） | **29/29**（清场可单跑；真音频用脚本内临时 HTTP 服务的 3 秒 WAV —— db 层 `optionalHttpUrl` 只收 http(s)，是防 `javascript:` 的安全边界，不为验收放松） |
+| 全量回归 home 77 / home-skin 14 / life-skin 16 / life 16 / **batch6-skin 29** / chat 148 / chat-skin 31 / providers 24 / llm 16 / tokens 24 / shell 31 / export 17 / offline 38 / diagnostics 36 | **517 项零失败** |
+| 两端 typecheck | 通过 |
+
+**踩过的坑（给下批提醒）**
+
+- 1 秒的验收音频会跟「每秒计数」的 interval 打竞速：onEnded 先于首个 tick 时 pending=0，落盘为空 → 用 3 秒 WAV + 播 2.2 秒手动暂停（onPause 也 flush）。
+- 歌单按 `updatedAt` **倒序**：新收的在前面 → 验收先收无链接曲、再收主题曲，播放器默认才落在主题曲上。
+- `type=url` 输入 + `optionalHttpUrl` 都拒 `data:` URI（表单约束校验会把 submit 静默拦掉）→ 验收音频走 http 直链。
+
+**遗留**
+
+- ⏳ `listenSessions` / `studyTasks` 不在备份白名单：加表要升备份格式（v8→v9）并处理旧版兼容，单独开一条任务做。
+- ⏳ 心情 / 睡眠两格仍空态：等 Eventide 快照带这些字段或将来做记录入口。
+- ⏳ 一起听播放中**每 15 秒**才落一次盘：离开页面有 flush 兜底，但极端情况（页面崩掉）最多丢 15 秒，可接受。
+
+**🎉 UI 换装 6 批全部完成。** 下一阶段：`theme/tokens.css` 翻译层的 551 处旧引用已随批次逐页清零，进入「删翻译层」收尾（见 UI_DESIGN §5）。
+
+**T-044 补记（同日 · 全量回归随动修复）**
+
+第 6 批首次全量回归暴露三件事，当场修掉：
+
+1. **版本断言过期**：`verify-home` / `verify-chat` 写死 Dexie v11（110）→ 升到 v12（120）断言（store 清单补 `listenSessions` / `studyTasks`）。
+2. **⚠️ 流水线级环境坑：验收库残留**：`run-front-verify.sh` 靠 `rm -f server/data/ui-chat.db*` 清库，但 WorkBuddy 终端的安全删除拦截（node-language-shim）在本轮删除数过阈值时把 rm **整个静默拦掉** → 库残留 → `verify-home` 的「启动期搬迁」断言连挂三轮（`stray-diary` 固定 id 撞上 `importDiaryIfAbsent` 幂等，新标题永远进不了列表）。**修法：server 验收库每轮用唯一文件名**（`ui-chat-$(date +%s).db`），不靠删；`ui-diag` 同改，`VERIFY_DB` 随动指向本轮文件名。诊断时的岔路：node 直连 CDP 的探针会在**进程退出时**被 SIGTERM（stdout 时有时无），别被它带偏 —— 输出落文件、或干脆用流水线基建加诊断。
+3. **`verify-offline` 竞速**：`clickText` 是一锤子买卖（missing 不重试），机器慢时「记录」点在两段开关挂载前的空气上 → 先等 `[data-testid="life-view-switch"]` 挂载、再等「月历」出现，才点「运行」。
+
+修完连跑两轮全量回归均 **517 项零失败**。
