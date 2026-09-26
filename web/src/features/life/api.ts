@@ -69,6 +69,17 @@ export function runAutomationCheck(): Promise<unknown> {
   return fetchJson('/api/automation/check', { method: 'POST', headers: jsonHeaders, body: '{}' })
 }
 
+/** Surf 订阅源（Phase 7C 收口）。`null` 入参 = 恢复默认源。 */
+export function loadSurfFeeds(): Promise<string[]> {
+  return fetchJson<{ feeds: string[] }>('/api/surf/feeds').then((result) => result.feeds)
+}
+
+export function saveSurfFeeds(feeds: string[] | null): Promise<string[]> {
+  return fetchJson<{ feeds: string[] }>('/api/surf/feeds', {
+    method: 'PUT', headers: jsonHeaders, body: JSON.stringify({ feeds }),
+  }).then((result) => result.feeds)
+}
+
 export function addWalletTransaction(delta: number, reason: string): Promise<void> {
   return fetchJson('/api/wallet/transactions', {
     method: 'POST', headers: jsonHeaders, body: JSON.stringify({ delta, reason }),

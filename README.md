@@ -76,7 +76,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆**只读**链路：`breath`(boot) / `trace`(search) 两路径、参数边界、已移除的写端点应 404、诊断留痕（21 项） |
 | `npx tsx scripts/probe-prompt-worldbook.ts` | server + mock（独立库） | 人格/世界书**真注入**断言（从 mock 上游抓实际 body）、选择器单测、CRUD 与校验（34 项） |
 | `npx tsx scripts/probe-eventide-history.ts` | 独立库（先 `SEED=1` 种子，再起 server 断言） | Eventide 历史快照端点：排序 / 形状 / limit 校验 / current 404（6 项） |
-| `bash .workbuddy/run-7b-probe.sh` | server(:3240) + mock(:3334) + 本地 RSS(:3399) | **Phase 7B**：唤醒决策契约（no-op 一等公民 / 多行动真落库 / 服务端约束校验 / 非法 JSON 不产半截行动 / 行动审计与幂等）+ Surf v1（选题 / 来源 / 指纹 / SSRF 拦截下诚实降级）+ feeds API + 纯函数（35 项） |
+| `bash .workbuddy/run-7b-probe.sh` | server(:3240) + mock(:3334) + 本地 RSS(:3399) | **Phase 7B**：唤醒决策契约（no-op 一等公民 / 多行动真落库 / 服务端约束校验 / 非法 JSON 不产半截行动 / 行动审计与幂等）+ Surf v1（选题 / 来源 / 指纹 / SSRF 拦截下诚实降级）+ feeds API + 纯函数 + **行动重放幂等**（同 runId 直驱执行器打两遍，T-055，共 48 项） |
 | `bash .workbuddy/run-7c-probe.sh` | server(:3241) + mock(:3334) + **mock MCP(:3335)** + 本地 RSS(:3398) | **Phase 7C 记忆沉淀**：`memory.write` 能力面（confirm + memory_write）、挂起阶段绝不写、参数非法当场回灌、批准后 hold 真调（读回有据）、拒绝保持没写、Surf 记录自动升格进 Nocturne（无确认卡、带来源、留审计）（28 项） |
 | `bash .workbuddy/run-3b4-probe.sh` | server(:3237) + mock + sidecar(:8234)；phase4 用**新实例** | Phase 3B 全链回归（21 项，唤醒默认消息语义兼容）+ Phase 4 全链回归（16 项，`unpricedCalls===1` 要求全新库） |
 | `npx tsx scripts/probe-nocturne-tools.ts` | **任何** Nocturne 实例（`MCP_NOCTURNE_URL`） | 工具面事实采集 / **漂移检测**：只握手 + `tools/list`，**不调用任何工具**；另有零依赖版 `.mjs` 与只要 `curl+python3` 的 `.sh` |

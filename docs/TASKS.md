@@ -2394,3 +2394,23 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 - `createSurfRecord` 只返回 `{id, fingerprint}`——沉淀要用 `chosen.*` 取来源字段，别假设返回值带 metadata。
 
 **待优化（后续批次）**：Surf 订阅源管理 UI（API 已有）；Wake 决策可考虑加 `memory` 行动类型（AI 在自主时刻主动沉淀，本批只做了 Surf 自动升格 + 对话内 confirm 写入两条路）；`window`/`letter` 两种 hold kind 未开放（实例内部/信件语义，等有产品需求）；确认卡仍无过期/撤销机制（T-053 遗留）。
+
+### T-055 · 2026-09-26 · Post-v1 真机验收前功能收口 —— **完成**
+
+**背景**：北北拍板「把到真机验收前需要的功能全部做完」。四件事全部来自前几批的遗留清单（T-052/T-053/T-054 待优化），功能面到此收口，下一动作 = 部署 + 真机验收。
+
+| 交付 | 说明 |
+| --- | --- |
+| Surf 订阅源管理 UI | 生活 → 运行 tab 新增「Surf 订阅源」面板（`SurfFeedsView`）：列表 / 单条移除 / 添加（http(s) 前置校验、去重、上限 10 条）/ 恢复默认；`features/life/api.ts` 加 `loadSurfFeeds` / `saveSurfFeeds`；`Panel` 组件加可选 `testId` |
+| Eventide 按天聚合 | 状态页趋势区加「逐快照 / 按天」模式切换：按本地日分组，每天显示首→末值与波动范围（min~max 或「稳定」）；解决同一天密集采样把逐点连线拉成锯齿的问题；纯前端，复用已有 history 数据 |
+| LifePage MCP 未配置口径 | `mcpUnconfigured` 从 `lastError === 'not configured'` 字符串口径改为 gateway 早已下发的 `server.configured === false`（T-052 遗留）——未配置与异常是两种病，UI 分开说 |
+| 行动重放幂等 E2E | `executeWakeAction` 从类私有提为**导出的模块级函数**（重放在生产来自调度器重入，HTTP 层触发不出来，导出是为了探针直驱）；`probe-decision-contract` 加第 8 节：同 runId+idx 把三类行动各打两遍，断言重放 skipped、产物不写重、同 runId 换新 idx 照常执行 |
+
+**验收**：决策契约探针 35 → **48 项全绿**（新增重放段 13 项）；回归 P0 51/51 + 事件收件箱 57/57 + 记忆沉淀 28/28 + Phase 3B 21/21 + Phase 4 16/16；前端流水线 16 支零失败；两端 typecheck 过。
+
+**本批踩坑**
+
+- ⚠️ **探针直驱 server 模块时 DB 路径必须 export**（`run-7b-probe.sh` 改为 `export HABITAT_DB_PATH`）—— 否则探针进程按默认路径开 `./data/habitat.db`，重放产物全写进开发库（T-044「库残留」教训的变体：这次是污染源反过来）。
+- `Panel` 这类本地小组件不接 `data-testid` 要先扩 prop，别硬塞（TS 会拦）。
+
+**待优化（后续批次）**：Wake 决策可加 `memory` 行动类型；`window`/`letter` hold kind 未开放；确认卡无过期/撤销机制；Surf 主题级指纹去重；Sticker / ElevenLabs TTS / 一起听 / 共读 / Life Timeline / 通知偏好（POST_V1_PLAN P1/P2，v1 后再做）。

@@ -271,5 +271,46 @@ check('Atom link href 形态也能抽', parseFeed('<feed xmlns="http://www.w3.or
 check('指纹：utm 剥掉、host+path 稳定', fingerprintOf('https://sspai.com/post/1?utm_source=x&id=2') === 'sspai.com/post/1?id=2', fingerprintOf('https://sspai.com/post/1?utm_source=x&id=2'))
 check('指纹：尾斜杠归一', fingerprintOf('https://sspai.com/post/1/') === fingerprintOf('https://sspai.com/post/1'))
 
+/* ------------------------------------------------- 8. 行动重放幂等（同 runId 直驱执行器，T-055） */
+console.log('\n[8] 行动重放幂等')
+
+// 重放在生产里来自调度器重入 / 上游重试，HTTP 层触发不出来（每次 checkNow 都是新 runId），
+// 所以这里像第 7 节一样直驱模块：拿同一个 runId+idx 把执行器打两遍，
+// 断言第二遍被 (runId, idx) 唯一键拦住、产物不写重。全程探针进程内完成，与 server 各用各的库连接。
+{
+  const { executeWakeAction } = await import('../src/services/automation.js')
+  const { listMoments } = await import('../src/db/moment.js')
+  const { listNotifications } = await import('../src/db/activity.js')
+  const { listCompanionDiaryViews } = await import('../src/db/diary.js')
+
+  const replayRunId = `probe-replay-${Date.now()}`
+  const stamp = Date.now()
+  const actions: Array<{ idx: number; type: 'message' | 'messageboard' | 'diary'; content: string; title?: string }> = [
+    { idx: 0, type: 'message', content: `重放探针消息 ${stamp}` },
+    { idx: 1, type: 'messageboard', content: `重放探针留言 ${stamp}` },
+    { idx: 2, type: 'diary', content: `重放探针日记正文 ${stamp}`, title: '重放探针日记' },
+  ]
+  const productCount = (type: string): number => {
+    if (type === 'message') return listNotifications(200).filter((item) => item.body === `重放探针消息 ${stamp}`).length
+    if (type === 'messageboard') return listMoments().filter((item) => item.content === `重放探针留言 ${stamp}`).length
+    return listCompanionDiaryViews().filter((item) => item.content === `重放探针日记正文 ${stamp}`).length
+  }
+  const idxById = new Map(actions.map((item) => [item.idx, item]))
+
+  for (const action of actions) {
+    const first = await executeWakeAction(replayRunId, action.idx, action, new Date())
+    check(`[首执] ${action.type} completed 且带 refId`, first.status === 'completed' && first.refId !== null, JSON.stringify(first))
+    check(`[首执] ${action.type} 产物恰好一条`, productCount(action.type) === 1)
+  }
+  for (const action of actions) {
+    const again = await executeWakeAction(replayRunId, action.idx, idxById.get(action.idx)!, new Date())
+    check(`[重放] ${action.type} 被幂等拦下（skipped）`, again.status === 'skipped', JSON.stringify(again))
+    check(`[重放] ${action.type} 产物没有写重（仍恰好一条）`, productCount(action.type) === 1)
+  }
+  // 换 idx 不拦 —— 同一 run 的另一个位置照常执行（幂等键是 (runId, idx) 不是 runId）
+  const newIdx = await executeWakeAction(replayRunId, 9, { idx: 9, type: 'messageboard', content: `重放探针新位置 ${stamp}` }, new Date())
+  check('同 runId 换新 idx 照常执行（幂等键是 (runId, idx)）', newIdx.status === 'completed', JSON.stringify(newIdx))
+}
+
 console.log(`\n=== 决策契约验收：${passed} passed / ${failed} failed ===`)
 process.exitCode = failed === 0 ? 0 : 1

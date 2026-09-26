@@ -10,9 +10,10 @@ import {
 } from '../../components/qixi/Icons'
 import {
   addPriceSnapshot, addWalletTransaction, loadLifeDay, loadLifeLedger, loadLifeMonth,
-  loadLifeRuntime, loadNotifications, loadPushStatus, markAllNotificationsRead,
-  markNotificationRead, runAutomationCheck, type LifeDayDetail,
+  loadLifeRuntime, loadNotifications, loadPushStatus, loadSurfFeeds, markAllNotificationsRead,
+  markNotificationRead, runAutomationCheck, saveSurfFeeds, type LifeDayDetail,
 } from '../../features/life/api'
+import { ApiRequestError } from '../../lib/api'
 import { browserPushSupported, currentPushSubscription, disablePush, enablePush } from '../../features/life/push'
 import { useOnlineStatus } from '../../features/offline/useOnlineStatus'
 import { stateValue } from '../../lib/format'
@@ -38,8 +39,8 @@ function dateTime(value: number | null): string {
   }).format(value)
 }
 function money(cents: number): string { return `${(cents / 100).toFixed(2)} 元` }
-function Panel({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-xl border p-4 ${className}`} style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-surface-solid)' }}>{children}</section>
+function Panel({ children, className = '', testId }: { children: ReactNode; className?: string; testId?: string }) {
+  return <section data-testid={testId} className={`rounded-xl border p-4 ${className}`} style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-surface-solid)' }}>{children}</section>
 }
 function ErrorLine({ value }: { value: string | null }) {
   return value === null ? null : <p className="rounded-lg p-3 text-sm" style={{ color: 'var(--danger)', background: 'var(--bg-subtle)' }}>{value}</p>
@@ -145,9 +146,51 @@ function RuntimeView() {
   const refresh = useCallback(() => loadLifeRuntime().then(setRuntime), [])
   useEffect(() => { void refresh().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))) }, [refresh])
   async function checkNow() { setChecking(true); setError(null); try { await runAutomationCheck(); await refresh() } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) } finally { setChecking(false) } }
+  // 「未配置」看 gateway 下发的 configured 字段（没配 URL），别拿 lastError 字符串猜——
+  // 那是两种病：未配置 ≠ 异常（gateway.health 注释原文）
   const mcpUnconfigured = runtime?.mcp.servers.length === 0
-    || runtime?.mcp.servers.every((server) => server.lastError === 'not configured') === true
-  return <div className="space-y-3"><ErrorLine value={error}/><LoadingOrEmpty loading={runtime === null && error === null} empty={false}>{runtime && <><div className="grid grid-cols-2 gap-2 text-sm"><Panel><span>habitat-server</span><strong className="block">{statusLabel(runtime.server.ok)}</strong></Panel><Panel><span>Eventide</span><strong className="block">{statusLabel(runtime.eventide.ok, runtime.eventide.configured)}</strong></Panel><Panel><span>MCP</span><strong className="block">{mcpUnconfigured ? '未配置' : statusLabel(runtime.mcp.ok)}</strong></Panel><Panel><span>主动行为</span><strong className="block">{runtime.automation.policy.enabled ? '已开启' : '已关闭'}</strong></Panel></div><div className="flex justify-end"><Link to="/life/eventide" data-testid="eventide-open" className="text-xs underline" style={{ color: 'var(--accent-strong)' }}>看状态详情（趋势 / 变化 / raw）</Link></div><Panel><h2 className="mb-2 font-medium">当前状态</h2>{runtime.bodyState === null ? <p className="text-sm">暂无 Eventide 快照</p> : <div className="grid grid-cols-2 gap-2 text-sm">{Object.entries(runtime.bodyState.payload).map(([key, value]) => <div key={key}><span style={{ color: 'var(--text-secondary)' }}>{key}</span><strong className="ml-2">{stateValue(value)}</strong></div>)}</div>}</Panel><Panel><div className="flex items-center justify-between"><h2 className="font-medium">主动行为运行态</h2><button disabled={checking || !online} onClick={() => void checkNow()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">{checking ? '检查中…' : '立即检查'}</button></div><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><span>最近互动<strong className="block">{dateTime(runtime.automation.runtime.lastCounterpartAt)}</strong></span><span>最近唤醒<strong className="block">{dateTime(runtime.automation.runtime.lastWakeAt)}</strong></span><span>连续未回复<strong className="block">{runtime.automation.runtime.unansweredWakes}</strong></span><span>时区<strong className="block">{runtime.automation.policy.timeZone}</strong></span></div></Panel><Panel><h2 className="mb-2 font-medium">最近运行</h2>{runtime.automation.runs.length === 0 ? <p className="text-sm">尚无运行记录</p> : runtime.automation.runs.map((run) => <div key={run.id} className="border-t py-2 text-sm"><strong>{run.kind} · {run.status}</strong><small className="block" style={{ color: 'var(--text-secondary)' }}>{dateTime(run.at)}{run.reason ? ` · ${run.reason}` : ''}</small></div>)}</Panel></>}</LoadingOrEmpty></div>
+    || runtime?.mcp.servers.every((server) => !server.configured) === true
+  return <div className="space-y-3"><ErrorLine value={error}/><LoadingOrEmpty loading={runtime === null && error === null} empty={false}>{runtime && <><div className="grid grid-cols-2 gap-2 text-sm"><Panel><span>habitat-server</span><strong className="block">{statusLabel(runtime.server.ok)}</strong></Panel><Panel><span>Eventide</span><strong className="block">{statusLabel(runtime.eventide.ok, runtime.eventide.configured)}</strong></Panel><Panel><span>MCP</span><strong className="block">{mcpUnconfigured ? '未配置' : statusLabel(runtime.mcp.ok)}</strong></Panel><Panel><span>主动行为</span><strong className="block">{runtime.automation.policy.enabled ? '已开启' : '已关闭'}</strong></Panel></div><div className="flex justify-end"><Link to="/life/eventide" data-testid="eventide-open" className="text-xs underline" style={{ color: 'var(--accent-strong)' }}>看状态详情（趋势 / 变化 / raw）</Link></div><Panel><h2 className="mb-2 font-medium">当前状态</h2>{runtime.bodyState === null ? <p className="text-sm">暂无 Eventide 快照</p> : <div className="grid grid-cols-2 gap-2 text-sm">{Object.entries(runtime.bodyState.payload).map(([key, value]) => <div key={key}><span style={{ color: 'var(--text-secondary)' }}>{key}</span><strong className="ml-2">{stateValue(value)}</strong></div>)}</div>}</Panel><Panel><div className="flex items-center justify-between"><h2 className="font-medium">主动行为运行态</h2><button disabled={checking || !online} onClick={() => void checkNow()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">{checking ? '检查中…' : '立即检查'}</button></div><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><span>最近互动<strong className="block">{dateTime(runtime.automation.runtime.lastCounterpartAt)}</strong></span><span>最近唤醒<strong className="block">{dateTime(runtime.automation.runtime.lastWakeAt)}</strong></span><span>连续未回复<strong className="block">{runtime.automation.runtime.unansweredWakes}</strong></span><span>时区<strong className="block">{runtime.automation.policy.timeZone}</strong></span></div></Panel><Panel><h2 className="mb-2 font-medium">最近运行</h2>{runtime.automation.runs.length === 0 ? <p className="text-sm">尚无运行记录</p> : runtime.automation.runs.map((run) => <div key={run.id} className="border-t py-2 text-sm"><strong>{run.kind} · {run.status}</strong><small className="block" style={{ color: 'var(--text-secondary)' }}>{dateTime(run.at)}{run.reason ? ` · ${run.reason}` : ''}</small></div>)}</Panel><SurfFeedsView/></>}</LoadingOrEmpty></div>
+}
+
+/**
+ * Surf 订阅源管理（Phase 7C 收口）。独处时小栖从这些源里挑一篇读 ——
+ * 源就是她的「视野」，给北北一个看得见、改得动的入口，而不是只在 API 里存在。
+ * 最多 10 条、必须 http(s)（服务端同规则校验，这里只是提前拦）。
+ */
+function SurfFeedsView() {
+  const [feeds, setFeeds] = useState<string[] | null>(null)
+  const [draft, setDraft] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const refresh = useCallback(() => loadSurfFeeds().then(setFeeds), [])
+  useEffect(() => { void refresh().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))) }, [refresh])
+  function persist(next: string[] | null) {
+    setBusy(true); setError(null)
+    saveSurfFeeds(next)
+      .then((saved) => { setFeeds(saved); setDraft('') })
+      .catch((reason: unknown) => setError(reason instanceof ApiRequestError ? reason.message : String(reason)))
+      .finally(() => setBusy(false))
+  }
+  function addFeed(event: FormEvent) {
+    event.preventDefault()
+    const url = draft.trim()
+    if (url === '' || feeds === null || busy) return
+    if (!/^https?:\/\//i.test(url)) { setError('订阅源必须是 http(s) 链接'); return }
+    if (feeds.includes(url)) { setError('这条订阅源已经在列表里了'); return }
+    if (feeds.length >= 10) { setError('订阅源最多 10 条'); return }
+    persist([...feeds, url])
+  }
+  return <Panel data-testid="surf-feeds-panel"><div className="flex items-center justify-between"><h2 className="font-medium">Surf 订阅源</h2><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>独处时从这里挑一篇读</span></div>
+    <ErrorLine value={error}/>
+    {feeds === null ? <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>正在读取…</p> : (
+      <>
+        <div className="mt-3 space-y-2">{feeds.map((feed) => <div key={feed} data-testid="surf-feed-item" className="flex items-center justify-between gap-2 text-sm"><span className="break-all" style={{ color: 'var(--text-secondary)' }}>{feed}</span><button type="button" data-testid="surf-feed-remove" disabled={busy || feeds.length <= 1} aria-label={`移除 ${feed}`} onClick={() => persist(feeds.filter((item) => item !== feed))} className="shrink-0 text-xs underline disabled:opacity-40" style={{ color: 'var(--danger)' }}>移除</button></div>)}</div>
+        <form className="mt-3 flex gap-2" onSubmit={addFeed}><input data-testid="surf-feed-input" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="https://…（RSS 地址）" className="min-w-0 flex-1 rounded-lg border bg-transparent px-3 py-2 text-sm"/><button data-testid="surf-feed-add" disabled={busy || draft.trim() === ''} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">添加</button></form>
+        <div className="mt-2 flex justify-end"><button type="button" data-testid="surf-feed-reset" disabled={busy} onClick={() => persist(null)} className="text-xs underline" style={{ color: 'var(--text-secondary)' }}>恢复默认订阅源</button></div>
+      </>
+    )}
+  </Panel>
 }
 
 /**

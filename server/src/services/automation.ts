@@ -160,6 +160,62 @@ function parseDecisionActions(parsed: unknown): { actions: WakeAction[]; dropped
   return { actions, dropped }
 }
 
+/**
+ * 执行单个唤醒行动。**幂等**：`(runId, idx)` 已落过审计的直接跳过 ——
+ * 决策输出重放（调度器重入、上游重试）不会把同一条留言/日记写两遍。
+ *
+ * 行动失败**不抛**：落一条 `failed` 审计，让 run 继续（一个行动失败不该连坐其它行动），
+ * 整轮仍按 completed 收 —— outcome 在行动级，不在 run 级。
+ *
+ * 导出（而非藏在类里）是为了让验收探针能直接驱动「同 runId 重放」这条路径 ——
+ * 重放在生产里来自调度器重入与上游重试，HTTP 层触发不出来（每次 checkNow 都是新 runId）。
+ */
+export async function executeWakeAction(
+  runId: string,
+  idx: number,
+  action: WakeAction,
+  now: Date,
+  log?: FastifyBaseLogger,
+): Promise<{ status: 'completed' | 'failed' | 'skipped'; refId: string | null }> {
+  if (hasAutomationAction(runId, idx)) {
+    return { status: 'skipped', refId: null }
+  }
+  try {
+    let refId: string | null = null
+    if (action.type === 'message') {
+      const notice = createNotification('wake', '小栖发来一条消息', action.content, { runId })
+      void sendWebPush(notice).catch((error: unknown) => {
+        log?.warn({ err: error }, 'Web Push 发送失败，站内通知已保留')
+      })
+      refId = notice.id
+    } else if (action.type === 'messageboard') {
+      const moment = createCompanionMoment(action.content)
+      refId = moment.id
+    } else {
+      const diary = createCompanionDiary({
+        title: action.title ?? '（无题）',
+        content: action.content,
+        entryDate: action.entryDate ?? '',
+      })
+      refId = diary.id
+    }
+    const written = insertAutomationAction({
+      runId, idx, type: action.type, status: 'completed', refId, at: now.getTime(),
+    })
+    // written=false 说明并发下别的执行者已经落过 —— 产物可能写重了，但审计只有一份；
+    // 唯一键兜底的是「调度器重入」，真正的并发执行已被 checkNow 的 running 闸拦住
+    if (!written) return { status: 'skipped', refId: null }
+    appendEventLog(`automation.action.${action.type}.completed`, { runId, idx }, refId, now.getTime())
+    return { status: 'completed', refId }
+  } catch (error) {
+    const reason = errorMessage(error)
+    insertAutomationAction({ runId, idx, type: action.type, status: 'failed', reason, at: now.getTime() })
+    appendEventLog(`automation.action.${action.type}.failed`, { runId, idx, error: reason }, runId, now.getTime())
+    log?.warn({ err: error }, '唤醒行动执行失败')
+    return { status: 'failed', refId: null }
+  }
+}
+
 export class AutomationService {
   private running = false
 
@@ -256,7 +312,7 @@ export class AutomationService {
       }
       let disturbed = false
       for (const action of actions) {
-        const outcome = await this.executeWakeAction(runId, action.idx, action, now)
+        const outcome = await executeWakeAction(runId, action.idx, action, now, this.logger)
         if (outcome.status === 'completed' && action.type === 'message') disturbed = true
       }
       markWakeDecision(now.getTime(), disturbed)
@@ -272,58 +328,6 @@ export class AutomationService {
       appendEventLog('automation.wake.failed', { error: reason }, runId, now.getTime())
       this.logger.warn({ err: error }, '主动唤醒失败')
       return { kind: 'wake', status: 'failed', reason, refId: runId }
-    }
-  }
-
-  /**
-   * 执行单个唤醒行动。**幂等**：`(runId, idx)` 已落过审计的直接跳过 ——
-   * 决策输出重放（调度器重入、上游重试）不会把同一条留言/日记写两遍。
-   *
-   * 行动失败**不抛**：落一条 `failed` 审计，让 run 继续（一个行动失败不该连坐其它行动），
-   * 整轮仍按 completed 收 —— outcome 在行动级，不在 run 级。
-   */
-  private async executeWakeAction(
-    runId: string,
-    idx: number,
-    action: WakeAction,
-    now: Date,
-  ): Promise<{ status: 'completed' | 'failed' | 'skipped'; refId: string | null }> {
-    if (hasAutomationAction(runId, idx)) {
-      return { status: 'skipped', refId: null }
-    }
-    try {
-      let refId: string | null = null
-      if (action.type === 'message') {
-        const notice = createNotification('wake', '小栖发来一条消息', action.content, { runId })
-        void sendWebPush(notice).catch((error: unknown) => {
-          this.logger.warn({ err: error }, 'Web Push 发送失败，站内通知已保留')
-        })
-        refId = notice.id
-      } else if (action.type === 'messageboard') {
-        const moment = createCompanionMoment(action.content)
-        refId = moment.id
-      } else {
-        const diary = createCompanionDiary({
-          title: action.title ?? '（无题）',
-          content: action.content,
-          entryDate: action.entryDate ?? '',
-        })
-        refId = diary.id
-      }
-      const written = insertAutomationAction({
-        runId, idx, type: action.type, status: 'completed', refId, at: now.getTime(),
-      })
-      // written=false 说明并发下别的执行者已经落过 —— 产物可能写重了，但审计只有一份；
-      // 唯一键兜底的是「调度器重入」，真正的并发执行已被 checkNow 的 running 闸拦住
-      if (!written) return { status: 'skipped', refId: null }
-      appendEventLog(`automation.action.${action.type}.completed`, { runId, idx }, refId, now.getTime())
-      return { status: 'completed', refId }
-    } catch (error) {
-      const reason = errorMessage(error)
-      insertAutomationAction({ runId, idx, type: action.type, status: 'failed', reason, at: now.getTime() })
-      appendEventLog(`automation.action.${action.type}.failed`, { runId, idx, error: reason }, runId, now.getTime())
-      this.logger.warn({ err: error }, '唤醒行动执行失败')
-      return { status: 'failed', refId: null }
     }
   }
 

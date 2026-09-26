@@ -122,6 +122,29 @@ export function EventidePage() {
 
   const activeTrend = trendKey ?? numericKeys[0] ?? null
 
+  /** 趋势视图模式：快照 = 逐点连线（原样）；按天 = 跨天聚合（T-055），每天首→末值与波动幅度 */
+  const [mode, setMode] = useState<'snapshot' | 'daily'>('snapshot')
+
+  const dailyStats = useMemo(() => {
+    if (activeTrend === null) return []
+    const byDay = new Map<string, { first: number; last: number; min: number; max: number }>()
+    for (const point of points) {
+      const value = point.payload[activeTrend]
+      if (!isNumber(value)) continue
+      const at = new Date(point.settledAt)
+      const dayKey = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
+      const day = byDay.get(dayKey)
+      if (day === undefined) {
+        byDay.set(dayKey, { first: value, last: value, min: value, max: value })
+      } else {
+        day.last = value
+        day.min = Math.min(day.min, value)
+        day.max = Math.max(day.max, value)
+      }
+    }
+    return [...byDay.entries()].map(([dayKey, stat]) => ({ dayKey, ...stat }))
+  }, [points, activeTrend])
+
   return (
     <div className={slide}>
       <div className="topbar">
@@ -189,7 +212,34 @@ export function EventidePage() {
                       </button>
                     ))}
                   </div>
-                  {trendValues.length > 0 ? (
+                  {/* 视图模式：快照逐点 / 按天聚合（跨天后逐点连线会被同一天的密集采样拉成锯齿） */}
+                  <div className="mt-2 flex gap-1.5" data-testid="eventide-mode-switch">
+                    <button
+                      type="button"
+                      data-testid="eventide-mode-snapshot"
+                      className={`rounded-full border px-2.5 py-0.5 text-xs${mode === 'snapshot' ? ' is-on' : ''}`}
+                      style={{
+                        borderColor: mode === 'snapshot' ? 'var(--accent-strong)' : 'var(--border-soft)',
+                        color: mode === 'snapshot' ? 'var(--accent-strong)' : 'var(--text-secondary)',
+                      }}
+                      onClick={() => setMode('snapshot')}
+                    >
+                      逐快照
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="eventide-mode-daily"
+                      className={`rounded-full border px-2.5 py-0.5 text-xs${mode === 'daily' ? ' is-on' : ''}`}
+                      style={{
+                        borderColor: mode === 'daily' ? 'var(--accent-strong)' : 'var(--border-soft)',
+                        color: mode === 'daily' ? 'var(--accent-strong)' : 'var(--text-secondary)',
+                      }}
+                      onClick={() => setMode('daily')}
+                    >
+                      按天
+                    </button>
+                  </div>
+                  {mode === 'snapshot' && (trendValues.length > 0 ? (
                     <>
                       <Sparkline values={trendValues} />
                       <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
@@ -198,7 +248,26 @@ export function EventidePage() {
                     </>
                   ) : (
                     <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>该维度暂无数值点。</p>
-                  )}
+                  ))}
+                  {mode === 'daily' && (dailyStats.length > 0 ? (
+                    <div className="mt-2" data-testid="eventide-daily-list">
+                      <div className="grid grid-cols-[auto_1fr_auto] gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        <span>日期</span><span>首 → 末</span><span>波动</span>
+                        {dailyStats.map((day) => (
+                          <div key={day.dayKey} data-testid="eventide-daily-row" className="contents">
+                            <span style={{ color: 'var(--text-primary)' }}>{day.dayKey}</span>
+                            <strong>{day.first} → {day.last}</strong>
+                            <span>{day.min === day.max ? `稳定 ${day.min}` : `${day.min} ~ ${day.max}`}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                        共聚合 {dailyStats.length} 天（每天取当日快照的首值、末值与波动范围）
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>该维度暂无数值点。</p>
+                  ))}
                 </>
               )}
             </section>
