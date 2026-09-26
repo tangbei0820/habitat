@@ -2414,3 +2414,17 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 - `Panel` 这类本地小组件不接 `data-testid` 要先扩 prop，别硬塞（TS 会拦）。
 
 **待优化（后续批次）**：Wake 决策可加 `memory` 行动类型；`window`/`letter` hold kind 未开放；确认卡无过期/撤销机制；Surf 主题级指纹去重；Sticker / ElevenLabs TTS / 一起听 / 共读 / Life Timeline / 通知偏好（POST_V1_PLAN P1/P2，v1 后再做）。
+
+### T-056 · 2026-09-26 · 生产站全量更新（T-051~T-055 上线）—— **完成**
+
+按 `DEPLOYMENT.md` §6.2 runbook 执行，全程 SSH 免密（`~/.ssh/habitat_vps`），北北零操作：
+
+| 步 | 结果 |
+| --- | --- |
+| 前置确认 | `be66f43`（部署基线）→ HEAD 的 package.json **零 diff** ⇒ 跳过 npm install（better-sqlite3 不重编译） |
+| 本地构建 | `npm run build`（vite 6，PWA precache 13 项 / 690 KiB，与 T-050 同形态） |
+| 数据库备份 | `cp data/habitat.db data/habitat.db.bak-2026-09-26`（解压前做） |
+| 打包上传 | tar 排除 node_modules/.git/server/data/.workbuddy/本地无 .env ⇒ 服务器 `.env` 与生产库不可能被覆盖 |
+| 重启验证 | `systemctl restart habitat-server` → active；health 200；**新代码标记** `/api/surf/feeds` 返回默认源（旧代码 404）；nginx 下发新产物 `assets/index-CKsLavCS.js`；MCP 工具面 probe 2/2 |
+
+**待办移交**：真机验收 §6.6 第 2~5、7 条（浏览器填 key 发消息 / SW 激活+安装 / 断网只读 / 备份往返 / Android PWA）——需要北北的浏览器和手机，agent 测不了。
