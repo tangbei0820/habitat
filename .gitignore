@@ -15,3 +15,4 @@ __pycache__/
 # 本地运行数据（SQLite），不入库
 server/data/*
 !server/data/.gitkeep
+server/server/
