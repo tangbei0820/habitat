@@ -76,6 +76,8 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆**只读**链路：`breath`(boot) / `trace`(search) 两路径、参数边界、已移除的写端点应 404、诊断留痕（21 项） |
 | `npx tsx scripts/probe-prompt-worldbook.ts` | server + mock（独立库） | 人格/世界书**真注入**断言（从 mock 上游抓实际 body）、选择器单测、CRUD 与校验（34 项） |
 | `npx tsx scripts/probe-eventide-history.ts` | 独立库（先 `SEED=1` 种子，再起 server 断言） | Eventide 历史快照端点：排序 / 形状 / limit 校验 / current 404（6 项） |
+| `bash .workbuddy/run-7b-probe.sh` | server(:3240) + mock(:3334) + 本地 RSS(:3399) | **Phase 7B**：唤醒决策契约（no-op 一等公民 / 多行动真落库 / 服务端约束校验 / 非法 JSON 不产半截行动 / 行动审计与幂等）+ Surf v1（选题 / 来源 / 指纹 / SSRF 拦截下诚实降级）+ feeds API + 纯函数（35 项） |
+| `bash .workbuddy/run-3b4-probe.sh` | server(:3237) + mock + sidecar(:8234)；phase4 用**新实例** | Phase 3B 全链回归（21 项，唤醒默认消息语义兼容）+ Phase 4 全链回归（16 项，`unpricedCalls===1` 要求全新库） |
 | `npx tsx scripts/probe-nocturne-tools.ts` | **任何** Nocturne 实例（`MCP_NOCTURNE_URL`） | 工具面事实采集 / **漂移检测**：只握手 + `tools/list`，**不调用任何工具**；另有零依赖版 `.mjs` 与只要 `curl+python3` 的 `.sh` |
 | `MCP_NOCTURNE_URL=… npx tsx scripts/probe-nocturne-live.ts` | **自己部署的实例** + 反代已转发 `/mcp-<密钥>` | 反向代理 / Bearer Token（含无凭据对照）/ `X-Namespace` / 工具面 / 只读纪律（真机 **26/26**；默认遮蔽秘密路径） |
 | ~~`npx tsx scripts/probe-nocturne-demo.ts`~~ | ~~**公网**（Nocturne 官方只读 Demo）~~ | ⛔ **已废弃**（其工具面假设与自部署实例 0/2 命中，脚本已清空实现） |

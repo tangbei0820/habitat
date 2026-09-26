@@ -2351,3 +2351,25 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 - 探针不幂等：连跑两次共享同一库会让「列表排序」这类断言假红 —— **每轮换唯一库文件名**（与验收库同规矩）。
 
 **待优化（后续批次）**：世界书 keyword 匹配无分词/词形还原（中文场景够用）；Eventide 趋势无跨天聚合视图；`/api/health/mcp` 的 `configured` 字段可回填给 LifePage 的 mcpUnconfigured 判断（现用 lastError 口径恰好没人触发）。
+
+### T-053 · 2026-09-26 · Post-v1 Phase 7B：自主生活决策链（Wake 多行动/no-op + 写类自主化 + Surf v1）—— **完成**
+
+**背景**：7A 收齐后按 `POST_V1_PLAN.md` §5 Phase 7B 全范围推进，参考实查 `proactive-web-surf-agent`（Surf）+ ghost-bf 映射（规划文件 §8 已提炼）。规范先行：PRODUCT_SPEC §3.2.3 / §3.4.5 改为已实现语义，§9.5.2 落决策契约、§9.5.3 落 Surf v1、§9.7 落自主级别变化。
+
+| 切片 | 交付 | 说明 |
+| --- | --- | --- |
+| 决策契约 + 行动执行器 | `runWake` 重写为「触发→上下文→决策→行动→结果」 | 触发器只提供上下文，**no-op 是一等公民**（空 actions：不算打扰、不推进未回复计数，但仍推进冷却——防调度器把每日次数烧在空转上）；`message` 是唯一打扰类（单轮 ≤1），留言/日记不推送；**约束全在服务端校验**（类型白名单/条数/长度，超限丢弃并落事件日志）；决策轮一次性生成全部内容，执行器零 LLM；`automation_action` 表 `(run_id, idx)` 唯一 = 行动幂等；`markWakeDecision(at, disturbed)` 拆分冷却与打扰计数 |
+| 写类自主化 | `diary.create` / `diary.update` / `messageboard.write` → `autonomous` | executeTool 直执行分支（上限与用户侧接口一致），写类调用落 appendEventLog 审计；event-inbox 收窄（不再产生新确认卡，executeToolConfirm 保留消化历史挂起事件）；确认协议保留给未来 memory.write |
+| Solitude Surf v1 | `lib/rss.ts`（零依赖 RSS/Atom 解析）+ `lib/web-fetch.ts`（只读取回：协议白名单 + 本机/内网/云元数据黑名单 + 10s/1MB 上限）+ `db/surf.ts` | feeds 存 app_kv（默认少数派+36kr，`GET/PUT /api/surf/feeds`）；流程 = 并行拉源 → 有界候选 24 条 → 模型只选一篇并说为什么 → 取正文 → 写带完整来源的私人记录；URL 指纹（剥 utm）近 14 天去重；记录复用 solitude_entry（metadata kind=surf），**零 schema 变更**；候选全重复/一篇都不想看/任何环节失败 → 降级普通整理记录；订阅源与网页内容一律包标记 + prompt 明示「不可信数据」 |
+| 审计与验收 | runs API 按 run 聚合返回行动审计；`probe-decision-contract.ts` 35 项 + `run-7b-probe.sh` | mock 上游加 `/__script` 脚本队列（探针精确控制每轮决策输出）；35 项覆盖 no-op 语义/多行动真落库/约束校验/非法 JSON/行动审计/Surf 来源与指纹/SSRF 拦截下诚实降级/feeds API/纯函数 |
+
+**验收**：决策契约 **35/35**；Phase 3B 回归 **21/21**（mock 默认决策保持「发一条消息」语义，phase3b 零改动通过）；Phase 4 回归 **16/16**；P0 50/50 + 事件收件箱 57/57；前端全量流水线 16 支全过零失败（home 77 / chat 155 / llm 17 / runtime 18 / tokens 23 / shell 31 / export 21 / prod 10 / offline 38 / diagnostics 36 等）；两端 typecheck 过。
+
+**本批踩坑**
+
+- ⚠️⚠️ **python 原地改文件用 `io.open(p,'w')` 会先截断再执行后续语句** —— 中途断言失败直接把 `shared/types.ts` 清成 0 字节（git 恢复，虚惊一场）。**铁律：原地编辑一律用 Edit 工具；python 只用于追加（append 模式）或先写临时文件。**
+- ⚠️ **「新增一条聊天轮」会消耗「已决事件结果只注入一次」的额度** —— probe-event-inbox 里把「重复同意」断言插在结果注入验证之前，导致第 10 节扑空。测试步骤的顺序是语义的一部分。
+- ⚠️ **共享一个 server 跑多个探针会状态污染**：phase4 的「本月未定价调用 === 1」要求全新库，phase3b 先跑必炸 —— **运行脚本里给 phase4 换独立实例**。探针前提里凡有「恰好 N 条」类断言都要写明「全新库」。
+- mock 上游的默认决策响应要保持与旧探针语义兼容（wake 默认发消息而不是 no-op），否则 phase3b 全线假红。
+
+**待优化（后续批次）**：Surf 去重只按 URL 指纹，「同话题不同文章」需主题级指纹；Surf 的订阅源还没有管理 UI（API 已有，配好即用）；「记忆沉淀」待 memory.write 落地后把 Surf 记录升格进 Nocturne；行动重放幂等的 E2E 断言（同 runId 重放）目前靠唯一键保证，未从探针驱动（API 触发不了同 runId 二次执行）；wake 决策 JSON 的 modelHint 未随快照下发（后台调用不走工具面）。

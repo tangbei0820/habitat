@@ -33,6 +33,19 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  */
 let lastChatBody: unknown = null
 
+/**
+ * 后台决策的脚本队列（Phase 7B 验收钩子）。
+ *
+ * 唤醒决策 / Surf 选题 / Surf 记录这三类后台调用的内容由探针经 `POST /__script`
+ * 预先排队，mock 每收到对应块名的调用就 `shift` 一个出来 ——
+ * 这样探针可以精确控制「这轮决策做什么」而不用碰 prompt。
+ */
+const script: { wake: string[]; surfSelect: string[]; surfRecord: string[] } = {
+  wake: [],
+  surfSelect: [],
+  surfRecord: [],
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -191,6 +204,23 @@ function backgroundReply(body: Record<string, unknown>): string[] | null {
   if (names.includes('eventide_dream')) {
     return [JSON.stringify({ content: '梦里有一盏一直亮着的小灯，醒来时心情很柔软。', after_effect_tags: ['tender'] })]
   }
+  // Phase 7B 后台决策：从脚本队列取下一个响应（probe-decision-contract 用），
+  // 队列空时给安全默认值 —— 唤醒默认发一条消息（与 Phase 3B 唤醒语义一致，
+  // probe-phase3b 的「通知持久化 / 未回复上限」依赖它），Surf 默认选第一篇。
+  if (names.includes('proactive_wake_decision')) {
+    return [script.wake.length > 0
+      ? (script.wake.shift() as string)
+      : JSON.stringify({ actions: [{ type: 'message', content: '刚刚想起你，今天过得还好吗？' }] })]
+  }
+  if (names.includes('surf_select')) {
+    return [script.surfSelect.length > 0 ? (script.surfSelect.shift() as string) : '{"idx":0,"why":"mock 默认选第一篇"}']
+  }
+  if (names.includes('surf_record')) {
+    return script.surfRecord.length > 0
+      ? [script.surfRecord.shift() as string]
+      : ['mock 默认记录：我把这篇文章的要点记下来了。']
+  }
+  // 兼容 Phase 3B/6.5 的旧探针（probe-automation 等）仍用旧块名
   if (names.includes('proactive_wake')) return ['刚刚想起你，', '今天过得还好吗？']
   if (names.includes('solitude_reflection')) return ['我安静地整理了一下今天的感受，', '把想记住的温柔片段放在心里。']
   return null
@@ -276,6 +306,23 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
     // 调试钩子（故意放在鉴权之前）：只回本进程内存里的快照，不代理任何东西，验收脚本用
     if (req.method === 'GET' && url.pathname === '/__last-body') {
       writeJson(res, 200, { body: lastChatBody })
+      return
+    }
+
+    // Phase 7B 验收钩子：排后台决策的脚本（只改本进程内存，不代理任何东西）
+    if (req.method === 'POST' && url.pathname === '/__script') {
+      const raw = await readBody(req)
+      try {
+        const body: unknown = JSON.parse(raw)
+        if (isRecord(body)) {
+          if (Array.isArray(body.wake)) script.wake.push(...body.wake.filter((item): item is string => typeof item === 'string'))
+          if (Array.isArray(body.surfSelect)) script.surfSelect.push(...body.surfSelect.filter((item): item is string => typeof item === 'string'))
+          if (Array.isArray(body.surfRecord)) script.surfRecord.push(...body.surfRecord.filter((item): item is string => typeof item === 'string'))
+        }
+        writeJson(res, 200, { ok: true, queued: { wake: script.wake.length, surfSelect: script.surfSelect.length, surfRecord: script.surfRecord.length } })
+      } catch {
+        writeJson(res, 400, openAiError(400, 'invalid JSON body'))
+      }
       return
     }
 

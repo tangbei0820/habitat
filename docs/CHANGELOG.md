@@ -964,3 +964,25 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - **新增 `verify-prod.mjs`（10 条，挂流水线）**：生产构建 + PWA 冒烟 —— SW 注册激活/作用域、manifest、断网重载外壳仍在（离线=只读）、断网 `/api/` 无 HTML 兜底。此前 SW 零自动化覆盖。
 - **`docs/DEPLOYMENT.md` §6**：habitat 本体部署 runbook（构建产物 / systemd / nginx 子域站点片段 / env 清单 / 部署后验收 7 条）。
 - 全量回归 **531 项零失败**；两端 typecheck 通过。**结论：代码侧部署就绪，剩实机操作按 §6 打勾。**
+
+## 2026-09-26
+
+### Post-v1 Phase 7A（T-051 / T-052）
+
+- **身份显示**：原单一头像开关拆成小栖头像 / 我的头像 / 气泡昵称三个独立开关（旧偏好自动迁移）；设置页新增「身份」区（昵称 + 128px 方形头像 data URL，只存本机、不进备份）。
+- **思绪折叠卡**：AI 气泡渲染 `metadata.reasoning`（有才渲染、默认收起、纯文本）。
+- **Eventide `[object Object]` 修复**：`stateValue()` 对象/数组 JSON 化。
+- **人格 Prompt**：服务端 app_kv 存储，注入为最优先 `persona` system 块；设置页编辑 / 保存 / 恢复默认（恢复=清空，无出厂人格）。
+- **Prompt 查看**：按真实注入序列出全部 system 块，内置只读 / 自定义可编辑，动态块明说不预览假正文。
+- **世界书最小可用版**：`worldbook_entry` 表 + `/setting/worldbook` 管理页；always/keyword 双模式（匹配最近 12 条对话），6000 字预算整条丢弃并标注；服务端权威，不进 web 备份。
+- **Nocturne 记忆页** `/llm/memory`：健康（`/api/health/mcp` 新增 `configured` 区分未配置与异常）/ 记忆全文 / 关键词搜索；未配置时不发必败请求。
+- **Eventide 状态页** `/life/eventide`：`eventide_history` 落库追加（去重、保留 2000 行）+ current/history 端点；摘要 / SVG 趋势 / 逐键 diff / raw 四块。
+- 验收 **557 项零失败**（新增 verify-runtime 18 项、verify-llm 16→17；probe-prompt-worldbook 34 项、probe-eventide-history 6 项）。
+
+### Post-v1 Phase 7B（T-053）
+
+- **唤醒决策契约**：`runWake` 重写为「触发→上下文→决策→行动→结果」；**no-op 一等公民**（不算打扰、不推进未回复计数，但推进冷却）；行动面 message（唯一打扰类，单轮 ≤1）/ messageboard / diary；**约束全在服务端校验**（超限丢弃并落事件日志）；决策轮一次性生成全部内容，执行器零 LLM；`automation_action` 表 `(run_id, idx)` 唯一 = 行动幂等；`markWakeDecision(at, disturbed)` 拆分冷却与打扰计数。
+- **写类自主化**：`diary.create` / `diary.update` / `messageboard.write` → `autonomous`（executeTool 直执行 + appendEventLog 审计）；确认协议保留给未来 memory.write，event-inbox 保留消化历史挂起事件。
+- **Solitude Surf v1**：零依赖 RSS/Atom 解析 + 只读网页取回（协议白名单 / 内网黑名单 / 10s / 1MB）；feeds 存 app_kv（默认少数派+36kr，`GET/PUT /api/surf/feeds`）；并行拉源 → 有界候选 → 模型只选一篇 → 取正文 → 带完整来源的私人记录；URL 指纹近 14 天去重；**任何环节失败都降级普通整理**；订阅源与网页内容一律视为不可信数据（包标记 + prompt 明示）。
+- **审计**：`/api/automation/runs` 按 run 聚合返回行动级审计（`actions[]`）。
+- 验收：决策契约 **35/35**（`probe-decision-contract.ts` + mock `/__script` 脚本队列）；Phase 3B 21/21、Phase 4 16/16、P0 50/50、事件收件箱 57/57；前端全量流水线 16 支全过零失败；两端 typecheck 过。

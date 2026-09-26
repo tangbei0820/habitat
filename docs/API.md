@@ -628,7 +628,9 @@ Eventide 作为**无状态 Python sidecar**运行；habitat-server 持有并持�
 | `GET /api/automation` | 当前策略 + 运行态（最后用户互动、最后唤醒、连续未回复、每日独处 / 梦境标记） |
 | `PATCH /api/automation` | 部分更新策略；主动行为默认关闭，时间为 `HH:mm`，时区为 IANA 名称 |
 | `POST /api/automation/check` | 立即执行一轮与定时器相同的检查；请求体 `{}`，不接受客户端自报时间 |
-| `GET /api/automation/runs?limit=` | BudgetGuard 预约 / 完成 / 失败 / 跳过记录 |
+| `GET /api/automation/runs?limit=` | BudgetGuard 预约 / 完成 / 失败 / 跳过记录；Phase 7B 起按 run 聚合返回行动级审计（`actions[]`：类型 / 状态 / 原因 / 产物引用） |
+| `GET /api/surf/feeds` | Solitude Surf 订阅源清单（app_kv 存储，默认少数派 + 36kr） |
+| `PUT /api/surf/feeds` | 整体覆盖订阅源（1..10 条 http(s) URL）；body `{"feeds": null}` 恢复默认 |
 | `GET /api/events?limit=` | EventLog，供 Phase 4 Life 统计使用 |
 
 BudgetGuard 在调用 LLM **之前**以 SQLite 事务预约预算，检查总开关、功能开关、免打扰、静默、冷却、
