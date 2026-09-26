@@ -37,6 +37,8 @@ import { buildBoundTools, executeTool, toLlmTools, type BoundTool, type ToolRunt
 import { assembleChatContext } from '../context/chat-context.js'
 import { finishAutomationRun, getAutomationPolicy, noteCounterpartActivity } from '../db/automation.js'
 import { markResultsDelivered } from '../db/event.js'
+import { getPersonaPrompt } from '../db/prompt.js'
+import { listEnabledWorldbookEntries } from '../db/worldbook.js'
 import { recordUsage } from '../db/usage.js'
 import { BudgetGuard } from '../lib/budget-guard.js'
 import { ToolCallAccumulator } from '../lib/tool-call-accumulator.js'
@@ -219,6 +221,10 @@ export function registerChatRoutes(
       triggerWords: policy.triggerWords,
       timeZone: policy.timeZone,
       memory,
+      // 人格与世界书（7A）：数据就在本地库，读取是微秒级，直接每轮现读 ——
+      // 改完条目下一轮立即生效，不需要任何失效通知
+      persona: getPersonaPrompt(),
+      worldbook: listEnabledWorldbookEntries(),
     })
     if (context.eventide === 'unavailable') {
       request.log.warn({ error: context.error }, 'Eventide 状态卡不可用，本轮按原始聊天上下文降级')

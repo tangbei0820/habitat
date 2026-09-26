@@ -29,8 +29,8 @@ export const CAPABILITY_MODULES: readonly CapabilityModuleMeta[] = [
     key: 'memory',
     name: '记忆',
     icon: 'brain',
-    launch: null,
-    noPageHint: '暂无界面 · 由小栖在对话里自主读用',
+    // 7A：记忆页（/llm/memory）落地，不再是「暂无界面」
+    launch: { to: '/llm/memory', label: '查看记忆' },
   },
   {
     key: 'state',

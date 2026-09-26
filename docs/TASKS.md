@@ -2329,3 +2329,25 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 - verify-chat 的 pin-new 会话消息是 **seed 直种**的（不走 mock 流式），种的时候没有 `metadata.reasoning` ⇒ 思绪卡断言扑空。seed 补上 metadata 即可 —— **seed 数据要跟新功能的产品假设走**。
 
 **待优化（后续批次）**：Eventide `stateValue` 目前只有 tsx 内联单测 + 无 CDP 覆盖（测试环境无 Eventide 数据）→ 7A 完整 Eventide 页面时一并补；快照历史/趋势也是那时候的事。
+
+### T-052 · 2026-09-26 · Post-v1 Phase 7A 第二批（Prompt/世界书 + Nocturne 记忆页 + Eventide 状态页）—— **完成**
+
+**背景**：7A 第一切片（T-051）后按 `POST_V1_PLAN.md` §5 推进剩余三片。规范先行的部分：PRODUCT_SPEC §9.4 从「待定义」落成三小节（人格 Prompt / 世界书 / Prompt 查看），新增 §9.2.5（Eventide 状态页）与 §9.2.6（Nocturne 记忆页）。
+
+| 切片 | 交付 | 说明 |
+| --- | --- | --- |
+| Prompt 查看/编辑/恢复 | `db/prompt.ts`（app_kv 存单值）+ `routes/prompt.ts`（view / PUT / DELETE persona）+ 设置页 `PromptSettings` | 人格 Prompt 注入为**最优先** system 块 `persona`；「本轮 Prompt 查看」按注入序列出全部块并标注 `内置（只读）/自定义`，动态块（记忆/事件/状态卡）明说「按轮次动态生成」不预览假正文；恢复默认 = 清空（**没有出厂人格**） |
+| Worldbook 最小可用版 | `worldbook_entry` 表 + `db/worldbook.ts` + `routes/worldbook.ts` + `/setting/worldbook` 管理页 | 字段 `title/content/keys/mode(always|keyword)/enabled/sortOrder`；keyword 对最近 12 条对话大小写不敏感包含匹配；注入预算 6000 字**整条装入/整条丢弃**并标注丢弃数；注入为一个 `worldbook` 块，位于 persona 之后、runtime_rules 之前；**服务端权威**，不进 web 备份。刻意的「不借」：不做权重/递归/扫描深度（酒馆的重活） |
+| Nocturne 记忆页 | `/llm/memory`（大脑记忆模块卡进入） | 健康（breath/trace + `/api/health/mcp` 新增 `configured` 字段区分「未配置/异常」）+ 记忆全文 + 关键词搜索；**未配置/异常时不发必败请求**，就地降级说明；只读，无手工编辑 |
+| Eventide 状态页 | `eventide_history` 表（落库顺带追加，`settled_at` 唯一去重，保留 2000 行）+ `/api/life/eventide/current|history` + `/life/eventide`（生活→运行入口） | 四块：当前摘要 / 数值维度趋势（SVG 折线，维度切换）/ 最近变化（末两快照逐键 diff）/ raw 折叠；诚实空态，不预设「心情/睡眠」字段 |
+
+**验收**：全量回归 **557 项零失败**（新增 verify-runtime 18 项；verify-llm 16→17）；探针 `probe-prompt-worldbook` 34 项（**从 mock 上游抓真实 body 断言注入序与内容**）、`probe-eventide-history` 6 项；两端 typecheck 过。
+
+**本批踩坑**（两个新的都记进 MEMORY 了）
+
+- ⚠️⚠️ **同文件多处 Edit 并行发「报成功不落盘」又中招**（T-037 老坑复发）：chat-context 的截断标注两处改动并行发，第一处静默丢失。**铁律升级：同一文件的多次 Edit 必须逐条串行发，发完 grep 验证**。
+- ⚠️ **CDP 设 React 受控输入的 value setter 必须按 tagName 取原型**：`wb-input-content` 是 textarea，用 `HTMLInputElement.prototype` 的 setter 会 `Illegal invocation`（且报错信息完全不指向真因）。
+- ⚠️ **「服务端状态已变」≠「页面 busy 已解除」**：waitFor 轮询到 API 结果后立即点下一个按钮，会落在还在 disabled 的按钮上被**静默吞掉**。要对 UI 状态等（所有操作按钮 `!disabled`），不能只对 API 等待。
+- 探针不幂等：连跑两次共享同一库会让「列表排序」这类断言假红 —— **每轮换唯一库文件名**（与验收库同规矩）。
+
+**待优化（后续批次）**：世界书 keyword 匹配无分词/词形还原（中文场景够用）；Eventide 趋势无跨天聚合视图；`/api/health/mcp` 的 `configured` 字段可回填给 LifePage 的 mcpUnconfigured 判断（现用 lastError 口径恰好没人触发）。

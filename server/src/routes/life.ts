@@ -1,12 +1,15 @@
 /** Phase 4 Life：月历、账本、价格、运行状态与 Web Push 配置。 */
 import type { FastifyInstance } from 'fastify'
+import { desc } from 'drizzle-orm'
 import { ErrorCodes } from '@shared/errors.js'
 import type { StateProvider } from '@shared/providers.js'
 import type { LifeRuntimeView } from '@shared/types.js'
+import { db } from '../db/index.js'
 import { getAutomationPolicy, getAutomationRuntimeState, listAutomationRuns } from '../db/automation.js'
 import { getLifeDay, getLifeLedger, getLifeMonthSummary } from '../db/life.js'
 import { createPriceSnapshot, listPriceSnapshots } from '../db/pricing.js'
 import { removePushSubscription, savePushSubscription } from '../db/push.js'
+import { eventideHistory } from '../db/schema.js'
 import { RequestError } from '../lib/errors.js'
 import type { McpGateway } from '../mcp/gateway.js'
 import { getPushStatus } from '../services/push.js'
@@ -69,8 +72,7 @@ export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, st
     const query = request.query as Record<string, unknown>
     return getLifeLedger(monthParam(query.month))
   })
-  app.get('/api/life/runtime', async (): Promise<LifeRuntimeView> => {
-    const [mcp, eventide] = await Promise.all([
+  app.get('/api/life/runtime', async (): Promise<LifeRuntimeView> => {    const [mcp, eventide] = await Promise.all([
       gateway.health().then((servers) => ({ ok: servers.every((server) => server.state === 'ready'), servers })),
       state === null ? Promise.resolve({
         ok: false, configured: false, service: 'eventide' as const, revision: null,
@@ -90,6 +92,37 @@ export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, st
         runtime: getAutomationRuntimeState(),
         runs: listAutomationRuns(30),
       },
+    }
+  })
+
+  /** 当前完整快照（状态页「raw 高级」用；runtime 视图里只有摘要） */
+  app.get('/api/life/eventide/current', async () => {
+    const snapshot = state?.current() ?? null
+    if (snapshot === null) {
+      throw new RequestError(ErrorCodes.NotFound, '尚无 Eventide 快照')
+    }
+    return snapshot
+  })
+
+  /** 历史快照（状态页趋势 / 最近变化用）。按时间升序返回，方便直接画线。 */
+  app.get('/api/life/eventide/history', async (request) => {
+    const query = request.query as Record<string, unknown>
+    const raw = query.limit === undefined ? 120 : Number(query.limit)
+    if (!Number.isInteger(raw) || (raw as number) < 1 || (raw as number) > 500) {
+      throw new RequestError(ErrorCodes.BadRequest, 'limit 必须是 1..500 的整数')
+    }
+    const rows = db
+      .select()
+      .from(eventideHistory)
+      .orderBy(desc(eventideHistory.settledAt))
+      .limit(raw)
+      .all()
+      .reverse()
+    return {
+      points: rows.map((row) => ({
+        settledAt: row.settledAt,
+        payload: row.payload,
+      })),
     }
   })
 

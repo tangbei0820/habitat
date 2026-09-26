@@ -110,8 +110,8 @@ const toolMissing = boundTools.filter((item) => {
 check('可用且绑了工具的能力都显示了工具名', boundTools.length === 0 || toolMissing.length === 0, `缺 ${toolMissing.length} 项`)
 
 /* ---------- 2. App Launcher：有界面才可点 ---------- */
-const EXPECTED_LAUNCH = { diary: '/home/diary', board: '/home/board', state: '/life?tab=runtime' }
-const NAV_ONLY = ['memory', 'tools']
+const EXPECTED_LAUNCH = { diary: '/home/diary', board: '/home/board', state: '/life?tab=runtime', memory: '/llm/memory' }
+const NAV_ONLY = ['tools']
 
 const modules = await evaluate(`(() => [...document.querySelectorAll('[data-testid^="llm-module-"]')].map((node) => ({
   key: node.dataset.testid.replace('llm-module-', ''),
@@ -162,6 +162,7 @@ async function launchModule(key, expectPath, expectText) {
 check('点日记卡片进入 Home 日记', await launchModule('diary', '/home/diary', '日记'))
 check('点留言板卡片进入 Home 留言板', await launchModule('board', '/home/board', '留言板'))
 check('点状态卡片进入 Life 运行视图', await launchModule('state', '/life?tab=runtime', 'habitat-server'))
+check('点记忆卡片进入记忆页', await launchModule('memory', '/llm/memory', '记忆全文'))
 
 /* ---------- 4. 收尾 ---------- */
 await send('Page.navigate', { url: `${APP}/llm` })

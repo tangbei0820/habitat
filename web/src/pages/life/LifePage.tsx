@@ -15,6 +15,7 @@ import {
 } from '../../features/life/api'
 import { browserPushSupported, currentPushSubscription, disablePush, enablePush } from '../../features/life/push'
 import { useOnlineStatus } from '../../features/offline/useOnlineStatus'
+import { stateValue } from '../../lib/format'
 
 type LifeTab = 'calendar' | 'ledger' | 'notifications' | 'events' | 'runtime'
 const TABS: Array<{ id: LifeTab; label: string }> = [
@@ -138,18 +139,6 @@ function EventsView() {
 }
 
 function statusLabel(ok: boolean, configured = true): string { return !configured ? '未配置' : ok ? '正常' : '异常' }
-/**
- * Eventide 状态值格式化（Phase 7A）。
- *
- * payload 是上游自定的 JSON，值可能是任意类型 —— 以前直接 `String(value)`，
- * 嵌套对象/数组会渲染成 `[object Object]`。约定：
- * 对象与数组用 JSON 展开（诚实呈现结构），其它类型走 String；空值给「—」。
- */
-function stateValue(value: unknown): string {
-  if (value === null || value === undefined) return '—'
-  if (typeof value === 'object') return JSON.stringify(value)
-  return String(value)
-}
 function RuntimeView() {
   const online = useOnlineStatus()
   const [runtime, setRuntime] = useState<LifeRuntimeView | null>(null); const [error, setError] = useState<string | null>(null); const [checking, setChecking] = useState(false)
@@ -158,7 +147,7 @@ function RuntimeView() {
   async function checkNow() { setChecking(true); setError(null); try { await runAutomationCheck(); await refresh() } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) } finally { setChecking(false) } }
   const mcpUnconfigured = runtime?.mcp.servers.length === 0
     || runtime?.mcp.servers.every((server) => server.lastError === 'not configured') === true
-  return <div className="space-y-3"><ErrorLine value={error}/><LoadingOrEmpty loading={runtime === null && error === null} empty={false}>{runtime && <><div className="grid grid-cols-2 gap-2 text-sm"><Panel><span>habitat-server</span><strong className="block">{statusLabel(runtime.server.ok)}</strong></Panel><Panel><span>Eventide</span><strong className="block">{statusLabel(runtime.eventide.ok, runtime.eventide.configured)}</strong></Panel><Panel><span>MCP</span><strong className="block">{mcpUnconfigured ? '未配置' : statusLabel(runtime.mcp.ok)}</strong></Panel><Panel><span>主动行为</span><strong className="block">{runtime.automation.policy.enabled ? '已开启' : '已关闭'}</strong></Panel></div><Panel><h2 className="mb-2 font-medium">当前状态</h2>{runtime.bodyState === null ? <p className="text-sm">暂无 Eventide 快照</p> : <div className="grid grid-cols-2 gap-2 text-sm">{Object.entries(runtime.bodyState.payload).map(([key, value]) => <div key={key}><span style={{ color: 'var(--text-secondary)' }}>{key}</span><strong className="ml-2">{stateValue(value)}</strong></div>)}</div>}</Panel><Panel><div className="flex items-center justify-between"><h2 className="font-medium">主动行为运行态</h2><button disabled={checking || !online} onClick={() => void checkNow()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">{checking ? '检查中…' : '立即检查'}</button></div><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><span>最近互动<strong className="block">{dateTime(runtime.automation.runtime.lastCounterpartAt)}</strong></span><span>最近唤醒<strong className="block">{dateTime(runtime.automation.runtime.lastWakeAt)}</strong></span><span>连续未回复<strong className="block">{runtime.automation.runtime.unansweredWakes}</strong></span><span>时区<strong className="block">{runtime.automation.policy.timeZone}</strong></span></div></Panel><Panel><h2 className="mb-2 font-medium">最近运行</h2>{runtime.automation.runs.length === 0 ? <p className="text-sm">尚无运行记录</p> : runtime.automation.runs.map((run) => <div key={run.id} className="border-t py-2 text-sm"><strong>{run.kind} · {run.status}</strong><small className="block" style={{ color: 'var(--text-secondary)' }}>{dateTime(run.at)}{run.reason ? ` · ${run.reason}` : ''}</small></div>)}</Panel></>}</LoadingOrEmpty></div>
+  return <div className="space-y-3"><ErrorLine value={error}/><LoadingOrEmpty loading={runtime === null && error === null} empty={false}>{runtime && <><div className="grid grid-cols-2 gap-2 text-sm"><Panel><span>habitat-server</span><strong className="block">{statusLabel(runtime.server.ok)}</strong></Panel><Panel><span>Eventide</span><strong className="block">{statusLabel(runtime.eventide.ok, runtime.eventide.configured)}</strong></Panel><Panel><span>MCP</span><strong className="block">{mcpUnconfigured ? '未配置' : statusLabel(runtime.mcp.ok)}</strong></Panel><Panel><span>主动行为</span><strong className="block">{runtime.automation.policy.enabled ? '已开启' : '已关闭'}</strong></Panel></div><div className="flex justify-end"><Link to="/life/eventide" data-testid="eventide-open" className="text-xs underline" style={{ color: 'var(--accent-strong)' }}>看状态详情（趋势 / 变化 / raw）</Link></div><Panel><h2 className="mb-2 font-medium">当前状态</h2>{runtime.bodyState === null ? <p className="text-sm">暂无 Eventide 快照</p> : <div className="grid grid-cols-2 gap-2 text-sm">{Object.entries(runtime.bodyState.payload).map(([key, value]) => <div key={key}><span style={{ color: 'var(--text-secondary)' }}>{key}</span><strong className="ml-2">{stateValue(value)}</strong></div>)}</div>}</Panel><Panel><div className="flex items-center justify-between"><h2 className="font-medium">主动行为运行态</h2><button disabled={checking || !online} onClick={() => void checkNow()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">{checking ? '检查中…' : '立即检查'}</button></div><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><span>最近互动<strong className="block">{dateTime(runtime.automation.runtime.lastCounterpartAt)}</strong></span><span>最近唤醒<strong className="block">{dateTime(runtime.automation.runtime.lastWakeAt)}</strong></span><span>连续未回复<strong className="block">{runtime.automation.runtime.unansweredWakes}</strong></span><span>时区<strong className="block">{runtime.automation.policy.timeZone}</strong></span></div></Panel><Panel><h2 className="mb-2 font-medium">最近运行</h2>{runtime.automation.runs.length === 0 ? <p className="text-sm">尚无运行记录</p> : runtime.automation.runs.map((run) => <div key={run.id} className="border-t py-2 text-sm"><strong>{run.kind} · {run.status}</strong><small className="block" style={{ color: 'var(--text-secondary)' }}>{dateTime(run.at)}{run.reason ? ` · ${run.reason}` : ''}</small></div>)}</Panel></>}</LoadingOrEmpty></div>
 }
 
 /**

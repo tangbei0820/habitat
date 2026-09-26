@@ -74,6 +74,8 @@ export class McpGateway implements ToolGateway {
     return [...this.servers.entries()].map(([serverId, rt]) => ({
       serverId,
       state: rt.state,
+      // 「没配 URL」与「配了但连不上」是两种病，UI 要分开说（未配置 ≠ 异常）
+      configured: Boolean(rt.config.url),
       toolCount: rt.toolCount,
       lastError: rt.lastError,
       lastCheckedAt: rt.lastCheckedAt,

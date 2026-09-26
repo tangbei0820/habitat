@@ -1,9 +1,10 @@
 /**
- * Runtime System Context 组装（Phase 6.5）
+ * Runtime System Context 组装（Phase 6.5；7A 起含人格与世界书）
  *
  * 每轮聊天送给模型的 system 段按**固定顺序**拼装：
  *
- *   [前端带来的人格 / 世界书]        ← 最高优先级，原样保留
+ *   [人格 persona]                   ← 自定义人格 Prompt（SPEC §9.4.1），未自定义则无
+ *   [世界书 worldbook]               ← 按规则筛选出的条目（SPEC §9.4.2），无命中则无
  *   [运行规则 runtime_rules]         ← 恒定，永远注入
  *   [能力清单 runtime_capabilities]  ← 由 Capability Registry 生成（不许写死）
  *   [长期记忆 nocturne_memory]       ← 仅新会话开头注入一次
@@ -20,6 +21,7 @@
  * 这条纪律从 Phase 3 沿用至今，本 Phase 不动它。
  */
 import type { CapabilitySnapshot } from '@shared/capabilities.js'
+import type { WorldbookEntry } from '@shared/types.js'
 import type { LlmChatMessage, MemoryProvider, StateProvider, StateTickOptions } from '@shared/providers.js'
 import { buildEventContext } from './event-context.js'
 import { RUNTIME_RULES_TEXT, renderCapabilityBlock } from './runtime-context.js'
@@ -41,6 +43,10 @@ export interface ChatContextResult {
 export interface ChatContextOptions extends StateTickOptions {
   /** 长期记忆 Provider；未配置传 null 或省略。 */
   memory?: MemoryProvider | null
+  /** 自定义人格 Prompt（SPEC §9.4.1）；空/缺省 = 未自定义，不注入 */
+  persona?: string | null
+  /** 世界书候选条目（全部条目，含停用的——筛选在这里做）；缺省 = 没有世界书 */
+  worldbook?: readonly WorldbookEntry[]
 }
 
 /**
@@ -108,6 +114,80 @@ function clampMemory(text: string): string {
   return `${text.slice(0, MEMORY_TEXT_LIMIT)}\n\n（记忆正文过长，此处已截断。需要完整内容时请调用记忆读取能力。）`
 }
 
+// ---------------------------------------------------------------------------
+// 世界书（SPEC §9.4.2）
+// ---------------------------------------------------------------------------
+
+/** keyword 模式向后看的对话条数。窗口太小会漏掉「刚提过的设定」，太大会命中陈年闲话。 */
+const WORLDBOOK_WINDOW = 12
+/** 注入总预算（字符）。超预算**整条丢弃**，不注入半条 —— 半截设定比没有更糟。 */
+const WORLDBOOK_BUDGET = 6_000
+
+export interface WorldbookSelection {
+  picked: WorldbookEntry[]
+  /** 预算装不下而被整体丢弃的命中条数（给注入块尾的截断标注用） */
+  dropped: number
+  text: string
+}
+
+function entryText(entry: WorldbookEntry): string {
+  return `【${entry.title}】\n${entry.content}`
+}
+
+function entryMatches(entry: WorldbookEntry, haystackLower: string): boolean {
+  if (entry.mode === 'always') return true
+  // keyword：任一 key 命中即可。空 key 直接忽略（写入端已挡，这里再兜一层）
+  return entry.keys.some((key) => key.trim() !== '' && haystackLower.includes(key.trim().toLowerCase()))
+}
+
+/**
+ * 世界书筛选（纯函数，可单测）。
+ *
+ * 规则刻意保持最小：enabled 过滤 → keyword 大小写不敏感包含匹配 →
+ * 按 `sortOrder`（同序看创建先后）依次整条装入预算。不做权重、递归、扫描深度 ——
+ * 那些是酒馆的重活，SPEC §9.4.2 明确不借。
+ */
+export function selectWorldbookEntries(
+  entries: readonly WorldbookEntry[],
+  conversationText: string,
+  budget = WORLDBOOK_BUDGET,
+): WorldbookSelection {
+  const haystackLower = conversationText.toLowerCase()
+  const candidates = entries
+    .filter((entry) => entry.enabled)
+    .filter((entry) => entryMatches(entry, haystackLower))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt)
+
+  const picked: WorldbookEntry[] = []
+  const sections: string[] = []
+  let used = 0
+  let dropped = 0
+  for (const entry of candidates) {
+    const text = entryText(entry)
+    if (used + text.length > budget) {
+      dropped += 1
+      continue
+    }
+    picked.push(entry)
+    sections.push(text)
+    used += text.length
+  }
+  let text = sections.join('\n\n')
+  if (dropped > 0) {
+    text += `\n\n（另有 ${dropped} 条命中条目因注入预算被整体丢弃。）`
+  }
+  return { picked, dropped, text }
+}
+
+/** 取最近 12 条对话（不含 system）拼成 keyword 匹配用的文本。 */
+function conversationWindow(messages: readonly LlmChatMessage[]): string {
+  return messages
+    .filter((message) => message.role !== 'system')
+    .slice(-WORLDBOOK_WINDOW)
+    .map((message) => (typeof message.content === 'string' ? message.content : ''))
+    .join('\n')
+}
+
 /**
  * 组装本轮上下文。
  *
@@ -121,10 +201,25 @@ export async function assembleChatContext(
   now = new Date(),
   options: ChatContextOptions = {},
 ): Promise<ChatContextResult> {
-  const blocks: LlmChatMessage[] = [
+  const blocks: LlmChatMessage[] = []
+
+  // 人格与世界书（7A）：注入序最前。「你是谁」先说，运行规则才不会盖过它。
+  const persona = (options.persona ?? '').trim()
+  if (persona !== '') {
+    blocks.push({ role: 'system', name: 'persona', content: persona })
+  }
+  const worldbook = options.worldbook ?? []
+  if (worldbook.some((entry) => entry.enabled)) {
+    const selection = selectWorldbookEntries(worldbook, conversationWindow(messages))
+    if (selection.picked.length > 0) {
+      blocks.push({ role: 'system', name: 'worldbook', content: selection.text })
+    }
+  }
+
+  blocks.push(
     { role: 'system', name: 'runtime_rules', content: RUNTIME_RULES_TEXT },
     { role: 'system', name: 'runtime_capabilities', content: renderCapabilityBlock(capabilities) },
-  ]
+  )
 
   const memory = await loadBootMemory(messages, options.memory ?? null)
   if (memory.text !== null) {

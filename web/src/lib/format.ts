@@ -68,3 +68,15 @@ export function formatDayLabel(ts: number, now: number = Date.now()): string {
 export function isSameDay(a: number, b: number): boolean {
   return startOfDay(a) === startOfDay(b)
 }
+
+/**
+ * Eventide / 上游自定 JSON 的状态值格式化（Phase 7A）。
+ *
+ * payload 值可能是任意类型 —— 直接 `String(value)` 会把嵌套对象渲染成 `[object Object]`。
+ * 约定：对象与数组用 JSON 展开（诚实呈现结构），其它类型走 String；空值给「—」。
+ */
+export function stateValue(value: unknown): string {
+  if (value === null || value === undefined) return '—'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}

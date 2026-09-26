@@ -23,11 +23,13 @@ import { registerHealthRoutes } from './routes/health.js'
 import { registerProviderRoutes } from './routes/providers.js'
 import { registerMemoryRoutes } from './routes/memory.js'
 import { registerMomentRoutes } from './routes/moment.js'
+import { registerPromptRoutes } from './routes/prompt.js'
 import { registerStateRoutes } from './routes/state.js'
 import { registerAutomationRoutes } from './routes/automation.js'
 import { registerLifeRoutes } from './routes/life.js'
 import { registerMediaRoutes } from './routes/media.js'
 import { registerToolRoutes } from './routes/tools.js'
+import { registerWorldbookRoutes } from './routes/worldbook.js'
 import { AutomationService, startAutomationScheduler } from './services/automation.js'
 
 const app = Fastify({
@@ -94,6 +96,9 @@ registerMomentRoutes(app)
 // 事件收件箱（Phase 6.5 P1）：AI 想写东西要北北确认、北北想看日记要 AI 决定 —— 两件事的载体。
 // ⚠️ 挂在 /api/inbox 而不是 /api/events —— 后者是 Eventide 的状态事件流水（automation.ts）
 registerInboxRoutes(app)
+// Prompt / 世界书（7A · SPEC §9.4）：Runtime 在服务端拼上下文，所以这两份配置也归服务端
+registerPromptRoutes(app, capabilityService)
+registerWorldbookRoutes(app)
 
 // LLM 方案：**服务端 SQLite 是权威源**（见 db/profiles.ts）。
 // 环境变量 HABITAT_LLM_PROFILES 仅作**首次种子**：从未导入过时一次性导入，之后改 .env 不再生效

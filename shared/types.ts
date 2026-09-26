@@ -616,6 +616,8 @@ export type McpServerState = 'disconnected' | 'connecting' | 'handshake' | 'read
 export interface McpServerHealth {
   serverId: string
   state: McpServerState
+  /** 是否配置了连接地址 —— false 时 UI 应显示「未配置」而不是「异常」 */
+  configured: boolean
   toolCount: number
   lastError: string | null
   lastCheckedAt: number | null
@@ -867,4 +869,48 @@ export interface McpDiagnosticPage {
   errorCount: number
   /** 还有更早的记录：把最后一条的 `id` 当下一轮的 `before` */
   hasMore: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7A · Prompt / 世界书（SPEC §9.4）
+// ---------------------------------------------------------------------------
+
+/** 世界书注入模式：always = 恒定注入；keyword = 命中最近对话才注入 */
+export type WorldbookMode = 'always' | 'keyword'
+
+/**
+ * 世界书条目。**服务端权威**（Runtime 在服务端拼上下文），前端只是管理 UI；
+ * 不进 web 备份格式 —— 服务端数据由服务端自己的备份负责。
+ */
+export interface WorldbookEntry {
+  id: string
+  title: string
+  content: string
+  keys: string[]
+  mode: WorldbookMode
+  enabled: boolean
+  sortOrder: number
+  createdAt: number
+  updatedAt: number
+}
+
+/** Prompt 查看块（SPEC §9.4.3）：builtin = 内置只读；custom = 自定义可编辑 */
+export interface PromptViewBlock {
+  /** 注入时的 system 块名 */
+  name: string
+  label: string
+  source: 'builtin' | 'custom'
+  content: string
+}
+
+/** 「本轮 Prompt 查看」响应：persona 单独给（设置页编辑器要用），blocks 按注入顺序 */
+export interface PromptView {
+  persona: { content: string; customized: boolean }
+  blocks: PromptViewBlock[]
+}
+
+/** Eventide 历史快照点（状态页趋势 / 最近变化用；payload 为上游自定的结构化状态） */
+export interface EventideHistoryPoint {
+  settledAt: number
+  payload: Record<string, unknown>
 }

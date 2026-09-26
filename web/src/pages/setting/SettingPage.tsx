@@ -5,6 +5,7 @@ import { useTheme } from '../../theme/useTheme'
 import { BackupPanel } from '../../features/backup/BackupPanel'
 import { DiagnosticPanel } from '../../features/diagnostics/DiagnosticPanel'
 import { IdentitySettings } from '../../features/setting/IdentitySettings'
+import { PromptSettings } from '../../features/setting/PromptSettings'
 import { ProviderSettings } from '../../features/providers/ProviderSettings'
 import { ApiRequestError } from '../../lib/api'
 import { getMcpHealth, getServerHealth } from '../../lib/health'
@@ -109,6 +110,9 @@ export function SettingPage() {
 
         {/* 身份：双方的头像图与昵称（SPEC §9.1.3）—— 内容在这里配，显隐在聊天设置里控制 */}
         <IdentitySettings />
+
+        {/* Prompt 与世界书（7A · SPEC §9.4）：人格 / 透明查看 / 世界书入口 */}
+        <PromptSettings />
 
         <ProviderSettings />
 

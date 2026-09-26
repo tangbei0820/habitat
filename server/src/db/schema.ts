@@ -326,3 +326,38 @@ export const runtimeEvent = sqliteTable('runtime_event', {
 
 export type RuntimeEventRow = typeof runtimeEvent.$inferSelect
 export type NewRuntimeEventRow = typeof runtimeEvent.$inferInsert
+
+/**
+ * 世界书条目（Phase 7A · SPEC §9.4.2）。服务端权威：Runtime 在这里拼上下文。
+ * `keys` 存 JSON 字符串数组 —— SQLite 没有数组列，而条目数很小（个位数到几十），
+ * 不值得为它上关联表。
+ */
+export const worldbookEntry = sqliteTable('worldbook_entry', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  keys: text('keys').notNull(),
+  mode: text('mode', { enum: ['always', 'keyword'] }).notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+export type WorldbookEntryRow = typeof worldbookEntry.$inferSelect
+export type NewWorldbookEntryRow = typeof worldbookEntry.$inferInsert
+
+/**
+ * Eventide 历史快照（Phase 7A · SPEC §9.4 之外 §9.2.4 扩展）：状态页趋势与最近变化的数据源。
+ * 每次快照落库时顺带追加一行；`settled_at` 唯一 —— 同一时刻重复推进只留最新一份。
+ * 保留上限 2000 行（写入时裁剪，见 db/state.ts）。
+ */
+export const eventideHistory = sqliteTable('eventide_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  stateJson: text('state_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  payload: text('payload', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  settledAt: integer('settled_at').notNull(),
+})
+
+export type EventideHistoryRow = typeof eventideHistory.$inferSelect
+export type NewEventideHistoryRow = typeof eventideHistory.$inferInsert

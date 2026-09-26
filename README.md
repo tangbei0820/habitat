@@ -74,6 +74,8 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npx tsx scripts/probe-diagnostics.ts` | server（须与脚本用**同一个** `HABITAT_DB_PATH`） | 诊断查询端点（48 项） |
 | `npx tsx scripts/probe-diag-retention.ts` | **不需要 server**（自带一次性临时库，跑完自删） | 诊断日志保留策略（15 项） |
 | `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆**只读**链路：`breath`(boot) / `trace`(search) 两路径、参数边界、已移除的写端点应 404、诊断留痕（21 项） |
+| `npx tsx scripts/probe-prompt-worldbook.ts` | server + mock（独立库） | 人格/世界书**真注入**断言（从 mock 上游抓实际 body）、选择器单测、CRUD 与校验（34 项） |
+| `npx tsx scripts/probe-eventide-history.ts` | 独立库（先 `SEED=1` 种子，再起 server 断言） | Eventide 历史快照端点：排序 / 形状 / limit 校验 / current 404（6 项） |
 | `npx tsx scripts/probe-nocturne-tools.ts` | **任何** Nocturne 实例（`MCP_NOCTURNE_URL`） | 工具面事实采集 / **漂移检测**：只握手 + `tools/list`，**不调用任何工具**；另有零依赖版 `.mjs` 与只要 `curl+python3` 的 `.sh` |
 | `MCP_NOCTURNE_URL=… npx tsx scripts/probe-nocturne-live.ts` | **自己部署的实例** + 反代已转发 `/mcp-<密钥>` | 反向代理 / Bearer Token（含无凭据对照）/ `X-Namespace` / 工具面 / 只读纪律（真机 **26/26**；默认遮蔽秘密路径） |
 | ~~`npx tsx scripts/probe-nocturne-demo.ts`~~ | ~~**公网**（Nocturne 官方只读 Demo）~~ | ⛔ **已废弃**（其工具面假设与自部署实例 0/2 命中，脚本已清空实现） |
@@ -109,12 +111,13 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `node web/scripts/verify-prod.mjs` | **生产构建 + PWA 冒烟**（T-048）：SW 注册激活、manifest 字段、断网重载外壳仍在（离线=只读）、`/api/` 断网拿不到 HTML 兜底（10 项；需先 `npm run build` + `vite preview`） |
 | `node web/scripts/verify-chat-skin.mjs` | **UI 换装第 3 批 · 对话页哨兵**：列表顶栏与胶囊按钮是真 SVG 图标、气泡方向与底色（用户黑右 / AI 白左）且圆角来自令牌（颜色解析成 rgb() 再比）、操作行常显可点（触屏路径）、输入胶囊停靠不遮消息、圆形发送键、**11 项能力入口齐**、界面无 emoji 图标（31 项） |
 | `node web/scripts/verify-providers.mjs` | API 方案管理 UI（24 项） |
-| `node web/scripts/verify-llm.mjs` | **Phase 6.5 P2 · 小栖档案（App Launcher）**：卡片与服务端能力快照**逐条比对**（不写死能力名）、可用状态一致、不可用必给原因、有界面的模块真能启动、没界面的不做假入口（16 项） |
+| `node web/scripts/verify-llm.mjs` | **Phase 6.5 P2 · 小栖档案（App Launcher）**：卡片与服务端能力快照**逐条比对**（不写死能力名）、可用状态一致、不可用必给原因、有界面的模块真能启动（含 7A 记忆页入口）、没界面的不做假入口（17 项） |
 | `node web/scripts/verify-tokens.mjs` | **UI 换装地基哨兵**：新设计令牌齐不齐、**翻译层（旧名 → 新令牌）逐条相等**、13 个通用积木类的**计算结果**（CSS 写了 ≠ 生效）、浅/深两套确实不同并各截一张图（24 项，**不需要 server**） |
 | `node web/scripts/verify-shell.mjs` | **UI 换装外壳哨兵**：胶囊底栏（语义 / 5 个真链接 / 顺序 / 中文标签 / 浮起形态 / 选中=实心）、`--bottom-nav-height` = 高度 + 悬空值、进门三态（首访 `/welcome` → 进过后 `/chat` → `/welcome` 可直达）、子页面**真网址** + 只在前进时播滑入、**各页文本不含 emoji**（31 项） |
 | `node web/scripts/verify-diagnostics.mjs` | 诊断日志面板（36 项） |
 | `node web/scripts/verify-home.mjs` | Home 十模块 + **主屏 Widget** + **收藏分类 / 相册分类** + 备份恢复（77 项，含备份 v8 的分类归属与旧版兼容） |
 | `node web/scripts/verify-life.mjs` | Life 四视图、移动端布局、价格 / 钱包入口、Push 降级、运行状态（15 项） |
+| `node web/scripts/verify-runtime.mjs` | **Phase 7A · Runtime Surfaces**：设置页人格 Prompt 编辑/保存/恢复默认、「本轮 Prompt 查看」按注入序列出全部块、世界书 CRUD 全链（含 keyword 无关键词拒收）、Nocturne 记忆页未配置诚实态与降级说明、Eventide 状态页诚实空态（18 项） |
 | `node web/scripts/verify-export.mjs` | 单会话导出（Markdown / JSON 回执带条数、不更新全量备份时间）、久未导出提醒、导入前覆盖警告（17 项） |
 | `node web/scripts/verify-offline.mjs` | **真断网**下的只读边界：横幅、本地数据可读、联网动作禁用 / 撤下、工具面板区分「离线」与「未配 MCP」、恢复联网后还原（38 项） |
 | `node web/scripts/verify-pwa.mjs` | PWA：manifest 与图标、SW 注册并激活、app shell 预缓存、断网开壳、`/api/` 不被兜底成 HTML（25 项，**须打生产构建**） |

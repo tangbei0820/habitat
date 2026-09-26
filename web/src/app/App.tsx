@@ -14,9 +14,12 @@ import { ChatWindowPage } from '../pages/chat/ChatWindowPage'
 import { HomePage } from '../pages/home/HomePage'
 import { HomeModulePage } from '../pages/home/HomeModulePage'
 import { LifePage } from '../pages/life/LifePage'
+import { EventidePage } from '../pages/life/EventidePage'
 import { SoloPage } from '../pages/solo/SoloPage'
 import { LlmPage } from '../pages/llm/LlmPage'
+import { MemoryPage } from '../pages/llm/MemoryPage'
 import { SettingPage } from '../pages/setting/SettingPage'
+import { WorldbookPage } from '../pages/setting/WorldbookPage'
 import { WelcomePage } from '../pages/welcome/WelcomePage'
 
 /**
@@ -90,9 +93,12 @@ const router = createBrowserRouter(
         { path: '/home', element: <HomePage /> },
         { path: '/home/:module', element: <HomeModulePage /> },
         { path: '/llm', element: <LlmPage /> },
+        { path: '/llm/memory', element: <MemoryPage /> },
         { path: '/life', element: <LifePage /> },
+        { path: '/life/eventide', element: <EventidePage /> },
         { path: '/solo', element: <SoloPage /> },
         { path: '/setting', element: <SettingPage /> },
+        { path: '/setting/worldbook', element: <WorldbookPage /> },
         { path: '*', element: <Navigate to="/chat" replace /> },
       ],
     },

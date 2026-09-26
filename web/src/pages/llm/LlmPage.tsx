@@ -112,6 +112,8 @@ export function LlmPage() {
             </div>
           )}
 
+          {/* 记忆页入口在上方「记忆」模块卡（capabilityModules.ts）；这里不再放第二个 */}
+
           <p className="mt-6 text-xs" style={{ color: 'var(--text-secondary)' }}>
             这份档案由服务端按依赖真实情况生成，界面不做改动。小栖在对话里怎么用它，见 Chat；它产生了什么，见 Home 与生活。
           </p>

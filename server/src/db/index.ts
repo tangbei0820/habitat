@@ -264,3 +264,30 @@ export const db = drizzle(sqlite, { schema })
 export function closeDb(): void {
   sqlite.close()
 }
+
+// 世界书（Phase 7A · SPEC §9.4.2）。人格 Prompt 走 app_kv（单值，不值得一张表）
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS worldbook_entry (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  keys TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK (mode IN ('always', 'keyword')),
+  enabled INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_worldbook_order ON worldbook_entry (sort_order, created_at);
+`)
+
+// Eventide 历史快照（Phase 7A）：状态页趋势 / 最近变化用。行数有上限，写入时裁剪
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS eventide_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  state_json TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  settled_at INTEGER NOT NULL UNIQUE
+);
+CREATE INDEX IF NOT EXISTS idx_eventide_history_at ON eventide_history (settled_at DESC, id DESC);
+`)
