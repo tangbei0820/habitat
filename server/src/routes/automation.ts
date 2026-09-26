@@ -6,8 +6,10 @@ import {
   getAutomationPolicy,
   getAutomationRuntimeState,
   listAutomationRuns,
+  listRecentAutomationActions,
   saveAutomationPolicy,
 } from '../db/automation.js'
+import { getSurfFeeds, setSurfFeeds } from '../db/surf.js'
 import {
   listEventLogs,
   listNotifications,
@@ -125,9 +127,28 @@ export function registerAutomationRoutes(app: FastifyInstance, service: Automati
   }))
   app.patch('/api/automation', async (request) => ({ policy: saveAutomationPolicy(parsePolicyPatch(request.body)) }))
   app.post('/api/automation/check', async () => ({ results: await service.checkNow() }))
-  app.get('/api/automation/runs', async (request) => ({
-    runs: listAutomationRuns(limitOf((request.query as Record<string, unknown>).limit, 50, 200)),
-  }))
+  app.get('/api/automation/runs', async (request) => {
+    const limit = limitOf((request.query as Record<string, unknown>).limit, 50, 200)
+    const runs = listAutomationRuns(limit)
+    // 行动审计按 run 聚合返回（一次查询，避免 N+1）；取的行数与 runs 数量同量级
+    const actions = listRecentAutomationActions(limit * 4)
+    return {
+      runs: runs.map((run) => ({ ...run, ...(actions.get(run.id) === undefined ? {} : { actions: actions.get(run.id) }) })),
+    }
+  })
+
+  app.get('/api/surf/feeds', async () => ({ feeds: getSurfFeeds() }))
+  app.put('/api/surf/feeds', async (request) => {
+    const body = record(request.body)
+    if (body.feeds !== null && !Array.isArray(body.feeds)) {
+      throw new RequestError(ErrorCodes.BadRequest, 'feeds 必须是 URL 数组或 null（恢复默认）')
+    }
+    try {
+      return { feeds: setSurfFeeds(body.feeds as string[] | null) }
+    } catch (error) {
+      throw new RequestError(ErrorCodes.BadRequest, error instanceof Error ? error.message : String(error))
+    }
+  })
 
   app.get('/api/notifications', async (request) => ({
     notifications: listNotifications(limitOf((request.query as Record<string, unknown>).limit, 50, 200)),

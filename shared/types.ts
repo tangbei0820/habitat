@@ -722,6 +722,8 @@ export interface AutomationRunRecord {
   dayKey: string
   at: number
   finishedAt: number | null
+  /** 行动级审计（Phase 7B）：runs 接口按 run 聚合返回；wake/solitude 运行才有 */
+  actions?: AutomationActionRecord[]
 }
 
 export interface BudgetDecision {
