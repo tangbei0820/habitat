@@ -115,7 +115,11 @@ export type RequestConfirmResult = { ok: true; event: RuntimeEvent } | { ok: fal
  * 把一个 `confirm` 级工具调用挂成待确认事件。**不执行任何副作用。**
  *
  * 校验放在这里而不是执行阶段：模型给的参数不合法时应当**立刻**告诉它，
- * 让它自己改一次重发 —— 而不是先让北北点一张注定失败的确认卡。
+ * 让它自己改一次重发 —— 而不是先让北北看到一张注定失败的确认卡。
+ *
+ * ⚠️ Phase 7B 起日记三能力与留言板已自主化（不再产生新的确认卡），本入口目前
+ * **没有**现役工具会走到 —— 保留它是因为确认协议本身还在（`memory.write` 落地时
+ * 第一个用）。上面的校验函数随之保留：它们同时服务于新数据上限的一致性。
  */
 export function requestToolConfirm(input: {
   capabilityId: string
@@ -180,7 +184,12 @@ export function requestDiaryAccess(diaryId: string): { ok: true; event: RuntimeE
 
 type ExecOutcome = { status: 'approved' | 'denied' | 'failed'; result: string }
 
-/** `tool_confirm` 的执行：批准才真写，拒绝就什么都不做。 */
+/** `tool_confirm` 的执行：批准才真写，拒绝就什么都不做。
+ *
+ * ⚠️ Phase 7B 起日记/留言板自主化后，**新**的确认事件不会再产生；
+ * 这个执行器保留是为了消化升级时刻仍然 `pending` 的历史挂起事件 ——
+ * 删掉它，老确认卡会永远卡在「待确认」，用户点了也说不清。
+ */
 function executeToolConfirm(payload: Record<string, unknown>, approved: boolean): ExecOutcome {
   const toolName = str(payload.toolName)
   const args = typeof payload.args === 'object' && payload.args !== null ? (payload.args as Record<string, unknown>) : {}

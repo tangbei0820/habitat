@@ -1,13 +1,17 @@
 /**
- * Phase 6.5 · P1（Event Inbox / 日记权限 / 日记·留言板 Tool）验收。
+ * Phase 6.5 · P1（Event Inbox / 日记权限）+ Phase 7B（写类自主化）验收。
  *
  * 要验的不是「接口通不通」，而是**三条不能破的边界**：
  *
- * 1. **挂起不等于执行** —— 模型请求写日记时，日记必须还没被写。
- *    这是 `confirm` 级能力的全部意义；一旦这条破了，「确认」就是摆设。
- * 2. **决策只能做一次** —— 确认卡点两下不能写出两篇日记。
+ * 1. **自主执行真的落库** —— Phase 7B 起日记三能力与留言板是 `autonomous`：
+ *    模型一调用就真写，作者是 companion、日记默认私密、留言不推送打扰。
+ * 2. **决策只能做一次** —— 同一条权限事件点两下不能出现两种结果。
  * 3. **用户不能替 AI 决定** —— 「北北想看某篇私密日记」必须由 AI 自己答应。
  *    这条破了，日记的「私密」就只是个说法。
+ *
+ * ⚠️ 历史：P1 时写类走 `confirm` 确认卡（挂起 → 北北点允许 → 才执行）。
+ * 7B 自主化后**新**确认事件不再产生，确认协议作为基础设施保留（`memory.write` 落地时用）；
+ * 本探针相应把「挂起/批准/拒绝」的覆盖挪到仍然活跃的 `diary_access_request` 路径上。
  *
  * 另外还要验「模型真的能调这些工具」—— 光有工具定义不算，得从聊天流里调通。
  *
@@ -168,8 +172,8 @@ if (profileId === null) {
   process.exitCode = 1
 } else {
 
-/* ------------------------------------------------- 1. 模型请求写日记 → 挂起不执行 */
-console.log('\n[1] confirm 级工具：挂起，且**不产生副作用**')
+/* ------------------------------------------------- 1. 模型写日记 → 自主执行，立即落库 */
+console.log('\n[1] autonomous 写类：一调用就真写（Phase 7B）')
 
 const beforeCount = (await diaries()).length
 const asked = await chat(
@@ -181,67 +185,40 @@ check('聊天流 200', asked.status === 200, `status=${asked.status}`)
 const writeFrames = toolCallsOf(asked.frames)
 check('收到 tool-call 帧', writeFrames.length === 1, `帧数=${writeFrames.length}`)
 const writeFrame = writeFrames[0]
-check('挂起算成功调用（ok=true，模型才不会重试）', writeFrame?.ok === true)
-check('帧里带 pendingEventId', typeof writeFrame?.eventId === 'string' && writeFrame.eventId !== '', `eventId=${writeFrame?.eventId ?? '(无)'}`)
-check('卡片文案说的是「等待确认」而不是「已完成」', (writeFrame?.summary ?? '').includes('等待'), `summary=${writeFrame?.summary ?? ''}`)
+check('调用成功（ok=true）', writeFrame?.ok === true)
+check('卡片文案说的是「写了」而不是「等待确认」', (writeFrame?.summary ?? '').includes('写了'), `summary=${writeFrame?.summary ?? ''}`)
+check('自主执行不再挂确认事件（帧里没有 eventId）', writeFrame?.eventId === undefined, `eventId=${writeFrame?.eventId ?? '(无)'}`)
 
-const afterAsk = await diaries()
-check('★ 日记**没有**被写进去（挂起不执行）', afterAsk.length === beforeCount, `before=${beforeCount} after=${afterAsk.length}`)
-
-const pendingWrite = (await events('?decider=user&status=pending')).find((item) => item.capabilityId === 'diary.create')
-check('事件收件箱里多了一条待北北确认的事件', pendingWrite !== undefined)
-check('这条事件等的是北北，不是 AI', pendingWrite?.decider === 'user', `decider=${pendingWrite?.decider ?? ''}`)
-check('事件类型是 tool_confirm', pendingWrite?.kind === 'tool_confirm', `kind=${pendingWrite?.kind ?? ''}`)
-check('事件对前端可读（标题里能看出要做什么）', (pendingWrite?.title ?? '').includes('验收·小栖的日记'), `title=${pendingWrite?.title ?? ''}`)
-
-/* ------------------------------------------------- 2. 用户确认 → 真的执行 */
-console.log('\n[2] 北北点「允许」之后才真的写入')
-
-const decided = await req(`/api/inbox/${pendingWrite?.id ?? 'x'}/decide`, post({ decision: 'approve' }))
-check('决策返回 200', decided.status === 200, `status=${decided.status}`)
-const approved = (decided.body as { event: RuntimeEventView }).event
-check('事件转为 approved', approved.status === 'approved', `status=${approved.status}`)
-check('结果里带着日记 id（模型能知道写成了什么）', (approved.result ?? '').includes('diary-'), `result=${approved.result ?? ''}`)
-
-const afterApprove = await diaries()
-const written = afterApprove.find((item) => item.title === '验收·小栖的日记')
-check('★ 日记真的写进去了', written !== undefined, `共 ${afterApprove.length} 篇`)
+const afterWrite = await diaries()
+const written = afterWrite.find((item) => item.title === '验收·小栖的日记')
+check('★ 日记立即写进去了', written !== undefined && afterWrite.length === beforeCount + 1, `before=${beforeCount} after=${afterWrite.length}`)
 check('作者是 companion（AI 写的）', written?.author === 'companion', `author=${written?.author ?? ''}`)
 check('新写的日记是私密的（开放是另一件事）', written?.visibility === 'private', `visibility=${written?.visibility ?? ''}`)
 check('北北现在还读不到正文', written?.readable === false && written?.content === null, `readable=${String(written?.readable)}`)
 check('北北也改不了它', written?.editable === false)
+check('收件箱里没有新的待确认事件', (await events('?decider=user&status=pending')).every((item) => item.capabilityId !== 'diary.create'))
 
-/* ------------------------------------------------- 3. 重复决策被拒 */
-console.log('\n[3] 决策只能做一次')
-
-const again = await req(`/api/inbox/${pendingWrite?.id ?? 'x'}/decide`, post({ decision: 'approve' }))
-check('重复决策 → 400（不会写出第二篇）', again.status === 400, `status=${again.status}`)
-check('日记数没有变化', (await diaries()).length === afterApprove.length)
-
-/* ------------------------------------------------- 4. 拒绝 → 不执行 */
-console.log('\n[4] 北北点「拒绝」：不产生副作用')
+/* ------------------------------------------------- 2. 留言板同样自主执行 */
+console.log('\n[2] messageboard_write：直接上板，不推送不打扰')
 
 const momentsBefore = (await moments()).length
-await chat('[[tool:messageboard_write {"content":"验收·这条不该出现"}]]', profileId)
-const pendingMoment = (await events('?decider=user&status=pending')).find((item) => item.capabilityId === 'messageboard.write')
-check('留言也走同一条挂起路径', pendingMoment !== undefined)
-check('拒绝前留言板没有它', (await moments()).length === momentsBefore)
+const wroteMoment = await chat('[[tool:messageboard_write {"content":"验收·自主留言"}]]', profileId)
+const momentFrame = toolCallsOf(wroteMoment.frames)[0]
+check('调用成功', momentFrame?.ok === true, `summary=${momentFrame?.summary ?? ''}`)
+check('★ 留言真的上板了', (await moments()).length === momentsBefore + 1, `before=${momentsBefore}`)
+check('收件箱里没有留言的确认事件', (await events('?decider=user&status=pending')).every((item) => item.capabilityId !== 'messageboard.write'))
 
-const denied = await req(`/api/inbox/${pendingMoment?.id ?? 'x'}/decide`, post({ decision: 'deny' }))
-check('决策返回 200', denied.status === 200, `status=${denied.status}`)
-check('事件转为 denied', (denied.body as { event: RuntimeEventView }).event.status === 'denied')
-check('★ 拒绝之后留言板仍然没有它', (await moments()).every((item) => !item.content.includes('不该出现')))
-check('拒绝的原因写进了结果（模型知道发生了什么）', ((denied.body as { event: RuntimeEventView }).event.result ?? '').includes('拒绝'))
+/* ------------------------------------------------- 3. 参数不合法 → 失败回灌，不写半个字 */
+console.log('\n[3] 参数不合法：当场回灌，不落库')
 
-/* ------------------------------------------------- 5. 参数不合法 → 不建事件 */
-console.log('\n[5] 参数不合法：当场回灌，不挂一条注定失败的卡')
-
+const countAfterGood = (await diaries()).length
 const pendingBefore = (await events('?status=pending')).length
 const bad = await chat('[[tool:diary_create]]', profileId)
 const badFrame = toolCallsOf(bad.frames)[0]
 check('回灌的是失败（ok=false）', badFrame?.ok === false)
 check('没有产生事件', (await events('?status=pending')).length === pendingBefore)
 check('失败原因具体（模型能据此改）', (badFrame?.detail ?? badFrame?.summary ?? '').includes('title'), `detail=${badFrame?.detail ?? ''}`)
+check('★ 日记数没有变化', (await diaries()).length === countAfterGood)
 
 /* ------------------------------------------------- 6. 北北请求查看私密日记 */
 console.log('\n[6] 权限流转：请求 → AI 决定')
@@ -297,6 +274,14 @@ await chat('好的', profileId)
 const afterDelivered = systemBlocksOf(await lastSentMessages())
 check('★ 第二次不再重复注入（不烧无用的 token、也不诱导它重做）', !afterDelivered.includes('你之前那些请求的结果'))
 
+/* ------------------------------------------------- 10.5 决策只能做一次 */
+console.log('\n[10.5] 决策只能做一次（放在结果注入验完之后 —— 重复调用的失败回灌会占用一次「只注入一次」的结果）')
+
+const againAllow = await chat(`[[tool:diary_allow_access {"eventId":"${accessEvent.id}"}]]`, profileId)
+const againFrame = toolCallsOf(againAllow.frames)[0]
+check('★ 重复同意 → 失败回灌', againFrame?.ok === false, `summary=${againFrame?.summary ?? ''}`)
+check('日记没有因此变化', (await getEvent(accessEvent.id)).status === 'approved')
+
 /* ------------------------------------------------- 11. AI 拒绝 */
 console.log('\n[11] AI 拒绝：日记保持私密')
 
@@ -317,7 +302,7 @@ check('★ 正文没有下发', stillPrivate.readable === false && stillPrivate.
 check('★ 被拒之后日记还在（拒绝 ≠ 删掉）', (await diaries()).some((item) => item.id === 'probe-ai-diary-2'))
 
 /* ------------------------------------------------- 12. 能力面 */
-console.log('\n[12] 能力面：写类已可用且绑了工具')
+console.log('\n[12] 能力面：写类已可用、已绑工具、且是 autonomous')
 
 const snapshotRes = await req('/api/capabilities')
 const snapshot = ((snapshotRes.body as { capabilities?: Array<{ id: string; enabled: boolean; autonomy: string; toolName?: string }> }).capabilities ?? [])
@@ -326,7 +311,7 @@ for (const id of ['diary.create', 'diary.update', 'diary.list_own', 'diary.read_
   const item = byId.get(id)
   check(`${id} 已可用且绑了工具`, item?.enabled === true && typeof item.toolName === 'string', `enabled=${String(item?.enabled)} tool=${item?.toolName ?? '(无)'}`)
 }
-check('写类仍是 confirm 级（不是 autonomous）', byId.get('diary.create')?.autonomy === 'confirm', `autonomy=${byId.get('diary.create')?.autonomy ?? ''}`)
+check('★ 写类已自主化（Phase 7B：diary.create / messageboard.write）', byId.get('diary.create')?.autonomy === 'autonomous' && byId.get('messageboard.write')?.autonomy === 'autonomous', `autonomy=${byId.get('diary.create')?.autonomy ?? ''}`)
 check('读自己的能力是 autonomous', byId.get('diary.read_own')?.autonomy === 'autonomous')
 check('写记忆仍未实施（如实说不）', byId.get('memory.write')?.enabled === false)
 

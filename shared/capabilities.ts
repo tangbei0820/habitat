@@ -103,10 +103,13 @@ export interface CapabilityDefinition {
 /**
  * 静态能力表。**只声明，不判断可用性。**
  *
- * 当前阶段的边界（2026-09-24 定，按北北「分级解禁」的选择）：
- *   · 只读能力（记忆读 / 记忆搜 / 状态读 / 列日记 / 读自己日记 / 允许·拒绝对话）→ `autonomous`，AI 可自主调用
- *   · 写类三能力（写日记 / 改日记 / 写留言板）→ `confirm`：AI **可以**发起，
- *     但系统先挂成一条待确认事件，北北点「允许」才真正执行（P1 已落地确认卡）
+ * 当前阶段的边界（2026-09-26 定，Phase 7B「自主生活决策链」起）：
+ *   · 只读能力（记忆读 / 记忆搜 / 状态读 / 列日记 / 读自己日记 / 允许·拒绝对话）→ `autonomous`
+ *   · 写类三能力（写日记 / 改日记 / 写留言板）→ **7B 起改为 `autonomous`**：
+ *     它们写的都是「小栖自己的东西」（私有日记 / 自己署名的留言），不是用户的文件；
+ *     主动行为链路（BudgetGuard + 决策契约 + 行动审计）就是它们的闸门。
+ *     ⚠️ 历史：P1 时它们曾是 `confirm`（确认卡），7B 起自主化；确认协议本身保留，
+ *     给未来真正需要人把关的写能力用（如 `memory.write`）。
  *   · 写记忆 → `confirm` 但**尚未实施**：Habitat 目前只读接入 Nocturne，
  *     实例的写工具（`hold`）没有接入
  *
@@ -176,11 +179,11 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     label: '写日记',
     summary: '写一篇只有小栖自己能看的日记',
     modelHint: '写一篇自己的日记。日记默认私有，北北只能看到封面与基本信息，需要你允许才能读正文。',
-    autonomy: 'confirm',
+    autonomy: 'autonomous',
     tool: {
       name: 'diary_create',
       description:
-        '写一篇你自己的日记（默认私有，北北看不到正文）。系统会先请北北点确认，确认后才真正写入 —— 所以你说「我写好了」时，用户可能还没点。',
+        '写一篇你自己的日记（默认私有，北北看不到正文）。写完立即生效。适合记下只有自己知道的心情与见闻。',
       parameters: {
         type: 'object',
         properties: {
@@ -202,11 +205,11 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     label: '修改日记',
     summary: '修改自己写过的日记',
     modelHint: '修改自己写过的日记正文。只有你能编辑日记。',
-    autonomy: 'confirm',
+    autonomy: 'autonomous',
     tool: {
       name: 'diary_update',
       description:
-        '修改你自己写过的一篇日记。只传要改的字段，没传的沿用原文。系统会先请北北点确认，确认后才真正修改。',
+        '修改你自己写过的一篇日记。只传要改的字段，没传的沿用原文。修改立即生效。',
       parameters: {
         type: 'object',
         properties: {
@@ -306,12 +309,12 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     module: 'board',
     label: '写留言',
     summary: '在留言板上留一条话',
-    modelHint: '在留言板上写一条留言。留言板是你和北北共用的，写之前会先请北北确认。',
-    autonomy: 'confirm',
+    modelHint: '在留言板上写一条留言。留言板是你和北北共用的，落笔前想想这条话值不值得占一个位置。',
+    autonomy: 'autonomous',
     tool: {
       name: 'messageboard_write',
       description:
-        '在留言板上留一条话（你和北北共用）。系统会先请北北点确认，确认后才真正发出。适合留短句，不超过 500 字。',
+        '在留言板上留一条话（你和北北共用）。写完立即出现在留言板上，不会推送打扰他。适合留短句，不超过 500 字。',
       parameters: {
         type: 'object',
         properties: {

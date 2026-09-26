@@ -17,7 +17,10 @@ import type { CapabilityAutonomy, CapabilityId, CapabilityModule, CapabilitySnap
 import { CAPABILITY_DEFINITIONS } from '@shared/capabilities.js'
 import type { LlmToolCall, MemoryProvider, StateProvider } from '@shared/providers.js'
 import { describeState } from '@shared/state-summary.js'
-import { getCompanionDiaryView, listCompanionDiaryViews } from '../db/diary.js'
+import { getCompanionDiaryView, listCompanionDiaryViews, createCompanionDiary, updateCompanionDiary } from '../db/diary.js'
+import { createCompanionMoment } from '../db/moment.js'
+import { appendEventLog } from '../db/activity.js'
+import { dayKeyOf } from '../db/usage.js'
 import { decideEvent, requestToolConfirm } from '../services/event-inbox.js'
 import type { CapabilityService } from './registry.js'
 
@@ -284,6 +287,69 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
           ok: true,
           text: decided.event.result ?? (approved ? '已同意。' : '已拒绝。'),
           summary: approved ? '已同意北北查看' : '已拒绝这次查看',
+        }
+      }
+
+      case 'diary.create': {
+        // Phase 7B 起自主执行（SPEC §3.4.5）：写的是小栖自己的私有日记，不需要北北逐次把关。
+        // 上限与确认流 / 用户侧接口一致（title 120 / content 10000），这里同样先校验再落库
+        const title = typeof value.title === 'string' ? value.title.trim() : ''
+        const content = typeof value.content === 'string' ? value.content.trim() : ''
+        if (title === '') return failure(tool, '缺少必填参数 title（日记标题不能为空）')
+        if (title.length > 120) return failure(tool, `title 最多 120 字（收到 ${title.length}）`)
+        if (content === '') return failure(tool, '缺少必填参数 content（日记正文不能为空）')
+        if (content.length > 10_000) return failure(tool, `content 最多 10000 字（收到 ${content.length}）`)
+        const rawDate = typeof value.entryDate === 'string' ? value.entryDate.trim() : ''
+        const entryDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : dayKeyOf(Date.now())
+        const created = createCompanionDiary({ title, content, entryDate })
+        appendEventLog('capability.diary.create', { title: created.title }, created.id)
+        return {
+          ok: true,
+          text: `日记《${created.title}》已写入（日期 ${created.entryDate}）。这篇日记目前是私密的，只有你能看到正文。`,
+          summary: `写了日记《${created.title}》`,
+        }
+      }
+
+      case 'diary.update': {
+        // Phase 7B 起自主执行：只能改「自己写的」日记 —— updateCompanionDiary 内部就带 author 检查
+        const id = typeof value.id === 'string' ? value.id.trim() : ''
+        if (id === '') return failure(tool, '缺少必填参数 id')
+        const title = typeof value.title === 'string' ? value.title.trim() : undefined
+        const content = typeof value.content === 'string' ? value.content.trim() : undefined
+        if (title !== undefined && title === '') return failure(tool, 'title 不能改成空')
+        if (title !== undefined && title.length > 120) return failure(tool, 'title 最多 120 字')
+        if (content !== undefined && content === '') return failure(tool, 'content 不能改成空')
+        if (content !== undefined && content.length > 10_000) return failure(tool, 'content 最多 10000 字')
+        const rawDate = typeof value.entryDate === 'string' ? value.entryDate.trim() : ''
+        const entryDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : null
+        // updateCompanionDiary 是全字段替换 —— 没传的字段沿用原文（与确认流同一做法），
+        // 不能拿 undefined 直灌 DB
+        const target = getCompanionDiaryView(id)
+        const updated = updateCompanionDiary(id, {
+          title: title ?? target?.title ?? '',
+          content: content ?? target?.content ?? '',
+          entryDate: entryDate ?? target?.entryDate ?? dayKeyOf(Date.now()),
+        })
+        if (updated === null) return failure(tool, `找不到你写的日记 ${id}`)
+        appendEventLog('capability.diary.update', { title: updated.title }, updated.id)
+        return {
+          ok: true,
+          text: `日记《${updated.title}》已更新。`,
+          summary: `更新了日记《${updated.title}》`,
+        }
+      }
+
+      case 'messageboard.write': {
+        // Phase 7B 起自主执行（SPEC §3.2.3）：署名是小栖的留言直接上板，不推送不打扰
+        const content = typeof value.content === 'string' ? value.content.trim() : ''
+        if (content === '') return failure(tool, '缺少必填参数 content（留言内容不能为空）')
+        if (content.length > 500) return failure(tool, `content 最多 500 字（收到 ${content.length}）`)
+        const created = createCompanionMoment(content)
+        appendEventLog('capability.messageboard.write', {}, created.id)
+        return {
+          ok: true,
+          text: `留言已写到留言板上（id: ${created.id}）。`,
+          summary: '在留言板上留了言',
         }
       }
 
