@@ -1178,7 +1178,7 @@ await seedMessages('pin-new', [
   ], { createdAt: 2000, updatedAt: 2000 }),
   seedMessage('settings-ai', 'assistant', [
     { kind: 'text', order: 0, payload: { text: '设置模式验收消息' } },
-  ], { createdAt: 2100, updatedAt: 2100 }),
+  ], { createdAt: 2100, updatedAt: 2100, metadata: { reasoning: '先看看用户说了什么，然后组织一句简短的回复' } }),
 ])
 await evaluate(`(() => { history.pushState({}, '', '/chat'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
 await waitFor(`document.querySelector('[data-testid="session-row-pin-old"]') !== null`, '置顶验收会话进入列表')
@@ -1907,7 +1907,7 @@ const terminalText = await evaluate(`document.querySelector('[data-testid="mini-
 check('Mini Terminal 无可用 MCP 时显示诊断指引', terminalText.includes('检查 MCP Server 状态'), terminalText)
 await evaluate(`(() => { document.querySelector('[aria-label="关闭工具面板"]').click(); return 'ok' })()`)
 
-/* ---------- 13. Chat 头像开关（SPEC §9.1.3，全局显示偏好） ---------- */
+/* ---------- 13. 头像 / 昵称显示开关（SPEC §9.1.3，全局显示偏好，三个独立开关） ---------- */
 await send('Page.navigate', { url: `${APP}/chat/pin-new` })
 await waitFor(`document.querySelector('[data-testid="chat-settings-open"]') !== null`, '回到设置验收会话')
 // 先把这条偏好清掉再刷新 —— 否则验到的是上一轮留下的状态，而不是「默认是显示」
@@ -1915,11 +1915,13 @@ await evaluate(`(() => { localStorage.removeItem('habitat-chat-display'); return
 await reloadAndWait(`document.querySelector('[data-testid="chat-settings-open"]') !== null`, '清掉显示偏好后重新进入会话')
 
 await evaluate(`(() => { document.querySelector('[data-testid="chat-settings-open"]').click(); return 'ok' })()`)
-await waitFor(`document.querySelector('[data-testid="chat-setting-avatars"]') !== null`, '聊天设置里的头像开关')
+await waitFor(`document.querySelector('[data-testid="chat-setting-companion-avatar"]') !== null`, '聊天设置里的小栖头像开关')
 
 const avatarOn = await evaluate(`(() => {
   const nodes = [...document.querySelectorAll('[data-testid="message-avatar"]')]
-  const toggle = document.querySelector('[data-testid="chat-setting-avatars"]')
+  const companion = document.querySelector('[data-testid="chat-setting-companion-avatar"]')
+  const user = document.querySelector('[data-testid="chat-setting-user-avatar"]')
+  const nickname = document.querySelector('[data-testid="chat-setting-nickname"]')
   return {
     count: nodes.length,
     roles: [...new Set(nodes.map((n) => n.dataset.avatarRole))].sort().join(','),
@@ -1932,30 +1934,49 @@ const avatarOn = await evaluate(`(() => {
       const ordered = [...row.querySelectorAll('[data-testid="message-avatar"], [data-bubble-mode]')]
       return node.dataset.avatarRole + ':' + (ordered.indexOf(node) < ordered.indexOf(bubble) ? 'before' : 'after')
     }).sort().join(','),
-    label: toggle?.textContent.trim(),
-    pressed: toggle?.getAttribute('aria-pressed'),
-    hint: toggle?.closest('div')?.parentElement?.innerText ?? '',
+    companionLabel: companion?.textContent.trim(),
+    userLabel: user?.textContent.trim(),
+    nicknameLabel: nickname?.textContent.trim(),
+    hint: nickname?.closest('.mt-4')?.innerText ?? '',
   }
 })()`)
 check('默认两侧都显示头像（用户侧与小栖侧各一）', avatarOn.count >= 2 && avatarOn.roles === 'companion,user', JSON.stringify(avatarOn))
 check('头像挂在气泡外侧（小栖在左、用户在右）', avatarOn.sides === 'companion:before,user:after', avatarOn.sides)
-check('头像开关初值反映当前状态', avatarOn.label === '显示' && avatarOn.pressed === 'true', JSON.stringify(avatarOn))
+check('三个开关初值：两侧头像显示、昵称隐藏', avatarOn.companionLabel === '显示' && avatarOn.userLabel === '显示' && avatarOn.nicknameLabel === '隐藏', JSON.stringify(avatarOn))
 check('开关明说影响所有会话', avatarOn.hint.includes('影响所有会话'), avatarOn.hint)
+check('昵称默认关闭时不渲染昵称行', (await evaluate(`document.querySelectorAll('[data-testid="msg-nick"]').length`)) === 0, '')
 
-await evaluate(`(() => { document.querySelector('[data-testid="chat-setting-avatars"]').click(); return 'ok' })()`)
-const avatarOff = await evaluate(`(() => ({
-  count: document.querySelectorAll('[data-testid="message-avatar"]').length,
-  label: document.querySelector('[data-testid="chat-setting-avatars"]')?.textContent.trim(),
+// 独立性：只关小栖侧，用户侧头像必须还在
+await evaluate(`(() => { document.querySelector('[data-testid="chat-setting-companion-avatar"]').click(); return 'ok' })()`)
+const companionOnlyOff = await evaluate(`(() => ({
+  companion: document.querySelectorAll('[data-testid="message-avatar"][data-avatar-role="companion"]').length,
+  user: document.querySelectorAll('[data-testid="message-avatar"][data-avatar-role="user"]').length,
 }))()`)
-check('关掉后头像立即消失', avatarOff.count === 0 && avatarOff.label === '隐藏', JSON.stringify(avatarOff))
+check('关掉小栖头像后用户侧不受牵连', companionOnlyOff.companion === 0 && companionOnlyOff.user > 0, JSON.stringify(companionOnlyOff))
+
+// 再关用户侧 → 两边都没了
+await evaluate(`(() => { document.querySelector('[data-testid="chat-setting-user-avatar"]').click(); return 'ok' })()`)
+check('两侧开关都关后头像立即消失', (await evaluate(`document.querySelectorAll('[data-testid="message-avatar"]').length`)) === 0, '')
+
+// 昵称开关：打开即出现，且默认称呼是 小栖 / 北北
+await evaluate(`(() => { document.querySelector('[data-testid="chat-setting-nickname"]').click(); return 'ok' })()`)
+const nickShown = await evaluate(`(() => {
+  const nodes = [...document.querySelectorAll('[data-testid="msg-nick"]')]
+  return { count: nodes.length, names: [...new Set(nodes.map((n) => n.textContent.trim()))].sort().join(',') }
+})()`)
+check('打开昵称开关后气泡上方出现称呼', nickShown.count >= 2 && nickShown.names === '北北,小栖', JSON.stringify(nickShown))
 
 await evaluate(`(() => { document.querySelector('[aria-label="关闭聊天设置"]').click(); return 'ok' })()`)
 await reloadAndWait(`document.querySelector('[data-testid="chat-settings-open"]') !== null`, '刷新回到会话')
-const avatarAfterReload = await evaluate(`(() => ({
-  count: document.querySelectorAll('[data-testid="message-avatar"]').length,
+const prefsAfterReload = await evaluate(`(() => ({
+  avatars: document.querySelectorAll('[data-testid="message-avatar"]').length,
+  nick: document.querySelectorAll('[data-testid="msg-nick"]').length,
   stored: localStorage.getItem('habitat-chat-display') ?? '',
 }))()`)
-check('头像开关刷新后仍然记住', avatarAfterReload.count === 0 && avatarAfterReload.stored.includes('"showAvatars":false'), JSON.stringify(avatarAfterReload))
+check('三个开关刷新后仍然记住', prefsAfterReload.avatars === 0 && prefsAfterReload.nick >= 2
+  && prefsAfterReload.stored.includes('"showCompanionAvatar":false')
+  && prefsAfterReload.stored.includes('"showUserAvatar":false')
+  && prefsAfterReload.stored.includes('"showNickname":true'), JSON.stringify(prefsAfterReload))
 
 const storeNames = await evaluate(`(async () => {
   const db = await new Promise((res, rej) => { const r = indexedDB.open('habitat-db'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) })
@@ -1963,12 +1984,62 @@ const storeNames = await evaluate(`(async () => {
 })()`)
 check('显示偏好不落 Dexie（它是偏好不是数据，不进备份）', !storeNames.includes('chatDisplay'), storeNames.join(','))
 
-/* 收尾：恢复显示 —— 别把「隐藏」留给后面的截图与下一次运行 */
+/* 收尾：恢复默认（两侧头像显示、昵称隐藏）—— 别把「隐藏」留给后面的截图与下一次运行 */
 await evaluate(`(() => { document.querySelector('[data-testid="chat-settings-open"]').click(); return 'ok' })()`)
-await waitFor(`document.querySelector('[data-testid="chat-setting-avatars"]') !== null`, '重新打开聊天设置')
-await evaluate(`(() => { document.querySelector('[data-testid="chat-setting-avatars"]').click(); return 'ok' })()`)
-check('再点一次可恢复显示', (await evaluate(`document.querySelectorAll('[data-testid="message-avatar"]').length`)) >= 2, '')
+await waitFor(`document.querySelector('[data-testid="chat-setting-companion-avatar"]') !== null`, '重新打开聊天设置')
+await evaluate(`(() => {
+  document.querySelector('[data-testid="chat-setting-companion-avatar"]').click()
+  document.querySelector('[data-testid="chat-setting-user-avatar"]').click()
+  document.querySelector('[data-testid="chat-setting-nickname"]').click()
+  return 'ok'
+})()`)
+const restored = await evaluate(`(() => ({
+  avatars: document.querySelectorAll('[data-testid="message-avatar"]').length,
+  nick: document.querySelectorAll('[data-testid="msg-nick"]').length,
+}))()`)
+check('恢复默认后头像回显、昵称收起', restored.avatars >= 2 && restored.nick === 0, JSON.stringify(restored))
 await evaluate(`(() => { document.querySelector('[aria-label="关闭聊天设置"]').click(); return 'ok' })()`)
+
+/* ---------- 13.5 思绪折叠卡（SPEC §2.3.6，Phase 7A） ---------- */
+const reasoningCard = await evaluate(`(() => {
+  const cards = [...document.querySelectorAll('[data-testid="reasoning-card"]')]
+  const last = cards[cards.length - 1]
+  if (last === undefined) return { present: false }
+  return {
+    present: true,
+    toggleText: last.querySelector('[data-testid="reasoning-toggle"]')?.textContent.trim(),
+    contentVisible: last.querySelector('[data-testid="reasoning-content"]') !== null,
+    expanded: last.querySelector('[data-testid="reasoning-toggle"]')?.getAttribute('aria-expanded'),
+  }
+})()`)
+check('有 reasoning 的 AI 消息渲染思绪折叠卡（默认收起）', reasoningCard.present === true
+  && reasoningCard.contentVisible === false && reasoningCard.expanded === 'false', JSON.stringify(reasoningCard))
+check('折叠卡语义明确（「思绪」而非正文）', reasoningCard.toggleText === '看它的思绪', reasoningCard.toggleText ?? '')
+
+if (reasoningCard.present === true) {
+  await evaluate(`(() => {
+    const cards = [...document.querySelectorAll('[data-testid="reasoning-card"]')]
+    cards[cards.length - 1].querySelector('[data-testid="reasoning-toggle"]').click()
+    return 'ok'
+  })()`)
+  const expanded = await evaluate(`(() => {
+    const cards = [...document.querySelectorAll('[data-testid="reasoning-card"]')]
+    const last = cards[cards.length - 1]
+    const content = last?.querySelector('[data-testid="reasoning-content"]')
+    return { text: content?.textContent ?? '', length: content?.textContent.length ?? 0 }
+  })()`)
+  check('点开能看到完整思绪文本（mock 思维链拼进来）', expanded.length > 0 && expanded.text.includes('先看看用户说了什么'), `length=${expanded.length} text=${expanded.text.slice(0, 40)}`)
+  await evaluate(`(() => {
+    const cards = [...document.querySelectorAll('[data-testid="reasoning-card"]')]
+    cards[cards.length - 1].querySelector('[data-testid="reasoning-toggle"]').click()
+    return 'ok'
+  })()`)
+  const collapsed = await evaluate(`(() => {
+    const cards = [...document.querySelectorAll('[data-testid="reasoning-card"]')]
+    return cards[cards.length - 1]?.querySelector('[data-testid="reasoning-content"]') === null
+  })()`)
+  check('再点收起后内容不渲染', collapsed === true, JSON.stringify(collapsed))
+}
 
 /* ---------- 14. 控制台 ---------- */
 const errors = consoleLogs.filter((l) => l.startsWith('[error]') || l.startsWith('[exception]'))

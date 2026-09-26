@@ -215,8 +215,9 @@ check('刚导出过就不再提醒', (await exists('[data-testid="backup-stale-h
 }
 
 /* ---------- 四、导入前的覆盖警告 ---------- */
+// ⚠️ 设置页有多个 input[type=file]（身份区头像上传 + 备份导入），必须点名备份这一个
 const doc = await send('DOM.getDocument')
-const queried = await send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: 'input[type="file"]' })
+const queried = await send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: 'input[type="file"][data-testid="backup-import-file"]' })
 if (queried.nodeId === 0) throw new Error('找不到备份文件选择框')
 await send('DOM.setFileInputFiles', { nodeId: queried.nodeId, files: [FAKE_BACKUP] })
 

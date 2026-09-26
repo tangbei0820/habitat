@@ -280,10 +280,11 @@ location = /mcp-<新密钥> {
 - [x] 完整 URL / Token 只存 `/root/.config/habitat/nocturne-mcp.env`（目录 700、文件 600）；nginx 站点配置收紧为 600。
 - [x] 修改前备份：`/etc/nginx/sites-available/nocturne.bak-20260924-170956`；`nginx -t` 通过后使用 reload，无服务中断。
 
-**④ 生产形态（真正部署时才需要）：**
+**④ 生产形态 —— 已部署（2026-09-25，T-050）：**
 
-- [ ] `NGINX_PORT` 的实际取值（compose 默认 80）
-- [ ] 内网直连地址（`http://127.0.0.1:<端口>/mcp`）—— 生产 `MCP_NOCTURNE_URL` 指向它，不走公网 TLS
+- [x] `NGINX_PORT` 实际取值：**8000**（`docker ps`：`nocturne-memory 127.0.0.1:8000->8000/tcp`）
+- [x] 内网直连地址：`http://127.0.0.1:8000/mcp` —— 生产 `MCP_NOCTURNE_URL` 指向它，`probe-nocturne-live.ts` 内网 25/25
+- [x] habitat 已上线 `https://habitat.beiyan.cc`（子域灰云直连；证书 DNS-01 签发——**80 端口 HTTP-01 被 ICP 拦截页 403**，续期钩子 `/root/acme-dns-wait.sh` 已写入 renewal conf）
 
 ---
 

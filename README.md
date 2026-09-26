@@ -102,7 +102,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 
 | 脚本 | 覆盖 |
 | --- | --- |
-| `node web/scripts/verify-chat.mjs` | 聊天链路 / 消息对象操作 / 跨模块收录 / 会话置顶与设置 / 会话分组 / 消息块分发 / 分页 / 候选版本 / 输入区快捷栏与请求回复拆开 / **安全 HTML（sandbox + CSP）· widget · tab-group** / **录音预览与真实转写** / **图片理解与生成** / **Mini Terminal 空态** / **气泡头像开关（全局偏好、刷新后仍记住）**（148 项） |
+| `node web/scripts/verify-chat.mjs` | 聊天链路 / 消息对象操作 / 跨模块收录 / 会话置顶与设置 / 会话分组 / 消息块分发 / 分页 / 候选版本 / 输入区快捷栏与请求回复拆开 / **安全 HTML（sandbox + CSP）· widget · tab-group** / **录音预览与真实转写** / **图片理解与生成** / **Mini Terminal 空态** / **小栖·我头像与昵称三开关（全局偏好、独立显隐、刷新后仍记住）· 思绪折叠卡（Phase 7A）**（155 项） |
 | `node web/scripts/verify-home-skin.mjs` | **UI 换装第 4 批 · 家页哨兵**：Bento 六格全是真数据或诚实空态（**真种数据必须吃库**）、「小栖 · 现在」是真实联网状态、全入口 10 个模块带图标、模块子页低存在感顶栏、移动端无溢出（14 项） |
 | `node web/scripts/verify-life-skin.mjs` | **UI 换装第 5 批 · 生活 + 设置哨兵**：生活「生活痕迹 / 记录」两套并排、无来源数据格诚实空态（占位数据零搬运）、日记真计数、设置重分组、主题分段切了真生效（16 项） |
 | `node web/scripts/verify-batch6-skin.mjs` | **UI 换装第 6 批 · 真播放/伴学/独处哨兵**：`<audio>` 真播放时长落盘进「生活痕迹」、无链接曲目明说拒绝、今天的三件小事加勾删、`/solo` 程序化雨声 + 计时落盘、沉浸式无底栏（29 项） |

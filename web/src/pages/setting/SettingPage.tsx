@@ -4,6 +4,7 @@ import { IconAlert, IconCheck, IconMoon, IconSun } from '../../components/qixi/I
 import { useTheme } from '../../theme/useTheme'
 import { BackupPanel } from '../../features/backup/BackupPanel'
 import { DiagnosticPanel } from '../../features/diagnostics/DiagnosticPanel'
+import { IdentitySettings } from '../../features/setting/IdentitySettings'
 import { ProviderSettings } from '../../features/providers/ProviderSettings'
 import { ApiRequestError } from '../../lib/api'
 import { getMcpHealth, getServerHealth } from '../../lib/health'
@@ -105,6 +106,9 @@ export function SettingPage() {
             </div>
           </div>
         </section>
+
+        {/* 身份：双方的头像图与昵称（SPEC §9.1.3）—— 内容在这里配，显隐在聊天设置里控制 */}
+        <IdentitySettings />
 
         <ProviderSettings />
 

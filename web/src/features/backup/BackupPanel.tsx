@@ -146,6 +146,8 @@ export function BackupPanel() {
           ref={fileRef}
           type="file"
           accept="application/json,.json"
+          // ⚠️ 设置页上现在有多个 input[type=file]（身份区的头像上传也在），验收要精确点名这一个
+          data-testid="backup-import-file"
           className="hidden"
           onChange={(e) => handleFileChosen(e.target.files?.[0] ?? null)}
         />

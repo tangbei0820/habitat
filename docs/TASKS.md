@@ -2284,3 +2284,48 @@ AI 不能替北北确认（工具层硬编码 `decider='companion'`，模型传�
 
 **部署就绪结论**：代码与验收侧已就绪。上服务器剩的都是**实机操作**（按 DEPLOYMENT §6 打勾）：
 DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 配置、`server/.env` 填值（CORS/MCP 内网地址/Token）、部署后 7 条清单。
+
+### T-050 · 2026-09-25 · 全量部署上 VPS —— **完成（服务端侧）**
+
+**背景**：SSH 密钥托管模式部署。北北只动手 3 处：①手输一次密码配合钥（实际旧钥匙已授权，命令直接通了）②Cloudflare 加 A 记录 ③贴一条 DNS-01 TXT。其余全由 agent 经 `ssh -i ~/.ssh/habitat_vps root@120.27.247.75` 远程完成。
+
+| 步 | 结果 |
+| --- | --- |
+| SSH 免密 | 专用 ed25519 密钥 `C:\Users\86587\.ssh\habitat_vps` 落地并验证免密登录（BatchMode） |
+| 服务器体检 | Ubuntu 22.04.5 / Node v20.16.0（正好满足 ABI 约束，未装新东西）/ nginx 1.18 / certbot 1.21 / 磁盘剩 21G |
+| DNS + 证书 | `habitat.beiyan.cc` A 记录（灰云）；**HTTP-01 被 403**（阿里云 Beaver ICP 拦截页实锤，本机 curl 抓到「Non-compliance ICP Filing」）→ **转 DNS-01**：服务器上 `/root/acme-dns-wait.sh` 钩子轮询 1.1.1.1 等 TXT 生效，certbot nohup 后台跑，北北贴一条 TXT 后自动签成（89 天，2026-12-24 到期）。**续期钩子已写进 renewal conf，自动续期无忧** |
+| 代码上机 | 仓库无远程 → **本地 tar 打包（排除 node_modules/.git/server/data/.workbuddy）+ scp** 到 `/srv/habitat`；web 构建本地做（PWA precache 13 项）随包上 |
+| 依赖 | `npm install` 装完（better_sqlite3.node 编译产物 + tsx 就位，幂等重跑验证依赖树完整） |
+| `.env` | 服务器本地生成（600）：HOST=127.0.0.1 / CORS_ORIGIN=https://habitat.beiyan.cc / **MCP_NOCTURNE_URL=http://127.0.0.1:8000/mcp（内网直连，docker ps 实测 nocturne-memory 映射 127.0.0.1:8000→8000）** / Token+Namespace 从 `/root/.config/habitat/nocturne-mcp.env` 本地 source，**值不经过对话** |
+| systemd | `habitat-server.service` enable --now，active，`/api/health` → `{"ok":true}`，**只监听 127.0.0.1:3000** |
+| nginx | `sites-available/habitat`（443+80 301；SPA try_files / sw.js·manifest 不缓存 / assets 强缓存 / /api 反代反缓冲），nginx -t 过后 reload；证书链完整（leaf→YR1→Root YR，Verify 0） |
+| 记忆链路 | `probe-nocturne-live.ts`（服务器内网 + .env）：**25/25 通过**（3 条警告），9 工具面 / 会话 / breath+trace 只读全绿，namespace=habitat |
+
+**踩坑**
+
+- ⚠️ **本机 curl 打 `habitat.beiyan.cc:443` 也被 DPI 掐（exit 35 SSL connect error）**——与 §4 Node 20 SNI 问题同族，现在连 Git Bash curl 都中招；服务器回环自测 TLS 1.3 全绿 → **链路问题在北北本地网络，不是服务器**。浏览器（BoringSSL 指纹）大概率没事，待真机验证。
+- 沙箱后台任务（run_in_background）读 `~/.ssh` 私钥会被静默拒绝且无法弹审批 → **远程长任务改在服务器上 nohup，本地快速轮询**。
+- 阿里云 80 端口 ICP 拦截对**未备案子域**必中（先前只记录了现象，本次拿到拦截页 HTML 实锤，server: Beaver）。
+
+**剩**（§6.6 验收单 2~5、7，全部要真机/浏览器）：浏览器打开填 LLM key 发消息、SW 激活+可安装、断网只读、备份导出导入、Android PWA 真机。Cloudflare 里那条用完的 `_acme-challenge.habitat` TXT 可删。
+⚠️ 顺带发现：**主域 beiyan.cc 证书 2026-10-13 到期**，续期走 standalone HTTP-01（80 端口）——子域实测被 ICP 拦截页劫持，届时可能续期失败，需提前换 DNS-01。
+
+
+### T-051 · 2026-09-26 · Post-v1 Phase 7A 第一切片（身份显示 + 思绪卡 + Eventide 渲染修复）—— **完成**
+
+**背景**：部署收官后按 `docs/POST_V1_PLAN.md` §9 开工：只做「用户可见、依赖少、不锁死后续架构」的四件事，做完即停。
+
+| 项 | 交付 | 说明 |
+| --- | --- | --- |
+| 身份数据 + 三个显示开关 | `useChatDisplay.ts` 重写（v0→v1 迁移）+ `MessageAvatar` 读配置 + `IdentitySettings`（设置页「身份」区）+ ChatSettingsSheet 三开关 | 原单一 `showAvatars` 拆成 **小栖头像 / 我的头像 / 气泡昵称** 三个独立开关（昵称默认关）；头像图 = 128px 方形 data URL（canvas 本地裁剪，WebP，150KB 上限），昵称即头像兜底首字；全部 persist→localStorage，**不落 Dexie、不进备份**（SPEC §9.1.3 语义不变）；迁移继承旧总开关值，用户关过的偏好不回弹 |
+| reasoning 折叠卡 | 新 `ReasoningCard.tsx` + ChatBubble 接线 | `metadata.reasoning` **有才渲染**（无空壳），默认收起、点开全文、再点收起；纯文本渲染（不解析 Markdown/HTML，SPEC §2.3.6 新增）；mock 上游本来就吐 `reasoning_content`，验收数据现成 |
+| Eventide `[object Object]` | `LifePage.tsx` RuntimeView `stateValue()` | payload 值对象/数组走 JSON.stringify、空值「—」、其余 String；tsx 直跑单测 5/5（嵌套对象/数组/null/数值/字符串） |
+
+**验收**：全量回归 **538 项零失败**（chat 148→155：新增两侧开关独立性 / 昵称显隐与持久化 / 思绪卡收展与内容）；两端 typecheck 过。
+
+**本批踩坑**
+
+- ⚠️ 设置页引入新 `input[type=file]` 后，verify-export 的 `DOM.querySelector('input[type="file"]')`（取**第一个**）会命中头像上传框 —— 文件喂错框，「覆盖警告」等到天荒地老。**修法：备份导入框加 `data-testid="backup-import-file"`，验收选择器点名**。以后页面上有多个文件框时同理。
+- verify-chat 的 pin-new 会话消息是 **seed 直种**的（不走 mock 流式），种的时候没有 `metadata.reasoning` ⇒ 思绪卡断言扑空。seed 补上 metadata 即可 —— **seed 数据要跟新功能的产品假设走**。
+
+**待优化（后续批次）**：Eventide `stateValue` 目前只有 tsx 内联单测 + 无 CDP 覆盖（测试环境无 Eventide 数据）→ 7A 完整 Eventide 页面时一并补；快照历史/趋势也是那时候的事。

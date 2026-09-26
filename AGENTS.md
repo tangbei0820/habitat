@@ -10,7 +10,7 @@
 > **纯修 bug、补测试、改接口、改部署等不涉及产品交互的任务，不强制查 GitHub 参考项目。**
 >
 > 任务完成后立即停止。不得自行扩展需求、重构无关代码、继续优化或执行下一阶段任务。超出当前范围的问题统一写入 `docs/TASKS.md`。
-> 最后更新：2026-09-24
+> 最后更新：2026-09-26
 
 ---
 
@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：**宿主 nginx 1.18.0** + habitat-server + Nocturne / Ombre Brain（容器 nginx）+ eventide-sidecar；Caddy 仅为早期方案记录                      |
-| 当前阶段 | **Phase 6.5 已完成**（T-035 能力注册/工具闭环 → T-038 呈现层）｜**UI 换装 6 批全部完成**（T-039 令牌地基；T-040 外壳；T-041 对话页 + `verify-chat-skin`；T-042 家页 Bento + `verify-home-skin`；T-043 生活两套并排 + 设置重分组 + `verify-life-skin`；T-044 一起听真播放 / 学习伴学 / 独处空间 + `verify-batch6-skin`）—— 见 `docs/UI_DESIGN.md` §5｜Phase 6 已完成（T-028~T-030 / T-032 / T-033）；Phase 3A 记忆链路与生产鉴权已完成真机 **26/26**（T-034） |
+| 当前阶段 | **Post-v1 续建进行中**（规划见 `docs/POST_V1_PLAN.md`）：**Phase 7A 第一切片已完成（T-051 身份显示三开关 / 思绪折叠卡 / Eventide 渲染修复）**，下一批 7A 剩余：Prompt+Worldbook、Nocturne 页面、Eventide 完整页面｜此前：Phase 6.5 已完成（T-035~T-038）｜UI 换装 6 批全部完成（T-039~T-044，见 `docs/UI_DESIGN.md` §5）｜**已部署 https://habitat.beiyan.cc（T-050）** |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨

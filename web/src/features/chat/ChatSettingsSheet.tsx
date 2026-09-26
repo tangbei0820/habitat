@@ -36,8 +36,12 @@ export function ChatSettingsSheet({
   const [exportMessage, setExportMessage] = useState<string | null>(null)
 
   /** 全局显示偏好：不在表单里、不随「保存」提交 —— 点一下立刻生效（SPEC §9.1.3） */
-  const showAvatars = useChatDisplay((state) => state.showAvatars)
-  const toggleAvatars = useChatDisplay((state) => state.toggleAvatars)
+  const showCompanionAvatar = useChatDisplay((state) => state.showCompanionAvatar)
+  const showUserAvatar = useChatDisplay((state) => state.showUserAvatar)
+  const showNickname = useChatDisplay((state) => state.showNickname)
+  const toggleCompanionAvatar = useChatDisplay((state) => state.toggleCompanionAvatar)
+  const toggleUserAvatar = useChatDisplay((state) => state.toggleUserAvatar)
+  const toggleNickname = useChatDisplay((state) => state.toggleNickname)
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
@@ -177,25 +181,33 @@ export function ChatSettingsSheet({
 
         {/*
           全局显示偏好（SPEC §9.1.3）。刻意**与上方三项分开、也不参与本表单的提交**：
-          它属于所有会话，跟「点了保存才生效」的语义不同 —— 混进同一个提交里，
+          它们属于所有会话，跟「点了保存才生效」的语义不同 —— 混进同一个提交里，
           用户会以为「不点保存就不算数」。
+          三个开关互相独立：小栖头像 / 我的头像 / 昵称 —— 关掉一侧不该连累另一侧。
+          内容（图片、称呼）在设置页「身份」区配置，这里只管「显示不显示」。
         */}
         <div className="mt-4 border-t pt-4" style={{ borderColor: 'var(--border-soft)' }}>
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span>聊天气泡头像</span>
-            <button
-              type="button"
-              data-testid="chat-setting-avatars"
-              aria-pressed={showAvatars}
-              onClick={toggleAvatars}
-              className="rounded-full border px-4 py-1 text-sm"
-              style={{ borderColor: 'var(--border-soft)' }}
-            >
-              {showAvatars ? '显示' : '隐藏'}
-            </button>
-          </div>
+          {([
+            { label: '小栖头像', value: showCompanionAvatar, toggle: toggleCompanionAvatar, testId: 'chat-setting-companion-avatar' },
+            { label: '我的头像', value: showUserAvatar, toggle: toggleUserAvatar, testId: 'chat-setting-user-avatar' },
+            { label: '气泡昵称', value: showNickname, toggle: toggleNickname, testId: 'chat-setting-nickname' },
+          ]).map((row) => (
+            <div key={row.testId} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+              <span>{row.label}</span>
+              <button
+                type="button"
+                data-testid={row.testId}
+                aria-pressed={row.value}
+                onClick={row.toggle}
+                className="rounded-full border px-4 py-1 text-sm"
+                style={{ borderColor: 'var(--border-soft)' }}
+              >
+                {row.value ? '显示' : '隐藏'}
+              </button>
+            </div>
+          ))}
           <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-            影响所有会话，点了立刻生效（不用点保存）。
+            影响所有会话，点了立刻生效（不用点保存）。头像与称呼在设置页「身份」里配置。
           </p>
         </div>
 

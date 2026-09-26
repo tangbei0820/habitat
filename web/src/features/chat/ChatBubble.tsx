@@ -19,9 +19,11 @@ import {
   type ReactNode,
 } from 'react'
 import type { BubbleMode, ChatMessage } from '@shared/types'
+import { identityName, useChatDisplay } from '../../app/useChatDisplay'
 import { IconCheck, IconChevronLeft, IconChevronRight, IconMore } from '../../components/qixi/Icons'
 import { MessageAvatar } from './MessageAvatar'
 import { MessageBlocks } from './MessageBlocks'
+import { ReasoningCard } from './ReasoningCard'
 
 /** 长按判定时长：短了会和「点一下」打架，长了会让人觉得没反应 */
 const LONG_PRESS_MS = 450
@@ -100,7 +102,8 @@ export function ChatBubble({
   selected,
   editing,
   bubbleMode,
-  showAvatars,
+  showCompanionAvatar,
+  showUserAvatar,
 }: {
   item: ChatItem
   actions: BubbleActions
@@ -109,8 +112,10 @@ export function ChatBubble({
   /** 是否正在内联编辑这一条 */
   editing: boolean
   bubbleMode: BubbleMode
-  /** 是否显示两侧头像 —— **全局显示偏好**（SPEC §9.1.3），不随会话变，所以由上层读 store 传进来 */
-  showAvatars: boolean
+  /** 小栖侧头像是否显示 —— **全局显示偏好**（SPEC §9.1.3），不随会话变，由上层读 store 传进来 */
+  showCompanionAvatar: boolean
+  /** 用户侧头像是否显示 —— 同上，与另一侧互不牵连 */
+  showUserAvatar: boolean
 }) {
   const { message, text } = item
   const isUser = message.role === 'user'
@@ -133,6 +138,25 @@ export function ChatBubble({
    * 验收里有两条断言是数个数和判左右顺序的，会直接挂。
    */
   const isPerson = message.role === 'user' || message.role === 'assistant'
+
+  /**
+   * 昵称显示（SPEC §9.1.3 第三个独立开关，全局偏好）：
+   * 开着时在气泡上方挂一条小字称呼；默认关，气泡本身已能区分双方。
+   * 撤回痕迹与称呼放一起会很吵，撤回态不显示。
+   */
+  const showNickname = useChatDisplay((state) => state.showNickname)
+  // 订阅总是执行（hook 规则），「这条消息是不是人」在组件内判断
+  const nameForRole = useChatDisplay((state) => identityName(state, isUser ? 'user' : 'companion'))
+  const nickname = isPerson ? nameForRole : null
+
+  /**
+   * 思绪折叠卡（SPEC §2.3.6）：只给 AI 消息、只在确实落了 reasoning 时渲染，
+   * 没有就什么壳都不出。reasoning 是「当前展示这版」的过程痕迹，跟随 metadata 走。
+   */
+  const reasoning =
+    !isUser && typeof message.metadata?.reasoning === 'string' && message.metadata.reasoning !== ''
+      ? message.metadata.reasoning
+      : null
 
   /**
    * 操作行何时出现：SPEC §2.3 要求双方消息都拥有对象级操作能力。
@@ -237,6 +261,19 @@ export function ChatBubble({
 
   const body = (
     <div className="msg-col">
+      {showNickname && nickname !== null && !isRecalled && (
+        <div
+          className="msg-nick text-xs"
+          data-testid="msg-nick"
+          style={{
+            color: 'var(--text-tertiary)',
+            marginBottom: 2,
+            ...(isUser ? { textAlign: 'right' } : {}),
+          }}
+        >
+          {nickname}
+        </div>
+      )}
       <div
         data-bubble-mode={bubbleMode}
         className={bubbleClass}
@@ -299,6 +336,7 @@ export function ChatBubble({
               `TextBlockView` 本身就是 `whitespace-pre-wrap break-words`，
               比原来的 `whitespace-pre-wrap` 只多一个断词，所以这不是「能力补齐」，是**把分叉去掉**。
             */}
+            {reasoning !== null && <ReasoningCard reasoning={reasoning} />}
             <MessageBlocks blocks={message.blocks} />
             {isStreaming &&
               (text === '' ? (
@@ -397,12 +435,12 @@ export function ChatBubble({
                 验收按 DOM 顺序断言头像在气泡外侧，翻转就全反了。 */}
             {selectMark}
             {body}
-            {showAvatars && isPerson && <MessageAvatar role={message.role} />}
+            {showUserAvatar && isPerson && <MessageAvatar role={message.role} />}
           </>
         ) : (
           <>
             {selectMark}
-            {showAvatars && isPerson && <MessageAvatar role={message.role} />}
+            {showCompanionAvatar && isPerson && <MessageAvatar role={message.role} />}
             {body}
           </>
         )}
