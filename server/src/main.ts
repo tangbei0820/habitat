@@ -31,6 +31,7 @@ import { registerMediaRoutes } from './routes/media.js'
 import { registerToolRoutes } from './routes/tools.js'
 import { registerWorldbookRoutes } from './routes/worldbook.js'
 import { AutomationService, startAutomationScheduler } from './services/automation.js'
+import { registerMemoryWriteExecutor } from './services/event-inbox.js'
 
 const app = Fastify({
   // Phase 5 媒体仍走受控 data URL；给 8 MB 音频的 base64 膨胀留空间，具体端点再按类型收紧。
@@ -82,6 +83,8 @@ app.setErrorHandler((err: unknown, _req, reply) => {
 const mcpConfigs = loadMcpRegistry()
 const gateway = new McpGateway(mcpConfigs, app.log)
 const memoryProvider = new NocturneMemoryProvider(gateway)
+// 记忆写入门（Phase 7C）：收件箱确认卡批准后真正调 hold 的执行体从这里注入
+registerMemoryWriteExecutor((input) => memoryProvider.write(input))
 const stateProvider = loadEventideStateProvider()
 // 能力面：静态声明（shared/capabilities.ts）+ 运行时依赖探测，合成 AI「现在真能做什么」的快照
 const capabilityService = new CapabilityService(gateway, memoryProvider, stateProvider)

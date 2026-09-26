@@ -78,7 +78,7 @@ export function registerInboxRoutes(app: FastifyInstance): void {
     if (decision !== 'approve' && decision !== 'deny') {
       throw new RequestError(ErrorCodes.BadRequest, 'decision 必须是 approve 或 deny')
     }
-    const result = decideEvent(request.params.id, 'user', decision === 'approve')
+    const result = await decideEvent(request.params.id, 'user', decision === 'approve')
     if (!result.ok) throw new RequestError(ErrorCodes.BadRequest, result.error)
     return { event: result.event }
   })

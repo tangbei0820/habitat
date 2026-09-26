@@ -110,8 +110,10 @@ export interface CapabilityDefinition {
  *     主动行为链路（BudgetGuard + 决策契约 + 行动审计）就是它们的闸门。
  *     ⚠️ 历史：P1 时它们曾是 `confirm`（确认卡），7B 起自主化；确认协议本身保留，
  *     给未来真正需要人把关的写能力用（如 `memory.write`）。
- *   · 写记忆 → `confirm` 但**尚未实施**：Habitat 目前只读接入 Nocturne，
- *     实例的写工具（`hold`）没有接入
+ *   · 写记忆 → `confirm`（2026-09-26 记忆沉淀批起**已实施**，绑 `memory_write`）：
+ *     长期记忆是两人共享的资产，小栖在对话里主动要写时，仍需北北点头 ——
+ *     这是确认协议的现役使用者。后台的自主沉淀（Surf 记录升格）不走确认卡，
+ *     它受自动化策略、预算与行动审计约束（SPEC §9.5.3）。
  *
  * ⚠️ `confirm` 级能力**也要绑工具**（P0 时它们一律不绑，因为那时确认协议还没落地）。
  * 不绑的后果是模型永远学不会「我可以请求写日记」—— 它会以为这件事根本做不到。
@@ -159,6 +161,26 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     summary: '把一段新记忆存进长期记忆',
     modelHint: '把值得长期记住的事写进记忆。写入前会先请北北确认。',
     autonomy: 'confirm',
+    tool: {
+      name: 'memory_write',
+      description:
+        '把一段值得长期记住的事写进小栖的长期记忆（影响之后所有的对话）。写入前需要北北确认，确认后才会真正生效。适合记下重要的约定、偏好或一起经历的事。',
+      parameters: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: '记忆正文：想长期记住的事，写清楚、能独立读懂，不超过 4000 字' },
+          name: { type: 'string', description: '可选的短标题，不超过 120 字；不填就不起名' },
+          kind: {
+            type: 'string',
+            enum: ['memory', 'feel', 'writing', 'unresolved'],
+            description: '记忆种类：memory=发生过的事，feel=感受与印象，writing=想留下的句子，unresolved=还没了结的事；省略视为 memory',
+          },
+          tags: { type: 'string', description: '可选标签，多个用逗号分隔，不超过 200 字' },
+        },
+        required: ['content'],
+        additionalProperties: false,
+      },
+    },
   },
   {
     id: 'state.read',

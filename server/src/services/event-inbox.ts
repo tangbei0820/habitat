@@ -16,6 +16,7 @@
  *    抛异常会让这条事件永远停在 `pending`，用户再点就说「已决过」，彻底说不清。
  */
 import type { RuntimeEvent } from '@shared/types'
+import type { MemoryTextResult, MemoryWriteInput } from '@shared/providers.js'
 import { createEvent, findPendingEvent, getEvent, readEventPayload, settleEvent } from '../db/event.js'
 import {
   createCompanionDiary,
@@ -35,6 +36,20 @@ import { dayKeyOf } from '../db/usage.js'
 export const DIARY_TITLE_MAX = 120
 export const DIARY_CONTENT_MAX = 10_000
 export const MOMENT_CONTENT_MAX = 500
+export const MEMORY_CONTENT_MAX = 4_000
+export const MEMORY_NAME_MAX = 120
+export const MEMORY_TAGS_MAX = 200
+
+/** 长期记忆写入门（Phase 7C）：`memory_write` 的执行体由装配点注入（Nocturne 适配层）。
+ *
+ * 注入而不是直接 import provider —— event-inbox 是纯服务层，不该耦合 MCP 装配；
+ * 探针也靠这个口子塞 mock 执行器。未注入（记忆链路没配）时批准执行会如实失败。
+ */
+export type MemoryWriteExecutor = (input: MemoryWriteInput) => Promise<MemoryTextResult>
+let memoryWriteExecutor: MemoryWriteExecutor | null = null
+export function registerMemoryWriteExecutor(executor: MemoryWriteExecutor | null): void {
+  memoryWriteExecutor = executor
+}
 
 /** 事件详情里给用户预览的正文长度：确认卡是给人扫一眼的，不是阅读器 */
 const PREVIEW_LIMIT = 160
@@ -107,6 +122,33 @@ function validateMomentArgs(args: Record<string, unknown>): Validated {
   return { ok: true, payload: { content }, title: '在留言板上留一条话', detail: preview(content) }
 }
 
+/** 写记忆允许的种类。`window` / `letter` 是实例内部/信件语义，聊天里不开放。 */
+const MEMORY_KINDS: readonly string[] = ['memory', 'feel', 'writing', 'unresolved']
+
+/** 校验 AI 写记忆的参数（Phase 7C）：上限与能力面 schema 描述一致。 */
+function validateMemoryWriteArgs(args: Record<string, unknown>): Validated {
+  const content = str(args.content)
+  if (content === '') return { ok: false, error: '缺少 content（记忆正文不能为空）' }
+  if (content.length > MEMORY_CONTENT_MAX) {
+    return { ok: false, error: `content 最多 ${MEMORY_CONTENT_MAX} 字（收到 ${content.length}）` }
+  }
+  const name = str(args.name)
+  if (name.length > MEMORY_NAME_MAX) return { ok: false, error: `name 最多 ${MEMORY_NAME_MAX} 字（收到 ${name.length}）` }
+  const kind = str(args.kind)
+  if (kind !== '' && !MEMORY_KINDS.includes(kind)) {
+    return { ok: false, error: `kind 只能是 ${MEMORY_KINDS.join(' / ')} 之一（收到 ${kind}）` }
+  }
+  const tags = str(args.tags)
+  if (tags.length > MEMORY_TAGS_MAX) return { ok: false, error: `tags 最多 ${MEMORY_TAGS_MAX} 字（收到 ${tags.length}）` }
+  const label = name === '' ? preview(content) : `《${name}》`
+  return {
+    ok: true,
+    payload: { content, ...(name === '' ? {} : { name }), ...(kind === '' ? {} : { kind }), ...(tags === '' ? {} : { tags }) },
+    title: `写一条长期记忆：${label}`,
+    detail: preview(content),
+  }
+}
+
 /* ---------------------------------------------------------------- 挂起（不执行） */
 
 export type RequestConfirmResult = { ok: true; event: RuntimeEvent } | { ok: false; error: string }
@@ -117,9 +159,10 @@ export type RequestConfirmResult = { ok: true; event: RuntimeEvent } | { ok: fal
  * 校验放在这里而不是执行阶段：模型给的参数不合法时应当**立刻**告诉它，
  * 让它自己改一次重发 —— 而不是先让北北看到一张注定失败的确认卡。
  *
- * ⚠️ Phase 7B 起日记三能力与留言板已自主化（不再产生新的确认卡），本入口目前
- * **没有**现役工具会走到 —— 保留它是因为确认协议本身还在（`memory.write` 落地时
- * 第一个用）。上面的校验函数随之保留：它们同时服务于新数据上限的一致性。
+ * ⚠️ Phase 7B 起日记三能力与留言板已自主化（不再产生新的确认卡）；
+ * **Phase 7C 起 `memory_write`（写长期记忆）是确认协议的现役使用者** ——
+ * 长期记忆是两人共享的资产，小栖在对话里主动要写时仍需北北点头（SPEC §9.7）。
+ * 上面的日记/留言校验函数随之保留：它们同时服务于新数据上限的一致性。
  */
 export function requestToolConfirm(input: {
   capabilityId: string
@@ -128,6 +171,8 @@ export function requestToolConfirm(input: {
 }): RequestConfirmResult {
   const validated = ((): Validated => {
     switch (input.toolName) {
+      case 'memory_write':
+        return validateMemoryWriteArgs(input.args)
       case 'diary_create':
         return validateDiaryArgs(input.args)
       case 'diary_update':
@@ -186,11 +231,11 @@ type ExecOutcome = { status: 'approved' | 'denied' | 'failed'; result: string }
 
 /** `tool_confirm` 的执行：批准才真写，拒绝就什么都不做。
  *
- * ⚠️ Phase 7B 起日记/留言板自主化后，**新**的确认事件不会再产生；
- * 这个执行器保留是为了消化升级时刻仍然 `pending` 的历史挂起事件 ——
- * 删掉它，老确认卡会永远卡在「待确认」，用户点了也说不清。
+ * ⚠️ Phase 7B 起日记/留言板自主化后，**新**的确认事件只来自 `memory_write`；
+ * 这个执行器保留日记/留言分支是为了消化升级时刻仍然 `pending` 的历史挂起事件 ——
+ * 删掉它们，老确认卡会永远卡在「待确认」，用户点了也说不清。
  */
-function executeToolConfirm(payload: Record<string, unknown>, approved: boolean): ExecOutcome {
+async function executeToolConfirm(payload: Record<string, unknown>, approved: boolean): Promise<ExecOutcome> {
   const toolName = str(payload.toolName)
   const args = typeof payload.args === 'object' && payload.args !== null ? (payload.args as Record<string, unknown>) : {}
 
@@ -199,6 +244,24 @@ function executeToolConfirm(payload: Record<string, unknown>, approved: boolean)
   }
 
   switch (toolName) {
+    case 'memory_write': {
+      // Phase 7C：确认通过才真正调 Nocturne 的 hold。执行体未注入（记忆链路没配）= 如实失败
+      if (memoryWriteExecutor === null) {
+        return { status: 'failed', result: '记忆链路当前不可用，这条记忆没有写入。不要装作已经记住。' }
+      }
+      const input: MemoryWriteInput = { content: str(args.content) }
+      if (typeof args.name === 'string' && str(args.name) !== '') input.name = str(args.name)
+      if (typeof args.kind === 'string' && str(args.kind) !== '') input.kind = str(args.kind) as MemoryWriteInput['kind']
+      if (typeof args.tags === 'string' && str(args.tags) !== '') input.tags = str(args.tags)
+      try {
+        await memoryWriteExecutor(input)
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        return { status: 'failed', result: `北北已确认，但写入记忆时失败了：${reason}。不要装作已经记住。` }
+      }
+      const label = input.name !== undefined ? `「${input.name}」` : ''
+      return { status: 'approved', result: `北北已确认，这条记忆${label}已写进长期记忆，之后你会记得它。` }
+    }
     case 'diary_create': {
       const created = createCompanionDiary({
         title: str(args.title),
@@ -239,11 +302,11 @@ function executeDiaryAccess(payload: Record<string, unknown>, approved: boolean)
   return { status: 'approved', result: `你同意了。日记《${updated.title}》正文已对北北开放。` }
 }
 
-function runDecision(event: RuntimeEvent, approved: boolean): ExecOutcome | null {
+function runDecision(event: RuntimeEvent, approved: boolean): Promise<ExecOutcome> | null {
   const payload = readEventPayload(event.id)
   if (payload === null) return null
   if (event.kind === 'tool_confirm') return executeToolConfirm(payload, approved)
-  if (event.kind === 'diary_access_request') return executeDiaryAccess(payload, approved)
+  if (event.kind === 'diary_access_request') return Promise.resolve(executeDiaryAccess(payload, approved))
   return null
 }
 
@@ -258,8 +321,11 @@ export type DecideResult =
  * `decider` 必须与事件上的 `decider` 一致 —— 这是**权限检查**，不是参数检查：
  * 用户不能替 AI 决定要不要开放日记（那等于自己给自己开门），
  * AI 也不能替用户确认「北北同意写这篇日记」。
+ *
+ * ⚠️ Phase 7C 起为 async：`memory_write` 批准后要真调 Nocturne（异步 MCP 调用）。
+ * 执行失败也会落定为 `failed`（纪律 2），不会把事件吊在 pending。
  */
-export function decideEvent(eventId: string, decider: 'user' | 'companion', approved: boolean): DecideResult {
+export async function decideEvent(eventId: string, decider: 'user' | 'companion', approved: boolean): Promise<DecideResult> {
   const event = getEvent(eventId)
   if (event === null) return { ok: false, error: '这条事件不存在' }
   if (event.decider !== decider) {
@@ -270,7 +336,7 @@ export function decideEvent(eventId: string, decider: 'user' | 'companion', appr
   }
   if (event.status !== 'pending') return { ok: false, error: '这条事件已经处理过了' }
 
-  const outcome = runDecision(event, approved)
+  const outcome = await runDecision(event, approved)
   if (outcome === null) return { ok: false, error: '这条事件的执行数据损坏了，无法处理' }
 
   const settled = settleEvent(eventId, outcome.status, outcome.result)

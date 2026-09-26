@@ -213,7 +213,7 @@ export function MemoryPage() {
         </section>
 
         <p className="mt-6 text-xs" style={{ color: 'var(--text-secondary)' }}>
-          这里只有「读」。记忆的写入由小栖在对话与共同生活里自己沉淀，不提供手工编辑入口。
+          这里只有「读」。记忆的写入由小栖在对话里发起（写入前需你确认），独处浏览的记录也会自动沉淀进来；本页不提供手工编辑入口。
         </p>
       </div>
     </div>

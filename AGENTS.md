@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：**宿主 nginx 1.18.0** + habitat-server + Nocturne / Ombre Brain（容器 nginx）+ eventide-sidecar；Caddy 仅为早期方案记录                      |
-| 当前阶段 | **Post-v1 续建进行中**（规划见 `docs/POST_V1_PLAN.md`）：**Phase 7A / 7B 全部完成（T-051 身份显示三开关 / 思绪折叠卡 / Eventide 渲染修复；T-052 Prompt+世界书 / Nocturne 记忆页 / Eventide 状态页；T-053 自主决策链 —— Wake 多行动 / no-op 一等公民、日记·留言板写能力自主化、Solitude Surf v1）**，下一批按 `POST_V1_PLAN.md` 后续章节（记忆沉淀 memory.write / Surf 订阅源管理 UI 等）｜此前：Phase 6.5 已完成（T-035~T-038）｜UI 换装 6 批全部完成（T-039~T-044，见 `docs/UI_DESIGN.md` §5）｜**已部署 https://habitat.beiyan.cc（T-050，跑 T-050 构建；T-051~T-053 未部署）** |
+| 当前阶段 | **Post-v1 续建进行中**（规划见 `docs/POST_V1_PLAN.md`）：**Phase 7A / 7B / 7C 已完成（T-051 身份显示三开关 / 思绪折叠卡 / Eventide 渲染修复；T-052 Prompt+世界书 / Nocturne 记忆页 / Eventide 状态页；T-053 自主决策链 —— Wake 多行动 / no-op 一等公民、日记·留言板写能力自主化、Solitude Surf v1；T-054 记忆沉淀 —— memory.write 落地（confirm 级确认卡）、Surf 记录自动升格进 Nocturne）**，下一批按 `POST_V1_PLAN.md` 后续章节（Surf 订阅源管理 UI / 7C Chat Expression 等）｜此前：Phase 6.5 已完成（T-035~T-038）｜UI 换装 6 批全部完成（T-039~T-044，见 `docs/UI_DESIGN.md` §5）｜**已部署 https://habitat.beiyan.cc（T-050，跑 T-050 构建；T-051~T-054 未部署）** |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨

@@ -18,6 +18,7 @@ import type {
   MemoryProvider,
   MemorySearchOptions,
   MemoryTextResult,
+  MemoryWriteInput,
   ToolGateway,
 } from '@shared/providers.js'
 import { GatewayError } from '../mcp/gateway.js'
@@ -30,13 +31,16 @@ interface McpTextBlock { type: 'text'; text: string }
  *
  * 注意实例还有一批我们尚未接入的能力（`wander` 抽屉漫游、`wander_mark` 认/不认/悬置、
  * `drive` 九维驱动、`undercurrent` 情绪天气、`trail_delta` / `trail_family` 轨迹家族）——
- * 那些属于产品设计，等做记忆页时再谈，不要在这里顺手加。
+ * 那些属于产品设计，等真有产品需要时再谈，不要在这里顺手加。
+ * （`hold` 写工具已于 Phase 7C 记忆沉淀批接入，2026-09-26。）
  */
 export const NOCTURNE_TOOLS = {
   /** 新窗 / Compact 后读取记忆。无参数。 */
   recall: 'breath',
   /** 按关键词搜索记忆。入参 `query`（必填）+ `limit`。 */
   search: 'trace',
+  /** 写入长期沉淀。入参 `content`（必填）+ `kind` / `name` / `tags` 等（可选）。 */
+  write: 'hold',
 } as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -77,6 +81,17 @@ export class NocturneMemoryProvider implements MemoryProvider {
     const args: Record<string, unknown> = { query }
     if (options.limit !== undefined) args.limit = options.limit
     return this.callText(NOCTURNE_TOOLS.search, args)
+  }
+
+  async write(input: MemoryWriteInput): Promise<MemoryTextResult> {
+    // 实例的 `hold`：content 必填，kind / name / tags / importance / pinned / protected / drive …
+    // 全是可选。适配层只透传 `MemoryWriteInput` 里声明过的四项 —— `pinned` / `protected`
+    // 会锁重要度分，`drive` / `chord` 是实例自己的九维设计，模型不该碰（见接口注释）。
+    const args: Record<string, unknown> = { content: input.content }
+    if (input.kind !== undefined) args.kind = input.kind
+    if (input.name !== undefined && input.name !== '') args.name = input.name
+    if (input.tags !== undefined && input.tags !== '') args.tags = input.tags
+    return this.callText(NOCTURNE_TOOLS.write, args)
   }
 
   async verifyToolFace(): Promise<string[]> {

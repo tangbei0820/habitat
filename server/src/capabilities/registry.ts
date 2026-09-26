@@ -19,16 +19,15 @@ import type { MemoryProvider, StateProvider, ToolGateway } from '@shared/provide
  * 已登记但**本阶段尚未实施**的能力 → 原因。
  *
  * 放在这里而不是运行时探测，是因为这些取决于施工阶段、不取决于环境 ——
- * 不管 Nocturne 通不通，`memory.write` 在写工具接入之前都不存在。
  * **实施后逐条从这里删掉**，删一条就多一个真能力。
  *
  * ⚠️ 2026-09-24（P1）：日记与留言板的七项已从此表**移除** ——
  * 它们依赖的服务端权威存储（T-036）与确认卡协议（T-037）都已落地。
  * 判断「能不能用」重新回到环境探测（Nocturne / Eventide 那两条）。
+ * 2026-09-26（记忆沉淀批）：`memory.write` 已移除 —— `hold` 已接入适配层，
+ * 可用性随记忆链路探测走（Nocturne 没配 / 工具面缺 hold 时如实报不可用）。
  */
-const NOT_IMPLEMENTED_YET: Partial<Record<CapabilityId, string>> = {
-  'memory.write': '本阶段只读接入 Nocturne（实例的写工具 hold 尚未接入）',
-}
+const NOT_IMPLEMENTED_YET: Partial<Record<CapabilityId, string>> = {}
 
 /** 记忆链路探测结果的缓存时长。`verifyToolFace()` 会实发 MCP 请求，不能每轮都问。 */
 const MEMORY_PROBE_TTL_MS = 60_000

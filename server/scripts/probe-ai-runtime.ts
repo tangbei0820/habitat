@@ -193,13 +193,13 @@ const enabledIds = snapshot.filter((item) => item.enabled).map((item) => item.id
 console.log(`    当前可用：${enabledIds.join(', ') || '（无）'}`)
 console.log(`    当前不可用：${snapshot.filter((item) => !item.enabled).map((item) => `${item.id}(${item.reason ?? ''})`).join('; ') || '（无）'}`)
 // Phase 6.5 P1 起：日记 / 留言板的能力已落地，所以它们**可用**；
-// 只有写记忆还没实施（Habitat 只读接入 Nocturne）。这条断言刻意写成两半，
-// 免得下次再有能力落地时，整条被当成「反正就是不可用」而漏掉。
+// Phase 7C（2026-09-26）起写记忆也已实施（hold 接入）：绑定 memory_write、保持 confirm 级。
 check(
-  '写记忆仍未实施（如实说不，不伪造）',
-  snapshot.every((item) => item.id !== 'memory.write' || !item.enabled),
+  '写记忆已实施且绑工具（Phase 7C）',
+  snapshot.some((item) => item.id === 'memory.write' && item.enabled && item.toolName === 'memory_write'),
   `memory.write=${enabledIds.includes('memory.write') ? 'enabled' : 'disabled'}`,
 )
+check('写记忆保持 confirm 级', snapshot.find((item) => item.id === 'memory.write')?.autonomy === 'confirm')
 check('日记与留言板能力已落地（P1）', (['diary.create', 'diary.read_own', 'messageboard.write'] as const).every((id) => enabledIds.includes(id)))
 check('只读能力在 mock 环境下可用', enabledIds.includes('memory.read') && enabledIds.includes('memory.search') && enabledIds.includes('tools.list'))
 

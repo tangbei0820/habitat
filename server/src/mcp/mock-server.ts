@@ -7,7 +7,7 @@
  * `breath` / `hold` / `trace` / `wander` / … 两套名字毫无交集。
  * 于是本地 mock 全绿、线上一调就炸 —— mock 长得不像被测对象，验了等于没验。
  *
- * 现在只 mock 适配层实际要用的两个工具（`breath` + `trace`）加一个链路自检用的 `echo`。
+ * 现在只 mock 适配层实际要用的三个工具（`breath` + `trace` + `hold`）加一个链路自检用的 `echo`。
  * **改实例或升级后，先跑工具面侦察再回来同步这里**：
  *   npm run probe:nocturne-tools        # 开发机
  *   bash probe-nocturne-tools-quick.sh  # 服务器
@@ -57,6 +57,30 @@ function createMcpServer(): McpServer {
           ? '没有匹配的记忆。'
           : found.map((item) => `- [${item.kind}] ${item.content}`).join('\n'),
       )
+    },
+  )
+  mcp.registerTool(
+    'hold',
+    {
+      description: '写入长期沉淀。正文按原样留下，不走脱水器。kind：memory/feel/writing/unresolved/window/letter。',
+      // 参数面按实例实测收敛（2026-09-26 工具面侦察）：content 必填，其余可选。
+      // pinned / protected / drive / chord / importance 等适配层不透传，mock 也不收。
+      inputSchema: {
+        content: z.string(),
+        kind: z.string().optional(),
+        name: z.string().optional(),
+        tags: z.string().optional(),
+      },
+    },
+    async ({ content, kind, name, tags }) => {
+      const record: MockMemory & { name?: string; tags?: string } = {
+        kind: kind ?? 'memory',
+        content: name ? `《${name}》${content}` : content,
+        ...(tags === undefined ? {} : { tags }),
+      }
+      memories.push(record)
+      const label = name ? `「${name}」` : ''
+      return toolText(`已沉淀${label}（kind: ${record.kind}）。`)
     },
   )
   return mcp

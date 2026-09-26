@@ -480,6 +480,26 @@ export class AutomationService {
     })
     // 行动审计 idx 0：独处运行里 Surf 是唯一的行动（幂等：重放时这条已存在则跳过）
     insertAutomationAction({ runId, idx: 0, type: 'surf', status: 'completed', refId: record.id, at: now.getTime() })
+    // 6. 记忆沉淀（Phase 7C）：把这次的私人记录升格进长期记忆（hold）。
+    //    后台自主、不挂确认卡 —— 闸门是独处开关 + 预算 + 行动审计（SPEC §9.5.3）；
+    //    失败不连坐：Surf 记录本身已经落库，沉淀失败只留审计，下轮独处照常。
+    const surfTitle = page?.title || chosen.title
+    try {
+      await this.memory.write({
+        kind: 'memory',
+        name: `看过：《${surfTitle}》`.slice(0, 120),
+        content: [
+          writeResult.text,
+          `（来源：${chosen.sourceFeed} · ${chosen.link}）`,
+        ].join('\n'),
+        tags: 'surf,独处浏览',
+      })
+      appendEventLog('automation.surf.consolidated', { runId, url: chosen.link }, record.id, now.getTime())
+    } catch (error) {
+      const reason = errorMessage(error)
+      appendEventLog('automation.surf.consolidate_failed', { runId, error: reason }, record.id, now.getTime())
+      this.logger.warn({ err: error }, 'Surf 记录沉淀进 Nocturne 失败（记录本体已落库）')
+    }
     return { entryId: record.id, usageRecordId: writeResult.usageRecordId, kind: 'surf' }
   }
 

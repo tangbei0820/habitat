@@ -281,7 +281,7 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
         if (eventId === '') return failure(tool, '缺少必填参数 eventId（见「等待你决定」列表）')
         const approved = tool.capabilityId === 'diary.allow_access'
         // `decider: 'companion'` 是硬编码的：这层代表 AI 做决定，不能让模型传一个 decider 进来
-        const decided = decideEvent(eventId, 'companion', approved)
+        const decided = await decideEvent(eventId, 'companion', approved)
         if (!decided.ok) return failure(tool, decided.error)
         return {
           ok: true,

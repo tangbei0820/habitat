@@ -113,6 +113,24 @@ export interface MemorySearchOptions {
 }
 
 /**
+ * 写记忆的入参（实例工具：`hold`，2026-09-26 接入）。
+ *
+ * 只暴露四项有普适产品语义的参数；实例特有的 `pinned` / `protected`（importance 锁 10、
+ * 不参与合并）、`drive` / `chord`（Nocturne 九维驱动 / 和弦设计）**不暴露** ——
+ * 那些是记忆实例自己的产品设计，模型乱填会锁死重要度分。等真有产品需要再说。
+ */
+export interface MemoryWriteInput {
+  /** 记忆正文。Nocturne 会按原样留下，不走脱水器。 */
+  content: string
+  /** 记忆种类；省略由实例按默认处理（`memory`）。 */
+  kind?: 'memory' | 'feel' | 'writing' | 'unresolved' | 'window' | 'letter'
+  /** 可选标题；不填实例就不会自动起名。 */
+  name?: string
+  /** 标签（实例侧是单个字符串，按逗号分隔的约定传）。 */
+  tags?: string
+}
+
+/**
  * 记忆能力面（**只读**）。
  *
  * ⚠️ 2026-09-24 对齐真实实例后收敛。原设计按「URI 图谱」假设了六个方法
@@ -124,8 +142,9 @@ export interface MemorySearchOptions {
  * 所以这里**直接删掉**，不做「保留方法但调用即抛错」的假接口：假接口会让调用方
  * 以为自己能用，等真跑起来才发现不行，比没有更糟。
  *
- * 写入（实例的 `hold`）等做记忆页时一并定义 —— 它的 `kind` 决定记忆进哪个抽屉，
- * 是产品决策而非机械映射，届时若需扩接口属设计变更，别顺手加回来。
+ * 写入（实例的 `hold`）已于 Phase 7C 记忆沉淀批接入（2026-09-26）——只加一个
+ * `write()` 方法，入参按 `hold` 的产品语义裁剪（见 `MemoryWriteInput`）；
+ * 「更新 / 删除」这两套语义实例本来就没有，仍然不存在。
  */
 export interface MemoryProvider {
   /** 新窗 / Compact 后读取记忆全文（实例工具：`breath`，无参数）。 */
@@ -133,7 +152,13 @@ export interface MemoryProvider {
   /** 按关键词搜索记忆（实例工具：`trace`，入参 `query` + `limit`）。 */
   search(query: string, options?: MemorySearchOptions): Promise<MemoryTextResult>
   /**
-   * 工具面自检：实例是否真的提供上面两个工具。只做 `tools/list`，不调用任何工具。
+   * 写入长期记忆（实例工具：`hold`，Phase 7C 记忆沉淀接入）。
+   * ⚠️ 写入不是无副作用的 —— 调用方负责闸门：聊天工具走 `confirm` 挂起确认，
+   * 后台沉淀（Surf 升格）受自动化策略与审计约束。适配层只管通道。
+   */
+  write(input: MemoryWriteInput): Promise<MemoryTextResult>
+  /**
+   * 工具面自检：实例是否真的提供上面的工具。只做 `tools/list`，不调用任何工具。
    * 返回**缺失**的工具名（空数组 = 齐了）；实例未配置或连不上时也返回空数组，
    * 那种情况的告警归健康检查管，不在这里重复吵。
    */

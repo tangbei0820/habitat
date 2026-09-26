@@ -2373,3 +2373,24 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 - mock 上游的默认决策响应要保持与旧探针语义兼容（wake 默认发消息而不是 no-op），否则 phase3b 全线假红。
 
 **待优化（后续批次）**：Surf 去重只按 URL 指纹，「同话题不同文章」需主题级指纹；Surf 的订阅源还没有管理 UI（API 已有，配好即用）；「记忆沉淀」待 memory.write 落地后把 Surf 记录升格进 Nocturne；行动重放幂等的 E2E 断言（同 runId 重放）目前靠唯一键保证，未从探针驱动（API 触发不了同 runId 二次执行）；wake 决策 JSON 的 modelHint 未随快照下发（后台调用不走工具面）。
+
+### T-054 · 2026-09-26 · Post-v1 Phase 7C 记忆沉淀（memory.write 落地 + Surf 升格进 Nocturne）—— **完成**
+
+**背景**：T-053 留下的「确认协议保留给 memory.write」在本批兑现。规范先行：PRODUCT_SPEC §9.7 补「写长期记忆是 confirm 级现役使用者」、§9.5.3 补「Surf 记录升格进长期记忆」；`docs/MEMORY.md` 工具面表更新（hold ✅，参数面按 2026-09-26 服务器实测）。
+
+| 交付 | 说明 |
+| --- | --- |
+| `hold` 接入适配层 | `MemoryProvider.write()` + `MemoryWriteInput`（只透传 `content`/`kind`/`name`/`tags` 四个有产品语义的参数；`pinned`/`protected`/`drive`/`chord` 是实例自己的设计语义，**不透传**——锁重要度分/九维驱动不该被模型碰）；`NOCTURNE_TOOLS.write='hold'`，工具面自检覆盖三个工具 |
+| memory.write 能力绑定 | 绑内建工具 `memory_write`（content 必填 ≤4000，name ≤120，kind 枚举 memory/feel/writing/unresolved，tags ≤200），**保持 confirm 级**；从 registry 的「未实施」表移除（`NOT_IMPLEMENTED_YET` 清空） |
+| 确认流复活 | `requestToolConfirm` / `executeToolConfirm` 加 `memory_write` 分支；执行体经 `registerMemoryWriteExecutor()` 注入（event-inbox 不耦合 MCP 装配，探针可塞 mock）；`decideEvent` 变 async（批准后真调 hold 是异步 MCP 调用），执行失败也落定 `failed` 不吊 pending |
+| Surf 记录升格 | `trySurf` 成功后自动 hold 沉淀（kind=memory、name=`看过：《标题》`、正文带来源行、tags=surf）；**后台自主不挂确认卡**（闸门=独处开关+预算+行动审计，SPEC §9.5.3）；失败不连坐记录本体，只落 `automation.surf.consolidate_failed` 审计 |
+
+**验收**：新探针 `probe-memory-write.ts` **28/28**（能力面如实 / 挂起绝不写且回灌明说未执行 / 参数非法当场回灌不产卡 / 批准后 hold 真调且读回有据 / 拒绝保持没写 / 同事件不能决两次 / Surf 沉淀无卡带来源留审计）；回归：P0 51/51 + 事件收件箱 57/57 + 决策契约 35/35 + Phase 3B 21/21 + Phase 4 16/16；前端流水线 16 支零失败；两端 typecheck 过。
+
+**本批踩坑**
+
+- ⚠️ **旧断言「memory.write 未实施」散在两个探针里**（probe-ai-runtime / probe-event-inbox）——能力落地时要把「如实说不」的断言反转成新事实，否则回归假红。
+- mock MCP 的 `GET /mcp`（无 session）返回 400 不是 405，`wait_port` 的期望码别想当然。
+- `createSurfRecord` 只返回 `{id, fingerprint}`——沉淀要用 `chosen.*` 取来源字段，别假设返回值带 metadata。
+
+**待优化（后续批次）**：Surf 订阅源管理 UI（API 已有）；Wake 决策可考虑加 `memory` 行动类型（AI 在自主时刻主动沉淀，本批只做了 Surf 自动升格 + 对话内 confirm 写入两条路）；`window`/`letter` 两种 hold kind 未开放（实例内部/信件语义，等有产品需求）；确认卡仍无过期/撤销机制（T-053 遗留）。
