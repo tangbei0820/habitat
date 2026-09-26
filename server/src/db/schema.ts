@@ -11,7 +11,7 @@ import type {
   RuntimeEventKind,
   RuntimeEventStatus,
 } from '@shared/types'
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { integer, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
 
 /** McpDiagnosticLog（§6.2 / §7.2②）：MCP 握手与每次请求响应全量落此表，逐请求可回放 */
 export const mcpDiagnosticLog = sqliteTable('mcp_diagnostic_log', {
@@ -361,3 +361,23 @@ export const eventideHistory = sqliteTable('eventide_history', {
 
 export type EventideHistoryRow = typeof eventideHistory.$inferSelect
 export type NewEventideHistoryRow = typeof eventideHistory.$inferInsert
+
+/**
+ * 自主行动审计（Phase 7B · 决策契约）：一次后台运行（wake/solitude）的 outcome 拆到行动级。
+ * `(run_id, idx)` 唯一 —— 行动执行器靠它做幂等：同一运行重放时，已存在的行动直接跳过。
+ */
+export const automationAction = sqliteTable('automation_action', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  runId: text('run_id').notNull(),
+  idx: integer('idx').notNull(),
+  type: text('type', { enum: ['message', 'messageboard', 'diary', 'surf'] }).notNull(),
+  status: text('status', { enum: ['completed', 'failed', 'skipped'] }).notNull(),
+  reason: text('reason'),
+  refId: text('ref_id'),
+  at: integer('at').notNull(),
+}, (table) => ({
+  uniquePerRun: unique('uq_automation_action_run_idx').on(table.runId, table.idx),
+}))
+
+export type AutomationActionRow = typeof automationAction.$inferSelect
+export type NewAutomationActionRow = typeof automationAction.$inferInsert

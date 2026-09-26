@@ -291,3 +291,19 @@ CREATE TABLE IF NOT EXISTS eventide_history (
 );
 CREATE INDEX IF NOT EXISTS idx_eventide_history_at ON eventide_history (settled_at DESC, id DESC);
 `)
+
+// 自主行动审计（Phase 7B）：决策契约的 outcome 落点。(run_id, idx) 唯一 = 行动幂等
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS automation_action (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL,
+  idx INTEGER NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('message', 'messageboard', 'diary', 'surf')),
+  status TEXT NOT NULL CHECK (status IN ('completed', 'failed', 'skipped')),
+  reason TEXT,
+  ref_id TEXT,
+  at INTEGER NOT NULL,
+  UNIQUE (run_id, idx)
+);
+CREATE INDEX IF NOT EXISTS idx_automation_action_run ON automation_action (run_id, idx);
+`)

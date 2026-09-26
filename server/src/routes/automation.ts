@@ -100,6 +100,7 @@ function parsePolicyPatch(raw: unknown): AutomationPolicy {
     wakeEnabled: booleanField(body, 'wakeEnabled', current.wakeEnabled),
     solitudeEnabled: booleanField(body, 'solitudeEnabled', current.solitudeEnabled),
     dreamEnabled: booleanField(body, 'dreamEnabled', current.dreamEnabled),
+    surfEnabled: booleanField(body, 'surfEnabled', current.surfEnabled),
     timeZone,
     quietStart: clockField(body, 'quietStart', current.quietStart),
     quietEnd: clockField(body, 'quietEnd', current.quietEnd),

@@ -660,6 +660,25 @@ export interface StateProviderHealth {
 
 export type AutomationKind = 'chat' | 'wake' | 'solitude' | 'dream' | 'settlement'
 
+/**
+ * 自主行动类型（Phase 7B · 决策契约）：一次后台运行（wake/solitude）里，
+ * 模型决策可以产出的行动。`surf` 只出现在独处运行里。
+ */
+export type AutomationActionType = 'message' | 'messageboard' | 'diary' | 'surf'
+
+/** 单个行动的执行结果（审计用：run 的 outcome 拆到行动级） */
+export interface AutomationActionRecord {
+  id: number
+  runId: string
+  idx: number
+  type: AutomationActionType
+  status: 'completed' | 'failed' | 'skipped'
+  reason: string | null
+  /** 行动产物的引用（通知 id / 留言 id / 日记 id / 独处记录 id） */
+  refId: string | null
+  at: number
+}
+
 export interface AutomationPolicy {
   enabled: boolean
   wakeEnabled: boolean
@@ -679,6 +698,8 @@ export interface AutomationPolicy {
   solitudeEnd: string
   triggerWords: string[]
   dreamSeed: string | null
+  /** 独处冲浪（Phase 7B）：独处时光里是否允许自主选题浏览并记录。默认关闭 */
+  surfEnabled: boolean
 }
 
 export interface AutomationRuntimeState {
