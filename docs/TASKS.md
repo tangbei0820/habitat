@@ -2645,3 +2645,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm run typecheck`、`npm run build`、`git diff --check`；`npm run probe:diary-fragments` **9/9** 覆盖片段请求、重复幂等、AI 允许 / 拒绝与正文过滤；`probe:diary` **40/40** 保持整篇请求回归；`verify-home` 已补片段请求按钮断言，目标 **88/88**（本机无 CDP 浏览器时未执行）。生产 VPS 未在本批更新。
 
 **待优化（后续功能）**：请求结果的站内通知 / 对话解释；片段请求历史的用户可见时间线；富文本 / 图片日记的内容锚点；片段级“暂不开放”专门状态（当前以 pending 事件表达）。
+
+### T-070 · 2026-09-27 · 留言板编辑与原位收藏—— **完成（本地）**
+
+**边界**：只补齐留言板的作者编辑、留言原位收藏与来源快照；不进入留言分组、通知联动、朋友圈或其它 Home 模块。
+
+| 交付 | 说明 |
+| --- | --- |
+| 用户编辑 | 新增 `PATCH /api/moments/:id`；用户只能修改自己的留言，服务端保留 `createdAt`、更新 `updatedAt`，越权修改 AI 留言返回 404。 |
+| AI 编辑 | 新增 `messageboard.update` autonomous capability / `messageboard_update`；AI 只能改自己写的留言，成功写入 `event_log`，不经过用户确认卡。 |
+| 原位收藏 | 留言行直接「收藏」；复用现有 Dexie `Bookmark` 与 `[targetType+targetId]` 唯一索引，重复收藏明确失败并在 UI 呈现已收藏状态。 |
+| 来源追溯 | 收藏保存留言作者、创建 / 更新时间与当时正文快照；收藏中心显示“留言原文快照”，来源链接回 `/home/board#<moment-id>`。编辑原留言不会静默改写历史收藏。 |
+| 页面交互 | 留言板增加编辑态、取消 / 保存、收藏 / 已收藏、编辑标记；原有作者筛选、删除二次确认与主屏 Widget 保持兼容。 |
+| 文档与验收 | 同步 `PRODUCT_SPEC` §3.2、`API`、`DATA_MODEL`、`AI_RUNTIME`；`probe-diary` 覆盖用户编辑与越权，`probe-event-inbox` 覆盖 AI 编辑与能力面，`verify-home` 覆盖编辑、收藏、快照与来源。 |
+
+**验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；服务端 `probe-diary` **43/43**，`probe-event-inbox` 的留言编辑与能力面断言通过（全脚本仅剩未配置 Nocturne 时既有 `memory.write` 1 项失败），浏览器 `verify-home` 目标 **92/92**（本机无 CDP 时只完成脚本静态校验）。
+
+**待优化（后续功能）**：留言分组与 Widget 指定范围；留言编辑历史 / 撤回；收藏条目删除来源后的“已失效”提示；站内通知与朋友圈互通。本批不提前施工。

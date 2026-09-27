@@ -497,10 +497,13 @@ AI 可以通过能力工具 `diary_set_fragment_visibility` 只开放或锁回�
 同一篇的整篇请求与某个片段请求分别幂等；事件的 `targetFragmentId` 会让前端在刷新后仍能标出具体待决片段。
 AI 通过现有 `diary_allow_access` / `diary_deny_access` 工具处理：允许时只开放该片段，拒绝时保持原权限。
 
-### 留言板：`GET/POST /api/moments`、`DELETE /api/moments/:id`、`POST /api/moments/import`
+### 留言板：`GET/POST/PATCH /api/moments`、`DELETE /api/moments/:id`、`POST /api/moments/import`
 
-与日记的差别：**没有可见性过滤**（留言写出来就是给人看的），只有「谁能删」——
-用户只能删自己的，AI 的留言不归用户处置（SPEC §6.2）。
+与日记的差别：**没有可见性过滤**（留言写出来就是给人看的）。用户只能修改 / 删除自己的留言；
+`PATCH /api/moments/:id` 请求体为 `{ content }`，试图改 AI 留言或删除 AI 留言均返回 404。
+AI 修改自己的留言不走 HTTP，而由 Runtime 的 `messageboard_update` 工具执行并写入审计事件。
+留言收藏在浏览器统一收藏库中保存 `targetType='moment'`、`sourceId=moment.id` 与稳定正文快照，
+来源链接回到 `/home/board#<moment-id>`。
 
 ### `POST /api/study/cards/generate` —— 生成 AI 伴学卡片
 

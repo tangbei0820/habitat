@@ -62,6 +62,14 @@ export async function createMoment(content: string): Promise<Moment> {
   })
 }
 
+export async function updateMoment(id: string, content: string): Promise<Moment> {
+  return fetchJson<Moment>(`/api/moments/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ content: requiredText(content, '留言') }),
+  })
+}
+
 export async function deleteMoment(id: string): Promise<void> {
   await fetchVoid(`/api/moments/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
@@ -303,6 +311,41 @@ export async function createMessageBookmark(message: ChatMessage): Promise<Bookm
     await db.bookmarks.add(item)
   } catch (err) {
     if (isConstraintError(err)) throw new Error('这条消息已经收藏过了')
+    throw err
+  }
+  return item
+}
+
+/** 从留言板原位收藏，保存一份稳定快照；编辑原留言不会悄悄改写收藏历史。 */
+export async function createMomentBookmark(moment: Moment): Promise<Bookmark> {
+  const existing = await db.bookmarks.where('[targetType+targetId]').equals(['moment', moment.id]).first()
+  if (existing !== undefined) throw new Error('这条留言已经收藏过了')
+  const at = Date.now()
+  const authorLabel = moment.author === 'companion' ? '小栖' : '你'
+  const item: Bookmark = {
+    id: nowId('bookmark'),
+    type: 'bookmark',
+    targetType: 'moment',
+    targetId: moment.id,
+    title: `${authorLabel}的留言`,
+    note: moment.content,
+    categoryId: null,
+    sourceId: moment.id,
+    metadata: {
+      sourceModule: 'home-board',
+      sourceObjectType: 'moment',
+      sourceAuthor: moment.author,
+      sourceContent: moment.content,
+      sourceCreatedAt: moment.createdAt,
+      sourceUpdatedAt: moment.updatedAt,
+    },
+    createdAt: at,
+    updatedAt: at,
+  }
+  try {
+    await db.bookmarks.add(item)
+  } catch (err) {
+    if (isConstraintError(err)) throw new Error('这条留言已经收藏过了')
     throw err
   }
   return item

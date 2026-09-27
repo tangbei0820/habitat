@@ -3,18 +3,21 @@ import type { Moment } from '@shared/types'
 import { IconCheck } from '../../components/qixi/Icons'
 import {
   createMoment,
+  createMomentBookmark,
   deleteMoment,
+  listBookmarks,
   listHomeWidgets,
   listMoments,
   putHomeWidget,
   removeHomeWidget,
+  updateMoment,
 } from '../../db/home'
 
 /**
  * 留言板（SPEC §3.3）。
  *
  * 与日记不同，这里**没有私密一说** —— 写出来就是给人看的，所以小栖的留言照样显示正文。
- * 唯一的权限差别是**谁能删**：用户只能删自己的，小栖的留言不归用户处置（SPEC §6.2）。
+ * 编辑与删除都按作者隔离：用户能改 / 删自己的；小栖通过 Runtime 改自己的，用户不代替小栖改内容。
  */
 export function BoardModule() {
   const [items, setItems] = useState<Moment[]>([])
@@ -22,14 +25,20 @@ export function BoardModule() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingDraft, setEditingDraft] = useState('')
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
+  const [favoritingId, setFavoritingId] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'user' | 'companion'>('all')
   /** 留言板 Widget 是否在主屏上（不同 kind 的 Widget 互不影响，各管各的） */
   const [onHome, setOnHome] = useState(false)
 
   async function refresh(): Promise<void> {
-    const [nextItems, widgets] = await Promise.all([listMoments(), listHomeWidgets()])
+    const [nextItems, widgets, bookmarks] = await Promise.all([listMoments(), listHomeWidgets(), listBookmarks()])
     setItems(nextItems)
     setOnHome(widgets.some((widget) => widget.kind === 'board'))
+    setFavoriteIds(new Set(bookmarks.filter((item) => item.targetType === 'moment').map((item) => item.targetId)))
   }
 
   useEffect(() => {
@@ -63,6 +72,46 @@ export function BoardModule() {
     } catch (err: unknown) {
       setDeleting(null)
       setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  function startEdit(item: Moment): void {
+    setEditingId(item.id)
+    setEditingDraft(item.content)
+    setDeleting(null)
+    setError(null)
+  }
+
+  function cancelEdit(): void {
+    setEditingId(null)
+    setEditingDraft('')
+  }
+
+  async function saveEdit(id: string): Promise<void> {
+    try {
+      setSavingId(id)
+      const updated = await updateMoment(id, editingDraft)
+      setItems((current) => current.map((item) => item.id === id ? updated : item))
+      cancelEdit()
+      setError(null)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function favorite(item: Moment): Promise<void> {
+    if (favoriteIds.has(item.id)) return
+    try {
+      setFavoritingId(item.id)
+      await createMomentBookmark(item)
+      setFavoriteIds((current) => new Set(current).add(item.id))
+      setError(null)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setFavoritingId(null)
     }
   }
 
@@ -134,16 +183,41 @@ export function BoardModule() {
       ) : (
         <ul className="space-y-2">
           {visibleItems.map((item) => (
-            <li key={item.id} data-testid="moment-item" data-author={item.author} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
-              <p className="whitespace-pre-wrap break-words text-sm">{item.content}</p>
+            <li id={item.id} key={item.id} data-testid="moment-item" data-author={item.author} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
+              {editingId === item.id ? (
+                <div className="space-y-2">
+                  <label htmlFor={`moment-edit-${item.id}`} className="sr-only">编辑留言</label>
+                  <textarea
+                    id={`moment-edit-${item.id}`}
+                    value={editingDraft}
+                    onChange={(event) => setEditingDraft(event.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    className="w-full resize-none rounded-lg border bg-transparent p-3 text-sm"
+                    style={{ borderColor: 'var(--border-soft)' }}
+                  />
+                  <div className="flex items-center justify-between gap-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    <span>{editingDraft.length}/500</span>
+                    <span className="flex items-center gap-3">
+                      <button type="button" onClick={cancelEdit}>取消</button>
+                      <button type="button" data-testid="moment-save" disabled={editingDraft.trim() === '' || savingId === item.id} onClick={() => void saveEdit(item.id)} style={{ color: 'var(--accent-strong)' }}>{savingId === item.id ? '保存中…' : '保存修改'}</button>
+                    </span>
+                  </div>
+                </div>
+              ) : <p className="whitespace-pre-wrap break-words text-sm">{item.content}</p>}
               <div className="mt-3 flex items-center justify-between gap-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
                 <span>
                   {item.author === 'companion' && <span style={{ color: 'var(--accent-strong)' }}>小栖 · </span>}
                   <time>{new Date(item.createdAt).toLocaleString('zh-CN')}</time>
+                  {item.updatedAt !== item.createdAt && <span> · 已编辑</span>}
                 </span>
-                {item.author === 'user' && (
-                  <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} style={{ color: deleting === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deleting === item.id ? '确认删除？' : '删除'}</button>
-                )}
+                <span className="flex items-center gap-3">
+                  <button type="button" data-testid="moment-favorite" disabled={favoritingId === item.id || favoriteIds.has(item.id)} onClick={() => void favorite(item)} style={{ color: favoriteIds.has(item.id) ? 'var(--accent-strong)' : 'var(--text-secondary)' }}>{favoriteIds.has(item.id) ? '已收藏' : favoritingId === item.id ? '收藏中…' : '收藏'}</button>
+                  {item.author === 'user' && editingId !== item.id && <button type="button" data-testid="moment-edit-button" onClick={() => startEdit(item)}>编辑</button>}
+                  {item.author === 'user' && (
+                    <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} style={{ color: deleting === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deleting === item.id ? '确认删除？' : '删除'}</button>
+                  )}
+                </span>
               </div>
             </li>
           ))}

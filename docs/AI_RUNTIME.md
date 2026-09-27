@@ -49,7 +49,7 @@
 
 | 级别 | 含义 | 本阶段实况 |
 | --- | --- | --- |
-| `autonomous` | AI 可自主调用，无需用户在旁 | 记忆读 / 记忆搜 / 状态读 / 日记的读与列 / 允许·拒绝查看 / `tools.list` |
+| `autonomous` | AI 可自主调用，无需用户在旁 | 记忆读 / 记忆搜 / 状态读 / 日记的读与列 / 允许·拒绝查看 / 留言板写入与修改 / `tools.list` |
 | `confirm` | 须先过用户确认卡 | **已绑给模型**（P1）：调用不会执行，而是**挂起**成一条待确认事件 |
 | `user-only` | 仅用户可发起 | 保留语义；**不绑** —— 连「怎么调」都不让模型知道 |
 | `unavailable` | 依赖未就绪 / 阶段未实施 | `memory.write`（实例的写工具未接入） |
@@ -74,6 +74,7 @@
 | `diary.deny_access` | diary | autonomous | `diary_deny_access` | 可用（整篇或指定片段） |
 | `diary.set_fragment_visibility` | diary | autonomous | `diary_set_fragment_visibility` | 可用；只改变指定片段，默认私密 |
 | `messageboard.write` | board | autonomous | `messageboard_write` | 可用 · 立即写入小栖留言 |
+| `messageboard.update` | board | autonomous | `messageboard_update` | 可用 · 只能修改小栖自己的留言 |
 | `tools.list` | tools | autonomous | `tools_list` | 可用 |
 
 > 日记 / 留言板的能力**没有外部依赖**（权威存储就是本机 SQLite，见 `DATA_MODEL.md` §11），

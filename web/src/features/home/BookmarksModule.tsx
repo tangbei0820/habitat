@@ -244,7 +244,9 @@ export function BookmarksModule() {
               {item.targetType === 'external-link' ? (
                 <a href={item.targetId} target="_blank" rel="noreferrer" className="font-medium underline decoration-1 underline-offset-4" style={{ color: 'var(--accent-strong)' }}>{item.title}</a>
               ) : <p className="font-medium">{item.title}</p>}
-              <p className="mt-1 break-all text-xs" style={{ color: 'var(--text-secondary)' }}>{item.targetId}</p>
+              {item.targetType === 'moment' ? (
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>留言原文快照</p>
+              ) : <p className="mt-1 break-all text-xs" style={{ color: 'var(--text-secondary)' }}>{item.targetId}</p>}
               {item.note !== null && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{item.note}</p>}
               <ContentSourceLink item={item} />
               <div className="mt-3 flex justify-end">

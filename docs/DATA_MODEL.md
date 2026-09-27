@@ -209,6 +209,7 @@ interface SessionGroup extends BaseObject {
 | 关系 | 载体 | 约束 |
 |---|---|---|
 | 收藏 → 任意内容 | `Bookmark.targetType + targetId` | 唯一复合索引 `&[targetType+targetId]` **从数据层**阻止同一目标重复收藏 |
+| 留言收藏 → 原留言 | `Bookmark.targetType='moment'` + `sourceId` + `metadata.source*` | 保存作者、创建时间与正文快照；编辑原留言不回写既有收藏；来源链接回 `/home/board#<id>` |
 | 作品 → 来源内容 | `BaseObject.sourceId` / `sessionId` | 本体尽量**引用原始对象**，必要时存稳定快照（SPEC §3.6.3） |
 | 相册 → 来源消息 | `BaseObject.sourceId` / `sessionId` | 保留原图 + 来源 + 时间 + 发送方 / 生成方（SPEC §4.4） |
 | 主屏 Widget → 被展示内容 | `HomeWidget.kind` + `refId`（本地表 `homeWidgets`） | **只存引用、不复制数据**（SPEC §1.4）；唯一索引 `&kind` 从数据层保证**每种 Widget 至多一条**；`refId` 失效时渲染层不渲染，删实体时同事务清引用 |

@@ -18,7 +18,7 @@ import { CAPABILITY_DEFINITIONS } from '@shared/capabilities.js'
 import type { LlmToolCall, MemoryProvider, StateProvider } from '@shared/providers.js'
 import { describeState } from '@shared/state-summary.js'
 import { getCompanionDiaryView, listCompanionDiaryViews, createCompanionDiary, setDiaryFragmentVisibility, updateCompanionDiary } from '../db/diary.js'
-import { createCompanionMoment } from '../db/moment.js'
+import { createCompanionMoment, updateCompanionMoment } from '../db/moment.js'
 import { appendEventLog } from '../db/activity.js'
 import { dayKeyOf } from '../db/usage.js'
 import { decideEvent, requestToolConfirm } from '../services/event-inbox.js'
@@ -367,6 +367,22 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
           ok: true,
           text: `留言已写到留言板上（id: ${created.id}）。`,
           summary: '在留言板上留了言',
+        }
+      }
+
+      case 'messageboard.update': {
+        const id = typeof value.id === 'string' ? value.id.trim() : ''
+        const content = typeof value.content === 'string' ? value.content.trim() : ''
+        if (id === '') return failure(tool, '缺少必填参数 id（要修改哪条留言）')
+        if (content === '') return failure(tool, '缺少必填参数 content（留言内容不能为空）')
+        if (content.length > 500) return failure(tool, `content 最多 500 字（收到 ${content.length}）`)
+        const updated = updateCompanionMoment(id, content)
+        if (updated === null) return failure(tool, `找不到你写的留言 ${id}`)
+        appendEventLog('capability.messageboard.update', {}, updated.id)
+        return {
+          ok: true,
+          text: `留言已更新（id: ${updated.id}）。`,
+          summary: '修改了留言板上的留言',
         }
       }
 

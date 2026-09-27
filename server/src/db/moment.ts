@@ -2,7 +2,7 @@
  * Moment（留言板）数据访问（SPEC §3.3）。服务端权威源，理由同 `db/diary.ts`。
  *
  * 留言板比日记简单：内容没有「私密」一说（写出来就是给人看的），
- * 所以这里不做可见性过滤，只区分**谁能删** —— 用户只能删自己发的。
+ * 所以这里不做可见性过滤，只区分作者权限 —— 用户 / AI 各自只能改自己的，用户只能删自己发的。
  */
 import { randomUUID } from 'node:crypto'
 import { desc, eq } from 'drizzle-orm'
@@ -44,6 +44,15 @@ export function createUserMoment(content: string): Moment {
   return toMoment(row)
 }
 
+/** 用户只能改自己的留言。返回 `null` 表示不存在，或作者不是用户。 */
+export function updateUserMoment(id: string, content: string): Moment | null {
+  const existing = db.select().from(moment).where(eq(moment.id, id)).get()
+  if (existing === undefined || existing.author !== 'user') return null
+  const updatedAt = Math.max(Date.now(), existing.updatedAt + 1)
+  db.update(moment).set({ content, updatedAt }).where(eq(moment.id, id)).run()
+  return toMoment({ ...existing, content, updatedAt })
+}
+
 /** 用户只能删自己的留言。AI 的留言不归用户处置（SPEC §6.2）。 */
 export function deleteUserMoment(id: string): boolean {
   const existing = db.select().from(moment).where(eq(moment.id, id)).get()
@@ -72,6 +81,15 @@ export function createCompanionMoment(content: string): Moment {
   }
   db.insert(moment).values(row).run()
   return toMoment(row)
+}
+
+/** AI 只能改自己的留言；保留原始创建时间，让收藏与时间线仍可追溯。 */
+export function updateCompanionMoment(id: string, content: string): Moment | null {
+  const existing = db.select().from(moment).where(eq(moment.id, id)).get()
+  if (existing === undefined || existing.author !== 'companion') return null
+  const updatedAt = Math.max(Date.now(), existing.updatedAt + 1)
+  db.update(moment).set({ content, updatedAt }).where(eq(moment.id, id)).run()
+  return toMoment({ ...existing, content, updatedAt })
 }
 
 /** 搬迁专用，语义同 `importDiaryIfAbsent`：已存在则跳过，不覆盖。 */

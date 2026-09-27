@@ -12,7 +12,21 @@ function roleLabel(metadata: Record<string, unknown> | undefined): string | null
 
 /** 收藏 / 作品 / 相册共用的来源展示；只读统一基座，不另造一套来源字段。 */
 export function ContentSourceLink({ item }: { item: BaseObject }) {
-  if (item.sessionId === undefined || item.sourceId === undefined) return null
+  if (item.sourceId === undefined) return null
+  const sourceModule = item.metadata?.sourceModule
+  if (sourceModule === 'home-board') {
+    const sourceAuthor = item.metadata?.sourceAuthor === 'companion' ? '小栖' : '你'
+    const href = `/home/board#${encodeURIComponent(item.sourceId)}`
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+        <span>来源：留言板 · {sourceAuthor}</span>
+        <Link to={href} className="underline underline-offset-2" style={{ color: 'var(--accent-strong)' }}>
+          查看来源
+        </Link>
+      </div>
+    )
+  }
+  if (item.sessionId === undefined) return null
   const actor = roleLabel(item.metadata)
   const sourceAt = item.metadata?.sourceCreatedAt
   const timestamp = typeof sourceAt === 'number'

@@ -208,6 +208,14 @@ check('调用成功', momentFrame?.ok === true, `summary=${momentFrame?.summary 
 check('★ 留言真的上板了', (await moments()).length === momentsBefore + 1, `before=${momentsBefore}`)
 check('收件箱里没有留言的确认事件', (await events('?decider=user&status=pending')).every((item) => item.capabilityId !== 'messageboard.write'))
 
+const autonomousMoment = (await moments()).find((item) => item.content === '验收·自主留言')
+const updateMomentTurn = autonomousMoment === undefined
+  ? null
+  : await chat(`[[tool:messageboard_update {"id":"${autonomousMoment.id}","content":"验收·自主留言·已编辑"}]]`, profileId)
+const updateMomentFrame = updateMomentTurn === null ? undefined : toolCallsOf(updateMomentTurn.frames)[0]
+check('messageboard_update 调用成功', updateMomentFrame?.ok === true, `summary=${updateMomentFrame?.summary ?? ''}`)
+check('★ AI 只能改自己的留言且修改真实落库', (await moments()).some((item) => item.id === autonomousMoment?.id && item.content === '验收·自主留言·已编辑' && item.author === 'companion'))
+
 /* ------------------------------------------------- 3. 参数不合法 → 失败回灌，不写半个字 */
 console.log('\n[3] 参数不合法：当场回灌，不落库')
 
@@ -307,11 +315,11 @@ console.log('\n[12] 能力面：写类已可用、已绑工具、且是 autonomo
 const snapshotRes = await req('/api/capabilities')
 const snapshot = ((snapshotRes.body as { capabilities?: Array<{ id: string; enabled: boolean; autonomy: string; toolName?: string }> }).capabilities ?? [])
 const byId = new Map(snapshot.map((item) => [item.id, item]))
-for (const id of ['diary.create', 'diary.update', 'diary.list_own', 'diary.read_own', 'diary.allow_access', 'diary.deny_access', 'messageboard.write']) {
+for (const id of ['diary.create', 'diary.update', 'diary.list_own', 'diary.read_own', 'diary.allow_access', 'diary.deny_access', 'messageboard.write', 'messageboard.update']) {
   const item = byId.get(id)
   check(`${id} 已可用且绑了工具`, item?.enabled === true && typeof item.toolName === 'string', `enabled=${String(item?.enabled)} tool=${item?.toolName ?? '(无)'}`)
 }
-check('★ 写类已自主化（Phase 7B：diary.create / messageboard.write）', byId.get('diary.create')?.autonomy === 'autonomous' && byId.get('messageboard.write')?.autonomy === 'autonomous', `autonomy=${byId.get('diary.create')?.autonomy ?? ''}`)
+check('★ 写类已自主化（Phase 7B：diary.create / messageboard.write / messageboard.update）', byId.get('diary.create')?.autonomy === 'autonomous' && byId.get('messageboard.write')?.autonomy === 'autonomous' && byId.get('messageboard.update')?.autonomy === 'autonomous', `autonomy=${byId.get('diary.create')?.autonomy ?? ''}`)
 check('读自己的能力是 autonomous', byId.get('diary.read_own')?.autonomy === 'autonomous')
 check('写记忆已实施、绑工具且保持 confirm（Phase 7C）', byId.get('memory.write')?.enabled === true && byId.get('memory.write')?.toolName === 'memory_write' && byId.get('memory.write')?.autonomy === 'confirm')
 

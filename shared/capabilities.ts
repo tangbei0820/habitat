@@ -58,6 +58,7 @@ export type CapabilityId =
   | 'diary.set_fragment_visibility'
   /* —— 共享留言板 —— */
   | 'messageboard.write'
+  | 'messageboard.update'
   /* —— 自我认知 —— */
   | 'tools.list'
 
@@ -106,7 +107,7 @@ export interface CapabilityDefinition {
  *
  * 当前阶段的边界（2026-09-26 定，Phase 7B「自主生活决策链」起）：
  *   · 只读能力（记忆读 / 记忆搜 / 状态读 / 列日记 / 读自己日记 / 允许·拒绝对话）→ `autonomous`
- *   · 写类三能力（写日记 / 改日记 / 写留言板）→ **7B 起改为 `autonomous`**：
+ *   · 写类能力（写日记 / 改日记 / 写留言板 / 改留言板）→ **7B 起改为 `autonomous`**：
  *     它们写的都是「小栖自己的东西」（私有日记 / 自己署名的留言），不是用户的文件；
  *     主动行为链路（BudgetGuard + 决策契约 + 行动审计）就是它们的闸门。
  *     ⚠️ 历史：P1 时它们曾是 `confirm`（确认卡），7B 起自主化；确认协议本身保留，
@@ -366,6 +367,27 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
           content: { type: 'string', description: '留言内容，不超过 500 字' },
         },
         required: ['content'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'messageboard.update',
+    module: 'board',
+    label: '修改留言',
+    summary: '修改自己已经写下的留言',
+    modelHint: '如果你想修正或补充自己在留言板留下的话，可以修改自己的留言；不能改北北写的内容。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'messageboard_update',
+      description: '修改你自己写过的一条留言。先从留言板找到 id；不能修改北北的留言。只传需要修改的最终 content，不超过 500 字。',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: '要修改的留言 id' },
+          content: { type: 'string', description: '修改后的留言内容，不超过 500 字' },
+        },
+        required: ['id', 'content'],
         additionalProperties: false,
       },
     },

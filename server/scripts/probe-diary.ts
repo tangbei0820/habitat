@@ -171,6 +171,11 @@ const aiMoment = moments.find((item) => item.id === 'probe-moment-ai')
 check('列表含 AI 的留言', aiMoment !== undefined && aiMoment.author === 'companion')
 check('留言板不做可见性过滤（写出来就是给人看的）', aiMoment?.content === '小栖的留言')
 
+const editedMoment = await req(`/api/moments/${moment.id}`, { method: 'PATCH', body: JSON.stringify({ content: '验收留言·已编辑' }) })
+check('用户能编辑自己的留言', editedMoment.status === 200 && (editedMoment.body as MomentView).content === '验收留言·已编辑')
+check('编辑不会改变留言作者', (editedMoment.body as MomentView).author === 'user')
+check('改 AI 的留言被拒（404）', (await req('/api/moments/probe-moment-ai', { method: 'PATCH', body: JSON.stringify({ content: '越权修改' }) })).status === 404)
+
 check('删 AI 的留言被拒（404）', (await req('/api/moments/probe-moment-ai', { method: 'DELETE' })).status === 404)
 check('删自己的留言 → 204', (await req(`/api/moments/${moment.id}`, { method: 'DELETE' })).status === 204)
 check('删掉后确实没有了', ((await req('/api/moments')).body as { items: MomentView[] }).items.every((item) => item.id !== moment.id))

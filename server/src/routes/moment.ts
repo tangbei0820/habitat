@@ -1,8 +1,8 @@
 /**
  * 留言板端点（SPEC §3.3）。
  *
- * 比日记简单：留言没有「私密」一说，所以不做可见性过滤，只区分**谁能删**——
- * 用户只能删自己的，AI 的留言不归用户处置（SPEC §6.2）。
+ * 比日记简单：留言没有「私密」一说，所以不做可见性过滤，只区分作者权限——
+ * 用户只能改 / 删自己的；AI 的修改走 Runtime 工具，用户不代替 AI 改它的留言。
  */
 import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors.js'
@@ -12,6 +12,7 @@ import {
   deleteUserMoment,
   importMomentIfAbsent,
   listMoments,
+  updateUserMoment,
 } from '../db/moment.js'
 import { RequestError } from '../lib/errors.js'
 
@@ -72,6 +73,15 @@ export function registerMomentRoutes(app: FastifyInstance): void {
       : {}
     reply.code(201)
     return createUserMoment(content(body.content))
+  })
+
+  app.patch<{ Params: { id: string } }>('/api/moments/:id', async (request) => {
+    const body = typeof request.body === 'object' && request.body !== null
+      ? (request.body as Record<string, unknown>)
+      : {}
+    const updated = updateUserMoment(request.params.id, content(body.content))
+    if (updated === null) throw new RequestError(ErrorCodes.NotFound, '这条留言不存在，或不是你写的')
+    return updated
   })
 
   app.delete<{ Params: { id: string } }>('/api/moments/:id', async (request, reply) => {
