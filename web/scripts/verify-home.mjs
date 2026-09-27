@@ -301,6 +301,8 @@ await setValue('[data-testid="reading-annotation"]', '这句让我想到我们�
 await clickButton('保存批注')
 await waitFor(`document.body.innerText.includes('你的划线') && document.body.innerText.includes('这句让我想到我们最近的对话。')`, '批注落盘')
 check('用户可在正文锚点上划线并批注', true)
+await waitFor(`(async () => { const month = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit' }).format(new Date()); const summary = await fetch('/api/life/month?month=' + month).then((response) => response.ok ? response.json() : null); if (!summary) return false; for (const day of summary.days) { if (!day.eventCount) continue; const detail = await fetch('/api/life/day/' + day.dayKey).then((response) => response.ok ? response.json() : null); if (detail?.events?.some((event) => event.eventType === 'reading.opened' && event.metricsJson.bookTitle === '验收共读')) return true; } return false; })()`, '共读行为投影到 Life')
+check('阅读打开行为进入 Life 日期明细', true)
 await clickButton('← 回到书架')
 await waitFor(`document.querySelector('[data-testid="reading-shelf"]') !== null && document.body.innerText.includes('验收共读')`, '返回书架')
 await send('Page.reload'); await sleep(500)

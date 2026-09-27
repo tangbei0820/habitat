@@ -7,6 +7,8 @@ import type { LifeRuntimeView } from '@shared/types.js'
 import { db } from '../db/index.js'
 import { getAutomationPolicy, getAutomationRuntimeState, listAutomationRuns } from '../db/automation.js'
 import { getLifeDay, getLifeLedger, getLifeMonthSummary } from '../db/life.js'
+import { appendEventLog } from '../db/activity.js'
+import { dayKeyOf } from '../db/usage.js'
 import { createPriceSnapshot, listPriceSnapshots } from '../db/pricing.js'
 import { removePushSubscription, savePushSubscription } from '../db/push.js'
 import { eventideHistory } from '../db/schema.js'
@@ -53,6 +55,66 @@ function nonnegativeInteger(body: Record<string, unknown>, key: string): number 
   return value as number
 }
 
+const READING_EVENT_TYPES = new Set([
+  'reading.opened',
+  'reading.progress',
+  'reading.bookmark',
+  'reading.annotation',
+  'reading.vocabulary',
+])
+
+function optionalNonnegativeInteger(body: Record<string, unknown>, key: string, max = 1_000_000_000): number | undefined {
+  if (body[key] === undefined) return undefined
+  const value = body[key]
+  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > max) {
+    throw new RequestError(ErrorCodes.BadRequest, `${key} 必须是 0..${max} 的整数`)
+  }
+  return value as number
+}
+
+function optionalPercentage(body: Record<string, unknown>, key: string): number | undefined {
+  if (body[key] === undefined) return undefined
+  const value = body[key]
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
+    throw new RequestError(ErrorCodes.BadRequest, `${key} 必须是 0..100 的数字`)
+  }
+  return Math.round(value * 100) / 100
+}
+
+function readingEventBody(value: unknown): {
+  eventType: string
+  bookId: string
+  metrics: Record<string, unknown>
+} {
+  const body = objectBody(value)
+  const eventType = boundedText(body, 'eventType', 40)
+  if (!READING_EVENT_TYPES.has(eventType)) throw new RequestError(ErrorCodes.BadRequest, '不支持的共读事件类型')
+  const bookId = boundedText(body, 'bookId', 160)
+  const bookTitle = boundedText(body, 'bookTitle', 200)
+  const paragraphIndex = optionalNonnegativeInteger(body, 'paragraphIndex', 2_000_000)
+  const readingSecondsDelta = optionalNonnegativeInteger(body, 'readingSecondsDelta', 86_400)
+  const readingSecondsTotal = optionalNonnegativeInteger(body, 'readingSecondsTotal', 31_536_000)
+  const progressPercent = optionalPercentage(body, 'progressPercent')
+  const enabled = body.enabled === undefined ? undefined : body.enabled
+  if (enabled !== undefined && typeof enabled !== 'boolean') {
+    throw new RequestError(ErrorCodes.BadRequest, 'enabled 必须是布尔值')
+  }
+  return {
+    eventType,
+    bookId,
+    metrics: {
+      source: 'reading',
+      bookId,
+      bookTitle,
+      ...(paragraphIndex === undefined ? {} : { paragraphIndex }),
+      ...(readingSecondsDelta === undefined ? {} : { readingSecondsDelta }),
+      ...(readingSecondsTotal === undefined ? {} : { readingSecondsTotal }),
+      ...(progressPercent === undefined ? {} : { progressPercent }),
+      ...(enabled === undefined ? {} : { enabled }),
+    },
+  }
+}
+
 export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, state: StateProvider | null): void {
   app.get('/api/life/month', async (request) => {
     const query = request.query as Record<string, unknown>
@@ -67,6 +129,12 @@ export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, st
       throw new RequestError(ErrorCodes.BadRequest, 'dayKey 必须是 YYYY-MM-DD')
     }
     return getLifeDay(dayKey)
+  })
+  app.post('/api/life/events/reading', async (request, reply) => {
+    const input = readingEventBody(request.body)
+    const at = Date.now()
+    const id = appendEventLog(input.eventType, input.metrics, input.bookId, at)
+    return reply.status(201).send({ ok: true, id, dayKey: dayKeyOf(at), at })
   })
   app.get('/api/life/ledger', async (request) => {
     const query = request.query as Record<string, unknown>

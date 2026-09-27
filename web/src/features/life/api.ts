@@ -43,6 +43,24 @@ export function loadLifeDay(dayKey: string): Promise<LifeDayDetail> {
   return fetchJson(`/api/life/day/${encodeURIComponent(dayKey)}`)
 }
 
+export type ReadingLifeEvent = {
+  eventType: 'reading.opened' | 'reading.progress' | 'reading.bookmark' | 'reading.annotation' | 'reading.vocabulary'
+  bookId: string
+  bookTitle: string
+  paragraphIndex?: number
+  progressPercent?: number
+  readingSecondsDelta?: number
+  readingSecondsTotal?: number
+  enabled?: boolean
+}
+
+/** 共读只记录行为事实；服务端不可用时由阅读器保留本地阅读，不阻断正文。 */
+export function appendReadingLifeEvent(event: ReadingLifeEvent): Promise<void> {
+  return fetchJson('/api/life/events/reading', {
+    method: 'POST', headers: jsonHeaders, body: JSON.stringify(event),
+  }).then(() => undefined)
+}
+
 export function loadLifeLedger(month: string): Promise<LifeLedgerView> {
   return fetchJson(`/api/life/ledger?month=${encodeURIComponent(month)}`)
 }

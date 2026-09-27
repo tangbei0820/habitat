@@ -14,6 +14,7 @@ import {
   updateReadingBookState,
   updateReadingNote,
 } from '../../db/home'
+import { appendReadingLifeEvent, type ReadingLifeEvent } from '../life/api'
 
 const STATUS_LABELS: Record<ReadingStatus, string> = { want: '想读', reading: '在读', finished: '读完' }
 
@@ -59,6 +60,18 @@ export function ReadingModule() {
   async function refresh(): Promise<void> { setItems(await listReadingNotes()) }
   useEffect(() => { refresh().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err))).finally(() => setLoading(false)) }, [])
 
+  function emitReadingEvent(event: ReadingLifeEvent): void {
+    /* Life 是跨模块投影；网络失败不能让本地 TXT 阅读器变成不可用。 */
+    void appendReadingLifeEvent(event).catch(() => undefined)
+  }
+
+  function openBook(item: ReadingNote): void {
+    const reader = getReadingBook(item)
+    if (reader === null) return
+    setSelectedId(item.id); setView('reader'); setError(null)
+    emitReadingEvent({ eventType: 'reading.opened', bookId: item.id, bookTitle: item.bookTitle, paragraphIndex: reader.currentParagraph, readingSecondsTotal: reader.readingSeconds })
+  }
+
   const selected = items.find((item) => item.id === selectedId) ?? null
   const selectedBook = selected === null ? null : getReadingBook(selected)
   const paragraphs = selectedBook === null ? [] : splitParagraphs(selectedBook.content)
@@ -75,8 +88,10 @@ export function ReadingModule() {
       const current = items.find((item) => item.id === selectedId)
       const reader = current === undefined ? null : getReadingBook(current)
       if (reader === null) return
-      void updateReadingBookState(selectedId, { readingSeconds: reader.readingSeconds + 60 }).then((next) => {
+      const readingSecondsTotal = reader.readingSeconds + 60
+      void updateReadingBookState(selectedId, { readingSeconds: readingSecondsTotal }).then((next) => {
         setItems((previous) => previous.map((item) => item.id === next.id ? next : item))
+        emitReadingEvent({ eventType: 'reading.progress', bookId: current?.id ?? selectedId, bookTitle: current?.bookTitle ?? '未命名的书', paragraphIndex: reader.currentParagraph, progressPercent: reader.content === '' ? 0 : Math.round(((reader.currentParagraph + 1) / splitParagraphs(reader.content).length) * 100), readingSecondsDelta: 60, readingSecondsTotal })
       }).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
     }, 60_000)
     return () => window.clearInterval(timer)
@@ -117,20 +132,30 @@ export function ReadingModule() {
       const content = await file.text()
       if (content.length > MAX_READING_TEXT_CHARS) throw new Error('TXT 文件过大，请先拆分到 2,000,000 字以内')
       const item = await createReadingBook(file.name.replace(/\.txt$/i, '') || '未命名的书', '', content)
-      setItems((previous) => [item, ...previous]); setSelectedId(item.id); setView('reader'); setError(null)
+      setItems((previous) => [item, ...previous]); openBook(item)
     } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
   }
 
   async function setParagraph(index: number): Promise<void> {
     if (selectedId === null || selectedBook === null) return
-    try { replaceItem(await updateReadingBookState(selectedId, { currentParagraph: index })); setError(null) }
+    try {
+      const next = await updateReadingBookState(selectedId, { currentParagraph: index })
+      replaceItem(next)
+      emitReadingEvent({ eventType: 'reading.progress', bookId: selectedId, bookTitle: selected?.bookTitle ?? '未命名的书', paragraphIndex: index, progressPercent: paragraphs.length <= 1 ? 100 : Math.round(((index + 1) / paragraphs.length) * 100), readingSecondsTotal: getReadingBook(next)?.readingSeconds ?? selectedBook.readingSeconds })
+      setError(null)
+    }
     catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
   }
 
   async function toggleBookmark(): Promise<void> {
     if (selectedId === null || selectedBook === null) return
     const next = selectedBook.bookmarkParagraph === selectedBook.currentParagraph ? null : selectedBook.currentParagraph
-    try { replaceItem(await updateReadingBookState(selectedId, { bookmarkParagraph: next })); setError(null) }
+    try {
+      const updated = await updateReadingBookState(selectedId, { bookmarkParagraph: next })
+      replaceItem(updated)
+      emitReadingEvent({ eventType: 'reading.bookmark', bookId: selectedId, bookTitle: selected?.bookTitle ?? '未命名的书', paragraphIndex: selectedBook.currentParagraph, enabled: next !== null, readingSecondsTotal: selectedBook.readingSeconds })
+      setError(null)
+    }
     catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
   }
 
@@ -139,6 +164,7 @@ export function ReadingModule() {
     try {
       const next = await addReadingAnnotation(selectedId, annotationTarget, paragraphs[annotationTarget] ?? '', annotationDraft)
       replaceItem(next); setAnnotationTarget(null); setAnnotationDraft(''); setError(null)
+      emitReadingEvent({ eventType: 'reading.annotation', bookId: selectedId, bookTitle: selected?.bookTitle ?? '未命名的书', paragraphIndex: annotationTarget, readingSecondsTotal: getReadingBook(next)?.readingSeconds ?? selectedBook.readingSeconds })
     } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
   }
 
@@ -153,6 +179,7 @@ export function ReadingModule() {
     try {
       const next = await addReadingVocabulary(selectedId, vocabularyTarget, vocabularyTerm, vocabularyNote)
       replaceItem(next); setVocabularyTarget(null); setVocabularyTerm(''); setVocabularyNote(''); setError(null)
+      emitReadingEvent({ eventType: 'reading.vocabulary', bookId: selectedId, bookTitle: selected?.bookTitle ?? '未命名的书', paragraphIndex: vocabularyTarget, readingSecondsTotal: getReadingBook(next)?.readingSeconds ?? selectedBook.readingSeconds })
     } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
   }
 
@@ -203,7 +230,7 @@ export function ReadingModule() {
   return <div data-testid="reading-shelf" className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">共读书架</h2><p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>先从一本 TXT 开始，把阅读进度和批注留在同一页。</p></div><div className="flex gap-2"><label className="cursor-pointer rounded-full px-3 py-1.5 text-sm" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}><input data-testid="reading-import" type="file" accept=".txt,text/plain" onChange={(event) => void importText(event)} className="sr-only" />导入 TXT</label><button type="button" onClick={() => setView('shelf')} className="rounded-full border px-3 py-1.5 text-sm" style={{ borderColor: 'var(--border-soft)' }}>书架</button></div></div>
     {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-    {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在翻书……</p> : books.length === 0 ? <p className="rounded-lg border p-5 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>书架还是空的。导入一本 TXT，开始真正阅读吧。</p> : <ul className="space-y-3">{books.map((item) => { const reader = getReadingBook(item); if (reader === null) return null; const total = splitParagraphs(reader.content).length; const current = Math.min(reader.currentParagraph, Math.max(0, total - 1)); return <li key={item.id} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}><div className="flex items-start justify-between gap-3"><div><h3 className="font-medium">{item.bookTitle}</h3>{item.author !== null && <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{item.author}</p>}<p className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>TXT · {progressLabel(current, total)} · 已读 {formatReadingTime(reader.readingSeconds)}</p></div><span className="rounded-full border px-2 py-0.5 text-xs" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>在读</span></div><div className="mt-3 flex justify-end gap-3 text-xs"><button type="button" onClick={() => { setSelectedId(item.id); setView('reader'); setError(null) }} style={{ color: 'var(--accent-strong)' }}>继续阅读</button><button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deletingId === item.id ? '确认删除？' : '移出书架'}</button></div></li> })}</ul>}
+    {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在翻书……</p> : books.length === 0 ? <p className="rounded-lg border p-5 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>书架还是空的。导入一本 TXT，开始真正阅读吧。</p> : <ul className="space-y-3">{books.map((item) => { const reader = getReadingBook(item); if (reader === null) return null; const total = splitParagraphs(reader.content).length; const current = Math.min(reader.currentParagraph, Math.max(0, total - 1)); return <li key={item.id} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}><div className="flex items-start justify-between gap-3"><div><h3 className="font-medium">{item.bookTitle}</h3>{item.author !== null && <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{item.author}</p>}<p className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>TXT · {progressLabel(current, total)} · 已读 {formatReadingTime(reader.readingSeconds)}</p></div><span className="rounded-full border px-2 py-0.5 text-xs" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>在读</span></div><div className="mt-3 flex justify-end gap-3 text-xs"><button type="button" onClick={() => openBook(item)} style={{ color: 'var(--accent-strong)' }}>继续阅读</button><button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deletingId === item.id ? '确认删除？' : '移出书架'}</button></div></li> })}</ul>}
 
     <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
       <div className="flex items-center justify-between"><h2 className="text-sm font-semibold">{editingId === null ? '记一页阅读' : '编辑读书笔记'}</h2>{editingId !== null && <button type="button" onClick={reset} className="text-xs" style={{ color: 'var(--text-secondary)' }}>取消编辑</button>}</div>

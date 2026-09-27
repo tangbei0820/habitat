@@ -741,6 +741,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 |---|---|
 | `GET /api/life/month?month=YYYY-MM` | 用户时区月历摘要：事件 / 失败 / 调用 / Token / 已定价费用 / 未定价数 |
 | `GET /api/life/day/:dayKey` | 日期下钻；返回当天 EventLog 与 UsageRecord，不反查聊天库 |
+| `POST /api/life/events/reading` | 共读行为投影：打开、进度 / 阅读时长、书签、批注、生词；写入 EventLog，失败不影响本地阅读 |
 | `GET /api/life/ledger?month=YYYY-MM` | 用量总计、按服务 / 模型聚合、价格快照、钱包与最近流水 |
 | `GET /api/life/runtime` | 聚合 server、Eventide、MCP、当前状态、主动策略 / 运行态 / 最近任务 |
 | `GET /api/prices` | 全部不可变 PriceSnapshot，按生效时间倒序 |

@@ -39,6 +39,21 @@ function dateTime(value: number | null): string {
   }).format(value)
 }
 function money(cents: number): string { return `${(cents / 100).toFixed(2)} 元` }
+function lifeEventLabel(event: { eventType: string; metricsJson: Record<string, unknown> }): string {
+  const title = typeof event.metricsJson.bookTitle === 'string' && event.metricsJson.bookTitle.trim() !== ''
+    ? `《${event.metricsJson.bookTitle}》`
+    : '这本书'
+  if (event.eventType === 'reading.opened') return `共读 · 打开 ${title}`
+  if (event.eventType === 'reading.progress') {
+    const percent = typeof event.metricsJson.progressPercent === 'number' ? ` · ${event.metricsJson.progressPercent}%` : ''
+    const seconds = typeof event.metricsJson.readingSecondsDelta === 'number' ? ` · +${Math.round(event.metricsJson.readingSecondsDelta / 60)} 分钟` : ''
+    return `共读 · 阅读 ${title}${percent}${seconds}`
+  }
+  if (event.eventType === 'reading.bookmark') return `共读 · ${event.metricsJson.enabled === true ? '夹入' : '移除'}书签 ${title}`
+  if (event.eventType === 'reading.annotation') return `共读 · 写下批注 ${title}`
+  if (event.eventType === 'reading.vocabulary') return `共读 · 收入生词 ${title}`
+  return event.eventType
+}
 function Panel({ children, className = '', testId }: { children: ReactNode; className?: string; testId?: string }) {
   return <section data-testid={testId} className={`rounded-xl border p-4 ${className}`} style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-surface-solid)' }}>{children}</section>
 }
@@ -81,7 +96,7 @@ function CalendarView({ month, setMonth }: { month: string; setMonth: (value: st
       return <button key={key} onClick={() => selectDay(key)} className="min-h-14 rounded-lg border p-1 text-left" style={{ borderColor: selected === key ? 'var(--accent-strong)' : 'var(--border-soft)', background: item ? 'var(--bg-subtle)' : 'transparent' }}><span>{day}</span>{item && <span className="mt-1 block text-[10px]" style={{ color: item.failedEventCount > 0 ? 'var(--danger)' : 'var(--text-secondary)' }}>{item.eventCount}事 · {item.apiCalls}次</span>}</button>
     })}</div></Panel>
     {summary && <div className="grid grid-cols-3 gap-2 text-center text-xs"><Panel><strong className="block text-base">{summary.totals.eventCount}</strong>本月事件</Panel><Panel><strong className="block text-base">{summary.totals.totalTokens}</strong>Token</Panel><Panel><strong className="block text-base">{money(summary.totals.pricedCostCents)}</strong>{summary.totals.unpricedCalls > 0 ? `另 ${summary.totals.unpricedCalls} 次未定价` : '已全部定价'}</Panel></div>}
-    {selected && <Panel><h2 className="mb-3 font-medium">{selected} 明细</h2>{detail === null ? <p className="text-sm">正在读取…</p> : detail.events.length + detail.usage.length === 0 ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>当天没有事实记录</p> : <div className="space-y-2 text-sm">{detail.events.map((event) => <div key={`event-${event.id}`} className="rounded-lg p-2" style={{ background: 'var(--bg-subtle)' }}><strong>{event.eventType}</strong><span className="ml-2 text-xs">{dateTime(event.at)}</span></div>)}{detail.usage.map((usage) => <div key={`usage-${usage.id}`} className="rounded-lg p-2" style={{ background: 'var(--bg-subtle)' }}><strong>{usage.service}</strong> · {usage.model}<span className="block text-xs">{usage.totalTokens} Token · {usage.cost === null ? '未定价' : money(usage.cost)}</span></div>)}</div>}</Panel>}
+    {selected && <Panel><h2 className="mb-3 font-medium">{selected} 明细</h2>{detail === null ? <p className="text-sm">正在读取…</p> : detail.events.length + detail.usage.length === 0 ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>当天没有事实记录</p> : <div className="space-y-2 text-sm">{detail.events.map((event) => <div key={`event-${event.id}`} className="rounded-lg p-2" style={{ background: 'var(--bg-subtle)' }}><strong>{lifeEventLabel(event)}</strong><span className="ml-2 text-xs">{dateTime(event.at)}</span></div>)}{detail.usage.map((usage) => <div key={`usage-${usage.id}`} className="rounded-lg p-2" style={{ background: 'var(--bg-subtle)' }}><strong>{usage.service}</strong> · {usage.model}<span className="block text-xs">{usage.totalTokens} Token · {usage.cost === null ? '未定价' : money(usage.cost)}</span></div>)}</div>}</Panel>}
     </LoadingOrEmpty>
   </div>
 }
