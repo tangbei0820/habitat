@@ -2520,3 +2520,17 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **本批踩坑**：生产 Nocturne 带尾斜杠 URL 会产生一次 HTTPS→HTTP→HTTPS 跳转，规范化为不带尾斜杠后直达 200；部署命令中 shell 的日期替换需避免被本地 PowerShell 提前解释，最终数据库备份已保留在服务器 `server/data/habitat.db.bak-*`。
 
 **剩余人工验收**：浏览器填入 Provider 方案后发真实流式消息、登录并查看 Nocturne 原生管理器、PWA 安装 / SW、断网只读、备份往返、Android 独立窗口；这些需要北北的浏览器 / 手机操作，服务端已不再阻塞。
+
+### T-062 · 2026-09-27 · Provider Center 单列折叠布局—— **完成**
+
+**边界**：只调整 Provider Center 四张能力卡的布局与展开状态，不改 Provider 数据结构、API、保存 / 测试语义；不进入下一功能切片。
+
+| 交付 | 说明 |
+| --- | --- |
+| 单列布局 | 主聊天、语音、识图、生图四张能力卡由桌面两列改为纵向单列，避免内容拥挤。 |
+| 折叠交互 | 主聊天默认展开；语音、识图、生图默认收起；点击标题行或箭头即可展开 / 收起，标题、说明、连接状态始终可见。 |
+| 可访问性 | 折叠按钮提供 `aria-expanded` / `aria-controls`，保持 44px 触控高度，并为浏览器验收提供稳定的 `data-testid`。 |
+| 回归脚本 | Provider 浏览器验收新增默认展开状态与折叠交互检查；展开后继续覆盖四张卡的拉模型、测试、保存、恢复流程。 |
+| 部署 | 本地构建产物随本批更新至 VPS；保留生产 `.env` 与 SQLite，不改服务端数据。 |
+
+**验收**：`npm run typecheck`、`npm run build`、`git diff --check` 通过；Provider 浏览器回归 **32/32**。整条前端流水线仍有既存 `verify-runtime` 环境相关 2 项失败，其余分组通过，不影响本批 Provider 交付。

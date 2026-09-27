@@ -212,6 +212,29 @@ await waitFor(
 )
 const cardTitles = await evaluate(`['主聊天 API','语音 API','识图 API','生图 API'].every((title) => document.body.innerText.includes(title))`)
 check('Provider Center 展示四张独立能力卡', cardTitles)
+
+const cardCollapseState = await evaluate(`(() => {
+  const states = Object.fromEntries(['chat','voice','vision','image'].map((id) => {
+    const toggle = document.querySelector('[data-testid="provider-card-toggle-' + id + '"]')
+    return [id, toggle?.getAttribute('aria-expanded')]
+  }))
+  return states.chat === 'true' && states.voice === 'false' && states.vision === 'false' && states.image === 'false'
+})()`)
+check('能力卡支持单列折叠，主聊天默认展开', cardCollapseState)
+
+async function expandCard(capability) {
+  const result = await evaluate(`(() => {
+    const toggle = document.querySelector('[data-testid="provider-card-toggle-${capability}"]')
+    if (!toggle) return 'missing'
+    if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click()
+    return 'ok'
+  })()`)
+  if (result !== 'ok') throw new Error(`能力卡不可展开：${capability}`)
+  await sleep(150)
+}
+
+for (const capability of ['chat', 'voice', 'vision', 'image']) await expandCard(capability)
+
 const cardActions = await evaluate(`['chat','voice','vision','image'].every((id) => {
   const card = document.querySelector('[data-testid="provider-card-' + id + '"]')
   const text = card?.innerText ?? ''
@@ -220,6 +243,7 @@ const cardActions = await evaluate(`['chat','voice','vision','image'].every((id)
 check('每张卡都有拉模型 / 测试 / 保存 / 恢复', cardActions)
 
 async function clickCardButton(capability, label) {
+  await expandCard(capability)
   const result = await evaluate(`(() => {
     const card = document.querySelector('[data-testid="provider-card-${capability}"]')
     const button = [...(card?.querySelectorAll('button') ?? [])].find((item) => item.textContent.trim() === ${JSON.stringify(label)})

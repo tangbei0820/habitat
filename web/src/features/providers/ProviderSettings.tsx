@@ -221,7 +221,7 @@ export function ProviderSettings() {
   return (
     <div className="mb-4">
       <div className="setting-group-label">Provider Center</div>
-      <section className="grid gap-3 lg:grid-cols-2" data-testid="provider-center">
+      <section className="flex flex-col gap-3" data-testid="provider-center">
         {(['chat', 'voice', 'vision', 'image'] as const).map((capability) => (
           <ProviderCapabilityCard
             key={`${capability}:${center.bindings.find((item) => item.capability === capability)?.updatedAt ?? 'none'}:${ctrl.profiles.length}`}

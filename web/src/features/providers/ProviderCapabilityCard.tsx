@@ -9,6 +9,7 @@ import type {
   ProviderDraftTestResult,
 } from '@shared/types'
 import { ApiRequestError } from '../../lib/api'
+import { IconChevronDown } from '../../components/qixi/Icons'
 import * as api from './api'
 
 const INPUT = 'w-full rounded-md border px-3 py-2 text-sm'
@@ -68,8 +69,10 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
   const [testImage, setTestImage] = useState<string | undefined>()
   const [working, setWorking] = useState<'models' | 'test' | 'save' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(() => capability === 'chat')
   const meta = META[capability]
   const selected = profiles.find((profile) => profile.id === profileId)
+  const panelId = `provider-capability-${capability}-panel`
 
   const draft = useMemo<ProviderDraftInput>(() => ({
     ...(profileId === '__new__' ? {} : { profileId }),
@@ -207,14 +210,28 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
 
   return (
     <article className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-surface-solid)' }} data-testid={`provider-card-${capability}`}>
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div><h3 className="text-sm font-semibold">{meta.title}</h3><p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{meta.note}</p></div>
-        <span className="rounded-full px-2 py-1 text-xs" style={{ background: binding?.lastError == null && binding?.lastTestedAt != null ? 'var(--bg-subtle)' : 'var(--bg-base)', color: binding?.lastError == null && binding?.lastTestedAt != null ? 'var(--accent-strong)' : 'var(--text-secondary)' }}>
-          {binding?.lastTestedAt == null ? '未连接' : binding.lastError === null ? '已连接' : '连接失败'}
+      <button
+        type="button"
+        className="flex min-h-[44px] w-full items-center justify-between gap-3 text-left"
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        data-testid={`provider-card-toggle-${capability}`}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold">{meta.title}</span>
+          <span className="mt-0.5 block text-xs" style={{ color: 'var(--text-secondary)' }}>{meta.note}</span>
         </span>
-      </div>
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="rounded-full px-2 py-1 text-xs" style={{ background: binding?.lastError == null && binding?.lastTestedAt != null ? 'var(--bg-subtle)' : 'var(--bg-base)', color: binding?.lastError == null && binding?.lastTestedAt != null ? 'var(--accent-strong)' : 'var(--text-secondary)' }}>
+            {binding?.lastTestedAt == null ? '未连接' : binding.lastError === null ? '已连接' : '连接失败'}
+          </span>
+          <IconChevronDown size={18} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 150ms ease' }} />
+        </span>
+      </button>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      {expanded && <div id={panelId} data-testid={`provider-card-panel-${capability}`}>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="text-xs">Provider 类型<input className={INPUT} style={INPUT_STYLE} value="OpenAI-compatible" disabled /></label>
         <label className="text-xs">连接<select className={INPUT} style={INPUT_STYLE} value={profileId} onChange={(event) => selectProfile(event.target.value)}><option value="__new__">+ 新建连接</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
         {profileId === '__new__' && <label className="text-xs">连接名称<input className={INPUT} style={INPUT_STYLE} value={connectionName} onChange={(event) => setConnectionName(event.target.value)} placeholder="例如：OpenAI 语音" /></label>}
@@ -237,6 +254,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
         <button type="button" className="rounded-md border px-3 py-1.5 text-xs" disabled={working !== null} onClick={restore}>恢复上次保存</button>
       </div>
       {!canSave && testResult?.ok !== true && <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>真实能力测试通过后才可保存，避免把仅能列模型的连接当成可用。</p>}
+      </div>}
     </article>
   )
 }
