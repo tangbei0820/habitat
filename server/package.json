@@ -23,6 +23,7 @@
     "probe:phase5": "tsx scripts/probe-phase5.ts",
     "probe:ai-runtime": "tsx scripts/probe-ai-runtime.ts",
     "probe:diary": "tsx scripts/probe-diary.ts",
+    "probe:diary-fragments": "tsx scripts/probe-diary-fragments.ts",
     "probe:event-inbox": "tsx scripts/probe-event-inbox.ts",
     "typecheck": "tsc --noEmit",
     "start": "tsx src/index.ts"

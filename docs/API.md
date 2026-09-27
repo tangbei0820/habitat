@@ -446,8 +446,8 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
 
 ### `GET /api/diary` → `{ items: DiaryView[] }`
 
-列表**包含** AI 的私密日记 —— 用户看得到「有几篇、都是哪天」（封面可见，SPEC §3.4.2），
-但它们的 `content` 为 `null`。
+列表**包含** AI 的私密日记 —— 用户看得到「有几篇、都是哪天」（封面可见，SPEC §3.4.2）。
+`content` 在整篇或所有片段都不可见时为 `null`；`fragments` 始终返回段落 id / 状态，未开放段落的 `content` 为 `null`。
 
 ### `GET /api/diary/:id`
 
@@ -487,6 +487,9 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
 - 404：这篇不存在，或者不是小栖写的
 - 400：这篇已经开放了（直接看就行）
 - **幂等**：同一篇已有待决请求时返回那一条，不重复挂（用户连点两下不该让 AI 收到两条）
+
+`DiaryView.fragments` 是按正文换行拆出的稳定片段（`fragment-0`、`fragment-1` …）。
+AI 可以通过能力工具 `diary_set_fragment_visibility` 只开放或锁回某一段；整篇仍保持 `private / open / locked` 总开关语义。
 
 ### 留言板：`GET/POST /api/moments`、`DELETE /api/moments/:id`、`POST /api/moments/import`
 

@@ -10,18 +10,50 @@
  */
 import { randomUUID } from 'node:crypto'
 import { desc, eq } from 'drizzle-orm'
-import type { DiaryView, DiaryVisibility } from '@shared/types'
+import type { DiaryFragmentView, DiaryView, DiaryVisibility } from '@shared/types'
 import { db } from './index.js'
 import { diary, type DiaryRow } from './schema.js'
 
 /** 用户视角能否读正文：自己的日记全能读；AI 的日记只有它明确开放了才能读。 */
-function isReadable(row: DiaryRow): boolean {
-  return row.author === 'user' || row.visibility === 'open'
+type FragmentOverride = 'open' | 'locked'
+
+function splitFragments(content: string): string[] {
+  const fragments = content.split(/\r?\n+/).map((item) => item.trim()).filter((item) => item !== '')
+  return fragments.length === 0 ? [''] : fragments
+}
+
+function safeOverrides(value: Record<string, FragmentOverride> | null | undefined): Record<string, FragmentOverride> {
+  if (value === null || value === undefined || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).filter(([, visibility]) => visibility === 'open' || visibility === 'locked'))
+}
+
+function normalizedOverrides(content: string, value: Record<string, FragmentOverride> | null | undefined): Record<string, FragmentOverride> {
+  const count = splitFragments(content).length
+  return Object.fromEntries(Object.entries(safeOverrides(value)).filter(([id]) => {
+    const match = /^fragment-(\d+)$/.exec(id)
+    return match !== null && Number(match[1]) < count
+  }))
+}
+
+function effectiveVisibility(row: DiaryRow, fragmentId: string, overrides: Record<string, FragmentOverride>): DiaryVisibility {
+  return overrides[fragmentId] ?? row.visibility
+}
+
+function buildFragments(row: DiaryRow, includePrivate: boolean): DiaryFragmentView[] {
+  const overrides = safeOverrides(row.fragmentVisibilityJson)
+  return splitFragments(row.content).map((content, index) => {
+    const id = `fragment-${index}`
+    const visibility = effectiveVisibility(row, id, overrides)
+    const readable = includePrivate || row.author === 'user' || visibility === 'open'
+    return { id, index, content: readable ? content : null, visibility, readable }
+  })
 }
 
 /** 唯一的出口。任何返回给前端或模型的日记都要过这里。 */
 export function toDiaryView(row: DiaryRow): DiaryView {
-  const readable = isReadable(row)
+  const fragments = buildFragments(row, false)
+  const readable = fragments.some((fragment) => fragment.readable)
+  const fullyReadable = fragments.every((fragment) => fragment.readable)
   return {
     id: row.id,
     title: row.title,
@@ -31,7 +63,8 @@ export function toDiaryView(row: DiaryRow): DiaryView {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     // ⚠️ 无权限时给 `null` 而不是空串：前端要靠 `readable` 区分「没权限」与「正文为空」
-    content: readable ? row.content : null,
+    content: fullyReadable ? row.content : null,
+    fragments,
     readable,
     editable: row.author === 'user',
   }
@@ -72,6 +105,7 @@ export function createUserDiary(input: DiaryInput): DiaryView {
     entryDate: input.entryDate,
     author: 'user',
     visibility: 'open',
+    fragmentVisibilityJson: {},
     createdAt: at,
     updatedAt: at,
   }
@@ -130,6 +164,7 @@ export function importDiaryIfAbsent(row: DiaryRow): boolean {
 
 /** AI 视角出口。仅用于「AI 读 / 改自己的日记」，**绝不**用它回应前端请求。 */
 export function toCompanionDiaryView(row: DiaryRow): DiaryView {
+  const fragments = buildFragments(row, true)
   return {
     id: row.id,
     title: row.title,
@@ -139,6 +174,7 @@ export function toCompanionDiaryView(row: DiaryRow): DiaryView {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     content: row.content,
+    fragments,
     readable: true,
     editable: row.author === 'companion',
   }
@@ -184,6 +220,7 @@ export function createCompanionDiary(input: CompanionDiaryInput): DiaryView {
     entryDate: input.entryDate,
     author: 'companion',
     visibility: 'private',
+    fragmentVisibilityJson: {},
     createdAt: at,
     updatedAt: at,
   }
@@ -196,11 +233,12 @@ export function updateCompanionDiary(id: string, input: CompanionDiaryInput): Di
   const existing = db.select().from(diary).where(eq(diary.id, id)).get()
   if (existing === undefined || existing.author !== 'companion') return null
   const updatedAt = Date.now()
+  const fragmentVisibilityJson = normalizedOverrides(input.content, existing.fragmentVisibilityJson)
   db.update(diary)
-    .set({ title: input.title, content: input.content, entryDate: input.entryDate, updatedAt })
+    .set({ title: input.title, content: input.content, entryDate: input.entryDate, fragmentVisibilityJson, updatedAt })
     .where(eq(diary.id, id))
     .run()
-  return toCompanionDiaryView({ ...existing, ...input, updatedAt })
+  return toCompanionDiaryView({ ...existing, ...input, fragmentVisibilityJson, updatedAt })
 }
 
 /**
@@ -214,4 +252,15 @@ export function setDiaryVisibility(id: string, visibility: DiaryVisibility): Dia
   if (existing === undefined || existing.author !== 'companion') return null
   db.update(diary).set({ visibility, updatedAt: Date.now() }).where(eq(diary.id, id)).run()
   return toCompanionDiaryView({ ...existing, visibility })
+}
+
+/** AI 可独立开放 / 锁回自己日记的一段；整篇 visibility 仍保留为总开关。 */
+export function setDiaryFragmentVisibility(id: string, fragmentId: string, visibility: FragmentOverride): DiaryView | null {
+  const existing = db.select().from(diary).where(eq(diary.id, id)).get()
+  if (existing === undefined || existing.author !== 'companion') return null
+  const fragmentIndex = Number(fragmentId.slice('fragment-'.length))
+  if (!/^fragment-\d+$/.test(fragmentId) || fragmentIndex < 0 || fragmentIndex >= splitFragments(existing.content).length) return null
+  const fragmentVisibilityJson = { ...normalizedOverrides(existing.content, existing.fragmentVisibilityJson), [fragmentId]: visibility }
+  db.update(diary).set({ fragmentVisibilityJson, updatedAt: Date.now() }).where(eq(diary.id, id)).run()
+  return toCompanionDiaryView({ ...existing, fragmentVisibilityJson })
 }

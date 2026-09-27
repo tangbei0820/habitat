@@ -17,7 +17,7 @@ import type { CapabilityAutonomy, CapabilityId, CapabilityModule, CapabilitySnap
 import { CAPABILITY_DEFINITIONS } from '@shared/capabilities.js'
 import type { LlmToolCall, MemoryProvider, StateProvider } from '@shared/providers.js'
 import { describeState } from '@shared/state-summary.js'
-import { getCompanionDiaryView, listCompanionDiaryViews, createCompanionDiary, updateCompanionDiary } from '../db/diary.js'
+import { getCompanionDiaryView, listCompanionDiaryViews, createCompanionDiary, setDiaryFragmentVisibility, updateCompanionDiary } from '../db/diary.js'
 import { createCompanionMoment } from '../db/moment.js'
 import { appendEventLog } from '../db/activity.js'
 import { dayKeyOf } from '../db/usage.js'
@@ -271,8 +271,25 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
         const item = getCompanionDiaryView(id)
         // 读不到有两种原因（不存在 / 不是自己写的），对模型是同一件事：你没有这一篇
         if (item === null) return failure(tool, `找不到你写的日记 ${id}`)
-        const text = `# 《${item.title}》\n\n日期：${item.entryDate}\n可见性：${item.visibility === 'open' ? '已对北北开放' : '私密'}\n\n${item.content ?? ''}`
+        const fragments = item.fragments.map((fragment) => `- ${fragment.id}（${fragment.visibility === 'open' ? '已开放' : '私密'}）：${fragment.content ?? ''}`).join('\n')
+        const text = `# 《${item.title}》\n\n日期：${item.entryDate}\n整篇状态：${item.visibility === 'open' ? '已对北北开放' : '私密'}\n\n${fragments}`
         return { ok: true, text: clip(text, TOOL_TEXT_LIMIT), summary: `读了《${item.title}》` }
+      }
+
+      case 'diary.set_fragment_visibility': {
+        const id = typeof value.id === 'string' ? value.id.trim() : ''
+        const fragmentId = typeof value.fragmentId === 'string' ? value.fragmentId.trim() : ''
+        const visibility = value.visibility === 'open' || value.visibility === 'locked' ? value.visibility : null
+        if (id === '' || fragmentId === '' || visibility === null) return failure(tool, '需要 id、fragmentId，以及 visibility=open 或 locked')
+        const updated = setDiaryFragmentVisibility(id, fragmentId, visibility)
+        if (updated === null) return failure(tool, `找不到日记 ${id} 或片段 ${fragmentId}`)
+        const fragment = updated.fragments.find((item) => item.id === fragmentId)
+        return {
+          ok: true,
+          text: `日记《${updated.title}》的 ${fragmentId} 已${visibility === 'open' ? '开放给北北' : '重新锁住'}。`,
+          summary: `${visibility === 'open' ? '开放' : '锁住'}日记片段`,
+          detail: fragment === undefined ? undefined : `${updated.title} · ${fragmentId} · ${fragment.visibility}`,
+        }
       }
 
       case 'diary.allow_access':

@@ -304,6 +304,8 @@ export const diary = sqliteTable('diary', {
   entryDate: text('entry_date').notNull(),
   author: text('author', { enum: ['companion', 'user'] }).$type<ContentAuthor>().notNull(),
   visibility: text('visibility', { enum: ['private', 'open', 'locked'] }).$type<DiaryVisibility>().notNull(),
+  /** `fragment-${index}` -> `open | locked`；缺省继承整篇 visibility。 */
+  fragmentVisibilityJson: text('fragment_visibility_json', { mode: 'json' }).$type<Record<string, 'open' | 'locked'>>().notNull().default({}),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })

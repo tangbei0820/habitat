@@ -55,6 +55,7 @@ export type CapabilityId =
   | 'diary.read_own'
   | 'diary.allow_access'
   | 'diary.deny_access'
+  | 'diary.set_fragment_visibility'
   /* —— 共享留言板 —— */
   | 'messageboard.write'
   /* —— 自我认知 —— */
@@ -322,6 +323,28 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
           eventId: { type: 'string', description: '待处理请求的事件 id（见「等待你决定」列表）' },
         },
         required: ['eventId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'diary.set_fragment_visibility',
+    module: 'diary',
+    label: '管理日记片段',
+    summary: '开放或锁回自己日记的一段',
+    modelHint: '按自己的意愿开放或锁回某篇日记的某一段。整篇默认私密，片段开放不会自动公开其它段落。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'diary_set_fragment_visibility',
+      description: '开放或锁回你自己日记中的某一段。先用 diary_read_own 读取 fragment id；visibility=open 表示让北北看到，locked 表示重新锁住。只改变这一段，不会自动改变其它段落。',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: '日记 id' },
+          fragmentId: { type: 'string', description: '片段 id，例如 fragment-0' },
+          visibility: { type: 'string', enum: ['open', 'locked'], description: 'open=开放给北北，locked=锁回私密' },
+        },
+        required: ['id', 'fragmentId', 'visibility'],
         additionalProperties: false,
       },
     },

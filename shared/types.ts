@@ -280,10 +280,20 @@ export interface DiaryView {
   updatedAt: number
   /** 有权限时为正文；无权限时 `null`（**不是空串**） */
   content: string | null
+  /** 按正文段落拆出的权限视图；私密段落只返回封面，不返回正文 */
+  fragments: DiaryFragmentView[]
   /** 当前用户能否读到正文 */
   readable: boolean
   /** 当前用户能否编辑 / 删除（只有 `author='user'` 的日记可以） */
   editable: boolean
+}
+
+export interface DiaryFragmentView {
+  id: string
+  index: number
+  content: string | null
+  visibility: DiaryVisibility
+  readable: boolean
 }
 
 /* ---------- Event Inbox · 事件收件箱（Phase 6.5 P1，服务端权威） ---------- */

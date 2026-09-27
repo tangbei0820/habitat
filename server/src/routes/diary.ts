@@ -58,6 +58,7 @@ interface ImportItem {
   entryDate: string
   author: ContentAuthor
   visibility: DiaryVisibility
+  fragmentVisibilityJson: Record<string, 'open' | 'locked'>
   createdAt: number
   updatedAt: number
 }
@@ -82,6 +83,9 @@ function importItem(raw: unknown): ImportItem {
     entryDate: dayKey(item.entryDate, 'entryDate'),
     author,
     visibility,
+    fragmentVisibilityJson: typeof item.fragmentVisibilityJson === 'object' && item.fragmentVisibilityJson !== null && !Array.isArray(item.fragmentVisibilityJson)
+      ? Object.fromEntries(Object.entries(item.fragmentVisibilityJson).filter(([, value]) => value === 'open' || value === 'locked')) as Record<string, 'open' | 'locked'>
+      : {},
     createdAt: typeof item.createdAt === 'number' ? item.createdAt : at,
     updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : at,
   }

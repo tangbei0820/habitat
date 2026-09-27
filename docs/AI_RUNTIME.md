@@ -66,13 +66,14 @@
 | `memory.search` | memory | autonomous | `memory_search` | 可用（需 Nocturne ready） |
 | `memory.write` | memory | confirm | — | 未实施（本阶段只读接入） |
 | `state.read` | state | autonomous | `state_read` | 可用（需 Eventide） |
-| `diary.create` | diary | confirm | `diary_create` | 可用 · **挂起待确认** |
-| `diary.update` | diary | confirm | `diary_update` | 可用 · **挂起待确认** |
+| `diary.create` | diary | autonomous | `diary_create` | 可用 · 立即写入小栖私密日记 |
+| `diary.update` | diary | autonomous | `diary_update` | 可用 · 立即修改小栖私密日记 |
 | `diary.list_own` | diary | autonomous | `diary_list_own` | 可用 |
 | `diary.read_own` | diary | autonomous | `diary_read_own` | 可用 |
 | `diary.allow_access` | diary | autonomous | `diary_allow_access` | 可用（AI 自己决定放不放） |
 | `diary.deny_access` | diary | autonomous | `diary_deny_access` | 可用 |
-| `messageboard.write` | board | confirm | `messageboard_write` | 可用 · **挂起待确认** |
+| `diary.set_fragment_visibility` | diary | autonomous | `diary_set_fragment_visibility` | 可用；只改变指定片段，默认私密 |
+| `messageboard.write` | board | autonomous | `messageboard_write` | 可用 · 立即写入小栖留言 |
 | `tools.list` | tools | autonomous | `tools_list` | 可用 |
 
 > 日记 / 留言板的能力**没有外部依赖**（权威存储就是本机 SQLite，见 `DATA_MODEL.md` §11），

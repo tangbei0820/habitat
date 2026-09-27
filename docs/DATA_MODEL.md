@@ -223,12 +223,11 @@ interface SessionGroup extends BaseObject {
 | 项 | 改动 | 依据 |
 |---|---|---|
 | ~~会话分组~~ | ✅ 已落地（T-018）：`ChatSession.groupId` + `sessionGroups` 表 → Dexie v8 | SPEC §2.1.3 |
-| 日记权限模型 | 🟡 **部分落地**（T-036）：`Diary.author` / `visibility` 已随迁服务端落库（§11）；「查看请求」实体待 Phase 6.5 P1 的事件收件箱 | SPEC §3.4 / §6.3 |
+| 日记权限模型 | ✅ **已落地（T-036 / T-037 / T-068）**：服务端权威、整篇请求 / AI 决策、片段级 `fragment_visibility_json` 覆盖与安全过滤 | SPEC §3.4 / §6.3 |
 | 作品来源引用 | 复用基座的 `sourceId` / `sessionId`，**不新增字段**；聊天来源已落地（T-016） | SPEC §3.6.3 |
 | 相册来源引用 | 同上；聊天图片来源与 block 位置已落地（T-016） | SPEC §3.7.2 |
 
-> ⚠️ 日记的「AI 决定允许 / 拒绝查看」需要 AI 侧决策能力，属 Eventide 与主动行为链路之后
-> （SPEC §3.4.5）。P0 只落**用户侧**（封面 + 请求入口 + 不可编辑），不留半截的假 AI 行为。
+> 日记的「AI 决定允许 / 拒绝查看」与片段级开放已经接入服务端能力注册表；后续只补更细的片段请求与富媒体锚点，不再把当前能力标成占位。
 
 ## 7. 迁移现状（Dexie）
 
@@ -353,7 +352,7 @@ Life 月历与账本是查询模型，不复制事实表：月历按 `event_log.
 
 | 表 | 字段 | 关键不变量 |
 |---|---|---|
-| `diary` | `id` / `title` / `content` / `entry_date` / `author` / `visibility` / `created_at` / `updated_at` | `author` **就是权限位**：`user` 的日记用户可自由读写删；`companion` 的只给封面。**正文过滤只走 `db/diary.ts` 的 `toDiaryView()` 这一个出口** |
+| `diary` | `id` / `title` / `content` / `entry_date` / `author` / `visibility` / `fragment_visibility_json` / `created_at` / `updated_at` | `author` **就是权限位**：`user` 的日记用户可自由读写删；`companion` 默认私密。`fragment_visibility_json` 只保存 `fragment-N -> open/locked` 覆盖，缺省继承整篇权限；**正文过滤只走 `db/diary.ts` 的 `toDiaryView()` 这一个出口** |
 | `moment` | `id` / `content` / `author` / `created_at` / `updated_at` | 无可见性概念（写出来就是给人看的），只有「谁能删」：用户只能删自己的 |
 
 字段约定：
@@ -362,7 +361,7 @@ Life 月历与账本是查询模型，不复制事实表：月历按 `event_log.
 - `visibility`：`'private' | 'open' | 'locked'`。三态是**同一件事的三种状态**，
   所以合成一个字段而不是拆 `private` + `locked` 两个布尔（拆开会造出「private 且 locked」这种没含义的组合）。
 - `entry_date`：本地日期 `YYYY-MM-DD` 字符串，同 `CountdownDay.targetDate` 的理由（避免纯日期被时区推一天）。
-- ⚠️ 无权限时**不发正文**：`DiaryView.content` 为 `null`（**不是空串**），并显式给 `readable` / `editable`。
+- ⚠️ 无权限时**不发正文**：`DiaryView.content` 为 `null`（**不是空串**），并显式给 `fragments[].readable` / `readable` / `editable`；部分开放时只下发已开放片段。
   让前端拿 `content === null` 去猜「没权限还是还没写」是不行的 —— 那是两件完全不同的事。
 
 **迁移怎么保证不丢数据**：整套搬迁在**启动期**跑（`web/src/db/legacy-upload.ts`，三轮：收编 → 上传 → 清源）。

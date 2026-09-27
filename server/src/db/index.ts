@@ -254,6 +254,7 @@ CREATE TABLE IF NOT EXISTS diary (
   entry_date TEXT NOT NULL,
   author TEXT NOT NULL DEFAULT 'companion',
   visibility TEXT NOT NULL DEFAULT 'private',
+  fragment_visibility_json TEXT NOT NULL DEFAULT '{}',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -268,6 +269,11 @@ CREATE TABLE IF NOT EXISTS moment (
 );
 CREATE INDEX IF NOT EXISTS idx_moment_created ON moment (created_at DESC);
 `)
+
+const diaryColumns = sqlite.pragma('table_info(diary)') as Array<{ name: string }>
+if (!diaryColumns.some((col) => col.name === 'fragment_visibility_json')) {
+  sqlite.exec("ALTER TABLE diary ADD COLUMN fragment_visibility_json TEXT NOT NULL DEFAULT '{}'")
+}
 
 // Event Inbox（Phase 6.5 P1）。为什么单独一张表、为什么不并进 notification：
 // 见 schema.ts 的 runtimeEvent 注释 —— 那张是单向广播，这张是双向待决。

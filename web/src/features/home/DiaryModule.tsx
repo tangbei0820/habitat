@@ -148,15 +148,17 @@ export function DiaryModule() {
         <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>还没有日记。今天可以成为第一页。</p>
       ) : (
         <ul className="space-y-3">
-          {items.map((item) => (
-            <li key={item.id} data-testid="diary-item" data-author={item.author} data-readable={item.readable ? 'true' : 'false'} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
+          {items.map((item) => {
+            const fragments = item.fragments ?? []
+            const openFragments = fragments.filter((fragment) => fragment.readable)
+            return <li key={item.id} data-testid="diary-item" data-author={item.author} data-readable={item.readable ? 'true' : 'false'} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
               <div className="flex items-center justify-between gap-3">
                 <time className="text-xs" style={{ color: 'var(--text-secondary)' }}>{item.entryDate}</time>
                 <span className="text-xs" style={{ color: item.author === 'companion' ? 'var(--accent-strong)' : 'var(--text-secondary)' }}>{item.author === 'companion' ? '小栖的日记' : '我的日记'}</span>
               </div>
               <h3 className="mt-1 font-medium">{item.title}</h3>
               {item.readable ? (
-                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.content}</p>
+                item.content !== null ? <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.content}</p> : <div className="mt-2 space-y-2" data-testid="diary-fragments">{fragments.map((fragment) => <p key={fragment.id} data-testid={`diary-fragment-${fragment.id}`} className="whitespace-pre-wrap break-words rounded-lg p-3 text-sm leading-6" style={{ background: fragment.readable ? 'var(--bg-subtle)' : 'var(--bg-base)', color: fragment.readable ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{fragment.readable ? fragment.content : '这一段还没有开放。'}</p>)}<p className="text-xs" style={{ color: 'var(--text-secondary)' }}>小栖已开放 {openFragments.length} 段，其余仍由它自己决定。</p>{item.author === 'companion' && !requestedIds.has(item.id) && <button type="button" data-testid="diary-request-access" onClick={() => void askToRead(item.id)} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>请求查看剩余段落</button>}</div>
               ) : (
                 <div className="mt-2 space-y-2">
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -188,7 +190,7 @@ export function DiaryModule() {
                 </div>
               )}
             </li>
-          ))}
+          })}
         </ul>
       )}
     </div>

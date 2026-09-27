@@ -1779,11 +1779,11 @@ AI 不能替北北确认（工具层硬编码 `decider='companion'`，模型传�
 | --- | --- | --- |
 | 类型 | `shared/types.ts` | `RuntimeEvent` / `Kind` / `Decider` / `Status`；`ToolResultBlock.payload.eventId` |
 | 契约 | `shared/events.ts` | `ChatToolCallPayload.eventId`（挂起时带上，前端据此弹卡） |
-| 声明 | `shared/capabilities.ts` | 七项日记 / 留言能力补齐 tool 绑定（含 schema 与给模型的说明） |
+| 声明 | `shared/capabilities.ts` | 日记 / 留言能力补齐 tool 绑定（含 schema 与给模型的说明）；T-068 增加片段级开放工具 |
 | 表 | `server/src/db/schema.ts`、`db/index.ts` | `runtime_event`（含 `payload_json` / `target_id` / `result_delivered_at`） |
 | 仓储 | `server/src/db/event.ts` | `settleEvent()` 带 `status='pending'` 条件更新 —— 决策只能做一次 |
 | 执行 | `server/src/services/event-inbox.ts` | 校验 → 挂起 → 决策 → **真副作用**（唯一的执行点） |
-| 日记 AI 侧 | `server/src/db/diary.ts` | `toCompanionDiaryView()`（**第二个出口**，AI 视角）/ `createCompanionDiary` / `setDiaryVisibility` |
+| 日记 AI 侧 | `server/src/db/diary.ts` | `toCompanionDiaryView()`（**第二个出口**，AI 视角）/ `createCompanionDiary` / `setDiaryVisibility` / `setDiaryFragmentVisibility` |
 | 留言 AI 侧 | `server/src/db/moment.ts` | `createCompanionMoment` |
 | 判定 | `server/src/capabilities/registry.ts` | `NOT_IMPLEMENTED_YET` 从八条缩到一条（只剩 `memory.write`） |
 | 工具 | `server/src/capabilities/tools.ts` | `confirm` 也绑（`isModelCallable`）；执行层挂起；四个日记工具的执行分支 |
@@ -2611,3 +2611,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；`npm run probe:reading-life` **9/9** 覆盖五类事件、日期下钻与字段校验；`verify-home` 在原 86 项基础上新增 Life 投影检查，目标 **87/87**（本机无 CDP 浏览器时未执行）。生产 VPS 未在本批更新，仍停在 T-062 基线。
 
 **待优化（后续切片）**：PDF / EPUB 稳定页锚点；AI 通过 MCP 读写书架与进度；小栖身份批注 / 回复；共同阅读历史聚合与云端文件存储。
+
+### T-068 · 2026-09-27 · AI 私密日记片段级开放—— **完成（本地）**
+
+**边界**：补齐日记权限模型中“整篇私密 + 片段覆盖”的真实闭环；不把用户日记改成 AI 日记，不引入富文本编辑器，不改变“用户请求 → AI 决定”的整篇访问流程。
+
+| 交付 | 说明 |
+| --- | --- |
+| 片段权限 | 日记按换行拆成稳定 `fragment-N` 片段；整篇 `private / open / locked` 仍是默认权限，AI 可只开放或锁回某段，未设置覆盖的段落继承整篇状态。 |
+| 安全过滤 | `DiaryView` 新增 `fragments`；用户只收到已开放片段正文，未开放片段只收到 id / 状态，部分开放时 `content` 保持 `null`，避免误把拼接正文当成完整日记。 |
+| AI 能力 | 新增自主工具 `diary_set_fragment_visibility`；`diary_read_own` 返回片段 id 与当前权限，AI 能基于真实内容选择公开范围。 |
+| 兼容迁移 | 服务端 `diary.fragment_visibility_json` 使用启动期 `ALTER TABLE` 补列，旧日记默认空覆盖；用户日记、旧导入数据和整篇访问请求保持兼容。 |
+| 页面体验 | 日记页能显示“已开放的片段 / 仍锁住的片段”，部分开放时仍可请求查看剩余内容；不把锁住段落渲染成空白正文。 |
+| 参考取舍 | 实查 [Journal](https://github.com/BomBomLab/Journal) 的结构化时间线 / 日记展示与 [shared-page](https://github.com/KKarsyline/shared-page) 的“数据契约与展示层分离”；只借可追溯片段展示语义，不复制其整页渲染、MCP 日历或外部 runtime。 |
+
+**验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；`npm run probe:diary-fragments` **5/5** 覆盖默认私密、片段开放、重新锁回和非法片段拒绝；`verify-home` 新增片段渲染断言，目标 **88/88**（本机无 CDP 浏览器时未执行）；生产 VPS 未在本批更新。
+
+**待优化（后续功能）**：AI 对片段开放 / 锁回的解释性消息与通知；富文本 / 图片日记的内容锚点；用户对某个片段单独发起请求（当前请求仍以整篇为单位）。

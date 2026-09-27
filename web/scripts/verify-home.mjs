@@ -213,6 +213,48 @@ await sleep(500)
 await waitFor(`document.body.innerText.includes('一大步')`, '日记修改刷新保留')
 check('日记新增、编辑并跨刷新保留', true)
 
+// AI 日记的片段级开放：只把被小栖明确打开的段落下发，锁住的段落仍只显示占位。
+// 使用固定 id 保持探针幂等，避免每轮浏览器验收都在服务端堆一篇不可删除的 AI 日记。
+await evaluate(`(async () => {
+  const item = {
+    id: 'verify-diary-fragments',
+    title: '验收·片段开放',
+    content: '第一段仍然私密。\\n第二段小栖愿意分享。\\n第三段继续锁住。',
+    entryDate: '2026-09-27',
+    author: 'companion',
+    visibility: 'private',
+    fragmentVisibilityJson: { 'fragment-1': 'open' },
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }
+  const response = await fetch('/api/diary/import', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ items: [item] }),
+  })
+  return response.ok
+})()`)
+await send('Page.reload')
+await sleep(500)
+await waitFor(`document.querySelector('[data-testid="diary-fragments"]') !== null`, '片段级日记渲染')
+const fragmentView = await evaluate(`(() => {
+  const item = [...document.querySelectorAll('[data-testid="diary-item"]')]
+    .find((node) => node.querySelector('h3')?.textContent?.trim() === '验收·片段开放')
+  if (!item) return null
+  return {
+    open: item.querySelector('[data-testid="diary-fragment-fragment-1"]')?.textContent?.trim() ?? '',
+    locked: [0, 2].map((index) => item.querySelector('[data-testid="diary-fragment-fragment-' + index + '"]')?.textContent?.trim() ?? ''),
+    summary: item.textContent?.includes('小栖已开放 1 段') === true,
+  }
+})()`)
+check(
+  'AI 日记只展示已开放片段，锁住片段保留占位与权限提示',
+  fragmentView?.open === '第二段小栖愿意分享。' &&
+    fragmentView.locked.every((text) => text === '这一段还没有开放。') &&
+    fragmentView.summary === true,
+  JSON.stringify(fragmentView),
+)
+
 await navigate('/home/bookmarks', '收藏一个链接')
 await setValue('#bookmark-title', '栖息地参考页')
 await setValue('#bookmark-url', 'https://example.com/habitat')
