@@ -2504,3 +2504,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 typecheck、web build、`probe:nocturne-dashboard` 6/6、`git diff --check`。
 
 **待优化（后续切片）**：若实际部署的 CSP / 登录策略禁止 iframe，再评估同源反代或受控新窗口登录流程；本批不做服务端反向代理、不改 Nocturne 认证、不把 Dashboard 原始数据同步成 Habitat 平行模型。
+
+### T-061 · 2026-09-27 · 当前代码全量部署 VPS 与公网实测—— **完成（服务端 / 公网侧）**
+
+**背景**：北北要求继续推进直到当前代码可以完整部署上 VPS 实测。本批不新增业务功能，部署 T-058～T-060 的代码与前端产物，并补齐生产 Dashboard 入口配置。
+
+| 步骤 | 结果 |
+| --- | --- |
+| 代码与产物 | 本地 `npm run build` 通过；排除 `node_modules`、`.git`、`server/data`、生产 `.env` 后打包上传，保留服务器本地依赖、SQLite 与密钥。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db`；生产 `.env` 权限保持 `600`，新增 `NOCTURNE_DASHBOARD_URL=https://beiyan.cc/dashboard`，不把任何 MCP token 写入前端。 |
+| 服务状态 | Ubuntu ECS / Node 20.16.0；`habitat-server` active；本机与公网 `/api/health` 均 200；Nocturne 工具面自检仍通过（9 tools）。 |
+| Dashboard 实测 | 公网 `GET /api/nocturne/dashboard` 返回 `configured: true` 且不回传 URL/token；`/open` 返回 `302 → https://beiyan.cc/dashboard`；原生页面从 VPS 访问 200；公网 `probe:nocturne-dashboard` **6/6**。 |
+| 静态站点 | `https://habitat.beiyan.cc/` 返回 200；`manifest.webmanifest` 返回 200；生产产物已切换到本次构建 hash。 |
+
+**本批踩坑**：生产 Nocturne 带尾斜杠 URL 会产生一次 HTTPS→HTTP→HTTPS 跳转，规范化为不带尾斜杠后直达 200；部署命令中 shell 的日期替换需避免被本地 PowerShell 提前解释，最终数据库备份已保留在服务器 `server/data/habitat.db.bak-*`。
+
+**剩余人工验收**：浏览器填入 Provider 方案后发真实流式消息、登录并查看 Nocturne 原生管理器、PWA 安装 / SW、断网只读、备份往返、Android 独立窗口；这些需要北北的浏览器 / 手机操作，服务端已不再阻塞。
