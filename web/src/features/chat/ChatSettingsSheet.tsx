@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react'
-import type { BubbleMode, ChatSession } from '@shared/types'
+import { useEffect, useState, type FormEvent } from 'react'
+import type { BubbleMode, ChatContextCompressionState, ChatSession } from '@shared/types'
 import type { ChatSessionSettingsInput } from '../../db/chat'
 import { useChatDisplay } from '../../app/useChatDisplay'
 import { exportSessionJson, exportSessionMarkdown } from '../../lib/exportSession'
@@ -20,13 +20,27 @@ const BACKGROUNDS = [
 export function ChatSettingsSheet({
   session,
   saving,
+  contextMessageCount,
+  contextTokenEstimate,
+  contextState,
+  compacting,
   onClose,
   onSave,
+  onCompact,
+  onEditSummary,
+  onSetSummaryActive,
 }: {
   session: ChatSession
   saving: boolean
+  contextMessageCount: number
+  contextTokenEstimate: number
+  contextState: ChatContextCompressionState
+  compacting: boolean
   onClose: () => void
   onSave: (input: ChatSessionSettingsInput) => Promise<void>
+  onCompact: () => void
+  onEditSummary: (summaryId: string, text: string) => void
+  onSetSummaryActive: (summaryId: string | null) => void
 }) {
   const [remark, setRemark] = useState(session.remark ?? '')
   const [background, setBackground] = useState(session.background ?? '')
@@ -34,6 +48,12 @@ export function ChatSettingsSheet({
 
   const [exporting, setExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
+  const activeSummary = contextState.versions.find((item) => item.id === contextState.activeSummaryId) ?? null
+  const [editedSummary, setEditedSummary] = useState(activeSummary?.text ?? '')
+
+  useEffect(() => {
+    setEditedSummary(activeSummary?.text ?? '')
+  }, [activeSummary?.id, activeSummary?.text])
 
   /** 全局显示偏好：不在表单里、不随「保存」提交 —— 点一下立刻生效（SPEC §9.1.3） */
   const showCompanionAvatar = useChatDisplay((state) => state.showCompanionAvatar)
@@ -75,12 +95,14 @@ export function ChatSettingsSheet({
     }
   }
 
+  const busy = saving || compacting
+
   return (
     <div
       data-testid="chat-settings-backdrop"
       className="fixed inset-0 z-40 flex items-end justify-center bg-black/30 sm:items-center"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !saving) onClose()
+        if (event.target === event.currentTarget && !busy) onClose()
       }}
     >
       <form
@@ -97,7 +119,7 @@ export function ChatSettingsSheet({
             <h2 id="chat-settings-title" className="font-semibold">聊天设置</h2>
             <p className="mt-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>上方三项只影响当前会话</p>
           </div>
-          <button type="button" onClick={onClose} disabled={saving} aria-label="关闭聊天设置" className="px-2 text-lg disabled:opacity-40">×</button>
+          <button type="button" onClick={onClose} disabled={busy} aria-label="关闭聊天设置" className="px-2 text-lg disabled:opacity-40">×</button>
         </div>
 
         <div className="grid gap-4">
@@ -179,6 +201,88 @@ export function ChatSettingsSheet({
               </p>
             )}
           </div>
+
+          <div data-testid="context-compression" className="grid gap-2 border-t pt-4" style={{ borderColor: 'var(--border-soft)' }}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="font-medium">上下文压缩</span>
+                <p className="mt-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  当前约 {contextMessageCount} 条消息 · 估计 {contextTokenEstimate.toLocaleString()} tokens；原文永不删除，后续回复只会把已启用摘要放在更早历史的位置。
+                </p>
+              </div>
+              <button
+                type="button"
+                data-testid="context-compact"
+                disabled={busy || contextMessageCount < 16}
+                onClick={onCompact}
+                className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40"
+                style={{ borderColor: 'var(--border-soft)' }}
+              >
+                {compacting ? '生成中…' : '压缩较早消息'}
+              </button>
+            </div>
+
+            {activeSummary !== null ? (
+              <div className="grid gap-1.5 rounded-lg border p-2.5" style={{ borderColor: 'var(--border-soft)' }}>
+                <div className="flex items-center justify-between gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  <span>已启用 · 覆盖 {activeSummary.coveredMessageCount} 条 · {new Date(activeSummary.generatedAt).toLocaleDateString()}</span>
+                  <button
+                    type="button"
+                    data-testid="context-disable"
+                    disabled={busy}
+                    onClick={() => onSetSummaryActive(null)}
+                    className="underline disabled:opacity-40"
+                  >停用</button>
+                </div>
+                <textarea
+                  data-testid="context-summary-editor"
+                  value={editedSummary}
+                  onChange={(event) => setEditedSummary(event.target.value)}
+                  rows={5}
+                  maxLength={12000}
+                  className={`${FIELD_CLASS} resize-y text-xs`}
+                  style={FIELD_STYLE}
+                />
+                <button
+                  type="button"
+                  data-testid="context-summary-save"
+                  disabled={busy || editedSummary.trim() === '' || editedSummary.trim() === activeSummary.text}
+                  onClick={() => onEditSummary(activeSummary.id, editedSummary)}
+                  className="justify-self-end rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40"
+                  style={{ borderColor: 'var(--border-soft)' }}
+                >保存摘要修改</button>
+              </div>
+            ) : (
+              <p data-testid="context-summary-inactive" className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                当前没有启用摘要；发送时会使用原始消息。
+              </p>
+            )}
+
+            {contextState.versions.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer" style={{ color: 'var(--text-secondary)' }}>摘要版本（{contextState.versions.length}）</summary>
+                <div className="mt-1 grid gap-1">
+                  {contextState.versions.map((version) => (
+                    <button
+                      type="button"
+                      key={version.id}
+                      data-testid={`context-version-${version.id}`}
+                      disabled={busy || version.id === contextState.activeSummaryId}
+                      onClick={() => onSetSummaryActive(version.id)}
+                      className="flex items-center justify-between rounded border px-2 py-1 text-left disabled:opacity-50"
+                      style={{ borderColor: 'var(--border-soft)' }}
+                    >
+                      <span>v{version.version} · {new Date(version.updatedAt).toLocaleString()} · {version.source === 'edited' ? '手动修改' : '模型生成'}</span>
+                      <span>{version.id === contextState.activeSummaryId ? '当前' : '恢复'}</span>
+                    </button>
+                  ))}
+                </div>
+              </details>
+            )}
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              压缩失败会保留原始上下文，不会影响发送；摘要和最近原始消息会明确分隔。
+            </p>
+          </div>
         </div>
 
         {/*
@@ -215,11 +319,11 @@ export function ChatSettingsSheet({
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={saving} className="rounded-lg px-3 py-2 text-sm disabled:opacity-40">取消</button>
+          <button type="button" onClick={onClose} disabled={busy} className="rounded-lg px-3 py-2 text-sm disabled:opacity-40">取消</button>
           <button
             type="submit"
             data-testid="chat-settings-save"
-            disabled={saving}
+            disabled={busy}
             className="rounded-lg px-4 py-2 text-sm disabled:opacity-40"
             style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}
           >

@@ -16,6 +16,7 @@ import type { ServerResponse } from 'node:http'
 import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors'
 import type {
+  ChatContextCompactResponse,
   ChatDeltaPayload,
   ChatDonePayload,
   ChatErrorPayload,
@@ -46,11 +47,14 @@ import { ProviderError } from '../providers/errors.js'
 import type { LlmRegistry } from '../providers/registry.js'
 import { settleChatInteraction } from '../services/settlement.js'
 import { PublicThoughtParser } from '../lib/public-thought.js'
+import { runBackgroundLlm } from '../lib/llm-call.js'
 
 const ROLES: readonly LlmRole[] = ['system', 'user', 'assistant', 'tool']
 
 /** 前端每轮都会把历史整段送来，故要有上限兜底（超了必然是调用方出了错） */
 const MAX_MESSAGES = 200
+const MAX_COMPACT_CHARS = 120_000
+const COMPACT_SUMMARY_MAX_TOKENS = 1_200
 
 /**
  * 一轮对话里最多允许**几轮工具执行**。
@@ -124,6 +128,23 @@ function parseBody(raw: unknown): ChatStreamRequest {
   }
 }
 
+function parseCompactBody(raw: unknown): { profileId?: string; model?: string; messages: LlmChatMessage[] } {
+  const record = asRecord(raw)
+  if (record === null) throw new ProviderError(ErrorCodes.BadRequest, '请求体必须是 JSON 对象')
+  const messages = parseMessages(record.messages)
+  const totalChars = messages.reduce((sum, message) => sum + message.content.length, 0)
+  if (totalChars > MAX_COMPACT_CHARS) {
+    throw new ProviderError(ErrorCodes.BadRequest, `待压缩历史过长（最多 ${MAX_COMPACT_CHARS} 字符）`)
+  }
+  const profileId = typeof record.profileId === 'string' && record.profileId !== '' ? record.profileId : undefined
+  const model = typeof record.model === 'string' && record.model !== '' ? record.model : undefined
+  return {
+    messages,
+    ...(profileId === undefined ? {} : { profileId }),
+    ...(model === undefined ? {} : { model }),
+  }
+}
+
 /** 一帧一次 write，不要攒着 —— 攒了就由内核决定何时刷出，流式变成整段吐 */
 function writeFrame(res: ServerResponse, event: string, data: unknown): void {
   if (res.writableEnded) return
@@ -194,6 +215,51 @@ export function registerChatRoutes(
   memory: MemoryProvider | null,
   capabilities: CapabilityService,
 ): void {
+  app.post('/api/chat/compact', async (request): Promise<ChatContextCompactResponse> => {
+    const body = parseCompactBody(request.body)
+    const resolved = body.profileId === undefined ? registry.capabilityProvider('chat') : null
+    const profile = body.profileId === undefined
+      ? resolved?.profile ?? null
+      : registry.toPublic(registry.require(body.profileId))
+    if (profile === null) {
+      throw new ProviderError(
+        ErrorCodes.ProviderNotConfigured,
+        '没有可用的主聊天 API：请到「设置 → Provider Center」完成主聊天卡片',
+      )
+    }
+    const provider = resolved?.provider ?? registry.provider(profile.id)
+    const model = body.model ?? provider.defaultModel
+    const result = await runBackgroundLlm(
+      provider,
+      [
+        {
+          role: 'system',
+          content: [
+            '你是栖息地的会话摘要器。',
+            '请把用户提供的历史对话整理成一份可供下一轮 AI 继续使用的简洁摘要。',
+            '保留人物偏好、已经确认的事实、未解决的问题、承诺与重要情绪变化；不要编造，也不要把摘要写成用户原话。',
+            '只输出摘要正文，不要 Markdown 围栏、标题前缀或解释；建议使用短段落或项目符号，控制在 4000 字以内。',
+          ].join(' '),
+        },
+        {
+          role: 'user',
+          content: `以下是需要归档的历史原文（原文不会被删除）：\n\n${body.messages
+            .map((message) => `${message.role === 'user' ? '用户' : message.role === 'assistant' ? '小栖' : '工具'}：${message.content}`)
+            .join('\n')}`,
+        },
+      ],
+      'chat',
+      { model, temperature: 0.2, maxTokens: COMPACT_SUMMARY_MAX_TOKENS },
+    )
+    if (result.text === '') throw new ProviderError(ErrorCodes.ProviderUpstreamError, '模型没有返回可用的会话摘要')
+    return {
+      summary: result.text,
+      profileId: profile.id,
+      model,
+      usageRecordId: result.usageRecordId,
+    }
+  })
+
   app.post('/api/chat', async (request, reply): Promise<void> => {
     // —— 写响应头之前的失败都还能返回结构化 JSON（走统一错误处理器）——
     const body = parseBody(request.body)

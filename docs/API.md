@@ -294,6 +294,32 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
 
 `profileId` 缺省用注册表里 `isActive` 的方案；`model` 缺省用 `profile.modelMap.chat`。
 
+### `POST /api/chat/compact`（上下文摘要）
+
+聊天设置里的“压缩较早消息”调用此接口。请求只携带待归档的历史投影，服务端使用主聊天 Provider 生成摘要并记录一次普通聊天用量；服务端不保存聊天正文。
+
+```json
+{
+  "messages": [
+    { "role": "user", "content": "…" },
+    { "role": "assistant", "content": "…" }
+  ]
+}
+```
+
+响应：
+
+```json
+{
+  "summary": "…",
+  "profileId": "deepseek",
+  "model": "deepseek-chat",
+  "usageRecordId": 123
+}
+```
+
+摘要失败时返回统一 `ApiError`；前端保留原始消息并提示，不会把会话切到半压缩状态。摘要覆盖范围、版本、编辑与启停状态保存在本地 `ChatSession.metadata.contextCompression`，随会话备份，原消息永不删除。
+
 响应为 `text/event-stream`，响应头带 `x-accel-buffering: no`（禁反代缓冲，对策 §9 风险2）：
 
 | event | data | 说明 |

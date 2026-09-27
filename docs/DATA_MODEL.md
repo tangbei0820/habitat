@@ -60,6 +60,8 @@ interface BaseObject {
 
 索引：`id, updatedAt, pinnedAt, archivedAt, groupId`
 
+`ChatSession.metadata.contextCompression`（V2-B）保存上下文摘要版本链与当前启用版本：摘要覆盖的首尾消息 id / 时间、生成模型与时间、正文、编辑来源。它不新增索引或表，随 `sessions` 一起进入现有备份；原始 `messages` 永不因压缩删除。
+
 ### 3.2 ChatMessage（本地表 `messages`）
 
 | 字段 | 类型 | 说明 |

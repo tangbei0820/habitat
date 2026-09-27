@@ -188,6 +188,9 @@ function toolFollowUpReply(body: Record<string, unknown>): string[] | null {
 function backgroundReply(body: Record<string, unknown>): string[] | null {
   const messages = messagesOf(body)
   const names = messages.map((message) => (typeof message.name === 'string' ? message.name : ''))
+  if (messages.some((message) => message.role === 'system' && typeof message.content === 'string' && message.content.includes('会话摘要器'))) {
+    return ['用户喜欢雨天散步；小栖已记住这一偏好，后续可继续围绕共同散步与天气展开。']
+  }
   const lastUser = [...messages].reverse().find((message) => message.role === 'user')
   const lastUserText = typeof lastUser?.content === 'string' ? lastUser.content : ''
   if (lastUserText.includes('学习主题：')) {

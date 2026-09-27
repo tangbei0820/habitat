@@ -40,6 +40,20 @@ export interface ChatStreamRequest {
   maxTokens?: number
 }
 
+/** 上下文压缩的非流式请求：原消息只在本次调用中用于生成摘要，服务端不落聊天正文。 */
+export interface ChatContextCompactRequest {
+  profileId?: string
+  model?: string
+  messages: LlmChatMessage[]
+}
+
+export interface ChatContextCompactResponse {
+  summary: string
+  profileId: string
+  model: string
+  usageRecordId: number
+}
+
 /** `chat-delta`：正文与供应商原生 reasoning 增量，可能只带其一 */
 export interface ChatDeltaPayload {
   content?: string

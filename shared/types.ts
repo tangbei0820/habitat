@@ -31,6 +31,34 @@ export interface ChatSession extends BaseObject {
 }
 
 /**
+ * 会话上下文压缩的一条可恢复摘要（PRODUCT_SPEC §2.5）。
+ *
+ * 摘要只是上下文投影，原消息永远留在 `messages`；通过消息 id 记录覆盖边界，
+ * 这样编辑 / 重放 / 重新生成时不会把未来消息偷偷带进提示词。
+ */
+export interface ChatContextSummary {
+  id: string
+  text: string
+  coveredFromMessageId: string
+  coveredToMessageId: string
+  coveredMessageCount: number
+  coveredFrom: number
+  coveredTo: number
+  generatedAt: number
+  updatedAt: number
+  model: string
+  profileId: string
+  version: number
+  source: 'model' | 'edited'
+}
+
+/** 会话元数据中的压缩状态；不新增 Dexie 表 / 索引，随 sessions 一起备份。 */
+export interface ChatContextCompressionState {
+  activeSummaryId: string | null
+  versions: ChatContextSummary[]
+}
+
+/**
  * 会话分组（SPEC §2.1.3，本地 Dexie）。
  *
  * 只是一个「分区」：**删分组不删会话** —— 组内会话的 `groupId` 会被置回 `null` 落进未分组区。

@@ -6,6 +6,8 @@
  */
 import type {
   BubbleMode,
+  ChatContextCompressionState,
+  ChatContextSummary,
   ChatMessage,
   ChatSession,
   MessageBlock,
@@ -258,6 +260,133 @@ export async function updateSessionSettings(
   }
   await db.sessions.put(next)
   return next
+}
+
+/* ---------- 上下文压缩（PRODUCT_SPEC §2.5） ---------- */
+
+const CONTEXT_COMPRESSION_KEY = 'contextCompression'
+const CONTEXT_SUMMARY_LIMIT = 12_000
+const CONTEXT_SUMMARY_VERSIONS_LIMIT = 8
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function parseContextSummary(value: unknown): ChatContextSummary | null {
+  if (!isRecord(value)) return null
+  if (
+    typeof value.id !== 'string' || typeof value.text !== 'string' || value.text.trim() === '' ||
+    typeof value.coveredFromMessageId !== 'string' || typeof value.coveredToMessageId !== 'string' ||
+    typeof value.coveredMessageCount !== 'number' || typeof value.coveredFrom !== 'number' ||
+    typeof value.coveredTo !== 'number' || typeof value.generatedAt !== 'number' ||
+    typeof value.updatedAt !== 'number' || typeof value.model !== 'string' ||
+    typeof value.profileId !== 'string' || typeof value.version !== 'number' ||
+    (value.source !== 'model' && value.source !== 'edited')
+  ) return null
+  return {
+    id: value.id,
+    text: value.text.slice(0, CONTEXT_SUMMARY_LIMIT),
+    coveredFromMessageId: value.coveredFromMessageId,
+    coveredToMessageId: value.coveredToMessageId,
+    coveredMessageCount: Math.max(0, Math.floor(value.coveredMessageCount)),
+    coveredFrom: value.coveredFrom,
+    coveredTo: value.coveredTo,
+    generatedAt: value.generatedAt,
+    updatedAt: value.updatedAt,
+    model: value.model,
+    profileId: value.profileId,
+    version: Math.max(1, Math.floor(value.version)),
+    source: value.source,
+  }
+}
+
+/** 从会话元数据读压缩状态；旧会话 / 手工备份缺字段时安全回到「未压缩」。 */
+export function getContextCompression(session: ChatSession): ChatContextCompressionState {
+  const raw = session.metadata?.[CONTEXT_COMPRESSION_KEY]
+  if (!isRecord(raw) || !Array.isArray(raw.versions)) return { activeSummaryId: null, versions: [] }
+  const versions = raw.versions
+    .map(parseContextSummary)
+    .filter((item): item is ChatContextSummary => item !== null)
+    .sort((a, b) => b.version - a.version)
+    .slice(0, CONTEXT_SUMMARY_VERSIONS_LIMIT)
+  const activeSummaryId = typeof raw.activeSummaryId === 'string' && versions.some((item) => item.id === raw.activeSummaryId)
+    ? raw.activeSummaryId
+    : null
+  return { activeSummaryId, versions }
+}
+
+export function activeContextSummary(session: ChatSession): ChatContextSummary | null {
+  const state = getContextCompression(session)
+  return state.versions.find((item) => item.id === state.activeSummaryId) ?? null
+}
+
+async function putContextCompression(
+  sessionId: string,
+  state: ChatContextCompressionState,
+): Promise<ChatSession | null> {
+  const session = await db.sessions.get(sessionId)
+  if (session === undefined) return null
+  const metadata = { ...(session.metadata ?? {}) }
+  if (state.versions.length === 0) {
+    delete metadata[CONTEXT_COMPRESSION_KEY]
+  } else {
+    metadata[CONTEXT_COMPRESSION_KEY] = state
+  }
+  // 摘要只是上下文投影，不算一条新消息；保留 updatedAt，避免设置摘要把会话顶到列表最上面。
+  const next: ChatSession = { ...session, ...(Object.keys(metadata).length === 0 ? { metadata: undefined } : { metadata }) }
+  await db.sessions.put(next)
+  return next
+}
+
+export async function saveContextSummary(
+  sessionId: string,
+  summary: ChatContextSummary,
+): Promise<ChatSession | null> {
+  const session = await db.sessions.get(sessionId)
+  if (session === undefined) return null
+  const current = getContextCompression(session)
+  const version = current.versions.reduce((max, item) => Math.max(max, item.version), 0) + 1
+  const nextSummary: ChatContextSummary = {
+    ...summary,
+    id: summary.id || crypto.randomUUID(),
+    text: summary.text.trim().slice(0, CONTEXT_SUMMARY_LIMIT),
+    version,
+    source: 'model',
+    updatedAt: Date.now(),
+  }
+  const versions = [nextSummary, ...current.versions].slice(0, CONTEXT_SUMMARY_VERSIONS_LIMIT)
+  return putContextCompression(sessionId, { activeSummaryId: nextSummary.id, versions })
+}
+
+export async function editContextSummary(
+  sessionId: string,
+  summaryId: string,
+  text: string,
+): Promise<ChatSession | null> {
+  const value = text.trim()
+  if (value === '') throw new Error('摘要不能为空')
+  if (value.length > CONTEXT_SUMMARY_LIMIT) throw new Error(`摘要不能超过 ${CONTEXT_SUMMARY_LIMIT} 字`)
+  const session = await db.sessions.get(sessionId)
+  if (session === undefined) return null
+  const current = getContextCompression(session)
+  const versions = current.versions.map((item) => item.id === summaryId
+    ? { ...item, text: value, source: 'edited' as const, updatedAt: Date.now() }
+    : item)
+  if (!versions.some((item) => item.id === summaryId)) throw new Error('摘要版本不存在或已被清理')
+  return putContextCompression(sessionId, { activeSummaryId: current.activeSummaryId, versions })
+}
+
+export async function setContextSummaryActive(
+  sessionId: string,
+  summaryId: string | null,
+): Promise<ChatSession | null> {
+  const session = await db.sessions.get(sessionId)
+  if (session === undefined) return null
+  const state = getContextCompression(session)
+  if (summaryId !== null && !state.versions.some((item) => item.id === summaryId)) {
+    throw new Error('摘要版本不存在或已被清理')
+  }
+  return putContextCompression(sessionId, { ...state, activeSummaryId: summaryId })
 }
 
 /* ---------- 会话分组（SPEC §2.1.3） ---------- */

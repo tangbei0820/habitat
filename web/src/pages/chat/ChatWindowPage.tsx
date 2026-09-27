@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import type { ChatToolCallPayload } from '@shared/events'
 import type { LlmChatMessage } from '@shared/providers'
-import type { ChatMessage, ChatSession, MessageBlock, MessageStatus, ToolResultBlock } from '@shared/types'
+import type { ChatContextSummary, ChatMessage, ChatSession, MessageBlock, MessageStatus, ToolResultBlock } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
 import { IconChevronLeft, IconSearch, IconSetting, IconToolbox } from '../../components/qixi/Icons'
 import { useChatDisplay } from '../../app/useChatDisplay'
@@ -25,12 +25,16 @@ import {
 } from '../../db/home'
 import {
   addVersion,
+  activeContextSummary,
   appendMessage,
   capPublicThought,
   capReasoning,
+  countMessages,
   deleteMessage,
   deleteMessages,
+  editContextSummary,
   editMessage,
+  getContextCompression,
   getSession,
   listMessages,
   listMessagesPage,
@@ -38,13 +42,16 @@ import {
   newMessage,
   recallMessage,
   restoreMessage,
+  saveContextSummary,
   selectCandidateVersion,
+  setContextSummaryActive,
   textBlock,
   touchSession,
   updateMessage,
   updateSessionSettings,
 } from '../../db/chat'
 import { ApiRequestError } from '../../lib/api'
+import { compactChatContext } from '../../lib/chatContext'
 import { streamChat } from '../../lib/chatStream'
 import { formatDayLabel, formatDuration, isSameDay } from '../../lib/format'
 import { log } from '../../lib/log'
@@ -66,6 +73,9 @@ const TOAST_MS = 1800
  * 太短会让首批消息只播一半就被掐掉，太长会把「滚出来的新行」也算进去。
  */
 const ENTER_ANIM_MS = 700
+/** 压缩只归档较早历史，最近一小段始终以原始消息形式保留。 */
+const COMPACT_KEEP_RECENT = 12
+const COMPACT_MIN_ARCHIVE = 4
 
 function titleFrom(text: string): string {
   const oneLine = text.replace(/\s+/g, ' ').trim()
@@ -86,9 +96,27 @@ function titleFrom(text: string): string {
  *    `[未转写]` / `[未识别]` 占位。手动 MCP 结果投影成 assistant 摘要（它没有 LLM tool_call_id）。
  *    原始音频 / 图片 / 工具 JSON 不直接塞进文本上下文。
  */
-function historyUpTo(messages: ChatMessage[], upToIndex: number): LlmChatMessage[] {
-  return messages
-    .slice(0, upToIndex + 1)
+function historyUpTo(messages: ChatMessage[], upToIndex: number, summary: ChatContextSummary | null = null): LlmChatMessage[] {
+  const end = Math.min(upToIndex, messages.length - 1)
+  const summaryIndex = summary === null
+    ? -1
+    : messages.findIndex((message) => message.id === summary.coveredToMessageId)
+  const includeSummary = summary !== null && summaryIndex >= 0 && summaryIndex <= end
+  const start = includeSummary ? summaryIndex + 1 : 0
+  const projected: LlmChatMessage[] = []
+  if (includeSummary && summary !== null) {
+    projected.push({
+      role: 'system',
+      content: [
+        '[历史摘要开始]',
+        '以下内容是对更早对话的归纳，不是用户或小栖的逐字原话；如与最近原始消息冲突，以原始消息为准。',
+        summary.text,
+        '[历史摘要结束]',
+      ].join('\n'),
+    })
+  }
+  return projected.concat(messages
+    .slice(start, end + 1)
     .filter((message) => message.recalledAt === null)
     .map((message): LlmChatMessage => ({
       // Mini Terminal 是用户直接调用，不对应上游 LLM 的 tool_call_id；投影成 assistant 摘要，
@@ -96,7 +124,7 @@ function historyUpTo(messages: ChatMessage[], upToIndex: number): LlmChatMessage
       role: message.role === 'tool' ? 'assistant' : message.role,
       content: messageText(message) || mediaContext(message),
     }))
-    .filter((message) => message.content !== '')
+    .filter((message) => message.content !== ''))
 }
 
 /** 非文本块在上下文里的安全文本投影。 */
@@ -142,7 +170,7 @@ function countUnreplied(messages: ChatMessage[]): number {
 type PendingConfirm =
   | { kind: 'recall'; ids: string[]; text: string }
   | { kind: 'delete'; ids: string[]; text: string }
-  | { kind: 'regenerate'; ids: string[]; text: string; index: number }
+  | { kind: 'regenerate'; ids: string[]; text: string; anchorId: string }
 
 export function ChatWindowPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
@@ -183,6 +211,9 @@ export function ChatWindowPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [settingsSaving, setSettingsSaving] = useState(false)
+  const [contextMessageCount, setContextMessageCount] = useState(0)
+  const [contextCharacterCount, setContextCharacterCount] = useState(0)
+  const [contextCompacting, setContextCompacting] = useState(false)
   const [mediaBusy, setMediaBusy] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
 
@@ -228,6 +259,8 @@ export function ChatWindowPage() {
     setSelectedIds(new Set())
     setPendingConfirm(null)
     setSettingsOpen(false)
+    setContextMessageCount(0)
+    setContextCharacterCount(0)
     setHistoryOpen(false)
     setHighlightedMessageId(null)
     if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current)
@@ -240,6 +273,15 @@ export function ChatWindowPage() {
           : await listMessages(sessionId)
         if (cancelled) return
         setSession(loaded)
+        void countMessages(sessionId).then((count) => {
+          if (!cancelled) setContextMessageCount(count)
+        }).catch((err: unknown) => log.warn('读取消息数量失败', err))
+        void listMessages(sessionId).then((all) => {
+          if (!cancelled) {
+            const chars = all.reduce((sum, message) => sum + (messageText(message) || mediaContext(message)).length, 0)
+            setContextCharacterCount(chars)
+          }
+        }).catch((err: unknown) => log.warn('读取上下文估算失败', err))
         // 上一轮的流式草稿（刷新 / 关页留下的）在这里定性为「已停止」：
         // 它确实停了 —— 服务端连接随页面卸载而断开，不可能还在生成
         const stale = page.filter((m) => m.status === 'streaming' || m.status === 'pending')
@@ -439,6 +481,19 @@ export function ChatWindowPage() {
     setErrorText(failure)
   }
 
+  function currentContextSummary(): ChatContextSummary | null {
+    return session === null || session === undefined ? null : activeContextSummary(session)
+  }
+
+  /** 有摘要时必须取全量消息来找到覆盖边界；仅取首屏尾页会把摘要误判成失效。 */
+  async function buildHistoryThrough(messageId: string, fallback: ChatMessage[]): Promise<LlmChatMessage[]> {
+    if (sessionId === undefined) return []
+    const summary = currentContextSummary()
+    const source = summary === null ? fallback : await listMessages(sessionId)
+    const index = source.findIndex((message) => message.id === messageId)
+    return index < 0 ? [] : historyUpTo(source, index, summary)
+  }
+
   /**
    * 落一条**用户消息**，并按模式决定要不要接着请求回复（SPEC §2.4.3）。
    *
@@ -480,7 +535,7 @@ export function ChatWindowPage() {
     }
 
     // 3. 历史由前端组装随请求送出（服务端不存聊天记录）
-    await runGeneration(historyUpTo([...messagesRef.current, userMessage], messagesRef.current.length), null)
+    await runGeneration(await buildHistoryThrough(userMessage.id, [...messagesRef.current, userMessage]), null)
   }
 
   /** 「发送」= 发送并请求回复（SPEC §2.4.3 的默认行为） */
@@ -504,9 +559,10 @@ export function ChatWindowPage() {
    */
   async function requestReply(): Promise<void> {
     if (sending || sessionId === undefined) return
-    const list = messagesRef.current
+    const summary = currentContextSummary()
+    const list = summary === null ? messagesRef.current : await listMessages(sessionId)
     if (list.length === 0) return
-    await runGeneration(historyUpTo(list, list.length - 1), null)
+    await runGeneration(historyUpTo(list, list.length - 1, summary), null)
   }
 
   /** 语音条（SPEC §2.4.4）：与文本消息同一套发送规则，只是块是音频 */
@@ -648,18 +704,20 @@ export function ChatWindowPage() {
   /** 重发：这一轮没拿到回复，按原样再跑一次（历史截止到那条用户消息） */
   async function resend(userMessageId: string): Promise<void> {
     if (sending) return
-    const index = messages.findIndex((message) => message.id === userMessageId)
-    if (index < 0) return
-    await runGeneration(historyUpTo(messages, index), null)
+    const history = await buildHistoryThrough(userMessageId, messages)
+    if (history.length === 0) return
+    await runGeneration(history, null)
   }
 
   /** 换一个：重新生成同一条回复，旧正文进版本历史（可切回） */
   async function reroll(assistantMessageId: string): Promise<void> {
     if (sending) return
-    const index = messages.findIndex((message) => message.id === assistantMessageId)
+    const summary = currentContextSummary()
+    const source = summary === null ? messages : (sessionId === undefined ? messages : await listMessages(sessionId))
+    const index = source.findIndex((message) => message.id === assistantMessageId)
     // 截止到「这条回复之前那条用户消息」：把回复自己送回上游等于让它接着自己写，必然跑偏
-    if (index <= 0 || messages[index - 1]?.role !== 'user') return
-    await runGeneration(historyUpTo(messages, index - 1), assistantMessageId)
+    if (index <= 0 || source[index - 1]?.role !== 'user') return
+    await runGeneration(historyUpTo(source, index - 1, summary), assistantMessageId)
   }
 
   async function selectVersion(messageId: string, index: number): Promise<void> {
@@ -832,7 +890,7 @@ export function ChatWindowPage() {
           kind: 'regenerate',
           ids: following.map((m) => m.id),
           text: `从这条重新生成？会移除其后的 ${following.length} 条消息，且不可恢复。`,
-          index,
+          anchorId: id,
         })
         break
       }
@@ -856,7 +914,11 @@ export function ChatWindowPage() {
       }
       if (pending.kind === 'regenerate') {
         // 先把历史算出来再删：删完 `messages` 就成了被截断的那份，没法再当上下文用
-        const history = historyUpTo(messages, pending.index)
+        const summary = currentContextSummary()
+        const source = summary === null || sessionId === undefined ? messages : await listMessages(sessionId)
+        const anchorIndex = source.findIndex((message) => message.id === pending.anchorId)
+        if (anchorIndex < 0) throw new Error('找不到重新生成的原消息')
+        const history = historyUpTo(source, anchorIndex, summary)
         await deleteMessages(pending.ids)
         setMessages((prev) => prev.filter((m) => !pending.ids.includes(m.id)))
         exitSelectMode()
@@ -869,6 +931,75 @@ export function ChatWindowPage() {
       exitSelectMode()
     } catch (err) {
       log.error('消息操作失败', err)
+      setErrorText(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  /** 生成一份可恢复的历史摘要：保留最近一小段原始消息，旧消息永不删除。 */
+  async function compactContext(): Promise<void> {
+    if (sessionId === undefined || contextCompacting || sending) return
+    setContextCompacting(true)
+    setErrorText(null)
+    try {
+      const all = await listMessages(sessionId)
+      const archiveEnd = all.length - COMPACT_KEEP_RECENT - 1
+      if (archiveEnd + 1 < COMPACT_MIN_ARCHIVE) {
+        throw new Error(`消息还不够压缩：至少需要 ${COMPACT_MIN_ARCHIVE + COMPACT_KEEP_RECENT} 条消息`)
+      }
+      const archived = all.slice(0, archiveEnd + 1)
+      const history = historyUpTo(all, archiveEnd)
+      if (history.length === 0) throw new Error('较早消息没有可用于摘要的正文')
+      const result = await compactChatContext(history)
+      const first = archived[0]
+      const last = archived[archived.length - 1]
+      if (first === undefined || last === undefined) throw new Error('无法确定摘要覆盖范围')
+      const now = Date.now()
+      const updated = await saveContextSummary(sessionId, {
+        id: crypto.randomUUID(),
+        text: result.summary,
+        coveredFromMessageId: first.id,
+        coveredToMessageId: last.id,
+        coveredMessageCount: archived.length,
+        coveredFrom: first.createdAt,
+        coveredTo: last.createdAt,
+        generatedAt: now,
+        updatedAt: now,
+        model: result.model,
+        profileId: result.profileId,
+        version: 1,
+        source: 'model',
+      })
+      if (updated === null) throw new Error('会话不存在或已被删除')
+      setSession(updated)
+      showToast(`已压缩较早的 ${archived.length} 条消息，最近 ${COMPACT_KEEP_RECENT} 条仍保留原文`)
+    } catch (err) {
+      log.error('上下文压缩失败', err)
+      setErrorText(err instanceof Error ? err.message : String(err))
+    } finally {
+      setContextCompacting(false)
+    }
+  }
+
+  async function editSummary(summaryId: string, text: string): Promise<void> {
+    if (sessionId === undefined) return
+    try {
+      const updated = await editContextSummary(sessionId, summaryId, text)
+      if (updated === null) throw new Error('会话不存在或已被删除')
+      setSession(updated)
+      showToast('摘要已保存，后续回复会使用新内容')
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function setSummaryActive(summaryId: string | null): Promise<void> {
+    if (sessionId === undefined) return
+    try {
+      const updated = await setContextSummaryActive(sessionId, summaryId)
+      if (updated === null) throw new Error('会话不存在或已被删除')
+      setSession(updated)
+      showToast(summaryId === null ? '已停用历史摘要，后续回复使用原始消息' : '已恢复这版摘要')
+    } catch (err) {
       setErrorText(err instanceof Error ? err.message : String(err))
     }
   }
@@ -1194,8 +1325,15 @@ export function ChatWindowPage() {
         <ChatSettingsSheet
           session={session}
           saving={settingsSaving}
+          contextMessageCount={contextMessageCount}
+          contextTokenEstimate={Math.ceil(contextCharacterCount / 4)}
+          contextState={getContextCompression(session)}
+          compacting={contextCompacting}
           onClose={() => setSettingsOpen(false)}
           onSave={saveSettings}
+          onCompact={() => void compactContext()}
+          onEditSummary={(summaryId, text) => void editSummary(summaryId, text)}
+          onSetSummaryActive={(summaryId) => void setSummaryActive(summaryId)}
         />
       )}
 
