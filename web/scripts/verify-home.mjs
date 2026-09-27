@@ -92,6 +92,18 @@ async function setSelect(selector, value) {
     setter.call(element, ${JSON.stringify(value)})
     element.dispatchEvent(new Event('change', { bubbles: true }))
     return true
+})()`)
+}
+
+async function setTextFile(selector, name, content) {
+  return evaluate(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)})
+    if (!(element instanceof HTMLInputElement) || element.type !== 'file') return false
+    const transfer = new DataTransfer()
+    transfer.items.add(new File([${JSON.stringify(content)}], ${JSON.stringify(name)}, { type: 'text/plain' }))
+    element.files = transfer.files
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+    return true
   })()`)
 }
 
@@ -270,6 +282,30 @@ await waitFor(`document.body.innerText.includes('读完') && document.body.inner
 await send('Page.reload'); await sleep(500)
 await waitFor(`document.body.innerText.includes('读完') && document.body.innerText.includes('读完后留下完整感受。')`, '读书笔记刷新保留')
 check('读书笔记新增、状态编辑并跨刷新保留', true)
+
+await navigate('/home/reading', '共读书架')
+await setTextFile('[data-testid="reading-import"]', '验收共读.txt', '第一段：我们在黄昏里翻开同一本书。\n第二段：这一句值得停下来，写一点自己的想法。\n第三段：读到这里，先把书签夹好。')
+await waitFor(`document.querySelector('[data-testid="reading-reader"]') !== null && document.body.innerText.includes('验收共读')`, 'TXT 书籍进入阅读器')
+check('TXT 导入后进入真实阅读器', true)
+await setValue('#reading-search', '停下来')
+await waitFor(`document.body.innerText.includes('命中 1 段')`, '正文搜索命中')
+check('阅读器支持正文搜索', true)
+await evaluate(`document.querySelector('[data-testid="reading-paragraph-1"]')?.click()`)
+await waitFor(`document.querySelector('[data-testid="reading-progress"]')?.value === '1'`, '阅读进度落盘')
+check('点击正文可保存阅读进度', true)
+await clickButton('夹书签')
+await waitFor(`document.body.innerText.includes('已书签')`, '书签切换')
+check('阅读器支持书签', true)
+await evaluate(`document.querySelector('[data-testid="reading-paragraph-1"] button')?.click()`)
+await setValue('[data-testid="reading-annotation"]', '这句让我想到我们最近的对话。')
+await clickButton('保存批注')
+await waitFor(`document.body.innerText.includes('你的划线') && document.body.innerText.includes('这句让我想到我们最近的对话。')`, '批注落盘')
+check('用户可在正文锚点上划线并批注', true)
+await clickButton('← 回到书架')
+await waitFor(`document.querySelector('[data-testid="reading-shelf"]') !== null && document.body.innerText.includes('验收共读')`, '返回书架')
+await send('Page.reload'); await sleep(500)
+await waitFor(`document.body.innerText.includes('验收共读') && document.body.innerText.includes('2 / 3 段')`, '阅读进度刷新保留')
+check('书架与进度 / 批注跨刷新保留', true)
 
 await navigate('/home/music', '收下一首歌')
 await setValue('#music-title', '共同生活的歌')

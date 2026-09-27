@@ -2565,3 +2565,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；`npm run probe:listening` **5/5**；前端回归中 `verify-batch6-skin` **32/32**，其中覆盖真音频 `src`、播放 / 暂停写入服务端共享会话与 Life 计时。整条前端流水线复测通过，保留既有 `verify-runtime` 的 2 项环境时序失败（空 runtime 状态 / Nocturne 检查时序），与本批无关。
 
 **待优化（后续切片）**：网易云 / 其它 Provider 的搜索、歌词与队列；MCP 音乐适配器（Cookie 仅服务端）；AI 选歌 / 评论与共同听歌记录；伴侣真实加入状态、WebSocket / 多端冲突处理；常驻播放器与断点恢复。生产 VPS 未在本批更新，仍停在 T-062 基线。
+
+### T-065 · 2026-09-27 · V2-D 共读第一切片：TXT 书架 + 阅读进度 + 文本锚点批注—— **完成（本地）**
+
+**边界**：只把原来的书名 / 作者 / 笔记 CRUD 推进到可真正打开和阅读的 TXT 书架；不在本批接入 PDF / EPUB 解析、AI 翻书 MCP、伴侣批注、云端书库或完整共同阅读房间。
+
+| 交付 | 说明 |
+| --- | --- |
+| 书架与阅读器 | 复用既有 `readingNotes`，通过 `BaseObject.metadata.reader` 保存 TXT 正文；导入后直接进入阅读器，书架可继续阅读或移除。单文件限制 2,000,000 字，超限明确失败。 |
+| 进度 / 书签 | 正文按稳定段落索引呈现；点击段落或拖动进度条保存当前段，书签可夹在当前段，刷新后仍保留。阅读器可见时每分钟累计真实阅读秒数。 |
+| 搜索 / 批注 | 正文搜索返回命中段数；每段可创建用户身份的划线 / 批注，锚定 `paragraphIndex`，可删除，刷新后保留。 |
+| 兼容边界 | 旧的手写阅读笔记继续走原表单与编辑路径；没有 `reader` 元数据的记录不会伪装成书籍。未新增 Dexie 表 / 索引，备份格式仍为 v11。 |
+| 参考取舍 | 实查 [Tasogare](https://github.com/EnhydrInk/tasogare)：借书架 → 阅读 → 进度 / 书签 → 文本级批注的共同阅读骨架；不复制其 PDF.js / EPUB 解析、MCP 身份或外部 UI。 |
+
+**验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；`verify-home` **83/83**（含 TXT 导入、搜索、段落进度、书签、批注与刷新保留）；全前端流水线保留既有 `verify-runtime` 2 项环境时序失败，与本批无关。
+
+**待优化（后续切片）**：PDF / EPUB 阅读与分页锚点；夜间模式 / 字体设置 / 生词本；AI 通过 MCP 查看书架、翻页、读取进度、划线和批注；小栖身份批注、共同阅读历史与 Life 投影；云端大书文件存储。生产 VPS 未在本批更新，仍停在 T-062 基线。

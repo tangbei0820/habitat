@@ -423,6 +423,27 @@ export interface Photo extends BaseObject {
 
 export type ReadingStatus = 'want' | 'reading' | 'finished'
 
+/** 阅读器第一切片：保存在既有 ReadingNote.metadata.reader 下，不另造平行书库表。 */
+export type ReadingFormat = 'txt'
+
+export interface ReadingAnnotation {
+  id: string
+  paragraphIndex: number
+  text: string
+  note: string
+  author: 'user' | 'companion'
+  createdAt: number
+}
+
+export interface ReadingBookState {
+  format: ReadingFormat
+  content: string
+  currentParagraph: number
+  bookmarkParagraph: number | null
+  readingSeconds: number
+  annotations: ReadingAnnotation[]
+}
+
 export interface ReadingNote extends BaseObject {
   type: 'reading-note'
   bookTitle: string

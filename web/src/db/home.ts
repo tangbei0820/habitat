@@ -14,6 +14,8 @@ import {
   type PhotoCollection,
   type PhotoMime,
   type ReadingNote,
+  type ReadingAnnotation,
+  type ReadingBookState,
   type ReadingStatus,
   type MusicTrack,
   type StudyRecord,
@@ -709,6 +711,40 @@ export async function setPhotoCollection(
 
 const READING_STATUSES: readonly ReadingStatus[] = ['want', 'reading', 'finished']
 
+export const MAX_READING_TEXT_CHARS = 2_000_000
+
+function isReadingAnnotation(value: unknown): value is ReadingAnnotation {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const item = value as Record<string, unknown>
+  return typeof item.id === 'string' && typeof item.paragraphIndex === 'number' && Number.isInteger(item.paragraphIndex) && item.paragraphIndex >= 0 &&
+    typeof item.text === 'string' && typeof item.note === 'string' &&
+    (item.author === 'user' || item.author === 'companion') && typeof item.createdAt === 'number'
+}
+
+/** 兼容旧的读书笔记：没有 reader 元数据就仍按普通笔记展示。 */
+export function getReadingBook(item: ReadingNote): ReadingBookState | null {
+  const value = item.metadata?.reader
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  const raw = value as Record<string, unknown>
+  const currentParagraph = raw.currentParagraph
+  const bookmarkParagraph = raw.bookmarkParagraph
+  const readingSeconds = raw.readingSeconds
+  const annotations = raw.annotations
+  if (raw.format !== 'txt' || typeof raw.content !== 'string' || raw.content.length > MAX_READING_TEXT_CHARS ||
+    typeof currentParagraph !== 'number' || !Number.isInteger(currentParagraph) || currentParagraph < 0 ||
+    !(bookmarkParagraph === null || (typeof bookmarkParagraph === 'number' && Number.isInteger(bookmarkParagraph) && bookmarkParagraph >= 0)) ||
+    typeof readingSeconds !== 'number' || !Number.isInteger(readingSeconds) || readingSeconds < 0 || !Array.isArray(annotations) ||
+    !annotations.every(isReadingAnnotation)) return null
+  return {
+    format: 'txt',
+    content: raw.content,
+    currentParagraph,
+    bookmarkParagraph,
+    readingSeconds,
+    annotations,
+  }
+}
+
 export async function listReadingNotes(): Promise<ReadingNote[]> {
   return db.readingNotes.orderBy('updatedAt').reverse().toArray()
 }
@@ -735,6 +771,72 @@ export async function updateReadingNote(id: string, bookTitle: string, author: s
 
 export async function deleteReadingNote(id: string): Promise<void> {
   await db.readingNotes.delete(id)
+}
+
+export async function createReadingBook(bookTitle: string, author: string, content: string): Promise<ReadingNote> {
+  const title = requiredText(bookTitle, '书名')
+  const normalized = content.replace(/\r\n?/g, '\n')
+  if (normalized.trim() === '') throw new Error('书籍内容不能为空')
+  if (normalized.length > MAX_READING_TEXT_CHARS) throw new Error('TXT 文件过大，请先拆分到 2,000,000 字以内')
+  const at = Date.now()
+  const reader: ReadingBookState = {
+    format: 'txt', content: normalized, currentParagraph: 0, bookmarkParagraph: null, readingSeconds: 0, annotations: [],
+  }
+  const item: ReadingNote = {
+    id: nowId('reading-book'), type: 'reading-note', bookTitle: title,
+    author: author.trim() === '' ? null : author.trim(), status: 'reading', note: '',
+    metadata: { reader }, createdAt: at, updatedAt: at,
+  }
+  await db.readingNotes.add(item)
+  return item
+}
+
+export async function updateReadingBookState(id: string, patch: Partial<Pick<ReadingBookState, 'currentParagraph' | 'bookmarkParagraph' | 'readingSeconds'>>): Promise<ReadingNote> {
+  const item = await db.readingNotes.get(id)
+  if (item === undefined) throw new Error('这本书已经不存在')
+  const reader = getReadingBook(item)
+  if (reader === null) throw new Error('这不是可打开的阅读内容')
+  const next: ReadingNote = {
+    ...item,
+    metadata: { ...item.metadata, reader: { ...reader, ...patch } },
+    updatedAt: Date.now(),
+  }
+  await db.readingNotes.put(next)
+  return next
+}
+
+export async function addReadingAnnotation(id: string, paragraphIndex: number, text: string, note: string): Promise<ReadingNote> {
+  const item = await db.readingNotes.get(id)
+  if (item === undefined) throw new Error('这本书已经不存在')
+  const reader = getReadingBook(item)
+  if (reader === null) throw new Error('这不是可打开的阅读内容')
+  if (!Number.isInteger(paragraphIndex) || paragraphIndex < 0 || paragraphIndex >= reader.content.split('\n').length) throw new Error('划线位置无效')
+  const highlight = requiredText(text, '划线内容').slice(0, 500)
+  const annotation: ReadingAnnotation = {
+    id: nowId('reading-annotation'), paragraphIndex, text: highlight,
+    note: note.trim().slice(0, 2000), author: 'user', createdAt: Date.now(),
+  }
+  const next: ReadingNote = {
+    ...item,
+    metadata: { ...item.metadata, reader: { ...reader, annotations: [...reader.annotations, annotation] } },
+    updatedAt: Date.now(),
+  }
+  await db.readingNotes.put(next)
+  return next
+}
+
+export async function deleteReadingAnnotation(id: string, annotationId: string): Promise<ReadingNote> {
+  const item = await db.readingNotes.get(id)
+  if (item === undefined) throw new Error('这本书已经不存在')
+  const reader = getReadingBook(item)
+  if (reader === null) throw new Error('这不是可打开的阅读内容')
+  const next: ReadingNote = {
+    ...item,
+    metadata: { ...item.metadata, reader: { ...reader, annotations: reader.annotations.filter((annotation) => annotation.id !== annotationId) } },
+    updatedAt: Date.now(),
+  }
+  await db.readingNotes.put(next)
+  return next
 }
 
 export async function listMusicTracks(): Promise<MusicTrack[]> {
