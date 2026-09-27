@@ -5,6 +5,8 @@ import { db } from '../src/db/index.js'
 import { diary } from '../src/db/schema.js'
 import { createCompanionDiary, getDiaryView } from '../src/db/diary.js'
 import { executeTool, type BoundTool } from '../src/capabilities/tools.js'
+import { requestDiaryAccess, decideEvent } from '../src/services/event-inbox.js'
+import { runtimeEvent } from '../src/db/schema.js'
 
 let passed = 0
 let failed = 0
@@ -26,6 +28,7 @@ const tool: BoundTool = {
 }
 
 const created = createCompanionDiary({ title: `探针片段日记 ${process.pid}`, content: '第一段仍然私密\n第二段可以分享\n第三段继续锁住', entryDate: '2026-09-27' })
+const eventIds: string[] = []
 console.log('\n=== Diary fragment privacy probe ===')
 try {
   const initial = getDiaryView(created.id)
@@ -42,7 +45,21 @@ try {
 
   const bad = await executeTool(tool, { id: 'fragment-probe', name: tool.name, arguments: JSON.stringify({ id: created.id, fragmentId: 'fragment-99', visibility: 'open' }) }, { memory: null, state: null, capabilities: {} as never })
   check('不存在的片段不会被写入', !bad.ok)
+  const request = requestDiaryAccess(created.id, 'fragment-1')
+  if (request.ok) eventIds.push(request.event.id)
+  check('用户可为指定片段发起请求且事件标出片段', request.ok && request.event.targetId === created.id && request.event.targetFragmentId === 'fragment-1')
+  const duplicate = requestDiaryAccess(created.id, 'fragment-1')
+  check('同一片段重复请求复用原事件', request.ok && duplicate.ok && duplicate.event.id === request.event.id)
+  if (request.ok) {
+    const decision = await decideEvent(request.event.id, 'companion', true)
+    check('AI 同意后只开放被请求片段', decision.ok && getDiaryView(created.id)?.fragments.find((fragment) => fragment.id === 'fragment-1')?.readable === true)
+  }
+  const deniedRequest = requestDiaryAccess(created.id, 'fragment-2')
+  if (deniedRequest.ok) eventIds.push(deniedRequest.event.id)
+  if (deniedRequest.ok) await decideEvent(deniedRequest.event.id, 'companion', false)
+  check('AI 拒绝片段请求时该段仍保持锁定', deniedRequest.ok && getDiaryView(created.id)?.fragments.find((fragment) => fragment.id === 'fragment-2')?.readable === false)
 } finally {
+  for (const id of eventIds) db.delete(runtimeEvent).where(eq(runtimeEvent.id, id)).run()
   db.delete(diary).where(eq(diary.id, created.id)).run()
 }
 

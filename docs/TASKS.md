@@ -2627,4 +2627,21 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 
 **验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；`npm run probe:diary-fragments` **5/5** 覆盖默认私密、片段开放、重新锁回和非法片段拒绝；`verify-home` 新增片段渲染断言，目标 **88/88**（本机无 CDP 浏览器时未执行）；生产 VPS 未在本批更新。
 
-**待优化（后续功能）**：AI 对片段开放 / 锁回的解释性消息与通知；富文本 / 图片日记的内容锚点；用户对某个片段单独发起请求（当前请求仍以整篇为单位）。
+**待优化（后续功能）**：AI 对片段开放 / 锁回的解释性消息与通知；富文本 / 图片日记的内容锚点。用户对某个片段单独发起请求已由 T-069 完成。
+
+### T-069 · 2026-09-27 · AI 私密日记片段级查看请求—— **完成（本地）**
+
+**边界**：把 T-068 的片段展示推进到“用户请求指定片段 → AI 决定 → 只开放该片段”的完整闭环；不改整篇请求语义，不新增第二套事件收件箱，不引入富文本 / 图片锚点。
+
+| 交付 | 说明 |
+| --- | --- |
+| 精确请求 | 新增 `POST /api/diary/:id/fragments/:fragmentId/request-access`；整篇请求与片段请求分别幂等，事件载荷只保存 id，不把正文带进收件箱。 |
+| 可追踪事件 | `runtime_event.target_fragment_id` / `RuntimeEvent.targetFragmentId` 公开具体片段；启动期补列兼容旧库，刷新后前端仍能恢复“这一段已请求”。 |
+| AI 决策 | 复用 `diary_allow_access` / `diary_deny_access`；批准片段请求只调用 `setDiaryFragmentVisibility(..., 'open')`，拒绝不改变其它片段。 |
+| 页面交互 | 锁定片段旁显示“请求查看这一段”；待决时显示明确状态；整篇请求仍保留，避免把两种权限混成一次操作。 |
+| 产品规则 | `PRODUCT_SPEC §3.4` 明确片段请求、重复点击幂等与“允许只开放该段”的语义。 |
+| 参考取舍 | 继续借 [Journal](https://github.com/BomBomLab/Journal) 的稳定数据契约与 [shared-page](https://github.com/KKarsyline/shared-page) 的可追踪变更语义；不复制外部 UI / MCP。 |
+
+**验收**：`npm run typecheck`、`npm run build`、`git diff --check`；`npm run probe:diary-fragments` **9/9** 覆盖片段请求、重复幂等、AI 允许 / 拒绝与正文过滤；`probe:diary` **40/40** 保持整篇请求回归；`verify-home` 已补片段请求按钮断言，目标 **88/88**（本机无 CDP 浏览器时未执行）。生产 VPS 未在本批更新。
+
+**待优化（后续功能）**：请求结果的站内通知 / 对话解释；片段请求历史的用户可见时间线；富文本 / 图片日记的内容锚点；片段级“暂不开放”专门状态（当前以 pending 事件表达）。

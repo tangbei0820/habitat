@@ -70,8 +70,8 @@
 | `diary.update` | diary | autonomous | `diary_update` | 可用 · 立即修改小栖私密日记 |
 | `diary.list_own` | diary | autonomous | `diary_list_own` | 可用 |
 | `diary.read_own` | diary | autonomous | `diary_read_own` | 可用 |
-| `diary.allow_access` | diary | autonomous | `diary_allow_access` | 可用（AI 自己决定放不放） |
-| `diary.deny_access` | diary | autonomous | `diary_deny_access` | 可用 |
+| `diary.allow_access` | diary | autonomous | `diary_allow_access` | 可用（AI 自己决定整篇或指定片段放不放） |
+| `diary.deny_access` | diary | autonomous | `diary_deny_access` | 可用（整篇或指定片段） |
 | `diary.set_fragment_visibility` | diary | autonomous | `diary_set_fragment_visibility` | 可用；只改变指定片段，默认私密 |
 | `messageboard.write` | board | autonomous | `messageboard_write` | 可用 · 立即写入小栖留言 |
 | `tools.list` | tools | autonomous | `tools_list` | 可用 |

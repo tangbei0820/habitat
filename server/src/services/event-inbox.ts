@@ -20,7 +20,9 @@ import type { MemoryTextResult, MemoryWriteInput } from '@shared/providers.js'
 import { createEvent, findPendingEvent, getEvent, readEventPayload, settleEvent } from '../db/event.js'
 import {
   createCompanionDiary,
+  getDiaryView,
   getCompanionDiaryView,
+  setDiaryFragmentVisibility,
   setDiaryVisibility,
   updateCompanionDiary,
 } from '../db/diary.js'
@@ -205,22 +207,33 @@ export function requestToolConfirm(input: {
  * 对同一篇日记**不重复建请求**：已经有待决的就把那一条还回去。
  * 否则用户连点两下，AI 下一轮会看到两条一模一样的请求。
  */
-export function requestDiaryAccess(diaryId: string): { ok: true; event: RuntimeEvent } | { ok: false; error: string } {
+export function requestDiaryAccess(diaryId: string, fragmentId?: string): { ok: true; event: RuntimeEvent } | { ok: false; error: string } {
   const target = getCompanionDiaryView(diaryId)
   if (target === null) return { ok: false, error: '这篇日记不存在，或者不是小栖写的' }
-  if (target.visibility === 'open') return { ok: false, error: '这篇日记已经开放了' }
+  if (fragmentId !== undefined) {
+    const fragment = getDiaryView(diaryId)?.fragments.find((item) => item.id === fragmentId)
+    if (fragment === undefined) return { ok: false, error: `这篇日记没有片段 ${fragmentId}` }
+    if (fragment.readable) return { ok: false, error: `片段 ${fragmentId} 已经开放了` }
+  } else if (target.visibility === 'open') {
+    return { ok: false, error: '这篇日记已经开放了' }
+  }
 
-  const existing = findPendingEvent('diary_access_request', (payload) => payload.diaryId === diaryId)
+  const existing = findPendingEvent('diary_access_request', (payload) =>
+    payload.diaryId === diaryId && (payload.fragmentId ?? undefined) === fragmentId,
+  )
   if (existing !== null) return { ok: true, event: existing }
 
   const event = createEvent({
     kind: 'diary_access_request',
     decider: 'companion',
-    title: `北北想看看你写的《${target.title}》`,
-    detail: `日期：${target.entryDate}\n这篇日记目前是私密的。你可以同意（正文对北北开放），也可以拒绝（不需要理由）。`,
-    payload: { diaryId },
+    title: fragmentId === undefined ? `北北想看看你写的《${target.title}》` : `北北想看看《${target.title}》的 ${fragmentId}`,
+    detail: fragmentId === undefined
+      ? `日期：${target.entryDate}\n这篇日记目前是私密的。你可以同意（正文对北北开放），也可以拒绝（不需要理由）。`
+      : `日期：${target.entryDate}\n北北只请求这一段。你可以同意（只开放这一段），也可以拒绝（其它片段不受影响）。`,
+    payload: { diaryId, ...(fragmentId === undefined ? {} : { fragmentId }) },
     capabilityId: 'diary.allow_access',
     targetId: diaryId,
+    ...(fragmentId === undefined ? {} : { targetFragmentId: fragmentId }),
   })
   return { ok: true, event }
 }
@@ -294,12 +307,27 @@ async function executeToolConfirm(payload: Record<string, unknown>, approved: bo
 /** `diary_access_request` 的执行：同意就把可见性打开。 */
 function executeDiaryAccess(payload: Record<string, unknown>, approved: boolean): ExecOutcome {
   const diaryId = str(payload.diaryId)
+  const hasFragment = payload.fragmentId !== undefined
+  const fragmentId = hasFragment ? str(payload.fragmentId) : null
+  if (hasFragment && fragmentId === '') return { status: 'failed', result: '这条片段请求缺少有效的 fragmentId，未开放任何内容。' }
   if (!approved) {
-    return { status: 'denied', result: '你拒绝了这次查看请求。日记保持私密，正文没有给北北看。拒绝不需要理由。' }
+    return {
+      status: 'denied',
+      result: fragmentId === null
+        ? '你拒绝了这次查看请求。日记保持私密，正文没有给北北看。拒绝不需要理由。'
+        : `你拒绝了 ${fragmentId} 的查看请求。这一段保持私密，拒绝不需要理由。`,
+    }
   }
-  const updated = setDiaryVisibility(diaryId, 'open')
+  const updated = fragmentId === null
+    ? setDiaryVisibility(diaryId, 'open')
+    : setDiaryFragmentVisibility(diaryId, fragmentId, 'open')
   if (updated === null) return { status: 'failed', result: '这篇日记已经不在（可能被删了），没能开放。' }
-  return { status: 'approved', result: `你同意了。日记《${updated.title}》正文已对北北开放。` }
+  return {
+    status: 'approved',
+    result: fragmentId === null
+      ? `你同意了。日记《${updated.title}》正文已对北北开放。`
+      : `你同意了。日记《${updated.title}》的 ${fragmentId} 已对北北开放。`,
+  }
 }
 
 function runDecision(event: RuntimeEvent, approved: boolean): Promise<ExecOutcome> | null {

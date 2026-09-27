@@ -244,13 +244,15 @@ const fragmentView = await evaluate(`(() => {
   return {
     open: item.querySelector('[data-testid="diary-fragment-fragment-1"]')?.textContent?.trim() ?? '',
     locked: [0, 2].map((index) => item.querySelector('[data-testid="diary-fragment-fragment-' + index + '"]')?.textContent?.trim() ?? ''),
+    requestButtons: item.querySelectorAll('[data-testid^="diary-request-fragment-"]').length,
     summary: item.textContent?.includes('小栖已开放 1 段') === true,
   }
 })()`)
 check(
   'AI 日记只展示已开放片段，锁住片段保留占位与权限提示',
-  fragmentView?.open === '第二段小栖愿意分享。' &&
+    fragmentView?.open === '第二段小栖愿意分享。' &&
     fragmentView.locked.every((text) => text === '这一段还没有开放。') &&
+    fragmentView.requestButtons === 2 &&
     fragmentView.summary === true,
   JSON.stringify(fragmentView),
 )

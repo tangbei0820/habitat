@@ -491,6 +491,12 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
 `DiaryView.fragments` 是按正文换行拆出的稳定片段（`fragment-0`、`fragment-1` …）。
 AI 可以通过能力工具 `diary_set_fragment_visibility` 只开放或锁回某一段；整篇仍保持 `private / open / locked` 总开关语义。
 
+### `POST /api/diary/:id/fragments/:fragmentId/request-access` —— 请求查看某一段
+
+只为指定片段挂一条待 AI 决策的 `diary_access_request`，不会打开其它片段。
+同一篇的整篇请求与某个片段请求分别幂等；事件的 `targetFragmentId` 会让前端在刷新后仍能标出具体待决片段。
+AI 通过现有 `diary_allow_access` / `diary_deny_access` 工具处理：允许时只开放该片段，拒绝时保持原权限。
+
 ### 留言板：`GET/POST /api/moments`、`DELETE /api/moments/:id`、`POST /api/moments/import`
 
 与日记的差别：**没有可见性过滤**（留言写出来就是给人看的），只有「谁能删」——
@@ -523,7 +529,7 @@ AI 可以通过能力工具 `diary_set_fragment_visibility` 只开放或锁回�
 | 类型 | 谁发起 | 谁决定 | 决定后 |
 | --- | --- | --- | --- |
 | `tool_confirm` | AI 想写日记 / 留言 | **北北** | 真写入（允许）或什么都不做（拒绝） |
-| `diary_access_request` | 北北想看某篇私密日记 | **AI** | 该篇转 `open`（允许）或保持私密（拒绝） |
+| `diary_access_request` | 北北想看某篇私密日记或其中一段 | **AI** | 整篇请求转 `open`；片段请求只开放该段（允许），拒绝则保持原权限 |
 
 ### `GET /api/inbox?decider=&status=&limit=`
 
@@ -546,7 +552,7 @@ AI 可以通过能力工具 `diary_set_fragment_visibility` 只开放或锁回�
 AI 侧的事件**刻意没有 HTTP 决策入口** —— 它只能由 AI 通过 `diary_allow_access` /
 `diary_deny_access` 工具决定，而工具层硬编码了 `decider='companion'`。
 
-**决策只能做一次**：重复提交 → 400（否则确认卡点两下会写两篇日记）。
+**决策只能做一次**：重复提交 → 400（否则确认卡点两下会写两篇日记）。片段请求的 `targetFragmentId` 公开下发，执行载荷中的正文仍不下发。
 
 ## Phase 1 已实现（切片五 · 诊断日志查询）
 

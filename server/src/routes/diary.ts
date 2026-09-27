@@ -156,4 +156,14 @@ export function registerDiaryRoutes(app: FastifyInstance): void {
     reply.code(201)
     return { event: result.event }
   })
+
+  /** 北北也可以只请求某一段；这不会替 AI 打开其它片段。 */
+  app.post<{ Params: { id: string; fragmentId: string } }>('/api/diary/:id/fragments/:fragmentId/request-access', async (request, reply) => {
+    const target = getCompanionDiaryView(request.params.id)
+    if (target === null) throw new RequestError(ErrorCodes.NotFound, '这篇日记不存在，或者不是小栖写的')
+    const result = requestDiaryAccess(request.params.id, request.params.fragmentId)
+    if (!result.ok) throw new RequestError(ErrorCodes.BadRequest, result.error)
+    reply.code(201)
+    return { event: result.event }
+  })
 }

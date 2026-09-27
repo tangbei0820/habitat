@@ -48,8 +48,11 @@ export function decideEvent(id: string, decision: 'approve' | 'deny'): Promise<R
  * ⚠️ 它**只是提一个请求**，返回的事件是 `pending`。真正能不能看到，取决于 AI 之后的决定。
  * 界面文案不能写成「已解锁」——那是在替 AI 回答。
  */
-export function requestDiaryAccess(diaryId: string): Promise<RuntimeEvent> {
-  return fetchJson<{ event: RuntimeEvent }>(`/api/diary/${encodeURIComponent(diaryId)}/request-access`, {
+export function requestDiaryAccess(diaryId: string, fragmentId?: string): Promise<RuntimeEvent> {
+  const path = fragmentId === undefined
+    ? `/api/diary/${encodeURIComponent(diaryId)}/request-access`
+    : `/api/diary/${encodeURIComponent(diaryId)}/fragments/${encodeURIComponent(fragmentId)}/request-access`
+  return fetchJson<{ event: RuntimeEvent }>(path, {
     method: 'POST',
   }).then((result) => result.event)
 }

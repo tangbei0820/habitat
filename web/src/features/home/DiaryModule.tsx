@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { DiaryView } from '@shared/types'
+import type { DiaryFragmentView, DiaryView } from '@shared/types'
 import { listEvents, requestDiaryAccess } from '../../db/events'
 import { createDiary, deleteDiary, listDiaries, updateDiary } from '../../db/home'
 
@@ -7,6 +7,10 @@ function todayKey(): string {
   const now = new Date()
   const pad = (value: number): string => String(value).padStart(2, '0')
   return `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+function fragmentRequestKey(diaryId: string, fragmentId: string): string {
+  return `${diaryId}:${fragmentId}`
 }
 
 /**
@@ -19,9 +23,10 @@ function todayKey(): string {
  * 所以「编辑 / 删除」按 `item.editable` 显示，而不是「这一页的日记都能改」——
  * 后者会把 AI 的私密日记当成用户的普通内容（SPEC §6.2 明确区分这两者）。
  *
- * 「请求查看」（Phase 6.5 P1）：点了只**挂一条待小栖决定的请求**，不直接解锁。
+ * 「请求查看」（Phase 6.5 P1）：点了只**挂一条待小栖决定的请求**，不直接解锁；
+ * 片段级请求（T-069）同样只挂请求，不替它开放正文。
  * 所以按钮之后的状态是「已请求，等小栖回话」而不是「已解锁」—— 界面上不能替它回答。
- * 已经请求过的那几篇，靠事件里的 `targetId` 认出来（见 RuntimeEvent 注释）。
+ * 已经请求过的篇 / 段，分别靠事件里的 `targetId` / `targetFragmentId` 认出来。
  */
 export function DiaryModule() {
   const [items, setItems] = useState<DiaryView[]>([])
@@ -31,6 +36,7 @@ export function DiaryModule() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [requestedIds, setRequestedIds] = useState<ReadonlySet<string>>(new Set())
+  const [requestedFragmentIds, setRequestedFragmentIds] = useState<ReadonlySet<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -42,6 +48,11 @@ export function DiaryModule() {
     ])
     setItems(diaries)
     setRequestedIds(new Set(pending.map((item) => item.targetId).filter((id): id is string => id !== null)))
+    setRequestedFragmentIds(new Set(pending.flatMap((item) =>
+      item.targetId !== null && typeof item.targetFragmentId === 'string'
+        ? [fragmentRequestKey(item.targetId, item.targetFragmentId)]
+        : [],
+    )))
   }
 
   useEffect(() => {
@@ -102,9 +113,9 @@ export function DiaryModule() {
    * ⚠️ 成功之后**只是刷新列表**，不要写「已解锁」之类的反馈 ——
    * 这个动作只挂了一条待它决定的请求（服务端返回的就是一条 `pending` 事件）。
    */
-  async function askToRead(id: string): Promise<void> {
+  async function askToRead(id: string, fragmentId?: string): Promise<void> {
     try {
-      await requestDiaryAccess(id)
+      await requestDiaryAccess(id, fragmentId)
       setError(null)
       await refresh()
     } catch (err: unknown) {
@@ -118,7 +129,7 @@ export function DiaryModule() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold">小栖的日记</p>
-            <p className="mt-1 text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>这是它自己的空间。正文默认上锁，你只能按篇敲门，由小栖决定是否开放。</p>
+            <p className="mt-1 text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>这是它自己的空间。正文默认上锁，你可以按篇或按段敲门，由小栖决定是否开放。</p>
           </div>
           <span className="shrink-0 rounded-full px-2 py-1 text-xs" style={{ background: 'var(--bg-base)', color: 'var(--text-secondary)' }}>AI 私密</span>
         </div>
@@ -151,6 +162,18 @@ export function DiaryModule() {
           {items.map((item) => {
             const fragments = item.fragments ?? []
             const openFragments = fragments.filter((fragment) => fragment.readable)
+            const renderFragment = (fragment: DiaryFragmentView) => {
+              const requestKey = fragmentRequestKey(item.id, fragment.id)
+              const requested = requestedFragmentIds.has(requestKey)
+              return <div key={fragment.id} className="space-y-1">
+                <p data-testid={`diary-fragment-${fragment.id}`} className="whitespace-pre-wrap break-words rounded-lg p-3 text-sm leading-6" style={{ background: fragment.readable ? 'var(--bg-subtle)' : 'var(--bg-base)', color: fragment.readable ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{fragment.readable ? fragment.content : '这一段还没有开放。'}</p>
+                {item.author === 'companion' && !fragment.readable && (requested ? (
+                  <p className="px-1 text-xs" style={{ color: 'var(--text-secondary)' }} data-testid={`diary-fragment-pending-${fragment.id}`}>已请求这一段，等小栖决定。</p>
+                ) : (
+                  <button type="button" data-testid={`diary-request-fragment-${fragment.id}`} onClick={() => void askToRead(item.id, fragment.id)} className="ml-1 rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>请求查看这一段</button>
+                ))}
+              </div>
+            }
             return <li key={item.id} data-testid="diary-item" data-author={item.author} data-readable={item.readable ? 'true' : 'false'} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
               <div className="flex items-center justify-between gap-3">
                 <time className="text-xs" style={{ color: 'var(--text-secondary)' }}>{item.entryDate}</time>
@@ -158,12 +181,13 @@ export function DiaryModule() {
               </div>
               <h3 className="mt-1 font-medium">{item.title}</h3>
               {item.readable ? (
-                item.content !== null ? <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.content}</p> : <div className="mt-2 space-y-2" data-testid="diary-fragments">{fragments.map((fragment) => <p key={fragment.id} data-testid={`diary-fragment-${fragment.id}`} className="whitespace-pre-wrap break-words rounded-lg p-3 text-sm leading-6" style={{ background: fragment.readable ? 'var(--bg-subtle)' : 'var(--bg-base)', color: fragment.readable ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{fragment.readable ? fragment.content : '这一段还没有开放。'}</p>)}<p className="text-xs" style={{ color: 'var(--text-secondary)' }}>小栖已开放 {openFragments.length} 段，其余仍由它自己决定。</p>{item.author === 'companion' && !requestedIds.has(item.id) && <button type="button" data-testid="diary-request-access" onClick={() => void askToRead(item.id)} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>请求查看剩余段落</button>}</div>
+                item.content !== null ? <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.content}</p> : <div className="mt-2 space-y-2" data-testid="diary-fragments">{fragments.map(renderFragment)}<p className="text-xs" style={{ color: 'var(--text-secondary)' }}>小栖已开放 {openFragments.length} 段，其余仍由它自己决定。</p>{item.author === 'companion' && !requestedIds.has(item.id) && <button type="button" data-testid="diary-request-access" onClick={() => void askToRead(item.id)} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>请求查看剩余段落</button>}</div>
               ) : (
                 <div className="mt-2 space-y-2">
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     {item.visibility === 'locked' ? '这一篇被小栖锁着。' : '小栖还没决定要不要把这一篇给你看。'}
                   </p>
+                  {item.author === 'companion' && fragments.length > 0 && <div className="space-y-2" data-testid="diary-fragments">{fragments.map(renderFragment)}<p className="text-xs" style={{ color: 'var(--text-secondary)' }}>你也可以只申请其中一段。</p></div>}
                   {/* 只有小栖写的日记才谈得上「请求查看」—— 请求一篇自己的日记是没有意义的 */}
                   {item.author === 'companion' &&
                     (requestedIds.has(item.id) ? (

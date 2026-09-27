@@ -361,6 +361,8 @@ export interface RuntimeEvent {
    * 没有它，用户只能靠「点了没反应」来判断，那是最差的一种反馈。
    */
   targetId: string | null
+  /** 若这是片段级日记请求，指向具体 `fragment-N`；整篇请求为 `null`。 */
+  targetFragmentId: string | null
 }
 
 /**

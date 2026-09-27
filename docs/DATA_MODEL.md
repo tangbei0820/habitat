@@ -387,11 +387,11 @@ AI 的日记只能由 AI 侧写入（P1 的工具层，`db/diary.ts` 的 `create
 | 事件类型 | 谁发起 | **谁决定** | 决定后发生什么 |
 | --- | --- | --- | --- |
 | `tool_confirm` | AI 想写日记 / 留言 | **北北**（`decider='user'`） | 真写入（允许）或什么都不做（拒绝） |
-| `diary_access_request` | 北北想看某篇私密日记 | **AI**（`decider='companion'`） | 该篇转 `open`（允许）或保持私密（拒绝） |
+| `diary_access_request` | 北北想看某篇私密日记或其中一段 | **AI**（`decider='companion'`） | 整篇转 `open`，片段只开放该段（允许）或保持原权限（拒绝） |
 
 | 表 | 字段 | 关键不变量 |
 |---|---|---|
-| `runtime_event` | `id` / `kind` / `decider` / `status` / `title` / `detail` / `payload_json` / `result` / `result_delivered_at` / `capability_id` / `target_id` / `created_at` / `decided_at` | `decider` **就是权限位**；`pending` 之外一律终态 |
+| `runtime_event` | `id` / `kind` / `decider` / `status` / `title` / `detail` / `payload_json` / `result` / `result_delivered_at` / `capability_id` / `target_id` / `target_fragment_id` / `created_at` / `decided_at` | `decider` **就是权限位**；`pending` 之外一律终态 |
 
 字段约定：
 
@@ -404,6 +404,7 @@ AI 的日记只能由 AI 侧写入（P1 的工具层，`db/diary.ts` 的 `create
   那个形状会直接序列化下发前端，把执行载荷放进去等于让它跟着接口一起露出去。
 - `target_id`：指向的业务对象（日记 id）。存在的理由很实际：日记页要能显示「这一篇你已经请求过了」，
   而前端拿不到 `payload`，只能靠这个字段自己匹配（否则用户只能靠「点了没反应」判断，那是最差的反馈）。
+- `target_fragment_id`：片段级日记请求的 `fragment-N`；整篇请求与其它事件为 `NULL`，用于刷新后恢复「这一段已请求」状态。
 - `result_delivered_at`：已决结果是否已注入过模型。**只注入一次** —— 重复说「北北已经允许你写日记了」
   既费 token，又会让它以为要再写一篇。
 

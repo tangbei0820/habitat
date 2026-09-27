@@ -53,6 +53,7 @@ function toEvent(row: RuntimeEventRow): RuntimeEvent {
     resultDelivered: row.resultDeliveredAt !== null,
     capabilityId: row.capabilityId,
     targetId: row.targetId,
+    targetFragmentId: row.targetFragmentId,
   }
 }
 
@@ -68,6 +69,8 @@ export interface CreateEventInput {
   capabilityId?: string
   /** 指向的业务对象（日记 id 等）。前端靠它做「这篇是否已请求过」的匹配 */
   targetId?: string
+  /** 日记片段级请求的具体片段；整篇请求或其它事件省略 */
+  targetFragmentId?: string
 }
 
 export function createEvent(input: CreateEventInput): RuntimeEvent {
@@ -83,6 +86,7 @@ export function createEvent(input: CreateEventInput): RuntimeEvent {
     resultDeliveredAt: null,
     capabilityId: input.capabilityId ?? null,
     targetId: input.targetId ?? null,
+    targetFragmentId: input.targetFragmentId ?? null,
     createdAt: Date.now(),
     decidedAt: null,
   }

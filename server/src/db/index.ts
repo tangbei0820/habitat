@@ -290,6 +290,7 @@ CREATE TABLE IF NOT EXISTS runtime_event (
   result_delivered_at INTEGER,
   capability_id TEXT,
   target_id TEXT,
+  target_fragment_id TEXT,
   created_at INTEGER NOT NULL,
   decided_at INTEGER
 );
@@ -302,6 +303,9 @@ CREATE INDEX IF NOT EXISTS idx_runtime_event_undelivered ON runtime_event (creat
 const runtimeEventColumns = sqlite.pragma('table_info(runtime_event)') as Array<{ name: string }>
 if (!runtimeEventColumns.some((col) => col.name === 'target_id')) {
   sqlite.exec('ALTER TABLE runtime_event ADD COLUMN target_id TEXT')
+}
+if (!runtimeEventColumns.some((col) => col.name === 'target_fragment_id')) {
+  sqlite.exec('ALTER TABLE runtime_event ADD COLUMN target_fragment_id TEXT')
 }
 
 export const db = drizzle(sqlite, { schema })

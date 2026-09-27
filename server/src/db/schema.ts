@@ -368,6 +368,8 @@ export const runtimeEvent = sqliteTable('runtime_event', {
   capabilityId: text('capability_id'),
   /** 事件指向的业务对象（日记 id 等）。前端靠它判断「这篇是否已请求过」—— 见 shared/types.ts */
   targetId: text('target_id'),
+  /** 日记片段级请求的具体片段；整篇请求或其它事件为 null。 */
+  targetFragmentId: text('target_fragment_id'),
   createdAt: integer('created_at').notNull(),
   decidedAt: integer('decided_at'),
 })
