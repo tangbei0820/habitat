@@ -92,6 +92,9 @@ export const IconSend = (p: IconProps) => (
 export const IconPlus = (p: IconProps) => (
   <IconBase {...p}><path d="M12 5.5v13M5.5 12h13" /></IconBase>
 )
+export const IconSearch = (p: IconProps) => (
+  <IconBase {...p}><circle cx="10.8" cy="10.8" r="6.2" /><path d="m15.5 15.5 4.2 4.2" /></IconBase>
+)
 export const IconMic = ({ filled, ...p }: IconProps) => (
   <IconBase filled={filled} {...p}>
     <path d="M12 3.2a2.6 2.6 0 0 1 2.6 2.6v5.4a2.6 2.6 0 0 1-5.2 0V5.8A2.6 2.6 0 0 1 12 3.2z" />

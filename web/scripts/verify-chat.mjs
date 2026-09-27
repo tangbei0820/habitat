@@ -1183,6 +1183,30 @@ await seedMessages('pin-new', [
 await evaluate(`(() => { history.pushState({}, '', '/chat'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
 await waitFor(`document.querySelector('[data-testid="session-row-pin-old"]') !== null`, '置顶验收会话进入列表')
 
+/* 12.9.1 V2-B 第一切片：跨会话历史搜索、当前会话搜索与日期定位 */
+await evaluate(`(() => { document.querySelector('[data-testid="chat-history-open"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="chat-history-panel-all"]') !== null`, '聊天历史搜索面板')
+await setField('[data-testid="chat-history-query-all"]', '设置模式验收消息')
+await evaluate(`(() => { document.querySelector('[data-testid="chat-history-submit"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="chat-search-result-settings-ai"]') !== null`, '跨会话搜索结果')
+check('会话列表可搜索跨会话历史消息', (await evaluate(`document.querySelector('[data-testid="chat-search-result-settings-ai"]')?.innerText.includes('较新的验收会话') === true`)) === true, '')
+await evaluate(`(() => { document.querySelector('[data-testid="chat-search-result-settings-ai"]').click(); return 'ok' })()`)
+await waitFor(`location.search.includes('focus=settings-ai') && document.querySelector('[data-testid="chat-bubble-settings-ai"]') !== null`, '搜索结果定位原消息')
+check('搜索结果进入原会话并定位命中消息', (await evaluate(`document.querySelector('[data-testid="chat-bubble-settings-ai"]')?.style.boxShadow.includes('var(--accent-strong)') === true`)) === true, '')
+
+await evaluate(`(() => { document.querySelector('[data-testid="chat-history-open"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="chat-history-panel-session"]') !== null && document.querySelector('[data-testid^="chat-day-"]') !== null`, '当前会话时间线')
+await setField('[data-testid="chat-history-query-session"]', '只属于这段对话的问题')
+await evaluate(`(() => { document.querySelector('[data-testid="chat-history-submit"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="chat-search-result-settings-user"]') !== null`, '当前会话搜索结果')
+check('聊天窗口只搜索当前会话', (await evaluate(`document.querySelectorAll('[data-testid^="chat-search-result-"]').length === 1 && document.body.innerText.includes('只属于这段对话的问题')`)) === true, '')
+const firstDayButton = await evaluate(`document.querySelector('[data-testid^="chat-day-"]')?.getAttribute('data-testid') ?? null`)
+if (firstDayButton !== null) {
+  await evaluate(`(() => { document.querySelector('[data-testid="${firstDayButton}"]').click(); return 'ok' })()`)
+  await waitFor(`location.search.includes('focus=') && document.querySelector('[data-testid="chat-bubble-settings-user"]') !== null`, '日期跳转原消息')
+  check('当前会话时间线可跳到指定日期首条消息', true, firstDayButton)
+}
+
 const relativePinOrder = async () => evaluate(`(() => {
   const ids = [...document.querySelectorAll('[data-testid^="session-row-"]')].map((el) => el.dataset.testid)
   return { old: ids.indexOf('session-row-pin-old'), newer: ids.indexOf('session-row-pin-new'), first: ids[0] }

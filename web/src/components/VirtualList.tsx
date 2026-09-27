@@ -37,6 +37,8 @@ export interface VirtualListProps<T> {
   onReachTop?: () => void
   /** 距顶部小于该像素值即触发 onReachTop */
   reachTopThreshold?: number
+  /** 定位到指定项。项出现后只应用一次，仍由虚拟列表负责实际渲染窗口。 */
+  scrollToKey?: string | null
   className?: string
 }
 
@@ -92,12 +94,14 @@ export function VirtualList<T>({
   stickThreshold = 48,
   onReachTop,
   reachTopThreshold = 24,
+  scrollToKey = null,
   className,
 }: VirtualListProps<T>) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const heightsRef = useRef(new Map<string, number>())
   const stickRef = useRef(true)
   const rafRef = useRef(0)
+  const scrollTargetAppliedRef = useRef<string | null>(null)
   /** 回调放 ref：塞进 handleScroll 的依赖会让 onScroll 每次渲染都换新函数 */
   const onReachTopRef = useRef(onReachTop)
 
@@ -210,6 +214,21 @@ export function VirtualList<T>({
   useLayoutEffect(() => {
     onReachTopRef.current = onReachTop
   }, [onReachTop])
+
+  useLayoutEffect(() => {
+    if (scrollToKey === null) {
+      scrollTargetAppliedRef.current = null
+      return
+    }
+    if (scrollTargetAppliedRef.current === scrollToKey) return
+    const index = keys.indexOf(scrollToKey)
+    const el = containerRef.current
+    if (index < 0 || el === null) return
+    stickRef.current = false
+    el.scrollTop = offsets[index] ?? 0
+    setScrollTop(el.scrollTop)
+    scrollTargetAppliedRef.current = scrollToKey
+  }, [keys, offsets, scrollToKey])
 
   const overscanPx = overscan * estimateHeight
   // 首帧容器还没测到高度（clientHeight = 0），先按估值铺满，避免只渲染一条

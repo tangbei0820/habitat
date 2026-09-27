@@ -101,6 +101,7 @@ export function ChatBubble({
   actions,
   selected,
   editing,
+  highlighted,
   bubbleMode,
   showCompanionAvatar,
   showUserAvatar,
@@ -111,6 +112,8 @@ export function ChatBubble({
   selected: boolean
   /** 是否正在内联编辑这一条 */
   editing: boolean
+  /** 从历史搜索 / 日期导航定位到的消息，短暂描边提示 */
+  highlighted: boolean
   bubbleMode: BubbleMode
   /** 小栖侧头像是否显示 —— **全局显示偏好**（SPEC §9.1.3），不随会话变，由上层读 store 传进来 */
   showCompanionAvatar: boolean
@@ -229,11 +232,11 @@ export function ChatBubble({
    * 直接读 `getComputedStyle(bubble).backgroundColor` 断言「原生态是透明的」——
    * 行内优先级最高，这条才立得住。
    */
-  const bubbleStyle = isRecalled
-    ? { border: '1px dashed var(--border-soft)' }
-    : nativeAssistant
-      ? { backgroundColor: 'transparent' }
-      : undefined
+  const bubbleStyle = {
+    ...(isRecalled ? { border: '1px dashed var(--border-soft)' } : {}),
+    ...(nativeAssistant ? { backgroundColor: 'transparent' } : {}),
+    ...(highlighted ? { boxShadow: '0 0 0 3px var(--accent-strong)' } : {}),
+  }
 
   const bubbleClass = [
     'msg-bubble',
@@ -276,6 +279,7 @@ export function ChatBubble({
       )}
       <div
         data-bubble-mode={bubbleMode}
+        data-testid={`chat-bubble-${message.id}`}
         className={bubbleClass}
         style={bubbleStyle}
         onPointerDown={startPress}

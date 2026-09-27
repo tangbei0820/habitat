@@ -99,6 +99,101 @@ export function messageText(message: ChatMessage): string {
     .join('')
 }
 
+/**
+ * 历史搜索用的文字投影：只收录用户确实能在消息对象里看到的内容。
+ * reasoning 不在 blocks 里，因此天然不会进入普通搜索；撤回消息由调用方直接排除。
+ */
+function searchableBlockText(block: MessageBlock): string {
+  switch (block.kind) {
+    case 'text': return block.payload.text
+    case 'image': return block.payload.alt ?? ''
+    case 'audio': return block.payload.transcript ?? ''
+    case 'file': return block.payload.name
+    case 'tool-result': return block.payload.summary ?? ''
+    case 'widget': return [block.payload.title, block.payload.source].filter((value): value is string => value !== undefined).join(' ')
+    case 'tab-group': return block.payload.tabs.flatMap((tab) => [tab.label, ...tab.blocks.map(searchableBlockText)]).join(' ')
+    default: return ''
+  }
+}
+
+export function searchableMessageText(message: ChatMessage): string {
+  return message.blocks.map(searchableBlockText).join(' ').replace(/\s+/g, ' ').trim()
+}
+
+export interface ChatSearchResult {
+  session: ChatSession
+  message: ChatMessage
+  /** 命中附近的短片段，不把整条长消息塞进结果列表。 */
+  snippet: string
+}
+
+export interface ChatDaySummary {
+  dayKey: string
+  firstMessageId: string
+  count: number
+  latestAt: number
+}
+
+function localDayKey(timestamp: number): string {
+  const date = new Date(timestamp)
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function searchSnippet(text: string, query: string): string {
+  const lowerText = text.toLocaleLowerCase()
+  const lowerQuery = query.toLocaleLowerCase()
+  const at = lowerText.indexOf(lowerQuery)
+  if (at < 0) return text.slice(0, 96)
+  const start = Math.max(0, at - 34)
+  const end = Math.min(text.length, at + query.length + 62)
+  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`
+}
+
+/**
+ * 跨会话 / 单会话搜索。消息仍留在 Dexie，本函数只生成结果投影；UI 用 VirtualList 渲染聊天正文，
+ * 不会因为定位而一次性把所有长消息挂进 DOM。
+ */
+export async function searchMessages(query: string, sessionId?: string, limit = 100): Promise<ChatSearchResult[]> {
+  const normalized = query.trim()
+  if (normalized === '') return []
+  const sessions = sessionId === undefined
+    ? await listSessions()
+    : await getSession(sessionId).then((session) => session === null ? [] : [session])
+  const results: ChatSearchResult[] = []
+  const safeLimit = Math.max(1, Math.min(limit, 500))
+  for (const session of sessions) {
+    const messages = await db.messages.where('sessionId').equals(session.id).sortBy('createdAt')
+    for (const message of messages) {
+      if (message.recalledAt !== null) continue
+      const text = searchableMessageText(message)
+      if (text.toLocaleLowerCase().includes(normalized.toLocaleLowerCase())) {
+        results.push({ session, message, snippet: searchSnippet(text, normalized) })
+      }
+    }
+  }
+  return results
+    .sort((a, b) => b.message.createdAt - a.message.createdAt)
+    .slice(0, safeLimit)
+}
+
+/** 当前会话的自然日摘要，供时间线入口使用。撤回消息仍算作发生过的消息。 */
+export async function listMessageDays(sessionId: string): Promise<ChatDaySummary[]> {
+  const messages = await db.messages.where('sessionId').equals(sessionId).sortBy('createdAt')
+  const byDay = new Map<string, ChatDaySummary>()
+  for (const message of messages) {
+    const dayKey = localDayKey(message.createdAt)
+    const existing = byDay.get(dayKey)
+    if (existing === undefined) {
+      byDay.set(dayKey, { dayKey, firstMessageId: message.id, count: 1, latestAt: message.createdAt })
+    } else {
+      existing.count += 1
+      existing.latestAt = Math.max(existing.latestAt, message.createdAt)
+    }
+  }
+  return [...byDay.values()].sort((a, b) => b.dayKey.localeCompare(a.dayKey))
+}
+
 export async function listSessions(): Promise<ChatSession[]> {
   const list = await db.sessions.orderBy('updatedAt').reverse().toArray()
   // 置顶是时间戳而非布尔（§6.2），排序也得按这个口径

@@ -17,7 +17,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { ChatSession, SessionGroup } from '@shared/types'
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
 import { NameSheet } from '../../components/NameSheet'
-import { IconChevronDown, IconChevronRight, IconJournal, IconMore, IconPin, IconPlus } from '../../components/qixi/Icons'
+import { IconChevronDown, IconChevronRight, IconJournal, IconMore, IconPin, IconPlus, IconSearch } from '../../components/qixi/Icons'
+import { ChatHistoryPanel } from '../../features/chat/ChatHistoryPanel'
 import {
   SESSION_GROUP_NAME_MAX,
   createSession,
@@ -59,6 +60,7 @@ export function ChatListPage() {
   const [nameSheet, setNameSheet] = useState<NameSheetState | null>(null)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const confirmTimerRef = useRef<number | null>(null)
   const groupConfirmTimerRef = useRef<number | null>(null)
   const toastTimerRef = useRef<number | null>(null)
@@ -362,6 +364,15 @@ export function ChatListPage() {
         <span className="topbar-spacer" />
         <button
           type="button"
+          data-testid="chat-history-open"
+          aria-label="搜索聊天记录"
+          onClick={() => setHistoryOpen(true)}
+          className="icon-btn"
+        >
+          <IconSearch size={18} />
+        </button>
+        <button
+          type="button"
           onClick={() => void startSession()}
           className="btn-pill btn-strong"
           style={{ minHeight: 36, padding: '0 16px', fontSize: 13.5 }}
@@ -380,6 +391,17 @@ export function ChatListPage() {
           分组
         </button>
       </div>
+
+      {historyOpen && (
+        <ChatHistoryPanel
+          scope="all"
+          onClose={() => setHistoryOpen(false)}
+          onNavigate={(targetSessionId, messageId) => {
+            setHistoryOpen(false)
+            navigate(`/chat/${targetSessionId}?focus=${encodeURIComponent(messageId)}`)
+          }}
+        />
+      )}
 
       <div className="flex flex-col" style={{ padding: '0 20px 24px' }}>
         {error !== null && (

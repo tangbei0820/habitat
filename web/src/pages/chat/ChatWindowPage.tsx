@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import type { ChatToolCallPayload } from '@shared/events'
 import type { LlmChatMessage } from '@shared/providers'
 import type { ChatMessage, ChatSession, MessageBlock, MessageStatus, ToolResultBlock } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
-import { IconChevronLeft, IconSetting, IconToolbox } from '../../components/qixi/Icons'
+import { IconChevronLeft, IconSearch, IconSetting, IconToolbox } from '../../components/qixi/Icons'
 import { useChatDisplay } from '../../app/useChatDisplay'
 import {
   ChatBubble,
@@ -17,6 +17,7 @@ import { ChatSettingsSheet } from '../../features/chat/ChatSettingsSheet'
 import { Composer } from '../../features/chat/Composer'
 import { MessageAvatar } from '../../features/chat/MessageAvatar'
 import { MiniTerminal } from '../../features/chat/MiniTerminal'
+import { ChatHistoryPanel } from '../../features/chat/ChatHistoryPanel'
 import {
   createMessageArtwork,
   createMessageBookmark,
@@ -30,6 +31,7 @@ import {
   deleteMessages,
   editMessage,
   getSession,
+  listMessages,
   listMessagesPage,
   messageText,
   newMessage,
@@ -143,6 +145,8 @@ type PendingConfirm =
 
 export function ChatWindowPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const focusMessageId = searchParams.get('focus')
   const [session, setSession] = useState<ChatSession | null | undefined>(undefined)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [sending, setSending] = useState(false)
@@ -175,6 +179,8 @@ export function ChatWindowPage() {
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [mediaBusy, setMediaBusy] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
@@ -189,6 +195,7 @@ export function ChatWindowPage() {
   const messagesRef = useRef<ChatMessage[]>([])
   const toastTimerRef = useRef<number | null>(null)
   const speechRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null)
+  const highlightTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     messagesRef.current = messages
@@ -220,13 +227,16 @@ export function ChatWindowPage() {
     setSelectedIds(new Set())
     setPendingConfirm(null)
     setSettingsOpen(false)
+    setHistoryOpen(false)
+    setHighlightedMessageId(null)
+    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current)
     let cancelled = false
     void (async () => {
       try {
-        const [loaded, page] = await Promise.all([
-          getSession(sessionId),
-          listMessagesPage(sessionId, PAGE_SIZE),
-        ])
+        const loaded = await getSession(sessionId)
+        const page = focusMessageId === null
+          ? await listMessagesPage(sessionId, PAGE_SIZE)
+          : await listMessages(sessionId)
         if (cancelled) return
         setSession(loaded)
         // 上一轮的流式草稿（刷新 / 关页留下的）在这里定性为「已停止」：
@@ -241,8 +251,17 @@ export function ChatWindowPage() {
         } else {
           setMessages(page)
         }
-        // 拉满一页说明前面可能还有；不满则已知到底
-        setHasMore(page.length === PAGE_SIZE)
+        // 聚焦历史消息时取全量数据，但正文仍由 VirtualList 只渲染可视窗口。
+        setHasMore(focusMessageId === null && page.length === PAGE_SIZE)
+        if (focusMessageId !== null) {
+          const target = page.find((message) => message.id === focusMessageId)
+          if (target === undefined) {
+            setErrorText('原消息已删除，无法定位')
+          } else {
+            setHighlightedMessageId(target.id)
+            highlightTimerRef.current = window.setTimeout(() => setHighlightedMessageId(null), 2600)
+          }
+        }
         // 开场动画窗口：只在「刚进来」这一瞬给，滚动挂载的新行不再播（见 entering 的注释）
         if (page.length > 0) setEntering(true)
       } catch (err) {
@@ -256,7 +275,7 @@ export function ChatWindowPage() {
     return () => {
       cancelled = true
     }
-  }, [sessionId])
+  }, [sessionId, focusMessageId])
 
   // 离开页面即中止在跑的流，避免白烧 token
   useEffect(
@@ -264,6 +283,7 @@ export function ChatWindowPage() {
       abortRef.current?.abort()
       speechRef.current?.audio.pause()
       if (speechRef.current !== null) URL.revokeObjectURL(speechRef.current.url)
+      if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current)
     },
     [],
   )
@@ -876,6 +896,14 @@ export function ChatWindowPage() {
     }
   }
 
+  function navigateHistory(targetSessionId: string, messageId: string): void {
+    if (targetSessionId !== sessionId) return
+    setHistoryOpen(false)
+    const next = new URLSearchParams(searchParams)
+    next.set('focus', messageId)
+    setSearchParams(next, { replace: true })
+  }
+
   const items = useMemo<ChatItem[]>(() => {
     const now = Date.now()
     return messages.map((message, index) => {
@@ -917,13 +945,14 @@ export function ChatWindowPage() {
         actions={actions}
         selected={selectedIds.has(item.message.id)}
         editing={editingId === item.message.id}
+        highlighted={highlightedMessageId === item.message.id}
         bubbleMode={session?.bubbleMode ?? 'chat'}
         showCompanionAvatar={showCompanionAvatar}
         showUserAvatar={showUserAvatar}
       />
     ),
     // actions 每次渲染都是新对象（刻意为之），所以这里等于「总是重渲」——正是我们要的
-    [actions, selectedIds, editingId, session?.bubbleMode, showCompanionAvatar, showUserAvatar],
+    [actions, selectedIds, editingId, highlightedMessageId, session?.bubbleMode, showCompanionAvatar, showUserAvatar],
   )
 
   const unrepliedCount = useMemo(() => countUnreplied(messages), [messages])
@@ -966,6 +995,15 @@ export function ChatWindowPage() {
         </div>
         <button
           type="button"
+          data-testid="chat-history-open"
+          aria-label="搜索当前会话"
+          onClick={() => setHistoryOpen(true)}
+          className="icon-btn"
+        >
+          <IconSearch size={18} />
+        </button>
+        <button
+          type="button"
           data-testid="mini-terminal-open"
           aria-label="打开工具面板"
           onClick={() => setTerminalOpen(true)}
@@ -985,6 +1023,15 @@ export function ChatWindowPage() {
         </button>
       </header>
 
+      {historyOpen && (
+        <ChatHistoryPanel
+          scope="session"
+          sessionId={sessionId}
+          onClose={() => setHistoryOpen(false)}
+          onNavigate={navigateHistory}
+        />
+      )}
+
       <div
         data-testid="chat-message-area"
         className="relative min-h-0 flex-1"
@@ -995,6 +1042,7 @@ export function ChatWindowPage() {
           items={items}
           getKey={itemKey}
           renderItem={renderItem}
+          scrollToKey={highlightedMessageId}
           // 估值只影响「还没被测量过」的行。换装后一条消息 = 上下内边距 22 + 气泡 46 + 时间行 20，
           // 估值贴近真实高度能少几次「滚起来忽长忽短」的抖动
           estimateHeight={96}
