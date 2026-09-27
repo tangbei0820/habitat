@@ -66,6 +66,8 @@ export interface ComposerProps {
   onSendVoice: (dataUrl: string, durationMs: number) => void
   onSendImage: (dataUrl: string) => void
   onGenerateImage: (prompt: string) => void
+  /** 使用当前草稿明确发起本轮联网搜索 */
+  onWebSearch: (query: string) => void
   onAbort: () => void
   /**
    * 原生能力失败（录音权限 / 设备 / 读文件）走这里，由页面统一显示。
@@ -84,6 +86,7 @@ export function Composer({
   onSendVoice,
   onSendImage,
   onGenerateImage,
+  onWebSearch,
   onAbort,
   onError,
 }: ComposerProps) {
@@ -304,6 +307,7 @@ export function Composer({
     // 发图会顺带请求 AI 回复、生成图片要打生图接口，两者都会发请求 —— 离线时不给
     if (!sending && online) items.push({ id: 'choose-image', label: '发送图片' })
     if (!sending && online) items.push({ id: 'generate-image', label: '生成图片' })
+    if (!sending && online) items.push({ id: 'web-search', label: '联网搜索（使用当前输入）' })
     items.push({ id: 'insert-time', label: `插入当前时间（${nowText()}）` })
     if (draft !== '') items.push({ id: 'clear-draft', label: '清空输入' })
     return items
@@ -326,6 +330,12 @@ export function Composer({
       case 'generate-image':
         setImagePromptOpen(true)
         break
+      case 'web-search': {
+        const query = draft.trim()
+        if (query === '') onError('先在输入框写下想搜索的问题')
+        else onWebSearch(query)
+        break
+      }
       case 'clear-draft':
         onDraftChange('')
         break

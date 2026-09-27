@@ -75,6 +75,7 @@
 | `diary.set_fragment_visibility` | diary | autonomous | `diary_set_fragment_visibility` | 可用；只改变指定片段，默认私密 |
 | `messageboard.write` | board | autonomous | `messageboard_write` | 可用 · 立即写入小栖留言 |
 | `messageboard.update` | board | autonomous | `messageboard_update` | 可用 · 只能修改小栖自己的留言 |
+| `web.search` | web | user-only（本轮授权后临时 autonomous） | `web_search` | 仅聊天显式联网搜索入口可用；普通聊天 / 后台自动化不开放 |
 | `tools.list` | tools | autonomous | `tools_list` | 可用 |
 
 > 日记 / 留言板的能力**没有外部依赖**（权威存储就是本机 SQLite，见 `DATA_MODEL.md` §11），
@@ -114,6 +115,14 @@ AI 那边**零感知**。这条在 T-031（工具面 0/5 命中）之后才变�
 什么都不说会让模型退回去用自己的先验猜。
 
 各段都是**增强项**：任一环节失败降级为「少一段」，绝不阻塞回复。
+
+### 3.1 显式联网搜索授权
+
+`web.search` 是刻意保留的 `user-only` 能力：聊天输入区的“联网搜索”入口把原问题作为
+`ChatStreamRequest.webSearch.query` 送入服务端，服务端只在这一轮把该能力临时提升为
+`autonomous` 并注入一条授权 system 段。普通聊天、主动唤醒与 Solitude 不会因为注册表
+存在该项而自行出网。搜索结果以不可信资料回灌 `role=tool`，前端同时落一张工具卡；
+失败也必须回灌失败事实，不能让模型凭空编造搜索结论。
 
 ---
 

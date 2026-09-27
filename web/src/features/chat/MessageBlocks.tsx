@@ -151,6 +151,11 @@ function ToolResultBlockView({ payload }: { payload: ToolResultBlock['payload'] 
         <span>{title}</span>
         <span className="opacity-70">{payload.ok ? '已完成' : '未完成'}</span>
         {payload.summary !== undefined && <span className="opacity-70">· {payload.summary}</span>}
+        {payload.occurredAt !== undefined && (
+          <time className="opacity-50" dateTime={new Date(payload.occurredAt).toISOString()}>
+            · {new Date(payload.occurredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </time>
+        )}
       </summary>
       {detail !== '' && (
         <pre

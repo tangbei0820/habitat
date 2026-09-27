@@ -57,6 +57,13 @@ export const CAPABILITY_MODULES: readonly CapabilityModuleMeta[] = [
     launch: null,
     noPageHint: '暂无界面 · 调用结果在聊天里以工具卡片出现',
   },
+  {
+    key: 'web',
+    name: '联网',
+    icon: 'sparkle',
+    launch: null,
+    noPageHint: '暂无独立页面 · 只能从聊天中明确发起联网搜索',
+  },
 ]
 
 /** 自主级别的**面向用户**说法。别把内部枚举名直接显示给用户。 */

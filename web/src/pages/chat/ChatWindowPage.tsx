@@ -359,7 +359,11 @@ export function ChatWindowPage() {
    * `targetId` 为空 = 新回复（先落一条 streaming 草稿，节流更新，收尾定性）；
    * 有值 = 给那条消息加一个版本（换一个，收尾才写，中间不写库）。
    */
-  async function runGeneration(history: LlmChatMessage[], targetId: string | null): Promise<void> {
+  async function runGeneration(
+    history: LlmChatMessage[],
+    targetId: string | null,
+    options: { webSearchQuery?: string } = {},
+  ): Promise<void> {
     if (sessionId === undefined) return
     const controller = new AbortController()
     abortRef.current = controller
@@ -406,7 +410,10 @@ export function ChatWindowPage() {
 
     try {
       await streamChat(
-        { messages: history },
+        {
+          messages: history,
+          ...(options.webSearchQuery === undefined ? {} : { webSearch: { query: options.webSearchQuery } }),
+        },
         {
           onDelta: (delta) => {
             if (delta.content !== undefined) content += delta.content
@@ -504,6 +511,8 @@ export function ChatWindowPage() {
     text: string
     blocks?: MessageBlock[]
     requestReply: boolean
+    /** 本轮是否由“联网搜索”入口明确授权 */
+    webSearchQuery?: string
     /** 「只发送」时给用户的确认语；语音条有自己的一句 */
     toast?: string
   }): Promise<void> {
@@ -535,7 +544,11 @@ export function ChatWindowPage() {
     }
 
     // 3. 历史由前端组装随请求送出（服务端不存聊天记录）
-    await runGeneration(await buildHistoryThrough(userMessage.id, [...messagesRef.current, userMessage]), null)
+    await runGeneration(
+      await buildHistoryThrough(userMessage.id, [...messagesRef.current, userMessage]),
+      null,
+      input.webSearchQuery === undefined ? {} : { webSearchQuery: input.webSearchQuery },
+    )
   }
 
   /** 「发送」= 发送并请求回复（SPEC §2.4.3 的默认行为） */
@@ -549,6 +562,19 @@ export function ChatWindowPage() {
       // 让「只发送」有明确回声：否则点了发送却什么都没发生，看起来像坏了
       toast: options.requestReply ? undefined : '已发送，未请求回复',
     })
+  }
+
+  /** “联网搜索”是一次带明确授权的普通提问：先把原问题落成本地消息，再让服务端
+   * 只在这一轮开放 web_search，并把来源卡片与模型结果一起留在会话里。 */
+  async function webSearch(query: string): Promise<void> {
+    if (sending || sessionId === undefined) return
+    const normalized = query.trim()
+    if (normalized === '') {
+      setErrorText('先在输入框写下想搜索的问题')
+      return
+    }
+    setDraft('')
+    await submitUserMessage({ text: normalized, requestReply: true, webSearchQuery: normalized })
   }
 
   /**
@@ -685,6 +711,7 @@ export function ChatWindowPage() {
         summary: call.summary,
         source: call.source,
         label: call.label,
+        ...(call.occurredAt === undefined ? {} : { occurredAt: call.occurredAt }),
         ...(call.detail === undefined ? {} : { result: call.detail }),
         // 挂起的事件 id：块里**必须**存下来，否则刷新后确认卡拿不到事件（只剩一句「等待确认」的文字）
         ...(call.eventId === undefined ? {} : { eventId: call.eventId }),
@@ -1306,6 +1333,7 @@ export function ChatWindowPage() {
             onSendVoice={(dataUrl, durationMs) => void sendVoice(dataUrl, durationMs)}
             onSendImage={(dataUrl) => void sendImage(dataUrl)}
             onGenerateImage={(prompt) => void createGeneratedImage(prompt)}
+            onWebSearch={(query) => void webSearch(query)}
             onAbort={() => abortRef.current?.abort()}
             onError={setErrorText}
           />

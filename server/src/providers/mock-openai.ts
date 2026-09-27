@@ -143,17 +143,20 @@ function toolScenario(body: Record<string, unknown>): ToolScenario | null {
   const lastUser = [...messages].reverse().find((message) => message.role === 'user')
   const text = typeof lastUser?.content === 'string' ? lastUser.content : ''
   const match = TOOL_MARKER.exec(text)
-  if (match === null) return null
+  const authorizedWebSearch = messages.some((message) =>
+    message.role === 'system' && typeof message.content === 'string' && message.content.includes('北北已明确授权本轮联网检索'),
+  )
+  if (match === null && !authorizedWebSearch) return null
 
   const first = tools[0]
   const fn = first !== undefined && isRecord(first.function) ? first.function : {}
   const fallback = typeof fn.name === 'string' ? fn.name : ''
-  const name = match[1] ?? fallback
+  const name = authorizedWebSearch && match === null ? 'web_search' : (match?.[1] ?? fallback)
   if (name === '') return null
   // 参数优先取标记里显式给定的 JSON。解析不了就发空对象 —— 那也是一种要覆盖的路：
   // 服务端拿到空参数会以 ok:false 回灌，模型据此知道该怎么改。
   let args: Record<string, unknown> = {}
-  const rawArgs = match[2]
+  const rawArgs = match?.[2]
   if (rawArgs !== undefined) {
     try {
       const parsed: unknown = JSON.parse(rawArgs)
@@ -163,6 +166,8 @@ function toolScenario(body: Record<string, unknown>): ToolScenario | null {
     }
   } else if (name === 'memory_search') {
     args = { query: '北北' }
+  } else if (name === 'web_search') {
+    args = { query: text }
   }
   return { name, args }
 }

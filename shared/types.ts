@@ -135,6 +135,8 @@ export interface ToolResultBlock {
     result?: unknown
     source?: string
     label?: string
+    /** 工具实际完成（或失败）的时间，和来源一起保留在本地卡片 */
+    occurredAt?: number
     /**
      * 待确认事件的 id（Phase 6.5 P1，仅 `confirm` 级工具会有）。
      *

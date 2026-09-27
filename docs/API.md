@@ -288,11 +288,14 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
   "model": "deepseek-chat",
   "messages": [{ "role": "user", "content": "你好" }],
   "temperature": 0.8,
-  "maxTokens": 1024
+  "maxTokens": 1024,
+  "webSearch": { "query": "想查的公开网页问题" }
 }
 ```
 
 `profileId` 缺省用注册表里 `isActive` 的方案；`model` 缺省用 `profile.modelMap.chat`。
+`webSearch` 只由聊天“更多功能 → 联网搜索”入口生成；缺省时本轮不会向模型暴露 Web 工具。
+存在时服务端会把 `web.search` 临时提升为本轮可调用能力，先执行公开网页检索，再把带查询、标题、来源链接、摘要、完成时间和成功 / 失败状态的工具结果回灌同一轮模型。网页内容标记为不可信资料，不执行脚本、不登录、不提交表单；搜索失败不得伪造答案。
 
 ### `POST /api/chat/compact`（上下文摘要）
 
@@ -331,7 +334,7 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
 | `chat-done` | `{ finishReason, usage, usageRecordId }` | 正常收口；`usageRecordId` 为 UsageRecord 主键 |
 | `chat-error` | `{ code, message }` | **流开始之后**才出现的故障（空闲超时、传输中断） |
 
-#### 工具调用（Phase 6.5）
+#### 工具调用（Phase 6.5 / V2-B 联网搜索）
 
 服务端从能力快照生成 `tools` 交给模型；模型要调工具时，服务端**攒齐分片的参数 → 执行 → 回灌结果 → 再流一轮**，
 最多 3 轮（防打转）。每执行完一次工具发一帧：
@@ -348,6 +351,8 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
   "detail": "…"               // 可折叠详情，**服务端已裁剪**；失败时是给用户看的错误说明
 }
 ```
+
+联网搜索的工具名为 `web_search`、能力 id 为 `web.search`、展示来源为 `Web`。它不是默认自主工具：只有请求体带 `webSearch.query` 时才进入本轮 tools；普通聊天与后台自动化都不会因为能力注册表存在该项而自行出网。
 
 三条纪律：
 

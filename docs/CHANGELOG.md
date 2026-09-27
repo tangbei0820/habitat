@@ -3,6 +3,16 @@
 > 本文件记「改了什么」（面向版本，按 Phase 组织）。
 > 「做到哪、还欠什么」在 `docs/TASKS.md`。
 
+## 2026-09-27 · V2-B
+
+### T-076 · 聊天显式联网搜索
+
+- 输入区“更多功能”新增“联网搜索（使用当前输入）”；原问题照常作为用户消息落本地。
+- `web.search` / `web_search` 接入 Capability Registry，但保持 `user-only`：只有请求带 `webSearch.query` 时才在本轮临时开放，普通聊天、唤醒与独处不会自行出网。
+- 服务端只读公开搜索结果，工具卡与 `role=tool` 结果使用同一次执行的成功 / 失败事实；标题、来源链接、摘要回灌下一轮模型，并明确标记网页内容为不可信资料。
+- 未新增 Dexie 表、索引或备份版本；新增 `probe:chat-web-search` 验收授权、回灌、收口与空查询拒绝。
+- 参考 [Chatnest](https://github.com/ugui3u/chatnest) 的工具状态卡和 [VCPToolBox](https://github.com/lioensky/VCPToolBox) 的统一工具协议边界；未复制其插件 / 浏览器运行时。
+
 ## 2026-09-22
 
 ### Phase 0 · 骨架

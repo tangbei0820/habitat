@@ -38,6 +38,8 @@ export interface ChatStreamRequest {
   messages: LlmChatMessage[]
   temperature?: number
   maxTokens?: number
+  /** 用户从聊天“更多功能”明确发起的联网检索；缺省时 AI 看不到 Web 工具。 */
+  webSearch?: { query: string }
 }
 
 /** 上下文压缩的非流式请求：原消息只在本次调用中用于生成摘要，服务端不落聊天正文。 */
@@ -86,6 +88,8 @@ export interface ChatToolCallPayload {
   label: string
   /** 展示来源（如 `Nocturne`） */
   source: string
+  /** 工具实际完成（或失败）的时间；前端落库后用于来源追溯 */
+  occurredAt?: number
   ok: boolean
   /** 一句话结果，已裁剪 */
   summary: string

@@ -1,5 +1,5 @@
 /**
- * 只读网页取回（Phase 7B · Solitude Surf v1）。
+ * 只读网页取回 / 公开搜索（Phase 7B · Solitude Surf 与 V2-B Chat Web Search 共用）。
  *
  * 边界（借自 proactive-web-surf-agent 的安全清单）：
  * - **只读**：只 GET 公开 http(s) 页面，不登录、不带 Cookie、不执行页面内容；
@@ -13,6 +13,12 @@
 export interface FetchedPage {
   title: string
   text: string
+}
+
+export interface WebSearchResult {
+  title: string
+  url: string
+  snippet: string
 }
 
 const MAX_BYTES = 1_000_000
@@ -44,6 +50,74 @@ function decodeEntities(input: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
+}
+
+function stripTags(input: string): string {
+  return decodeEntities(input.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
+}
+
+function unwrapSearchUrl(raw: string): string | null {
+  const decoded = decodeEntities(raw)
+  try {
+    const candidate = decoded.startsWith('//') ? `https:${decoded}` : decoded
+    const url = new URL(candidate)
+    // DuckDuckGo wraps result links in /l/?uddg=...; only return the real public URL.
+    const target = url.searchParams.get('uddg')
+    const value = target === null ? url.toString() : target
+    const result = new URL(value)
+    if (result.protocol !== 'http:' && result.protocol !== 'https:') return null
+    if (isBlockedHost(result.hostname)) return null
+    return result.toString()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 搜索公开网页（只读）。默认走 DuckDuckGo 的 HTML 结果页；endpoint 仅供本地探针
+ * 注入，不从用户输入接收，生产路径始终固定在公开搜索服务上。
+ */
+export async function searchWeb(query: string, options: { endpoint?: string; timeoutMs?: number } = {}): Promise<WebSearchResult[]> {
+  const normalized = query.trim()
+  if (normalized === '') return []
+  const endpoint = options.endpoint ?? 'https://html.duckduckgo.com/html/'
+  let url: URL
+  try {
+    url = new URL(endpoint)
+  } catch {
+    return []
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return []
+  if (options.endpoint === undefined && url.hostname !== 'html.duckduckgo.com') return []
+  url.searchParams.set('q', normalized.slice(0, 200))
+
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
+      redirect: 'follow',
+      headers: { accept: 'text/html' },
+    })
+    if (!response.ok) return []
+    const declared = response.headers.get('content-length')
+    if (declared !== null && Number(declared) > 500_000) return []
+    const body = await response.text()
+    if (body.length > 500_000) return []
+
+    const results: WebSearchResult[] = []
+    const itemPattern = /<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>([\s\S]*?)(?=<a[^>]+class=["'][^"']*result__a|$)/gi
+    for (const match of body.matchAll(itemPattern)) {
+      const resultUrl = unwrapSearchUrl(match[1])
+      if (resultUrl === null) continue
+      const title = stripTags(match[2])
+      const snippetMatch = match[3].match(/class=["'][^"']*result__snippet[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/i)
+      const snippet = snippetMatch === null ? '' : stripTags(snippetMatch[1])
+      results.push({ title: title || resultUrl, url: resultUrl, snippet })
+      if (results.length >= 5) break
+    }
+    return results
+  } catch {
+    return []
+  }
 }
 
 /** 去脚本/样式 → 抽 <title> → 去标签 → 压空白。抽出来的是「给模型看的正文」，不保真排版 */
