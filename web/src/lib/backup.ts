@@ -21,6 +21,7 @@ import type {
   StudyCard,
   StudyRecord,
   StudyTask,
+  Sticker,
   SessionGroup,
   WishlistItem,
 } from '@shared/types'
@@ -40,7 +41,7 @@ export const BACKUP_FORMAT = 'habitat-backup'
  * ⚠️ 但**旧备份（v2–v8）里带着它们**，导入时不能丢：走 `legacyUploads` 转存到服务端，
  * 详见 `importAll` 与 `db/legacy-upload.ts`。
  */
-export const BACKUP_VERSION = 11
+export const BACKUP_VERSION = 12
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -63,6 +64,7 @@ export interface HabitatBackup {
   homeWidgets: HomeWidget[]
   listenSessions: ListenSession[]
   studyTasks: StudyTask[]
+  stickers: Sticker[]
 }
 
 export interface BackupCounts {
@@ -83,13 +85,14 @@ export interface BackupCounts {
   homeWidgets: number
   listenSessions: number
   studyTasks: number
+  stickers: number
   /** 从**旧备份**（v2–v8）里救出来、转存进中转表等服务端接收的条数。新备份（v9）恒为 0。 */
   legacyDiaries: number
   legacyMoments: number
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, sessionGroups, messages, wishlist, countdowns, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, musicTracks, studyRecords, studyCards, homeWidgets, listenSessions, studyTasks] = await Promise.all([
+  const [sessions, sessionGroups, messages, wishlist, countdowns, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, musicTracks, studyRecords, studyCards, homeWidgets, listenSessions, studyTasks, stickers] = await Promise.all([
     db.sessions.toArray(),
     db.sessionGroups.toArray(),
     db.messages.toArray(),
@@ -107,6 +110,7 @@ export async function exportAll(): Promise<HabitatBackup> {
     db.homeWidgets.toArray(),
     db.listenSessions.toArray(),
     db.studyTasks.toArray(),
+    db.stickers.toArray(),
   ])
   return {
     format: BACKUP_FORMAT,
@@ -129,6 +133,7 @@ export async function exportAll(): Promise<HabitatBackup> {
     homeWidgets,
     listenSessions,
     studyTasks,
+    stickers,
   }
 }
 
@@ -322,6 +327,30 @@ function looksLikePhoto(value: unknown): value is Photo {
     (value.sizeBytes as number) > MAX_PHOTO_BYTES ||
     typeof value.takenAt !== 'string' ||
     !/^\d{4}-\d{2}-\d{2}$/.test(value.takenAt) ||
+    typeof value.imageDataUrl !== 'string'
+  ) return false
+  const prefix = `data:${String(value.mimeType)};base64,`
+  if (!value.imageDataUrl.startsWith(prefix)) return false
+  const payload = value.imageDataUrl.slice(prefix.length)
+  if (payload.length === 0 || payload.length > MAX_PHOTO_BASE64_LENGTH || !/^[A-Za-z0-9+/]*={0,2}$/.test(payload)) return false
+  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0
+  return Math.floor(payload.length * 3 / 4) - padding === value.sizeBytes
+}
+
+function looksLikeSticker(value: unknown): value is Sticker {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    value.type !== 'sticker' ||
+    typeof value.name !== 'string' ||
+    !PHOTO_MIMES.includes(value.mimeType as typeof PHOTO_MIMES[number]) ||
+    !Number.isInteger(value.sizeBytes) ||
+    (value.sizeBytes as number) <= 0 ||
+    (value.sizeBytes as number) > MAX_PHOTO_BYTES ||
+    (value.category !== null && typeof value.category !== 'string') ||
+    !Array.isArray(value.tags) ||
+    !value.tags.every((tag) => typeof tag === 'string') ||
+    (value.source !== 'user' && value.source !== 'mcp') ||
     typeof value.imageDataUrl !== 'string'
   ) return false
   const prefix = `data:${String(value.mimeType)};base64,`
@@ -548,14 +577,16 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   const listenSessionsRaw = version >= 10 ? raw.listenSessions : []
   const studyTasksRaw = version >= 10 ? raw.studyTasks : []
   const studyCardsRaw = version >= 11 ? raw.studyCards : []
-  if (!Array.isArray(listenSessionsRaw) || !Array.isArray(studyTasksRaw) || !Array.isArray(studyCardsRaw)) {
-    throw new Error('备份内容损坏：listenSessions / studyTasks / studyCards 必须是数组')
+  const stickersRaw = version >= 12 ? raw.stickers : []
+  if (!Array.isArray(listenSessionsRaw) || !Array.isArray(studyTasksRaw) || !Array.isArray(studyCardsRaw) || !Array.isArray(stickersRaw)) {
+    throw new Error('备份内容损坏：listenSessions / studyTasks / studyCards / stickers 必须是数组')
   }
   const listenSessions = listenSessionsRaw.filter(looksLikeListenSession)
   const studyTasks = studyTasksRaw.filter(looksLikeStudyTask)
   const studyCards = studyCardsRaw.filter(looksLikeStudyCard)
-  if (listenSessions.length !== listenSessionsRaw.length || studyTasks.length !== studyTasksRaw.length || studyCards.length !== studyCardsRaw.length) {
-    throw new Error('备份内容损坏：存在无法识别的听音时长、学习任务或学习卡片')
+  const stickers = stickersRaw.filter(looksLikeSticker)
+  if (listenSessions.length !== listenSessionsRaw.length || studyTasks.length !== studyTasksRaw.length || studyCards.length !== studyCardsRaw.length || stickers.length !== stickersRaw.length) {
+    throw new Error('备份内容损坏：存在无法识别的听音时长、学习任务、学习卡片或表情包')
   }
 
   // 旧备份里的日记 / 留言转存进中转表：它们已经不属本地库了，但也不能就这么丢掉。
@@ -576,7 +607,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     })),
   ]
 
-  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.wishlist, db.countdowns, db.bookmarks, db.bookmarkCategories, db.artworks, db.photos, db.photoCollections, db.readingNotes, db.musicTracks, db.studyRecords, db.studyCards, db.homeWidgets, db.listenSessions, db.studyTasks, db.legacyUploads], async () => {
+  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.wishlist, db.countdowns, db.bookmarks, db.bookmarkCategories, db.artworks, db.photos, db.photoCollections, db.readingNotes, db.musicTracks, db.studyRecords, db.studyCards, db.homeWidgets, db.listenSessions, db.studyTasks, db.stickers, db.legacyUploads], async () => {
     await db.sessions.clear()
     await db.sessionGroups.clear()
     await db.messages.clear()
@@ -594,6 +625,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.homeWidgets.clear()
     await db.listenSessions.clear()
     await db.studyTasks.clear()
+    await db.stickers.clear()
     if (legacyRows.length > 0) await db.legacyUploads.bulkPut(legacyRows)
     await db.sessions.bulkAdd(sessions)
     await db.sessionGroups.bulkAdd(sessionGroups)
@@ -612,6 +644,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.homeWidgets.bulkAdd(homeWidgets)
     await db.listenSessions.bulkAdd(listenSessions)
     await db.studyTasks.bulkAdd(studyTasks)
+    await db.stickers.bulkAdd(stickers)
   })
   return {
     sessions: sessions.length,
@@ -631,6 +664,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     homeWidgets: homeWidgets.length,
     listenSessions: listenSessions.length,
     studyTasks: studyTasks.length,
+    stickers: stickers.length,
     legacyDiaries: legacyDiaries.length,
     legacyMoments: legacyMoments.length,
   }

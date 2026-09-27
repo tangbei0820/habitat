@@ -16,6 +16,7 @@ import type {
   StudyRecord,
   StudyCard,
   StudyTask,
+  Sticker,
   WishlistItem,
 } from '@shared/types'
 
@@ -67,6 +68,7 @@ export interface LegacyUpload {
  *     而 upgrade 回调一辈子只跑一次，一旦留下没搬干净的旧数据就再也没机会补救；
  *     搬到启动期则每次启动都会收敛。两个真后果：旧表壳永久存在（空壳，别去"清理"它），
  *     以及 `db.diaries` 这类入口在类型层面刻意不再暴露。
+ * v14：本地表情图库（T-077）。新增 `stickers` 表；消息内保存发送时快照，图库条目删除不影响历史消息。
  */
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
@@ -90,6 +92,7 @@ export class HabitatDb extends Dexie {
   listenSessions!: Table<ListenSession, string>
   /** 第 6 批：学习伴学的「今天的三件小事」（按天归组，隔天自动是新的一页） */
   studyTasks!: Table<StudyTask, string>
+  stickers!: Table<Sticker, string>
 
   constructor() {
     super('habitat-db')
@@ -268,6 +271,10 @@ export class HabitatDb extends Dexie {
     // v13：AI 伴学卡片。复习状态属于用户本地学习进度，跟服务端生成调用分开存放。
     this.version(13).stores({
       studyCards: 'id, subject, dueOn, createdAt, updatedAt',
+    })
+    // v14：本地表情图库。新表无需 upgrade，旧数据原样保留。
+    this.version(14).stores({
+      stickers: 'id, category, createdAt, updatedAt',
     })
     // 刻意没有 .upgrade()：搬迁不在版本变化时做，而在每次启动时做（见上方注释与 legacy-upload.ts）。
     // 也不在这里声明 diaries / moments —— 声明了也删不掉它们，省掉能少一份「以为删了」的误解。

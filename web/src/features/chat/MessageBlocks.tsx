@@ -23,6 +23,7 @@ import type {
   TextBlock,
   ToolResultBlock,
   WidgetBlock,
+  StickerBlock,
 } from '@shared/types'
 import { useState } from 'react'
 import { IconAlert, IconCheck, IconFile } from '../../components/qixi/Icons'
@@ -36,6 +37,7 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<MessageBlock['kind']>([
   'image',
   'audio',
   'file',
+  'sticker',
   'tool-result',
   'widget',
   'tab-group',
@@ -108,6 +110,21 @@ function FileBlockView({ payload }: { payload: FileBlock['payload'] }) {
         <span className="shrink-0 opacity-60">{formatBytes(payload.size)}</span>
       )}
     </a>
+  )
+}
+
+function StickerBlockView({ payload }: { payload: StickerBlock['payload'] }) {
+  return (
+    <figure className="m-0 flex max-w-[12rem] flex-col items-start gap-1">
+      <img
+        src={payload.imageDataUrl}
+        alt={payload.name}
+        loading="lazy"
+        className="max-h-44 max-w-full rounded-xl object-contain"
+        style={{ border: '1px solid var(--border-soft)' }}
+      />
+      <figcaption className="text-xs opacity-70">{payload.name}</figcaption>
+    </figure>
   )
 }
 
@@ -253,6 +270,8 @@ function MessageBlockView({ block }: { block: MessageBlock }) {
       return <AudioBlockView payload={block.payload} />
     case 'file':
       return <FileBlockView payload={block.payload} />
+    case 'sticker':
+      return <StickerBlockView payload={block.payload} />
     case 'tool-result':
       return <ToolResultBlockView payload={block.payload} />
     case 'html':

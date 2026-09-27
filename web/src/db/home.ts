@@ -262,6 +262,7 @@ function chatSnapshot(message: ChatMessage): string {
           return `[音频${duration}] ${block.payload.transcript?.trim() || '聊天音频'}`
         }
         case 'file': return `[文件] ${block.payload.name}`
+        case 'sticker': return `[表情包] ${block.payload.name}`
         case 'tool-result': return `[工具结果] ${block.payload.toolName}${block.payload.summary === undefined ? '' : `：${block.payload.summary}`}`
         case 'widget': return `[组件] ${block.payload.title?.trim() || block.payload.source?.trim() || '未命名组件'}`
         case 'tab-group': return `[组件组] ${block.payload.tabs.map((tab) => tab.label).join(' / ')}`
@@ -492,7 +493,7 @@ export async function createArtwork(
 }
 
 function artworkCategoryFor(message: ChatMessage): ArtworkCategory {
-  if (message.blocks.some((block) => block.kind === 'image' || block.kind === 'html' || block.kind === 'widget' || block.kind === 'tab-group')) return 'visual'
+  if (message.blocks.some((block) => block.kind === 'image' || block.kind === 'sticker' || block.kind === 'html' || block.kind === 'widget' || block.kind === 'tab-group')) return 'visual'
   if (message.blocks.some((block) => block.kind === 'audio')) return 'audio'
   if (message.blocks.some((block) => block.kind === 'text')) return 'writing'
   return 'other'

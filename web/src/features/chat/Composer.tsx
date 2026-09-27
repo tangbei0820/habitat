@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
 import {
   IconClose,
+  IconImage,
   IconMic,
   IconPlus,
   IconSend,
@@ -28,7 +29,7 @@ import {
 import { formatDuration } from '../../lib/format'
 import { log } from '../../lib/log'
 import { useOnlineStatus } from '../offline/useOnlineStatus'
-import { MAX_PHOTO_BYTES, type PhotoMime } from '@shared/types'
+import { MAX_PHOTO_BYTES, type PhotoMime, type Sticker } from '@shared/types'
 
 /** 语音条时长上限（SPEC §2.4.4）：到点自动停止，免得一条录音把备份撑爆 */
 const VOICE_MAX_MS = 60_000
@@ -68,6 +69,9 @@ export interface ComposerProps {
   onGenerateImage: (prompt: string) => void
   /** 使用当前草稿明确发起本轮联网搜索 */
   onWebSearch: (query: string) => void
+  stickers: Sticker[]
+  onSendSticker: (sticker: Sticker) => void
+  onImportSticker: (file: File, options?: { name?: string; category?: string | null; tags?: string[] }) => void
   onAbort: () => void
   /**
    * 原生能力失败（录音权限 / 设备 / 读文件）走这里，由页面统一显示。
@@ -87,6 +91,9 @@ export function Composer({
   onSendImage,
   onGenerateImage,
   onWebSearch,
+  stickers,
+  onSendSticker,
+  onImportSticker,
   onAbort,
   onError,
 }: ComposerProps) {
@@ -94,10 +101,22 @@ export function Composer({
   const online = useOnlineStatus()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [emojiOpen, setEmojiOpen] = useState(false)
+  const [stickerOpen, setStickerOpen] = useState(false)
+  const [stickerQuery, setStickerQuery] = useState('')
+  const [stickerName, setStickerName] = useState('')
+  const [stickerCategory, setStickerCategory] = useState('')
+  const [stickerTags, setStickerTags] = useState('')
   const [moreOpen, setMoreOpen] = useState(false)
   const [imagePromptOpen, setImagePromptOpen] = useState(false)
   const [imagePrompt, setImagePrompt] = useState('')
   const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const stickerInputRef = useRef<HTMLInputElement | null>(null)
+
+  const filteredStickers = useMemo(() => {
+    const query = stickerQuery.trim().toLocaleLowerCase()
+    if (query === '') return stickers
+    return stickers.filter((sticker) => [sticker.name, sticker.category ?? '', ...sticker.tags].join(' ').toLocaleLowerCase().includes(query))
+  }, [stickerQuery, stickers])
 
   /* ---------- 语音条录制 ---------- */
   const [recordingSince, setRecordingSince] = useState<number | null>(null)
@@ -424,6 +443,21 @@ export function Composer({
             >
               <IconSmile size={18} />
             </button>
+            <button
+              type="button"
+              data-testid="quick-sticker"
+              aria-label="表情包图库"
+              aria-expanded={stickerOpen}
+              onClick={() => setStickerOpen((prev) => !prev)}
+              className="icon-btn"
+              style={{
+                width: 32,
+                height: 32,
+                color: stickerOpen ? 'var(--accent-strong)' : 'var(--text-secondary)',
+              }}
+            >
+              <IconImage size={18} />
+            </button>
             <span className="flex-1" />
             <button
               type="button"
@@ -465,6 +499,79 @@ export function Composer({
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {stickerOpen && (
+            <div data-testid="sticker-panel" className="card chat-panel flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  data-testid="sticker-search"
+                  value={stickerQuery}
+                  onChange={(event) => setStickerQuery(event.target.value)}
+                  placeholder="搜索名称、分类或标签…"
+                  className="min-w-0 flex-1 rounded-lg px-2 py-1.5 text-sm outline-none"
+                  style={{ border: '1px solid var(--border-soft)', backgroundColor: 'var(--bg-base)', color: 'var(--text-primary)' }}
+                />
+                <button
+                  type="button"
+                  data-testid="sticker-import"
+                  onClick={() => stickerInputRef.current?.click()}
+                  className="btn-pill btn-ghost shrink-0"
+                  style={{ minHeight: 32, padding: '0 12px', fontSize: 12.5 }}
+                >
+                  导入
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  data-testid="sticker-name"
+                  value={stickerName}
+                  onChange={(event) => setStickerName(event.target.value)}
+                  placeholder="名称（可选）"
+                  className="min-w-0 rounded-lg px-2 py-1.5 text-xs outline-none"
+                  style={{ border: '1px solid var(--border-soft)', backgroundColor: 'var(--bg-base)', color: 'var(--text-primary)' }}
+                />
+                <input
+                  data-testid="sticker-category"
+                  value={stickerCategory}
+                  onChange={(event) => setStickerCategory(event.target.value)}
+                  placeholder="分类（可选）"
+                  className="min-w-0 rounded-lg px-2 py-1.5 text-xs outline-none"
+                  style={{ border: '1px solid var(--border-soft)', backgroundColor: 'var(--bg-base)', color: 'var(--text-primary)' }}
+                />
+                <input
+                  data-testid="sticker-tags"
+                  value={stickerTags}
+                  onChange={(event) => setStickerTags(event.target.value)}
+                  placeholder="标签，用逗号分隔"
+                  className="min-w-0 rounded-lg px-2 py-1.5 text-xs outline-none"
+                  style={{ border: '1px solid var(--border-soft)', backgroundColor: 'var(--bg-base)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              {filteredStickers.length === 0 ? (
+                <p className="m-0 py-3 text-center text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                  还没有匹配的表情包，点“导入”添加一张
+                </p>
+              ) : (
+                <div className="grid grid-cols-4 gap-2">
+                  {filteredStickers.map((sticker) => (
+                    <button
+                      key={sticker.id}
+                      type="button"
+                      data-testid="sticker-option"
+                      aria-label={`发送表情包 ${sticker.name}`}
+                      onClick={() => onSendSticker(sticker)}
+                      disabled={sending || !online}
+                      className="flex min-w-0 flex-col items-center gap-1 rounded-lg p-1.5 text-xs disabled:opacity-40"
+                      style={{ backgroundColor: 'var(--bg-subtle)', color: 'var(--text-primary)' }}
+                    >
+                      <img src={sticker.imageDataUrl} alt="" loading="lazy" className="h-16 w-16 rounded-md object-contain" />
+                      <span className="w-full truncate">{sticker.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -586,6 +693,27 @@ export function Composer({
         className="hidden"
         onChange={(event) => {
           chooseImage(event.target.files?.[0])
+          event.target.value = ''
+        }}
+      />
+      <input
+        ref={stickerInputRef}
+        data-testid="sticker-input"
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file !== undefined) {
+            onImportSticker(file, {
+              name: stickerName.trim() || undefined,
+              category: stickerCategory.trim() || null,
+              tags: stickerTags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean),
+            })
+            setStickerName('')
+            setStickerCategory('')
+            setStickerTags('')
+          }
           event.target.value = ''
         }}
       />

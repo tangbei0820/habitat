@@ -120,6 +120,7 @@ function searchableBlockText(block: MessageBlock): string {
     case 'image': return block.payload.alt ?? ''
     case 'audio': return block.payload.transcript ?? ''
     case 'file': return block.payload.name
+    case 'sticker': return [block.payload.name, ...(block.payload.tags ?? [])].join(' ')
     case 'tool-result': return block.payload.summary ?? ''
     case 'widget': return [block.payload.title, block.payload.source].filter((value): value is string => value !== undefined).join(' ')
     case 'tab-group': return block.payload.tabs.flatMap((tab) => [tab.label, ...tab.blocks.map(searchableBlockText)]).join(' ')

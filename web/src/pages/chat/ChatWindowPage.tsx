@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import type { ChatToolCallPayload } from '@shared/events'
 import type { LlmChatMessage } from '@shared/providers'
-import type { ChatContextSummary, ChatMessage, ChatSession, MessageBlock, MessageStatus, ToolResultBlock } from '@shared/types'
+import type { ChatContextSummary, ChatMessage, ChatSession, MessageBlock, MessageStatus, Sticker, ToolResultBlock } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
 import { IconChevronLeft, IconSearch, IconSetting, IconToolbox } from '../../components/qixi/Icons'
 import { useChatDisplay } from '../../app/useChatDisplay'
@@ -57,6 +57,7 @@ import { formatDayLabel, formatDuration, isSameDay } from '../../lib/format'
 import { log } from '../../lib/log'
 import { describeImage, generateImage, synthesizeSpeech, transcribeAudio } from '../../lib/media'
 import { useOnlineStatus } from '../../features/offline/useOnlineStatus'
+import { createStickerFromFile, listStickers } from '../../db/stickers'
 
 /** 首屏只拉最近这么多条（§9 风险8：按时间分页，不全量读）；向上翻页也用它 */
 const PAGE_SIZE = 60
@@ -137,6 +138,8 @@ function mediaContext(message: ChatMessage): string {
   if (image !== undefined && image.kind === 'image') return image.payload.alt?.trim() || '[图片，未识别]'
   const tool = message.blocks.find((block) => block.kind === 'tool-result')
   if (tool !== undefined && tool.kind === 'tool-result') return `[工具 ${tool.payload.toolName}：${tool.payload.summary ?? (tool.payload.ok ? '成功' : '失败')}]`
+  const sticker = message.blocks.find((block) => block.kind === 'sticker')
+  if (sticker !== undefined && sticker.kind === 'sticker') return `[表情包：${sticker.payload.name}]`
   return ''
 }
 
@@ -216,6 +219,7 @@ export function ChatWindowPage() {
   const [contextCompacting, setContextCompacting] = useState(false)
   const [mediaBusy, setMediaBusy] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
+  const [stickers, setStickers] = useState<Sticker[]>([])
 
   const abortRef = useRef<AbortController | null>(null)
   /**
@@ -228,6 +232,14 @@ export function ChatWindowPage() {
   const toastTimerRef = useRef<number | null>(null)
   const speechRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null)
   const highlightTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void listStickers()
+      .then((items) => { if (!cancelled) setStickers(items) })
+      .catch((err: unknown) => log.warn('读取表情图库失败', err))
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     messagesRef.current = messages
@@ -634,6 +646,36 @@ export function ChatWindowPage() {
       requestReply: true,
     })
     if (visionFailed) showToast('图片已发送，但视觉识别未完成')
+  }
+
+  async function importSticker(file: File, options?: { name?: string; category?: string | null; tags?: string[] }): Promise<void> {
+    try {
+      const sticker = await createStickerFromFile(file, options)
+      setStickers((prev) => [sticker, ...prev])
+      showToast('表情包已加入图库')
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function sendSticker(sticker: Sticker): Promise<void> {
+    if (sending || mediaBusy || sessionId === undefined) return
+    await submitUserMessage({
+      text: '',
+      blocks: [{
+        kind: 'sticker',
+        payload: {
+          stickerId: sticker.id,
+          name: sticker.name,
+          imageDataUrl: sticker.imageDataUrl,
+          mimeType: sticker.mimeType,
+          source: '本地图库',
+          tags: sticker.tags,
+        },
+        order: 0,
+      }],
+      requestReply: true,
+    })
   }
 
   async function createGeneratedImage(prompt: string): Promise<void> {
@@ -1334,6 +1376,9 @@ export function ChatWindowPage() {
             onSendImage={(dataUrl) => void sendImage(dataUrl)}
             onGenerateImage={(prompt) => void createGeneratedImage(prompt)}
             onWebSearch={(query) => void webSearch(query)}
+            stickers={stickers}
+            onSendSticker={(sticker) => void sendSticker(sticker)}
+            onImportSticker={(file, options) => void importSticker(file, options)}
             onAbort={() => abortRef.current?.abort()}
             onError={setErrorText}
           />

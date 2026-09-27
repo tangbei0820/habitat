@@ -183,6 +183,7 @@ interface SessionGroup extends BaseObject {
 | `ListeningSessionView` | 服务端 `app_kv:listening.session.main` | 当前曲目最小快照、`state`, `positionSeconds`, `startedAt`, `listeners`；不复制音乐库 |
 | `StudyRecord` | `studyRecords` | `subject`, `note`, `studiedOn`, `durationMinutes` |
 | `StudyCard` | `studyCards` | `subject`, `front`, `back`, `example`, `hint`, `dueOn`, `intervalDays`, `ease`, `repetitions`；默认按 `dueOn <= 本地今天` 进入到期队列 |
+| `Sticker` | `stickers` | `name`, `imageDataUrl`, `mimeType`, `sizeBytes`, `category`, `tags`, `source`；消息发送时另存快照，删除图库条目不影响历史 |
 
 另有**两张分类表**（不是生活数据本身，是收纳容器）：
 
@@ -249,6 +250,7 @@ interface SessionGroup extends BaseObject {
 | v11 | 110 | 新增中转表 `legacyUploads`（日记与留言板迁往服务端，T-036）。⚠️ **本版刻意不带 `upgrade()` 回调**，见下方「v11 为什么不用 upgrade」 |
 | v12 | 120 | 新增 `listenSessions` / `studyTasks`（一起听时长与学习今日任务，T-046）；纯新增表，不需要 `upgrade()` 回调 |
 | v13 | 130 | 新增 `studyCards`（AI 伴学卡片与本地复习状态，T-063）；生成走服务端 `/api/study/cards/generate`，纯新增表，不需要 `upgrade()` 回调 |
+| v14 | 140 | 新增 `stickers`（本地表情图库，T-077）；消息块保存发送时快照，纯新增表，不需要 `upgrade()` 回调 |
 
 Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画版本（`verify-chat.mjs`）。
 **每次升版都要在 `db.ts` 的版本注释里写清「为什么」**；只写「加了张表」等于没写。
@@ -290,6 +292,7 @@ Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画
 | v9 | **− 日记 / 留言板**（T-036）：它们已归服务端，而这份备份的语义始终是「本地那张库的快照」，且必须**离线也能导出** —— 从服务端拉会让它变成「一半离线一半在线」，在最需要它的时候最不可靠。⚠️ 旧备份（v2–v8）里这两块**不丢**：导入时转存进 `legacyUploads` 中转表，由启动流程 / 导入流程上传到服务端，并按 `legacyDiaries` / `legacyMoments` 报数 |
 | v10 | + 一起听时长 `listenSessions` / 学习任务 `studyTasks`（T-046，随 Dexie v12 补进备份白名单）；旧版导入时两张表按空处理 —— 那时这两个功能还不存在 |
 | v11 | + AI 伴学卡片 `studyCards`（本地复习状态；生成调用走服务端 `/api/study/cards/generate`）；旧版导入时按空处理 |
+| v12 | + 本地表情图库 `stickers`；旧版导入时按空处理，历史消息不依赖图库条目 |
 > ⚠️ v7 导入时**必须按 `kind` 去重**：`&kind` 是唯一索引，手改过的备份（例如两条 `board`）会让
 > `bulkAdd` 抛 `ConstraintError`，导致**整份备份一个字都导不进去**。保留 `createdAt` 最早的那条，
 > 与「先上主屏的在前」的排序语义一致。

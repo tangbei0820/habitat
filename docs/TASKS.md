@@ -2763,3 +2763,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm run typecheck`、`npm run build`、`git diff --check`；新增 `npm run probe:chat-web-search` 覆盖授权搜索、工具结果回灌、正常收口与空查询拒绝。生产仍停在 T-072，本批未部署。
 
 **待优化（后续切片）**：可配置搜索 Provider / 多源聚合、结果高亮与来源展开、浏览器阅读器、搜索历史与缓存；贴纸、TTS、通话仍按 V2-B 后续切片推进。
+
+### T-077 · 2026-09-27 · V2-B 第五切片：本地表情图库与手动表情消息—— **完成（本地）**
+
+**边界**：只实现聊天中的本地表情图库、导入 / 搜索 / 去重与用户手动发送；不在本批接入 AI 自主 `sticker.search` / `sticker.send`、MCP 贴纸服务、远程资源或通话 / TTS。
+
+| 交付 | 说明 |
+| --- | --- |
+| 本地图库 | 新增 Dexie v14 `stickers` 表；导入 JPEG / PNG / WebP / GIF，限制 3 MB，按图片 data URL 去重；名称、分类、标签可检索。 |
+| 独立消息块 | 新增 `sticker` block，消息保存图库 id、名称、标签与发送时图片快照；历史消息不依赖图库条目，删除资源不会破坏渲染。 |
+| 聊天入口 | Composer 快捷栏增加图库；支持搜索、连续点选发送和从设备导入；发送沿用普通用户消息 → 请求回复链路，离线 / 生成中明确禁用。 |
+| 数据兼容 | 备份格式升至 v12，旧备份按空图库导入；会话搜索、跨模块快照、Markdown 导出识别表情块。 |
+| 参考取舍 | 实查 [cove-sticker-mcp](https://github.com/moonlin1213/cove-sticker-mcp) 的本地优先图库、内容去重、搜索与“宿主决定如何渲染图片”边界；不复制其 MCP 运行时、视觉打标或远程资源管理。 |
+
+**验收**：`npm run typecheck`、`npm run build`、`git diff --check`；静态检查覆盖 `sticker` 联合类型、Dexie v14、备份 v12、消息渲染与 Composer 入口。生产仍停在 T-072，本批未部署。
+
+**待优化（后续切片）**：AI 自主表情搜索 / 发送工具与 MCP 绑定；图库分类管理、拖拽排序、缩略图优化；远程白名单资源与 GIF 动画策略。本批不提前施工。

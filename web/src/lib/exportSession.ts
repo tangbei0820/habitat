@@ -44,6 +44,8 @@ function renderBlock(block: MessageBlock): string {
     }
     case 'file':
       return `（文件：${block.payload.name}）`
+    case 'sticker':
+      return `（表情包：${block.payload.name}）`
     case 'html':
       return `\`\`\`html\n${block.payload.html}\n\`\`\``
     case 'tool-result':

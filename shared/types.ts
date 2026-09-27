@@ -119,6 +119,20 @@ export interface FileBlock {
   order: number
 }
 
+/** 独立表情包消息块：与 Unicode emoji 分开，带图库 id + 发送时快照，资源删除不影响历史。 */
+export interface StickerBlock {
+  kind: 'sticker'
+  payload: {
+    stickerId: string
+    name: string
+    imageDataUrl: string
+    mimeType: PhotoMime
+    source?: string
+    tags?: string[]
+  }
+  order: number
+}
+
 /** 工具调用结果（Phase 3 起由 MCP Gateway 产出） */
 export interface ToolResultBlock {
   kind: 'tool-result'
@@ -168,6 +182,7 @@ export type LeafMessageBlock =
   | ImageBlock
   | AudioBlock
   | FileBlock
+  | StickerBlock
   | ToolResultBlock
   | WidgetBlock
 
@@ -183,6 +198,7 @@ export type MessageBlock =
   | ImageBlock
   | AudioBlock
   | FileBlock
+  | StickerBlock
   | ToolResultBlock
   | WidgetBlock
   | TabGroupBlock
@@ -478,6 +494,18 @@ export interface ReadingAnnotation {
   note: string
   author: 'user' | 'companion'
   createdAt: number
+}
+
+/** 本地优先表情图库。原图以内联 data URL 保存，消息发送时另存快照。 */
+export interface Sticker extends BaseObject {
+  type: 'sticker'
+  name: string
+  imageDataUrl: string
+  mimeType: PhotoMime
+  sizeBytes: number
+  category: string | null
+  tags: string[]
+  source: 'user' | 'mcp'
 }
 
 export interface ReadingVocabulary {
