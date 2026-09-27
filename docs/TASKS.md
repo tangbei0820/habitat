@@ -2679,3 +2679,17 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；`node --check web/scripts/verify-batch6-skin.mjs` 通过；本机无 CDP 页面，浏览器 4 项新增断言未执行。生产 VPS 未在本批更新。
 
 **待优化（后续功能）**：资料上传 / 链接解析；测验与苏格拉底对话；AI 根据历史表现生成下一组卡片；学习记录与卡片复习进入 Life 的细粒度事件；移动端视觉细节。本批不提前施工。
+
+### T-072 · 2026-09-27 · 当前代码部署 VPS 并验收学习复习队列—— **完成（生产）**
+
+**范围**：将 T-063～T-071 当前工作树对应的已提交代码与前端产物统一更新到 `habitat.beiyan.cc`；不修改生产 `.env`、SQLite 数据或 nginx 配置。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `b84b0b7` 打包上传；排除 `.git`、`server/data`、`server/.env`、依赖目录与临时文件，保留生产配置与数据库。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260927-214114`；生产 `.env` 未被覆盖，权限仍为 `600`。 |
+| 服务状态 | `habitat-server` 停服替换后重新启动并保持 `active`；Nocturne 工具面自检仍为 9 tools。首次重启后立即探测过早导致一次连接拒绝，等待服务完成启动后重试通过。 |
+| 公网验收 | 服务器本机与 `https://habitat.beiyan.cc/api/health` 均返回 `ok: true`；首页引用 `index-DVmDpNK5.js`，公网静态资源包含 `study-card-filter-` 学习筛选逻辑。 |
+| 用户验证 | 请刷新 `https://habitat.beiyan.cc/home/study` 查看「待复习 / 全部 / 已形成间隔」与进度统计；浏览器若仍显示旧壳，执行一次强制刷新或清理该站点旧缓存。 |
+
+**待优化**：本次只完成部署与生产侧冒烟，未代替浏览器 / 手机人工验收；学习资料上传、测验 / 苏格拉底模式、AI 自动排课与 Life 细粒度学习事件仍按 T-071 待优化项保留。
