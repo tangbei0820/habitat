@@ -148,6 +148,21 @@ Provider Profile 仍由 `/api/providers` 管理；以下接口只管理“哪个
 
 被当前绑定或任一方案引用的 Provider，`DELETE /api/providers/:id` 返回 `400 BAD_REQUEST` 并列出引用，防止误删。
 
+## V2-A · MCP Manager 基础切片
+
+MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不接收 token / header 值。新注册的 server 默认关闭，先保存后可执行真实测试，再显式启用。
+
+| Method | Path | 行为 |
+| --- | --- | --- |
+| `GET` | `/api/mcp/servers` | 返回脱敏连接列表：`serverId/name/url/state/configured/enabled/allowAutonomous/toolCount/lastError/hasToken/headerNames` |
+| `POST` | `/api/mcp/servers` | `{ name, url, token?, headers?, enabled?, allowAutonomous? }`；只支持 http(s) Streamable HTTP，默认 `enabled=false` |
+| `PATCH` | `/api/mcp/servers/:id` | 局部更新名称、URL、token、`clearToken`、headers、启用和自主策略；空 patch 拒绝 |
+| `DELETE` | `/api/mcp/servers/:id` | 删除配置与 secret，并热加载 Gateway |
+| `POST` | `/api/mcp/servers/:id/test` | 对保存配置做真实 initialize + `tools/list`；返回 `{ ok, latencyMs, toolCount, sampleTools, error }`，失败是结果而不是 500 |
+| `GET` | `/api/mcp/servers/:id/tools` | 返回脱敏工具摘要；当前设置页只渲染名称与描述，原始 `inputSchema` 仅作为后端结构保留 |
+
+`allowAutonomous` 目前只是服务端策略元数据，不等于已经把任意 MCP 原始工具加入 Capability Registry。T-059 不开放自主原始工具调用；后续必须按能力白名单、确认级别和审计规则单独施工。
+
 ## Phase 1 已实现（切片三 · 方案管理）
 
 让方案能在设置页里增删改，不必手写 `.env`。

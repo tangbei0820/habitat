@@ -6,6 +6,7 @@ import type { ApiError, ErrorCode } from '@shared/errors'
 import { CapabilityService } from './capabilities/registry.js'
 import { closeDb } from './db/index.js'
 import { importProfiles } from './db/profiles.js'
+import { listMcpServerConfigs, seedMcpServers } from './db/mcp-servers.js'
 import { pruneMcpDiagnostics } from './db/diagnostics.js'
 import { RequestError } from './lib/errors.js'
 import { GatewayError, McpGateway } from './mcp/gateway.js'
@@ -22,6 +23,7 @@ import { registerInboxRoutes } from './routes/inbox.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerProviderRoutes } from './routes/providers.js'
 import { registerMemoryRoutes } from './routes/memory.js'
+import { registerMcpRoutes } from './routes/mcp.js'
 import { registerMomentRoutes } from './routes/moment.js'
 import { registerPromptRoutes } from './routes/prompt.js'
 import { registerStateRoutes } from './routes/state.js'
@@ -80,7 +82,9 @@ app.setErrorHandler((err: unknown, _req, reply) => {
   return reply.status(500).send(body)
 })
 
-const mcpConfigs = loadMcpRegistry()
+const mcpSeed = loadMcpRegistry()
+seedMcpServers(mcpSeed)
+const mcpConfigs = listMcpServerConfigs()
 const gateway = new McpGateway(mcpConfigs, app.log)
 const memoryProvider = new NocturneMemoryProvider(gateway)
 // 记忆写入门（Phase 7C）：收件箱确认卡批准后真正调 hold 的执行体从这里注入
@@ -109,6 +113,7 @@ const { profiles: seedProfiles, problems } = loadProfiles()
 const importedProfiles = importProfiles(seedProfiles)
 const llmRegistry = new LlmRegistry()
 registerProviderRoutes(app, llmRegistry)
+registerMcpRoutes(app, gateway)
 registerChatRoutes(app, llmRegistry, stateProvider, memoryProvider, capabilityService)
 registerMediaRoutes(app, llmRegistry)
 registerToolRoutes(app, gateway)

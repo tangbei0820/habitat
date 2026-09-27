@@ -16,7 +16,7 @@
 
 > **与 `docs/CHANGELOG.md` 的分工**：CHANGELOG 记「改了什么」（面向版本，按 Phase 组织）；本文件记「做到哪、还欠什么」（面向推进与排期）。
 > **两条硬规矩**：① 已完成只写要点，正文链到 CHANGELOG，**不复制**；② **所有待优化一律收敛到本文件**，不许散落在对话、代码注释或临时文件里。
-> 最后更新：2026-09-25
+> 最后更新：2026-09-27
 
 ---
 
@@ -2470,3 +2470,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`probe-provider-center` **30/30**（四类真实调用、密钥不回显、默认业务路由、方案原子切换、引用保护）；`probe-llm` **33/33**；旧 `probe-providers` **52/52**；浏览器 `verify-providers` **31/31**（含四张卡草稿拉模型 / 流式测试 / 保存 / 存方案，旧 CRUD 全回归）；两端 typecheck + web build 通过。
 
 **明确未做**：ElevenLabs 原生参数与试听细节、Codex Subscription Adapter、Provider 自动故障切换，留在 V2-A 后续切片；本批没有以 OpenAI-compatible 占位冒充它们已完成。
+
+### T-059 · 2026-09-27 · V2-A 第二切片：MCP Manager 基础闭环—— **完成**
+
+**边界**：只做 MCP server 注册、启用 / 停用、凭据脱敏、真实连接测试、工具清单与自主策略元数据；不进入 Sticker、网易云 / 一起听、Nocturne 原生 Dashboard、Codex Subscription、Chat 或其它 Living Apps。
+
+| 交付 | 说明 |
+| --- | --- |
+| 服务端配置 | 新增 `mcp_server` + `mcp_server_secret`；环境变量注册表只作首次种子，token 与 headers 值不回传浏览器；新注册默认关闭 |
+| Gateway 热加载 | `McpGateway.replaceServers()` 在保存 / 启停 / 删除后整体重建连接；关闭状态不握手，握手 + 首次 `tools/list` 有 15 秒上限，单个外部 server 失败不拖住主 HTTP |
+| Manager API | `/api/mcp/servers` 列表、增改删、`/:id/test` 真实 initialize + `tools/list`、`/:id/tools` 工具摘要 |
+| 设置页 | “工具与 MCP”卡片：添加 / 编辑、启停、测试连接、查看工具、删除；普通 UI 只展示工具名 / 描述，不展示原始 schema 或凭据 |
+| 策略边界 | `allowAutonomous` 先作为服务端策略元数据保存；本批不把任意原始 MCP 工具自动绑定给模型，显式工具调用仍走既有能力白名单 / Mini Terminal |
+| 验收 | `probe:mcp-manager` **23/23**；两端 typecheck；web build；Provider Center 既有代码未改动 |
+
+**参考取舍**：实查 VCPToolBox README。借鉴“服务端配置 + 工具面管理”分层；不引入大型插件优先级体系，不把 raw 配置和 secret 暴露到普通设置页。
+
+**待优化（后续切片）**：工具级权限与自主绑定、stdio / 本地进程 MCP、OAuth / 更细的 header 编辑、Nocturne 原生 Dashboard、Codex Subscription Adapter；本批不提前施工。

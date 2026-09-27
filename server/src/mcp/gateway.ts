@@ -9,7 +9,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { FastifyBaseLogger } from 'fastify'
 import { ErrorCodes, type ErrorCode } from '@shared/errors.js'
 import type { ToolGateway } from '@shared/providers.js'
-import type { McpServerHealth, McpServerState } from '@shared/types.js'
+import type { McpServerHealth, McpServerState, McpTestResult } from '@shared/types.js'
 import { insertMcpDiagnostic } from '../db/diagnostics.js'
 import type { McpServerConfig } from './registry.js'
 
@@ -37,6 +37,24 @@ interface ServerRuntime {
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+const MCP_HANDSHAKE_TIMEOUT_MS = 15_000
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`MCP handshake timeout after ${timeoutMs}ms`)), timeoutMs)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
 }
 
 export class McpGateway implements ToolGateway {
@@ -73,13 +91,80 @@ export class McpGateway implements ToolGateway {
   async health(): Promise<McpServerHealth[]> {
     return [...this.servers.entries()].map(([serverId, rt]) => ({
       serverId,
+      name: rt.config.name,
       state: rt.state,
       // 「没配 URL」与「配了但连不上」是两种病，UI 要分开说（未配置 ≠ 异常）
       configured: Boolean(rt.config.url),
+      enabled: rt.config.enabled,
+      allowAutonomous: rt.config.allowAutonomous,
       toolCount: rt.toolCount,
       lastError: rt.lastError,
       lastCheckedAt: rt.lastCheckedAt,
     }))
+  }
+
+  /** MCP Manager 保存配置后热加载；关闭旧连接再整体替换，避免半套注册表。 */
+  async replaceServers(configs: McpServerConfig[]): Promise<void> {
+    await this.closeAll()
+    this.servers.clear()
+    for (const config of configs) {
+      this.servers.set(config.id, {
+        config,
+        state: 'disconnected',
+        client: null,
+        transport: null,
+        toolCount: 0,
+        lastError: null,
+        lastCheckedAt: null,
+      })
+    }
+    await this.diagnostics()
+  }
+
+  /** 对某个已保存 server 做真实握手与 tools/list；关闭的 server 也可被临时探测。 */
+  async test(serverId: string): Promise<McpTestResult> {
+    const rt = this.requireServer(serverId)
+    const previousConfig = rt.config
+    const wasEnabled = previousConfig.enabled
+    const started = Date.now()
+    rt.config = { ...previousConfig, enabled: true }
+    try {
+      await this.connect(serverId, rt)
+      const groups = await this.listTools(serverId)
+      const sampleTools: string[] = []
+      for (const group of groups) {
+        if (!isRecord(group) || !Array.isArray(group.tools)) continue
+        for (const tool of group.tools) {
+          if (isRecord(tool) && typeof tool.name === 'string') sampleTools.push(tool.name)
+        }
+      }
+      return {
+        serverId,
+        ok: true,
+        latencyMs: Date.now() - started,
+        toolCount: sampleTools.length,
+        sampleTools: sampleTools.slice(0, 8),
+        error: null,
+      }
+    } catch (err) {
+      return {
+        serverId,
+        ok: false,
+        latencyMs: Date.now() - started,
+        toolCount: 0,
+        sampleTools: [],
+        error: errMessage(err),
+      }
+    } finally {
+      if (!wasEnabled) {
+        await rt.transport?.close().catch(() => undefined)
+        rt.client = null
+        rt.transport = null
+        rt.config = previousConfig
+        rt.state = 'disconnected'
+        rt.toolCount = 0
+      }
+    }
   }
 
   /** 重连所有非 ready 的 server（供 diagnostics() / 定时探活复用） */
@@ -199,6 +284,13 @@ export class McpGateway implements ToolGateway {
     rt.transport = null
     rt.toolCount = 0
 
+    if (!rt.config.enabled) {
+      rt.state = 'disconnected'
+      rt.lastError = null
+      rt.lastCheckedAt = Date.now()
+      return
+    }
+
     if (!rt.config.url) {
       rt.state = 'error'
       rt.lastError = 'not configured'
@@ -228,9 +320,21 @@ export class McpGateway implements ToolGateway {
       const client = new Client({ name: 'habitat-gateway', version: '0.1.0' }, { capabilities: {} })
 
       rt.state = 'handshake'
-      await client.connect(transport) // initialize 握手：卡在哪一层由此可判（§7.2②）
-
-      const tools = await client.listTools()
+      // SDK transport 没有统一的超时选项；把 initialize + 首次 tools/list 包在
+      // 有界等待里，避免设置页保存一个失联地址时被默认网络超时卡住很久。
+      const handshake = (async () => {
+        await client.connect(transport) // initialize 握手：卡在哪一层由此可判（§7.2②）
+        return client.listTools()
+      })()
+      let tools
+      try {
+        tools = await withTimeout(handshake, MCP_HANDSHAKE_TIMEOUT_MS)
+      } catch (err) {
+        // 超时后尽快终止底层请求；原 promise 仍可能在 SDK 内收尾，吸收它的迟到拒绝。
+        void handshake.catch(() => undefined)
+        await transport.close().catch(() => undefined)
+        throw err
+      }
       rt.client = client
       rt.transport = transport
       rt.toolCount = tools.tools.length

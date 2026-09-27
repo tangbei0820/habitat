@@ -133,6 +133,23 @@ CREATE TABLE IF NOT EXISTS provider_scheme (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_provider_scheme_active ON provider_scheme (is_active, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS mcp_server (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  url TEXT NOT NULL,
+  headers TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  allow_autonomous INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_server_enabled ON mcp_server (enabled, updated_at DESC);
+CREATE TABLE IF NOT EXISTS mcp_server_secret (
+  server_id TEXT PRIMARY KEY,
+  token TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `)
 // 进程级键值状态（方案种子导入标记等）
 sqlite.exec(`

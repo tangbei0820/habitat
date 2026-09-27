@@ -429,3 +429,14 @@ AI 的日记只能由 AI 侧写入（P1 的工具层，`db/diary.ts` 的 `create
 演进规则：启动时 `CREATE TABLE IF NOT EXISTS` 补表；不改 Dexie、不升前端备份版本。老库在首次读取 Provider Center 时，
 只按原 active profile 已存在的 `modelMap` 槽位补种绑定，未配置能力保持空。删除 Provider 前同时检查当前绑定与所有方案引用；
 仍被引用时拒绝，避免留下指向不存在连接的方案。
+
+## 14. V2-A MCP Manager（服务端 SQLite，T-059）
+
+MCP 连接配置由服务端持有，浏览器只拿脱敏视图；不改 Dexie、不升前端备份版本。
+
+| 表 | 字段 | 关键不变量 |
+| --- | --- | --- |
+| `mcp_server` | `id` / `name` / `url` / `headers` / `enabled` / `allow_autonomous` / `created_at` / `updated_at` | URL 只接受 http(s)；`enabled=false` 不握手；`allow_autonomous` 只记录策略，不代表当前已经绑定任意原始工具 |
+| `mcp_server_secret` | `server_id` / `token` / `updated_at` | 一对一；token 只在服务端使用，任何 API 回执都只返回 `hasToken` |
+
+启动时环境变量 MCP 注册表只作一次性种子：缺 id 才插入，已有记录不被 `.env` 覆盖。删除时 secret 与配置在同一事务内清理。连接配置修改后 Gateway 整体热加载，避免半套注册表。

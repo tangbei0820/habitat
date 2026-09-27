@@ -7,6 +7,7 @@ import { DiagnosticPanel } from '../../features/diagnostics/DiagnosticPanel'
 import { IdentitySettings } from '../../features/setting/IdentitySettings'
 import { PromptSettings } from '../../features/setting/PromptSettings'
 import { ProviderSettings } from '../../features/providers/ProviderSettings'
+import { McpManager } from '../../features/mcp/McpManager'
 import { ApiRequestError } from '../../lib/api'
 import { getMcpHealth, getServerHealth } from '../../lib/health'
 import { log } from '../../lib/log'
@@ -115,6 +116,8 @@ export function SettingPage() {
         <PromptSettings />
 
         <ProviderSettings />
+
+        <McpManager />
 
         <BackupPanel />
 

@@ -151,11 +151,31 @@ export const providerScheme = sqliteTable('provider_scheme', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+/** MCP Manager 连接配置；token 单独放在 mcp_server_secret，列表接口天然不会带出凭据。 */
+export const mcpServer = sqliteTable('mcp_server', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  url: text('url').notNull(),
+  headers: text('headers', { mode: 'json' }).$type<Record<string, string>>(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  allowAutonomous: integer('allow_autonomous', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+export const mcpServerSecret = sqliteTable('mcp_server_secret', {
+  serverId: text('server_id').primaryKey(),
+  token: text('token').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
 export type ApiProfileRow = typeof apiProfile.$inferSelect
 export type NewApiProfile = typeof apiProfile.$inferInsert
 export type ApiSecretRow = typeof apiSecret.$inferSelect
 export type ProviderCapabilityBindingRow = typeof providerCapabilityBinding.$inferSelect
 export type ProviderSchemeRow = typeof providerScheme.$inferSelect
+export type McpServerRow = typeof mcpServer.$inferSelect
+export type McpServerSecretRow = typeof mcpServerSecret.$inferSelect
 
 /**
  * AppKv：进程级的少量键值状态（当前只有「方案种子是否已导入过」）。

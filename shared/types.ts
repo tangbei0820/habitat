@@ -701,9 +701,14 @@ export type McpServerState = 'disconnected' | 'connecting' | 'handshake' | 'read
 /** MCP Gateway 每个 server 的聚合健康状态（§7.2② → GET /api/health/mcp） */
 export interface McpServerHealth {
   serverId: string
+  name?: string
   state: McpServerState
   /** 是否配置了连接地址 —— false 时 UI 应显示「未配置」而不是「异常」 */
   configured: boolean
+  /** 是否允许 Gateway 将该 server 接入工具面。 */
+  enabled?: boolean
+  /** 是否允许 AI Runtime 自主绑定该 server 的工具；用户发起工具仍可见。 */
+  allowAutonomous?: boolean
   toolCount: number
   lastError: string | null
   lastCheckedAt: number | null
@@ -718,6 +723,56 @@ export interface ServerHealth {
 export interface McpHealth {
   ok: boolean
   servers: McpServerHealth[]
+}
+
+/** MCP Manager 对外展示的脱敏 server 视图；token / header 值永不下发。 */
+export interface McpServerView extends McpServerHealth {
+  name: string
+  url: string | null
+  hasToken: boolean
+  headerNames: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface McpManagerState {
+  servers: McpServerView[]
+}
+
+export interface McpServerCreateInput {
+  id?: string
+  name: string
+  url: string
+  token?: string
+  headers?: Record<string, string>
+  enabled?: boolean
+  allowAutonomous?: boolean
+}
+
+export interface McpServerUpdateInput {
+  name?: string
+  url?: string
+  token?: string
+  clearToken?: boolean
+  headers?: Record<string, string>
+  enabled?: boolean
+  allowAutonomous?: boolean
+}
+
+export interface McpToolView {
+  serverId: string
+  name: string
+  description: string | null
+  inputSchema: Record<string, unknown>
+}
+
+export interface McpTestResult {
+  serverId: string
+  ok: boolean
+  latencyMs: number
+  toolCount: number
+  sampleTools: string[]
+  error: string | null
 }
 
 /* ---------- Eventide 状态（服务端 SQLite + Python sidecar） ---------- */

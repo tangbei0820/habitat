@@ -295,7 +295,10 @@ if (NAMESPACE === '') {
 console.log('\n=== 5. 经 McpGateway（我们的生产代码路径）===')
 const calls: Array<{ serverId: string; name: string }> = []
 const gateway = new McpGateway([
-  { id: 'nocturne', url: MCP_URL, token: TOKEN === '' ? null : TOKEN, headers: headersFor(false) },
+  {
+    id: 'nocturne', name: 'Nocturne', url: MCP_URL, token: TOKEN === '' ? null : TOKEN,
+    headers: headersFor(false), enabled: true, allowAutonomous: true,
+  },
 ])
 /** 记录型包装：只用来统计实际发出的调用，行为与 gateway 完全一致 */
 const recorder: ToolGateway = {
