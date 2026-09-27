@@ -1,5 +1,5 @@
 /**
- * 一起听（第 6 批：真播放）。
+ * 一起听（V2-D 第一切片：真播放 + 共享会话）。
  *
  * 播放器是**真的**：`<audio>` 直接播 `externalUrl`，进度 / 时长 / 上一首下一首都是真实控件；
  * 听的秒数会累计进 `listenSessions`（播放中每 15 秒落一次盘，暂停 / 切歌 / 离开页面也落），
@@ -8,13 +8,14 @@
  * 边界（诚实原则）：
  *  - 「小栖也在听」这句**不搬** —— 没有任何机制让小栖真的在听，写上就是假装；
  *  - 没填链接的曲目不能播（按钮禁用 + 明说原因），不装会在转的假进度条；
- *  - 下方的「收下一首歌」表单与歌单列表是 Phase 2 的原能力，一个字段没动（验收依赖）。
+ *  - 下方的「收下一首歌」表单与歌单列表继续复用本地 MusicTrack；网易云搜索 / 歌词 / AI 选歌留给后续 MCP 切片。
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import type { MusicTrack } from '@shared/types'
+import type { ListeningSessionView, MusicTrack } from '@shared/types'
 import { IconNote, IconPause, IconPlay, IconSkipBack, IconSkipForward } from '../../components/qixi/Icons'
 import { createMusicTrack, deleteMusicTrack, listMusicTracks, updateMusicTrack } from '../../db/home'
 import { addListenSeconds } from '../../db/listen'
+import { getListeningSession, updateListeningSession } from '../../lib/listening'
 
 function mm(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -37,10 +38,13 @@ export function MusicModule() {
   const [playing, setPlaying] = useState(false)
   const [pos, setPos] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [sharedSession, setSharedSession] = useState<ListeningSessionView | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   /** 还没落盘的收听秒数；攒够 15 秒（或暂停 / 切歌 / 卸载）就写进 listenSessions */
   const pendingRef = useRef(0)
   const playingRef = useRef(false)
+  const sharedUpdatedAtRef = useRef(0)
+  const lastSharedSyncRef = useRef(0)
 
   const flushListen = useCallback((): void => {
     if (pendingRef.current > 0) {
@@ -51,6 +55,34 @@ export function MusicModule() {
 
   async function refresh(): Promise<void> { setItems(await listMusicTracks()) }
   useEffect(() => { refresh().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err))).finally(() => setLoading(false)) }, [])
+
+  useEffect(() => {
+    let alive = true
+    const pull = async (): Promise<void> => {
+      try {
+        const next = await getListeningSession()
+        if (!alive || next.updatedAt <= sharedUpdatedAtRef.current) return
+        sharedUpdatedAtRef.current = next.updatedAt
+        setSharedSession(next)
+      } catch (err: unknown) {
+        if (alive) setError(err instanceof Error ? err.message : String(err))
+      }
+    }
+    void pull()
+    const timer = window.setInterval(() => void pull(), 5000)
+    return () => { alive = false; window.clearInterval(timer) }
+  }, [])
+
+  useEffect(() => {
+    const session = sharedSession
+    if (session === null || session.track === null) return
+    const track = session.track
+    const index = items.findIndex((item) => item.id === track.id)
+    if (index >= 0) {
+      setCurrentIndex(index)
+      setPos(session.positionSeconds)
+    }
+  }, [items, sharedSession?.positionSeconds, sharedSession?.track?.id, sharedSession?.updatedAt])
 
   /* 播放中每秒记一笔，攒够 15 秒落一次盘 */
   useEffect(() => {
@@ -67,13 +99,29 @@ export function MusicModule() {
 
   const current = items[currentIndex] ?? null
 
+  function snapshot(item: MusicTrack | null): Pick<MusicTrack, 'id' | 'title' | 'artist' | 'externalUrl'> | null {
+    if (item === null) return null
+    return { id: item.id, title: item.title, artist: item.artist, externalUrl: item.externalUrl }
+  }
+
+  function syncShared(state: ListeningSessionView['state'], positionSeconds = pos, item = current): void {
+    if (item === null) return
+    lastSharedSyncRef.current = Date.now()
+    void updateListeningSession({ track: snapshot(item), state, positionSeconds })
+      .then((next) => { sharedUpdatedAtRef.current = next.updatedAt; setSharedSession(next) })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+
   const step = useCallback((offset: number): void => {
     if (items.length === 0) return
     flushListen()
-    setCurrentIndex((index) => (index + offset + items.length) % items.length)
+    const nextIndex = (currentIndex + offset + items.length) % items.length
+    const next = items[nextIndex] ?? null
+    setCurrentIndex(nextIndex)
     setPos(0)
     setDuration(0)
-  }, [items.length, flushListen])
+    if (next !== null) syncShared('paused', 0, next)
+  }, [currentIndex, items, flushListen])
 
   function togglePlay(): void {
     const audio = audioRef.current
@@ -218,10 +266,14 @@ export function MusicModule() {
             ref={audioRef}
             src={current?.externalUrl ?? undefined}
             preload="none"
-            onPlay={() => { playingRef.current = true; setPlaying(true) }}
-            onPause={() => { playingRef.current = false; setPlaying(false); flushListen() }}
+            onPlay={() => { playingRef.current = true; setPlaying(true); syncShared('playing', audioRef.current?.currentTime ?? pos) }}
+            onPause={() => { playingRef.current = false; setPlaying(false); flushListen(); syncShared('paused', audioRef.current?.currentTime ?? pos) }}
             onEnded={() => { playingRef.current = false; setPlaying(false); flushListen(); step(1) }}
-            onTimeUpdate={(e) => setPos(e.currentTarget.currentTime)}
+            onTimeUpdate={(e) => {
+              const position = e.currentTarget.currentTime
+              setPos(position)
+              if (playingRef.current && Date.now() - lastSharedSyncRef.current >= 5000) syncShared('playing', position)
+            }}
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
           />
         </div>
@@ -229,6 +281,24 @@ export function MusicModule() {
     )}
 
     {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+
+    <section className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }} data-testid="music-shared-session">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">共同听 · 当前会话</h2>
+          <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>播放状态由服务端同步；浏览器负责真正出声。</p>
+        </div>
+        <span className="rounded-full px-2 py-1 text-xs" style={{ background: 'var(--bg-subtle)', color: 'var(--text-secondary)' }}>{sharedSession?.listeners.companion === true ? '小栖在场' : '小栖未加入'}</span>
+      </div>
+      {sharedSession?.track === null || sharedSession === null ? (
+        <p className="mt-3 text-sm" style={{ color: 'var(--text-tertiary)' }}>还没有共同曲目。把一首可播放的歌放进歌单后，点击播放就会同步到这里。</p>
+      ) : (
+        <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+          <span className="min-w-0 truncate">{sharedSession.track.title}{sharedSession.track.artist ? ` · ${sharedSession.track.artist}` : ''}</span>
+          <span className="shrink-0 text-xs" style={{ color: 'var(--text-secondary)' }}>{sharedSession.state === 'playing' ? '播放中' : '已暂停'} · {mm(sharedSession.positionSeconds)}</span>
+        </div>
+      )}
+    </section>
 
     {/* ---------- 收歌单（Phase 2 原能力，字段与文案一个没动：验收依赖） ---------- */}
     <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
@@ -251,7 +321,7 @@ export function MusicModule() {
             data-testid={`music-row-play-${item.id}`}
             className="btn-pill flex-none"
             style={{ minHeight: 34, padding: '0 14px', fontSize: 12 }}
-            onClick={() => { flushListen(); setCurrentIndex(index); setPos(0); setDuration(0) }}
+            onClick={() => { flushListen(); setCurrentIndex(index); setPos(0); setDuration(0); syncShared('paused', 0, item) }}
           >
             {index === currentIndex ? '正在播' : '放到播放器'}
           </button>

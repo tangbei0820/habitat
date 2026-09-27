@@ -2549,3 +2549,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；前端回归覆盖 Home / Chat Dexie v13 / 导出备份 v11 / 伴学入口。生产 VPS 未在本批更新，待人工确认后单独部署。
 
 **待优化（后续批次）**：AI 日记片段级授权与更丰富的授权结果通知；留言编辑 / 收藏 / 分组；伴学的文件或链接材料、测验 / 苏格拉底模式、对话草稿自动填入、到期卡片筛选与更细的进度统计；移动端视觉细节。不得把这些未做项当成当前批次完成。
+
+### T-064 · 2026-09-27 · V2-D 一起听第一切片：真实浏览器播放 + 共享会话—— **完成（本地）**
+
+**边界**：只把“一起听”从 URL 卡片推进到真实浏览器播放与服务端权威会话；不在本批接入网易云搜索 / 歌词 / MCP Cookie、AI 选歌 / 评论、历史归档或 WebSocket 多端实时同步。
+
+| 交付 | 说明 |
+| --- | --- |
+| 真实播放 | 复用现有 `MusicTrack`，有 `externalUrl` 的曲目由浏览器 `<audio>` 播放；播放 / 暂停 / 上一首 / 下一首 / 进度均为真实控件，无链接时明确拒绝播放。 |
+| 共享会话 | 新增 `GET/PUT /api/listening/session`，复用 `app_kv` 保存主会话快照（曲目、播放态、位置、更新时间）；前端每 5 秒拉取并在播放 / 暂停 / 进度变化时同步。 |
+| 诚实在场 | 当前只报告用户侧会话，不伪造“小栖也在听”；伴侣在线 / AI 参与留给后续 Runtime 切片。 |
+| 生活痕迹 | 继续复用 `listenSessions` 累计真实播放秒数，Life 的“一起听”格读取同一真实来源。 |
+| 参考取舍 | 实查 Duetto 与 netease-music-mcp：借共享房间状态、播放上下文与 MCP 能力边界；不把 VPS mpv / Cookie 登录态搬进浏览器，也不复制外部 UI。 |
+
+**验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；`npm run probe:listening` **5/5**；前端回归中 `verify-batch6-skin` **32/32**，其中覆盖真音频 `src`、播放 / 暂停写入服务端共享会话与 Life 计时。整条前端流水线复测通过，保留既有 `verify-runtime` 的 2 项环境时序失败（空 runtime 状态 / Nocturne 检查时序），与本批无关。
+
+**待优化（后续切片）**：网易云 / 其它 Provider 的搜索、歌词与队列；MCP 音乐适配器（Cookie 仅服务端）；AI 选歌 / 评论与共同听歌记录；伴侣真实加入状态、WebSocket / 多端冲突处理；常驻播放器与断点恢复。生产 VPS 未在本批更新，仍停在 T-062 基线。

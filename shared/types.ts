@@ -439,6 +439,19 @@ export interface MusicTrack extends BaseObject {
   externalUrl: string | null
 }
 
+/** 服务器权威的“一起听”当前会话；曲目本体仍复用本地 MusicTrack 快照。 */
+export type ListeningPlaybackState = 'idle' | 'playing' | 'paused'
+
+export interface ListeningSessionView {
+  id: 'main'
+  track: Pick<MusicTrack, 'id' | 'title' | 'artist' | 'externalUrl'> | null
+  state: ListeningPlaybackState
+  positionSeconds: number
+  startedAt: number | null
+  updatedAt: number
+  listeners: { user: boolean; companion: boolean }
+}
+
 /** `studiedOn` 是本地日期；时长统一存分钟，避免展示层反复换算。 */
 export interface StudyRecord extends BaseObject {
   type: 'study-record'

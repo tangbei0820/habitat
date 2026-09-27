@@ -15,6 +15,7 @@
     "probe:nocturne-tools": "tsx scripts/probe-nocturne-tools.ts",
     "probe:mcp-manager": "tsx scripts/probe-mcp-manager.ts",
     "probe:nocturne-dashboard": "tsx scripts/probe-nocturne-dashboard.ts",
+    "probe:listening": "tsx scripts/probe-listening.ts",
     "probe:nocturne-tools-standalone": "node scripts/probe-nocturne-tools-standalone.mjs",
     "probe:phase3b": "tsx scripts/probe-phase3b.ts",
     "probe:phase4": "tsx scripts/probe-phase4.ts",

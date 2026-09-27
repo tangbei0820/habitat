@@ -500,6 +500,13 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
 返回 `{ cards: [{ front, back, example, hint }], model }`。前端再把卡片与复习状态存入 Dexie `studyCards`，
 因此离线时仍可翻卡和复习，但不能生成新卡。
 
+### `GET /api/listening/session` / `PUT /api/listening/session` —— 一起听当前会话
+
+当前只有单人格 `main` 会话。服务端保存当前曲目快照、播放状态（`idle` / `playing` / `paused`）、
+播放位置与更新时间；浏览器仍负责 `<audio>` 的实际播放，不把服务器上的 mpv 当成手机音源。
+`PUT` 请求体为 `{ track, state, positionSeconds }`，`track` 为复用 `MusicTrack` 的最小快照或 `null`（清空会话）。
+服务端只接受 `http(s)` 音频地址，不保存 Cookie / Provider 密钥。
+
 `GET /api/moments?limit=N` 供主屏 Widget 取最近 N 条 ——
 不然每次渲染主屏都要把全表拉过来再切片。`limit` 非正整数 → 400。
 

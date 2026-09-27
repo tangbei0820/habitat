@@ -210,6 +210,8 @@ check('播放器随歌单出现且当前曲目是第一首',
   (await evaluate(`document.querySelector('[data-testid="music-player"]') !== null && document.querySelector('[data-testid="music-player"]').innerText.includes('验收主题曲')`)) === true)
 check('audio 元素拿到真 src',
   (await evaluate(`document.querySelector('[data-testid="music-player"] audio')?.src.endsWith('/verify-tone.wav') ?? false`)) === true)
+check('一起听显示服务端共享会话卡',
+  await evaluate(`document.querySelector('[data-testid="music-shared-session"]')?.innerText.includes('共同听 · 当前会话') ?? false`))
 
 /* ================================================================
    三、真播放 → 时长落盘 → 生活痕迹「一起听」格读得到
@@ -221,6 +223,8 @@ await waitFor(`document.querySelector('[data-testid="music-play"]')?.getAttribut
 await sleep(2200) // interval 至少 tick 2 次，pending ≥ 2 秒
 await clickTestId('music-play') // 暂停（onPause 也会 flush）
 await waitFor(`document.querySelector('[data-testid="music-play"]')?.getAttribute('aria-label') === '播放'`, '暂停落盘')
+await waitFor(`document.querySelector('[data-testid="music-shared-session"]')?.innerText.includes('验收主题曲') ?? false`, '共享曲目同步')
+check('播放 / 暂停会把当前曲目同步到服务端会话', true)
 await go('/life')
 await waitFor(`document.querySelector('[data-testid="life-view-switch"]') !== null`, '生活页')
 const musicCell = await evaluate(`(() => {

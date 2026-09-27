@@ -1,0 +1,82 @@
+/** 一起听当前会话：只保存共享播放状态，不复制本地音乐库。 */
+import type { ListeningPlaybackState, ListeningSessionView, MusicTrack } from '@shared/types.js'
+import { getKv, setKv } from './kv.js'
+
+const KEY = 'listening.session.main'
+
+type TrackSnapshot = Pick<MusicTrack, 'id' | 'title' | 'artist' | 'externalUrl'>
+
+function emptySession(): ListeningSessionView {
+  return {
+    id: 'main',
+    track: null,
+    state: 'idle',
+    positionSeconds: 0,
+    startedAt: null,
+    updatedAt: 0,
+    listeners: { user: false, companion: false },
+  }
+}
+
+function isTrack(value: unknown): value is TrackSnapshot {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const item = value as Record<string, unknown>
+  return typeof item.id === 'string' && typeof item.title === 'string' &&
+    (item.artist === null || typeof item.artist === 'string') &&
+    (item.externalUrl === null || typeof item.externalUrl === 'string')
+}
+
+function decode(raw: string | null): ListeningSessionView {
+  if (raw === null) return emptySession()
+  try {
+    const value: unknown = JSON.parse(raw)
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return emptySession()
+    const item = value as Record<string, unknown>
+    const state = item.state === 'playing' || item.state === 'paused' || item.state === 'idle' ? item.state : 'idle'
+    const listeners = typeof item.listeners === 'object' && item.listeners !== null && !Array.isArray(item.listeners)
+      ? item.listeners as Record<string, unknown>
+      : {}
+    return {
+      id: 'main',
+      track: isTrack(item.track) ? item.track : null,
+      state,
+      positionSeconds: typeof item.positionSeconds === 'number' && Number.isFinite(item.positionSeconds) && item.positionSeconds >= 0 ? item.positionSeconds : 0,
+      startedAt: typeof item.startedAt === 'number' ? item.startedAt : null,
+      updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : 0,
+      listeners: { user: listeners.user === true, companion: listeners.companion === true },
+    }
+  } catch {
+    return emptySession()
+  }
+}
+
+export function getListeningSession(): ListeningSessionView {
+  return decode(getKv(KEY))
+}
+
+export interface ListeningSessionPatch {
+  track: TrackSnapshot | null
+  state: ListeningPlaybackState
+  positionSeconds: number
+}
+
+export function updateListeningSession(patch: ListeningSessionPatch): ListeningSessionView {
+  const previous = getListeningSession()
+  const now = Date.now()
+  const trackChanged = patch.track?.id !== previous.track?.id
+  const startedAt = patch.state === 'playing'
+    ? (trackChanged || previous.startedAt === null ? now : previous.startedAt)
+    : previous.startedAt
+  const next: ListeningSessionView = {
+    id: 'main',
+    track: patch.track,
+    state: patch.track === null ? 'idle' : patch.state,
+    positionSeconds: patch.track === null ? 0 : patch.positionSeconds,
+    startedAt: patch.track === null ? null : startedAt,
+    updatedAt: now,
+    // 当前是单用户实例；companion 是否加入由后续 AI 行动切片接入，绝不在 UI 里伪造在线。
+    listeners: { user: patch.track !== null, companion: previous.listeners.companion },
+  }
+  setKv(KEY, JSON.stringify(next))
+  return next
+}

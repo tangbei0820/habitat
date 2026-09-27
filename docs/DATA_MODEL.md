@@ -178,6 +178,7 @@ interface SessionGroup extends BaseObject {
 | `Photo` | `photos` | `title`, `caption`, `imageDataUrl`, `mimeType`, `sizeBytes`, `takenAt`, `collectionId` |
 | `ReadingNote` | `readingNotes` | `bookTitle`, `author`, `status`, `note` |
 | `MusicTrack` | `musicTracks` | `title`, `artist`, `note`, `externalUrl` |
+| `ListeningSessionView` | 服务端 `app_kv:listening.session.main` | 当前曲目最小快照、`state`, `positionSeconds`, `startedAt`, `listeners`；不复制音乐库 |
 | `StudyRecord` | `studyRecords` | `subject`, `note`, `studiedOn`, `durationMinutes` |
 | `StudyCard` | `studyCards` | `subject`, `front`, `back`, `example`, `hint`, `dueOn`, `intervalDays`, `ease`, `repetitions` |
 
