@@ -267,7 +267,7 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
 
 | name | 何时注入 | 内容 |
 | --- | --- | --- |
-| `runtime_rules` | 每轮 | 恒定三条规则（以能力清单为准 / 已执行的调用是既成事实 / 直接调用而不是嘴上说） |
+| `runtime_rules` | 每轮 | 恒定能力闭环规则 + 公开思绪分流规则（以能力清单为准 / 已执行的调用是既成事实 / 直接调用而不是嘴上说 / 思绪标记与 Provider reasoning 分开） |
 | `runtime_capabilities` | 每轮 | **当前真实可用**的能力清单（Registry 生成，绝不写死） |
 | `nocturne_memory` | 仅会话开头一次 | 长期记忆全文（超过 16 000 字截断并标注） |
 | `eventide_state` | 每轮 | Eventide 状态卡 |
@@ -298,7 +298,8 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
 
 | event | data | 说明 |
 | --- | --- | --- |
-| `chat-delta` | `{ content?, reasoning? }` | 正文 / 思维链增量，可能只带其一 |
+| `chat-delta` | `{ content?, reasoning? }` | 正文 / **Provider reasoning** 增量，可能只带其一；`reasoning` 不是公开思绪 |
+| `thought` | `{ content }` | 小栖主动公开的角色内心增量；服务端从可选 `[[思考：…]]` 标记分流，标记不会进入正文 |
 | `tool-call` | `ChatToolCallPayload` | **AI 自主发起**的一次工具调用**已执行完**（见下） |
 | `chat-usage` | `{ profileId, model, promptTokens, completionTokens, totalTokens }` | 上游末包用量（多轮工具调用时是**合计**） |
 | `chat-done` | `{ finishReason, usage, usageRecordId }` | 正常收口；`usageRecordId` 为 UsageRecord 主键 |
@@ -347,7 +348,7 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
 
 - 客户端断开 → 服务端立刻 abort 上游（不白烧 token），但已产生的用量仍落表
 - 建连超时默认 30s；空闲超时默认 60s（上游多少毫秒没吐新数据即判定挂死并中断）
-- `reasoning_content` 与正文分别以 `reasoning` / `content` 下发；前端 Phase 1 只渲染正文，思维链存进消息的 `metadata.reasoning` 备 Phase 3 用
+- `reasoning_content` 与正文分别以 `reasoning` / `content` 下发；可选的 `[[思考：…]]` 标记则另行以 `thought` 事件分流。前端把正文、`metadata.publicThought` 与 `metadata.providerReasoning` 分开保存；旧 `metadata.reasoning` 仅作兼容读取。
 
 ### 用量落表（UsageRecord）
 

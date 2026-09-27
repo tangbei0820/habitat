@@ -40,10 +40,15 @@ export interface ChatStreamRequest {
   maxTokens?: number
 }
 
-/** `chat-delta`：正文与思维链增量，可能只带其一 */
+/** `chat-delta`：正文与供应商原生 reasoning 增量，可能只带其一 */
 export interface ChatDeltaPayload {
   content?: string
   reasoning?: string
+}
+
+/** `thought`：小栖主动公开的角色内心增量，不等同于供应商原生 reasoning。 */
+export interface ChatThoughtPayload {
+  content: string
 }
 
 /**

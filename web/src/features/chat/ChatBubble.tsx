@@ -148,18 +148,24 @@ export function ChatBubble({
    * 撤回痕迹与称呼放一起会很吵，撤回态不显示。
    */
   const showNickname = useChatDisplay((state) => state.showNickname)
+  const showProviderReasoning = useChatDisplay((state) => state.showProviderReasoning)
   // 订阅总是执行（hook 规则），「这条消息是不是人」在组件内判断
   const nameForRole = useChatDisplay((state) => identityName(state, isUser ? 'user' : 'companion'))
   const nickname = isPerson ? nameForRole : null
 
-  /**
-   * 思绪折叠卡（SPEC §2.3.6）：只给 AI 消息、只在确实落了 reasoning 时渲染，
-   * 没有就什么壳都不出。reasoning 是「当前展示这版」的过程痕迹，跟随 metadata 走。
-   */
-  const reasoning =
-    !isUser && typeof message.metadata?.reasoning === 'string' && message.metadata.reasoning !== ''
+  /** 思绪 / 正文 / Provider reasoning 三路分开：公开思绪默认可见，供应商推理只在高级开关打开时显示。 */
+  const publicThought =
+    !isUser && typeof message.metadata?.publicThought === 'string' && message.metadata.publicThought !== ''
+      ? message.metadata.publicThought
+      : null
+  const providerReasoningValue = typeof message.metadata?.providerReasoning === 'string'
+    ? message.metadata.providerReasoning
+    : typeof message.metadata?.reasoning === 'string'
       ? message.metadata.reasoning
       : null
+  const providerReasoning = !isUser && showProviderReasoning && providerReasoningValue !== ''
+    ? providerReasoningValue
+    : null
 
   /**
    * 操作行何时出现：SPEC §2.3 要求双方消息都拥有对象级操作能力。
@@ -340,7 +346,8 @@ export function ChatBubble({
               `TextBlockView` 本身就是 `whitespace-pre-wrap break-words`，
               比原来的 `whitespace-pre-wrap` 只多一个断词，所以这不是「能力补齐」，是**把分叉去掉**。
             */}
-            {reasoning !== null && <ReasoningCard reasoning={reasoning} />}
+            {publicThought !== null && <ReasoningCard reasoning={publicThought} />}
+            {providerReasoning !== null && <ReasoningCard reasoning={providerReasoning} variant="provider" />}
             <MessageBlocks blocks={message.blocks} />
             {isStreaming &&
               (text === '' ? (

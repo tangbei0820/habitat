@@ -2711,3 +2711,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm run typecheck`、`npm run build`、`node --check web/scripts/verify-chat.mjs`、`git diff --check` 已通过；本机无 CDP 页面，新增浏览器断言未实际执行。生产仍停在 T-072，本批不部署。
 
 **待优化（后续切片）**：搜索结果高亮词、跨会话结果分页 / 搜索历史、语音转写失败后的可检索替代、服务端大规模索引；联网搜索、上下文压缩、贴纸、TTS、通话仍按 V2-B 后续切片推进。
+
+### T-074 · 2026-09-27 · V2-B 第二切片：公开思绪 / 正文 / Provider reasoning 三路协议—— **完成（本地）**
+
+**边界**：只把伴侣公开思绪与供应商原生 reasoning 分流并落库；不在本批进入联网搜索、上下文压缩、贴纸、TTS、通话或思绪收藏。
+
+| 交付 | 说明 |
+| --- | --- |
+| 公开思绪协议 | `RUNTIME_RULES_TEXT` 允许模型选择在正文前输出 `[[思考：…]]`；服务端 `PublicThoughtParser` 可跨上游 chunk 识别起止标记，分流为独立 `thought` SSE，不把协议标记漏进正文。标记不完整时保留正文、不泄漏内部前缀。 |
+| 三路存储 | `content` 仍进入正文块；公开思绪写入 `metadata.publicThought`；供应商原生 `reasoning_content / reasoning` 写入 `metadata.providerReasoning`，旧 `metadata.reasoning` 只作兼容读取。两者均受长度上限保护。 |
+| 展示与权限 | 公开思绪沿用头部折叠卡，默认收起、纯文本渲染；Provider reasoning 默认隐藏，聊天设置增加高级开关后以明确标签单独查看，不再冒充小栖心声。 |
+| 流式客户端 | `chatStream` 增加 `onThought`，生成草稿 / 重roll / 持久化收尾均同时保存两条元数据；搜索、收藏、作品与导出正文仍只取正常消息块。 |
+| 参考取舍 | 实查 [ai-companion-cot-emotion](https://github.com/yanke521/ai-companion-cot-emotion)：借鉴“角色内心用明确正文标记分流、禁止把原生 thinking 当心声”的协议思路；不采用其强制每轮长篇思考、情绪系统或独立运行时。 |
+| 验收 | `verify-chat` 增加公开思绪标记跨流分流、正文无标记、Provider reasoning 默认隐藏与高级开关显示断言；服务端 mock 提供专门公开思绪场景。 |
+
+**验收**：`npm run typecheck`、`npm run build`、`node --check web/scripts/verify-chat.mjs`、`git diff --check` 通过；另以 `tsx` 直测分片 / 未闭合标记解析。生产仍停在 T-072，本批未部署；本机无 CDP 页面，浏览器断言未实际执行。
+
+**待优化（后续切片）**：公开思绪可见性偏好、单独收藏 / 导出策略、模型输出标记的更强结构化协议与安全审查；联网搜索、上下文压缩、贴纸、TTS、通话仍按 V2-B 后续切片推进。

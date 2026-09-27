@@ -26,6 +26,7 @@ import {
 import {
   addVersion,
   appendMessage,
+  capPublicThought,
   capReasoning,
   deleteMessage,
   deleteMessages,
@@ -325,7 +326,8 @@ export function ChatWindowPage() {
 
     // 累加用局部变量而不是 state：回调里读 state 只会拿到闭包里的旧值
     let content = ''
-    let reasoning = ''
+    let publicThought = ''
+    let providerReasoning = ''
     let failure: string | null = null
 
     let draftId: string | null = null
@@ -343,9 +345,13 @@ export function ChatWindowPage() {
       const now = Date.now()
       if (!force && now - lastFlush < DRAFT_FLUSH_MS) return
       lastFlush = now
+      const metadata = {
+        ...(publicThought === '' ? {} : { publicThought: capPublicThought(publicThought) }),
+        ...(providerReasoning === '' ? {} : { providerReasoning: capReasoning(providerReasoning) }),
+      }
       const patch = {
         blocks: [textBlock(content)],
-        ...(reasoning === '' ? {} : { metadata: { reasoning: capReasoning(reasoning) } }),
+        ...(Object.keys(metadata).length === 0 ? {} : { metadata }),
       }
       try {
         await updateMessage(draftId, patch)
@@ -362,7 +368,11 @@ export function ChatWindowPage() {
         {
           onDelta: (delta) => {
             if (delta.content !== undefined) content += delta.content
-            if (delta.reasoning !== undefined) reasoning += delta.reasoning
+            if (delta.reasoning !== undefined) providerReasoning += delta.reasoning
+            void flushDraft()
+          },
+          onThought: (thought) => {
+            publicThought += thought.content
             void flushDraft()
           },
           onToolCall: (call) => {
@@ -397,7 +407,7 @@ export function ChatWindowPage() {
     if (targetId !== null) {
       // 换一个：正文非空才替换，失败 / 空回复时保住旧版本，用户不会有损失
       if (content !== '') {
-        const updated = await addVersion(targetId, { content, status, reasoning })
+        const updated = await addVersion(targetId, { content, status, publicThought, providerReasoning })
         if (updated !== null) {
           setMessages((prev) => prev.map((m) => (m.id === targetId ? updated : m)))
         }
@@ -405,10 +415,14 @@ export function ChatWindowPage() {
     } else if (draftId !== null) {
       if (content !== '') {
         // 收尾定性：内容 + 状态一次写回，刷新后这轮的成果完整可见
+        const metadata = {
+          ...(publicThought === '' ? {} : { publicThought: capPublicThought(publicThought) }),
+          ...(providerReasoning === '' ? {} : { providerReasoning: capReasoning(providerReasoning) }),
+        }
         const finalPatch = {
           blocks: [textBlock(content)],
           status,
-          ...(reasoning === '' ? {} : { metadata: { reasoning: capReasoning(reasoning) } }),
+          ...(Object.keys(metadata).length === 0 ? {} : { metadata }),
         }
         await updateMessage(draftId, finalPatch)
         setMessages((prev) => prev.map((m) => (m.id === draftId ? { ...m, ...finalPatch } : m)))

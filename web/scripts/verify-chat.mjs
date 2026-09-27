@@ -312,6 +312,23 @@ await reloadAndWait(`document.body.innerText.includes('链路正常')`, '刷新�
 const reloadedText = await evaluate('document.body.innerText')
 check('刷新后消息仍在（Dexie 落库）', reloadedText.includes('链路正常'), '')
 
+/* ---------- 6.5 V2-B 第二切片：公开思绪与 Provider reasoning 分流 ---------- */
+await type('公开思绪验收')
+await clickSend()
+await waitFor(`document.body.innerText.includes('公开思绪协议的正文。')`, '公开思绪正文落地', 25000)
+const publicThoughtState = await evaluate(`(() => {
+  const card = document.querySelector('[data-testid="reasoning-card"]')
+  const provider = document.querySelector('[data-testid="provider-reasoning-card"]')
+  return {
+    thought: card?.textContent ?? '',
+    providerVisible: provider !== null,
+    bodyHasMarker: document.body.innerText.includes('[[思考：'),
+  }
+})()`)
+check('公开思绪独立成折叠卡且不把协议标记漏进正文', publicThoughtState.thought.includes('看它的思绪') && publicThoughtState.bodyHasMarker === false, JSON.stringify(publicThoughtState))
+check('Provider reasoning 默认不展示', publicThoughtState.providerVisible === false, JSON.stringify(publicThoughtState))
+await waitIdle('公开思绪收尾')
+
 /* ---------- 7. IndexedDB 版本与索引 ---------- */
 // Dexie 把声明的版本号 ×10 当作 IndexedDB 版本（v1→10 / v2→20 / v3→30）。
 // 这里不只比版本号：光看版本号分不出「升到了 v3」和「v3 的 stores 写错了」，
@@ -1178,7 +1195,7 @@ await seedMessages('pin-new', [
   ], { createdAt: 2000, updatedAt: 2000 }),
   seedMessage('settings-ai', 'assistant', [
     { kind: 'text', order: 0, payload: { text: '设置模式验收消息' } },
-  ], { createdAt: 2100, updatedAt: 2100, metadata: { reasoning: '先看看用户说了什么，然后组织一句简短的回复' } }),
+  ], { createdAt: 2100, updatedAt: 2100, metadata: { publicThought: '先看看用户说了什么，然后组织一句简短的回复', providerReasoning: '供应商诊断内容默认不展示' } }),
 ])
 await evaluate(`(() => { history.pushState({}, '', '/chat'); dispatchEvent(new PopStateEvent('popstate')); return 'ok' })()`)
 await waitFor(`document.querySelector('[data-testid="session-row-pin-old"]') !== null`, '置顶验收会话进入列表')
@@ -2024,7 +2041,13 @@ const restored = await evaluate(`(() => ({
 check('恢复默认后头像回显、昵称收起', restored.avatars >= 2 && restored.nick === 0, JSON.stringify(restored))
 await evaluate(`(() => { document.querySelector('[aria-label="关闭聊天设置"]').click(); return 'ok' })()`)
 
-/* ---------- 13.5 思绪折叠卡（SPEC §2.3.6，Phase 7A） ---------- */
+/* ---------- 13.5 思绪三路分流（SPEC §2.3.6，V2-B 第二切片） ---------- */
+await evaluate(`(() => { document.querySelector('[data-testid="chat-settings-open"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="chat-setting-provider-reasoning"]') !== null`, 'Provider reasoning 高级开关')
+await evaluate(`(() => { document.querySelector('[data-testid="chat-setting-provider-reasoning"]').click(); return 'ok' })()`)
+await waitFor(`document.querySelector('[data-testid="provider-reasoning-card"]') !== null`, 'Provider reasoning 高级卡片')
+check('高级开关打开后可单独查看 Provider reasoning', (await evaluate(`document.querySelector('[data-testid="provider-reasoning-toggle"]')?.textContent.includes('Provider reasoning') === true`)) === true, '')
+await evaluate(`(() => { document.querySelector('[data-testid="chat-setting-provider-reasoning"]').click(); document.querySelector('[aria-label="关闭聊天设置"]').click(); return 'ok' })()`)
 const reasoningCard = await evaluate(`(() => {
   const cards = [...document.querySelectorAll('[data-testid="reasoning-card"]')]
   const last = cards[cards.length - 1]
@@ -2036,7 +2059,7 @@ const reasoningCard = await evaluate(`(() => {
     expanded: last.querySelector('[data-testid="reasoning-toggle"]')?.getAttribute('aria-expanded'),
   }
 })()`)
-check('有 reasoning 的 AI 消息渲染思绪折叠卡（默认收起）', reasoningCard.present === true
+check('有公开思绪的 AI 消息渲染思绪折叠卡（默认收起）', reasoningCard.present === true
   && reasoningCard.contentVisible === false && reasoningCard.expanded === 'false', JSON.stringify(reasoningCard))
 check('折叠卡语义明确（「思绪」而非正文）', reasoningCard.toggleText === '看它的思绪', reasoningCard.toggleText ?? '')
 
@@ -2052,7 +2075,7 @@ if (reasoningCard.present === true) {
     const content = last?.querySelector('[data-testid="reasoning-content"]')
     return { text: content?.textContent ?? '', length: content?.textContent.length ?? 0 }
   })()`)
-  check('点开能看到完整思绪文本（mock 思维链拼进来）', expanded.length > 0 && expanded.text.includes('先看看用户说了什么'), `length=${expanded.length} text=${expanded.text.slice(0, 40)}`)
+  check('点开能看到完整公开思绪文本', expanded.length > 0 && expanded.text.includes('先看看用户说了什么'), `length=${expanded.length} text=${expanded.text.slice(0, 40)}`)
   await evaluate(`(() => {
     const cards = [...document.querySelectorAll('[data-testid="reasoning-card"]')]
     cards[cards.length - 1].querySelector('[data-testid="reasoning-toggle"]').click()
@@ -2064,6 +2087,8 @@ if (reasoningCard.present === true) {
   })()`)
   check('再点收起后内容不渲染', collapsed === true, JSON.stringify(collapsed))
 }
+const providerReasoningHidden = await evaluate(`document.querySelector('[data-testid="provider-reasoning-card"]') === null`)
+check('Provider reasoning 默认隐藏且不冒充公开思绪', providerReasoningHidden === true, '')
 
 /* ---------- 14. 控制台 ---------- */
 const errors = consoleLogs.filter((l) => l.startsWith('[error]') || l.startsWith('[exception]'))

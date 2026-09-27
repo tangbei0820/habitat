@@ -236,6 +236,14 @@ function backgroundReply(body: Record<string, unknown>): string[] | null {
   return null
 }
 
+function publicThoughtReply(body: Record<string, unknown>): string[] | null {
+  const messages = messagesOf(body)
+  const lastUser = [...messages].reverse().find((message) => message.role === 'user')
+  const text = typeof lastUser?.content === 'string' ? lastUser.content : ''
+  if (!text.includes('公开思绪验收')) return null
+  return ['[[思考：我注意到这是一轮公开思绪验收。]]', '这是公开思绪协议的正文。']
+}
+
 /**
  * 协议一致性校验：`role='tool'` 消息必须**紧跟**在带 `tool_calls` 的 assistant 消息之后，
  * 且自身带 `tool_call_id`。
@@ -384,7 +392,13 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
           return
         }
         const background = backgroundReply(record)
-        await handleStream(res, model, background ?? REPLY_PIECES, background === null ? REASONING_PIECES : [])
+        const publicThought = publicThoughtReply(record)
+        await handleStream(
+          res,
+          model,
+          publicThought ?? background ?? REPLY_PIECES,
+          publicThought === null && background === null ? REASONING_PIECES : [],
+        )
         return
       }
       const isVision = Array.isArray(record.messages) && record.messages.some((message) =>

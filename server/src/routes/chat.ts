@@ -45,6 +45,7 @@ import { ToolCallAccumulator } from '../lib/tool-call-accumulator.js'
 import { ProviderError } from '../providers/errors.js'
 import type { LlmRegistry } from '../providers/registry.js'
 import { settleChatInteraction } from '../services/settlement.js'
+import { PublicThoughtParser } from '../lib/public-thought.js'
 
 const ROLES: readonly LlmRole[] = ['system', 'user', 'assistant', 'tool']
 
@@ -321,6 +322,7 @@ export function registerChatRoutes(
     try {
       for (;;) {
         const accumulator = new ToolCallAccumulator()
+        const thoughtParser = new PublicThoughtParser()
         let roundText = ''
         let roundUsage: LlmUsage | null = null
 
@@ -328,14 +330,16 @@ export function registerChatRoutes(
           const chunk = step.value
           if (chunk.type === 'delta') {
             const { content, reasoning, toolCalls } = chunk.delta
-            if (content !== undefined || reasoning !== undefined) {
+            const parsed = content === undefined ? { content: '', thought: '' } : thoughtParser.feed(content)
+            if (parsed.thought !== '') writeFrame(res, 'thought', { content: parsed.thought })
+            if (parsed.content !== '' || reasoning !== undefined) {
               const payload: ChatDeltaPayload = {
-                ...(content === undefined ? {} : { content }),
+                ...(parsed.content === '' ? {} : { content: parsed.content }),
                 ...(reasoning === undefined ? {} : { reasoning }),
               }
               writeFrame(res, 'chat-delta', payload)
             }
-            if (content !== undefined) roundText += content
+            roundText += parsed.content
             if (toolCalls !== undefined) accumulator.push(toolCalls)
           } else if (chunk.type === 'usage') {
             roundUsage = chunk.usage
@@ -344,6 +348,13 @@ export function registerChatRoutes(
           }
           if (clientGone) break
           step = await iterator.next()
+        }
+
+        const tail = thoughtParser.finish()
+        if (tail.thought !== '') writeFrame(res, 'thought', { content: tail.thought })
+        if (tail.content !== '') {
+          writeFrame(res, 'chat-delta', { content: tail.content })
+          roundText += tail.content
         }
 
         assistantText += roundText

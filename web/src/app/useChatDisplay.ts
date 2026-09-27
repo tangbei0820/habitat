@@ -31,6 +31,8 @@ interface ChatDisplayState {
   showUserAvatar: boolean
   /** 气泡上方是否显示昵称（默认关：气泡本身已能区分双方） */
   showNickname: boolean
+  /** 是否显式显示供应商原生 reasoning（高级诊断，默认关）。 */
+  showProviderReasoning: boolean
   /** 小栖的昵称；空串回落默认值 */
   companionName: string
   /** 小栖头像（128px 方形 data URL）；null = 用首字 */
@@ -43,6 +45,7 @@ interface ChatDisplayState {
   toggleCompanionAvatar: () => void
   toggleUserAvatar: () => void
   toggleNickname: () => void
+  toggleProviderReasoning: () => void
   setNickname: (role: IdentityRole, name: string) => void
   setAvatar: (role: IdentityRole, dataUrl: string | null) => void
 }
@@ -68,6 +71,7 @@ export const useChatDisplay = create<ChatDisplayState>()(
       showCompanionAvatar: true,
       showUserAvatar: true,
       showNickname: false,
+      showProviderReasoning: false,
       companionName: '',
       companionAvatar: null,
       userName: '',
@@ -76,6 +80,7 @@ export const useChatDisplay = create<ChatDisplayState>()(
       toggleCompanionAvatar: () => set({ showCompanionAvatar: !get().showCompanionAvatar }),
       toggleUserAvatar: () => set({ showUserAvatar: !get().showUserAvatar }),
       toggleNickname: () => set({ showNickname: !get().showNickname }),
+      toggleProviderReasoning: () => set({ showProviderReasoning: !get().showProviderReasoning }),
       setNickname: (role, name) =>
         set(role === 'companion' ? { companionName: name } : { userName: name }),
       setAvatar: (role, dataUrl) =>
@@ -87,7 +92,7 @@ export const useChatDisplay = create<ChatDisplayState>()(
        * v0 → v1：原来只有一个 `showAvatars` 总开关，拆成两侧独立开关时继承旧值 ——
        * 用户关掉过的偏好不能因为升级又冒出来。
        */
-      version: 1,
+      version: 2,
       migrate: (persisted, version) => {
         const old = (persisted ?? {}) as Partial<ChatDisplayState> & { showAvatars?: boolean }
         if (version < 1 && typeof old.showAvatars === 'boolean') {
@@ -95,9 +100,13 @@ export const useChatDisplay = create<ChatDisplayState>()(
             ...old,
             showCompanionAvatar: old.showAvatars,
             showUserAvatar: old.showAvatars,
+            showProviderReasoning: false,
           } as ChatDisplayState
         }
-        return old as ChatDisplayState
+        return {
+          ...old,
+          showProviderReasoning: old.showProviderReasoning ?? false,
+        } as ChatDisplayState
       },
     },
   ),

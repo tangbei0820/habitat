@@ -39,9 +39,11 @@ export function ChatSettingsSheet({
   const showCompanionAvatar = useChatDisplay((state) => state.showCompanionAvatar)
   const showUserAvatar = useChatDisplay((state) => state.showUserAvatar)
   const showNickname = useChatDisplay((state) => state.showNickname)
+  const showProviderReasoning = useChatDisplay((state) => state.showProviderReasoning)
   const toggleCompanionAvatar = useChatDisplay((state) => state.toggleCompanionAvatar)
   const toggleUserAvatar = useChatDisplay((state) => state.toggleUserAvatar)
   const toggleNickname = useChatDisplay((state) => state.toggleNickname)
+  const toggleProviderReasoning = useChatDisplay((state) => state.toggleProviderReasoning)
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
@@ -191,6 +193,7 @@ export function ChatSettingsSheet({
             { label: '小栖头像', value: showCompanionAvatar, toggle: toggleCompanionAvatar, testId: 'chat-setting-companion-avatar' },
             { label: '我的头像', value: showUserAvatar, toggle: toggleUserAvatar, testId: 'chat-setting-user-avatar' },
             { label: '气泡昵称', value: showNickname, toggle: toggleNickname, testId: 'chat-setting-nickname' },
+            { label: 'Provider reasoning（高级）', value: showProviderReasoning, toggle: toggleProviderReasoning, testId: 'chat-setting-provider-reasoning' },
           ]).map((row) => (
             <div key={row.testId} className="flex items-center justify-between gap-3 py-1.5 text-sm">
               <span>{row.label}</span>
@@ -207,7 +210,7 @@ export function ChatSettingsSheet({
             </div>
           ))}
           <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-            影响所有会话，点了立刻生效（不用点保存）。头像与称呼在设置页「身份」里配置。
+            影响所有会话，点了立刻生效（不用点保存）。Provider reasoning 是供应商诊断信息，不等同于小栖公开思绪。
           </p>
         </div>
 

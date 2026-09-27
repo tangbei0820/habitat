@@ -10,6 +10,7 @@ import type {
   ChatDonePayload,
   ChatErrorPayload,
   ChatStreamRequest,
+  ChatThoughtPayload,
   ChatToolCallPayload,
   ChatUsagePayload,
 } from '@shared/events'
@@ -17,6 +18,8 @@ import { ApiRequestError, assertOnline } from './api'
 
 export interface ChatStreamHandlers {
   onDelta?: (delta: ChatDeltaPayload) => void
+  /** 小栖主动公开的角色内心；与供应商原生 reasoning 分开。 */
+  onThought?: (thought: ChatThoughtPayload) => void
   /**
    * AI 自主发起的一次工具调用**已执行完**（成功或失败都会来一帧）。
    *
@@ -59,6 +62,9 @@ function dispatchFrame(raw: string, handlers: ChatStreamHandlers): void {
   switch (event) {
     case 'chat-delta':
       handlers.onDelta?.(payload as ChatDeltaPayload)
+      break
+    case 'thought':
+      handlers.onThought?.(payload as ChatThoughtPayload)
       break
     case 'tool-call':
       handlers.onToolCall?.(payload as ChatToolCallPayload)

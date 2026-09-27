@@ -28,12 +28,21 @@ const ID_MAX = '￿'
 
 /** 思维链落库上限（字符数）：R1 类长思维链会让单条消息记录明显膨胀，超出的截断保留头尾 */
 export const REASONING_LIMIT = 32_000
+/** 公开思绪落库上限：它是给人看的短卡，不让异常模型输出撑大本地消息。 */
+export const PUBLIC_THOUGHT_LIMIT = 12_000
 
 export function capReasoning(reasoning: string): string {
   if (reasoning.length <= REASONING_LIMIT) return reasoning
   const head = reasoning.slice(0, REASONING_LIMIT / 2)
   const tail = reasoning.slice(-(REASONING_LIMIT / 2))
   return `${head}\n…（思维链过长，已截断）…\n${tail}`
+}
+
+export function capPublicThought(thought: string): string {
+  if (thought.length <= PUBLIC_THOUGHT_LIMIT) return thought
+  const head = thought.slice(0, PUBLIC_THOUGHT_LIMIT / 2)
+  const tail = thought.slice(-(PUBLIC_THOUGHT_LIMIT / 2))
+  return `${head}\n…（公开思绪过长，已截断）…\n${tail}`
 }
 
 export function newSession(title: string): ChatSession {
@@ -426,7 +435,8 @@ export interface AddVersionInput {
   /** 这条新版本怎么来的：重roll（模型重出）还是编辑（用户改） */
   origin?: MessageCandidate['origin']
   status?: MessageStatus
-  reasoning?: string
+  publicThought?: string
+  providerReasoning?: string
 }
 
 /**
@@ -470,14 +480,22 @@ export async function addVersion(id: string, input: AddVersionInput): Promise<Ch
   if (message === undefined) return null
 
   const origin = input.origin ?? 'reroll'
+  const hasThoughtPatch = input.publicThought !== undefined || input.providerReasoning !== undefined
+  const metadata = { ...message.metadata }
+  if (input.publicThought !== undefined) {
+    if (input.publicThought === '') delete metadata.publicThought
+    else metadata.publicThought = capPublicThought(input.publicThought)
+  }
+  if (input.providerReasoning !== undefined) {
+    if (input.providerReasoning === '') delete metadata.providerReasoning
+    else metadata.providerReasoning = capReasoning(input.providerReasoning)
+  }
   const next: ChatMessage = {
     ...message,
     blocks: [textBlock(input.content)],
     candidates: withNewVersion(message, input.content, origin),
     ...(input.status === undefined ? {} : { status: input.status }),
-    ...(input.reasoning === undefined || input.reasoning === ''
-      ? {}
-      : { metadata: { ...message.metadata, reasoning: capReasoning(input.reasoning) } }),
+    ...(hasThoughtPatch ? { metadata } : {}),
     updatedAt: Date.now(),
   }
   await db.messages.put(next)
