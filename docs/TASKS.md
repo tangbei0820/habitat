@@ -2662,3 +2662,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；服务端 `probe-diary` **43/43**，`probe-event-inbox` 的留言编辑与能力面断言通过（全脚本仅剩未配置 Nocturne 时既有 `memory.write` 1 项失败），浏览器 `verify-home` 目标 **92/92**（本机无 CDP 时只完成脚本静态校验）。
 
 **待优化（后续功能）**：留言分组与 Widget 指定范围；留言编辑历史 / 撤回；收藏条目删除来源后的“已失效”提示；站内通知与朋友圈互通。本批不提前施工。
+
+### T-071 · 2026-09-27 · AI 伴学到期复习队列与进度统计—— **完成（本地）**
+
+**边界**：只把已有 AI 闪卡从“生成后全部混排”推进到真实复习队列；不在本批接入文件 / 链接资料、测验、苏格拉底对话、AI 自动排课或新的学习数据表。
+
+| 交付 | 说明 |
+| --- | --- |
+| 到期队列 | 复用 `StudyCard.dueOn`，默认只展示今天及以前到期的卡片；未来卡片不会混入今日复习。 |
+| 复习筛选 | 增加「待复习 / 全部 / 已形成间隔」三种筛选；“已形成间隔”只表示 `repetitions >= 3` 或 `intervalDays >= 7`，不冒充永久掌握。 |
+| 进度统计 | 页面显示到期数量、今日已复习数量、卡片总数与已形成间隔数量；复习后立即更新本地统计。 |
+| 复习状态 | `reviewStudyCard` 返回更新后的完整卡片，界面按本次复习会话暂时移出已处理卡片，刷新后仍以真实 `dueOn` 决定队列。 |
+| 验收 | `verify-batch6-skin` 清场并注入到期 / 未来 / 成熟三种真实卡片，覆盖默认到期队列、全部筛选、成熟筛选；脚本语法、两端 typecheck 与 web build 同步通过。 |
+| 参考取舍 | 实查 [StudyIndex](https://github.com/ethanhunt1011/studyindex) README：借“到期 badge / drill mode / SM-2 进度反馈”语义；不引入其账号、云端资料库、RAG、考试和另一套复习算法。 |
+
+**验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；`node --check web/scripts/verify-batch6-skin.mjs` 通过；本机无 CDP 页面，浏览器 4 项新增断言未执行。生产 VPS 未在本批更新。
+
+**待优化（后续功能）**：资料上传 / 链接解析；测验与苏格拉底对话；AI 根据历史表现生成下一组卡片；学习记录与卡片复习进入 Life 的细粒度事件；移动端视觉细节。本批不提前施工。

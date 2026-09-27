@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { StudyRecord, StudyTask } from '@shared/types'
 import { IconCalendar, IconCheck } from '../../components/qixi/Icons'
 import { createStudyRecord, deleteStudyRecord, listStudyRecords, updateStudyRecord } from '../../db/home'
-import { deleteStudyCard, generateStudyCards, listStudyCards, reviewStudyCard } from '../../db/studyCards'
+import { deleteStudyCard, filterStudyCards, generateStudyCards, listStudyCards, reviewStudyCard, summarizeStudyCards, type StudyCardFilter } from '../../db/studyCards'
 import { createTask, deleteTask, listTodayTasks, toggleTask } from '../../db/studyTasks'
 
 function todayKey(): string { const now = new Date(); const pad = (value: number) => String(value).padStart(2, '0'); return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` }
@@ -124,21 +124,30 @@ function AiStudyCards() {
   const [goal, setGoal] = useState('记住今天能用上的几个词和短语')
   const [level, setLevel] = useState('初学者')
   const [count, setCount] = useState('3')
-  const [cards, setCards] = useState<Awaited<ReturnType<typeof listStudyCards>>>([])
+  const [allCards, setAllCards] = useState<Awaited<ReturnType<typeof listStudyCards>>>([])
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
+  const [filter, setFilter] = useState<StudyCardFilter>('due')
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const refresh = useCallback(async (): Promise<void> => {
     const next = await listStudyCards(subject.trim() === '' ? undefined : subject.trim())
-    setCards(next)
-    setIndex((current) => Math.min(current, Math.max(0, next.length - 1)))
+    setAllCards(next)
+    setDismissedIds(new Set())
+    setIndex(0)
     setFlipped(false)
   }, [subject])
 
-  useEffect(() => { void refresh().catch(() => setCards([])) }, [refresh])
+  useEffect(() => { void refresh().catch(() => setAllCards([])) }, [refresh])
+
+  const summary = useMemo(() => summarizeStudyCards(allCards), [allCards])
+  const cards = useMemo(
+    () => filterStudyCards(allCards, filter).filter((card) => !dismissedIds.has(card.id)),
+    [allCards, dismissedIds, filter],
+  )
 
   async function generate(): Promise<void> {
     setBusy(true)
@@ -160,14 +169,21 @@ function AiStudyCards() {
     if (current === undefined) return
     setError(null)
     try {
-      await reviewStudyCard(current.id, value)
-      const rest = cards.filter((card) => card.id !== current.id)
-      setCards(rest)
-      setIndex((position) => Math.min(position, Math.max(0, rest.length - 1)))
+      const updated = await reviewStudyCard(current.id, value)
+      setAllCards((existing) => existing.map((card) => card.id === updated.id ? updated : card))
+      setDismissedIds((existing) => new Set(existing).add(current.id))
+      setIndex(0)
       setFlipped(false)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     }
+  }
+
+  function selectFilter(value: StudyCardFilter): void {
+    setFilter(value)
+    setDismissedIds(new Set())
+    setIndex(0)
+    setFlipped(false)
   }
 
   async function discuss(): Promise<void> {
@@ -189,6 +205,9 @@ function AiStudyCards() {
         </div>
         {cards.length > 0 && <span className="t-caption" style={{ color: 'var(--text-secondary)' }}>{Math.min(index + 1, cards.length)} / {cards.length}</span>}
       </div>
+      <div className="mt-3 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }} data-testid="study-card-summary">
+        待复习 <strong style={{ color: 'var(--accent-strong)' }}>{summary.due}</strong> · 今日已复习 <strong>{summary.reviewedToday}</strong> · 共 {summary.total} 张 · 已形成间隔 {summary.mature} 张
+      </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
         <input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={80} placeholder="学习主题" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-card-subject" />
         <input value={goal} onChange={(event) => setGoal(event.target.value)} maxLength={240} placeholder="今天想学会什么" className="rounded-lg border bg-transparent px-3 py-2 text-sm sm:col-span-2" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-card-goal" />
@@ -202,11 +221,16 @@ function AiStudyCards() {
         </select>
         <button type="button" onClick={() => void generate()} disabled={busy || subject.trim() === '' || goal.trim() === ''} className="btn-pill" style={{ minHeight: 38, padding: '0 16px', fontSize: 12.5 }}>{busy ? '小栖正在整理…' : '生成一组卡片'}</button>
       </div>
+      <div className="flex items-center gap-2 border-b pb-2" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-card-filters">
+        {([['due', `待复习（${summary.due}）`], ['all', `全部（${summary.total}）`], ['mature', `已形成间隔（${summary.mature}）`]] as const).map(([value, label]) => (
+          <button key={value} type="button" data-testid={`study-card-filter-${value}`} aria-pressed={filter === value} onClick={() => selectFilter(value)} className="rounded-full px-3 py-1.5 text-xs" style={{ background: filter === value ? 'var(--bg-subtle)' : 'transparent', color: filter === value ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{label}</button>
+        ))}
+      </div>
       {error !== null && <p className="mt-2 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
       {notice !== null && <p className="mt-2 text-xs" style={{ color: 'var(--accent-strong)' }}>{notice}</p>}
       {current === undefined ? (
         <div className="mt-3 rounded-lg border p-4 text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }} data-testid="study-card-empty">
-          这里会留下你和小栖一起翻过的卡片。先告诉它想学什么吧。
+          {summary.total === 0 ? '这里会留下你和小栖一起翻过的卡片。先告诉它想学什么吧。' : filter === 'due' ? '今天没有到期卡片。可以先休息，或切到「全部」回看已有卡片。' : filter === 'mature' ? '还没有形成较长复习间隔的卡片。先按到期队列复习几轮吧。' : '这一组卡片暂时没有可展示的内容。'}
         </div>
       ) : (
         <div className="mt-3 rounded-xl border p-4" style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-surface-solid)' }} data-testid="study-card-current">

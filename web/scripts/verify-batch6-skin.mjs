@@ -9,7 +9,7 @@
  *   - 「收下一首歌」表单与歌单是 Phase 2 原能力，字段没动（verify-home 依赖）。
  * 学习（screens-study.jsx）：
  *   - 「今天的三件小事」真实存 Dexie（studyTasks，按天归组），可加 / 勾 / 删；
- *   - 「一周节奏」是真 studyRecords 聚合；AI 伴学卡片入口可见，未配置 API 时不伪造卡片数据。
+ *   - 「一周节奏」是真 studyRecords 聚合；伴学卡片默认只进入到期队列，并能切到全部 / 已形成间隔查看真实进度。
  * 独处（screens-solo.jsx）：
  *   - /solo 独立页：计时真走、雨声是程序化生成（Web Audio），秒数累计 kind='rain'；
  *   - 「小栖也在听」同样不搬。
@@ -159,7 +159,7 @@ await sleep(600)
 consoleLogs.length = 0
 
 /* ================================================================
-   零、清场：listenSessions / studyTasks / 音乐全部清空（单跑可重复）
+   零、清场：listenSessions / studyTasks / studyCards / 音乐全部清空（单跑可重复）
    ⚠️ 动态 import('/src/db/db.ts') 只有在**应用页面**上才解析得了模块路径，
       所以先导航到 /welcome 再清（根路径会拐弯，别用 /）。
    ================================================================ */
@@ -168,10 +168,11 @@ const cleaned = await evaluate(`(async () => {
   const dbm = await import('/src/db/db.ts')
   await dbm.db.listenSessions.clear()
   await dbm.db.studyTasks.clear()
+  await dbm.db.studyCards.clear()
   await dbm.db.musicTracks.clear()
   return 'ok'
 })()`)
-check('清场（listenSessions / studyTasks / musicTracks）', cleaned === 'ok')
+check('清场（listenSessions / studyTasks / studyCards / musicTracks）', cleaned === 'ok')
 
 /* ================================================================
    一、一起听 · 空态与诚实边界
@@ -256,6 +257,26 @@ check('「一周节奏」卡在（真 studyRecords 聚合）', (await evaluate(`
 check('AI 伴学卡片入口存在（未配置 API 时不伪造卡片）',
   await evaluate(`document.body.innerText.includes('小栖今天给你的卡片') && document.body.innerText.includes('生成一组卡片')`))
 check('空任务提示诚实', (await evaluate(`document.body.innerText.includes('还空着')`)) === true)
+
+await evaluate(`(async () => {
+  const dbm = await import('/src/db/db.ts')
+  const now = Date.now()
+  await dbm.db.studyCards.bulkPut([
+    { id: 'study-card-t071-due', type: 'study-card', subject: '英语', front: 'due card', back: '到期卡', example: null, hint: null, source: 'ai', dueOn: '2000-01-01', intervalDays: 1, ease: 2.5, repetitions: 0, lastReviewedAt: null, createdAt: now, updatedAt: now },
+    { id: 'study-card-t071-future', type: 'study-card', subject: '英语', front: 'future card', back: '未来卡', example: null, hint: null, source: 'ai', dueOn: '2099-01-01', intervalDays: 1, ease: 2.5, repetitions: 0, lastReviewedAt: null, createdAt: now + 1, updatedAt: now + 1 },
+    { id: 'study-card-t071-mature', type: 'study-card', subject: '英语', front: 'mature card', back: '成熟卡', example: null, hint: null, source: 'ai', dueOn: '2000-01-01', intervalDays: 7, ease: 2.8, repetitions: 3, lastReviewedAt: null, createdAt: now + 2, updatedAt: now + 2 },
+  ])
+  return 'ok'
+})()`)
+await go('/home/study')
+await waitFor(`document.querySelector('[data-testid="study-card-summary"]')?.innerText.includes('待复习 2')`, '到期卡统计')
+check('伴学默认进入到期复习队列', (await evaluate(`document.querySelector('[data-testid="study-card-filter-due"]')?.getAttribute('aria-pressed') === 'true' && document.body.innerText.includes('到期卡')`)) === true)
+await clickTestId('study-card-filter-all')
+await waitFor(`document.querySelector('[data-testid="study-card-filter-all"]')?.getAttribute('aria-pressed') === 'true'`, '全部卡片筛选')
+check('切到全部后能看到未来卡片与完整数量', (await evaluate(`document.querySelector('[data-testid="study-card-summary"]')?.innerText.includes('共 3 张') && document.body.innerText.includes('到期卡')`)) === true)
+await clickTestId('study-card-filter-mature')
+await waitFor(`document.querySelector('[data-testid="study-card-filter-mature"]')?.getAttribute('aria-pressed') === 'true'`, '成熟卡片筛选')
+check('已形成间隔筛选只展示成熟卡片', (await evaluate(`document.body.innerText.includes('成熟卡') && !document.body.innerText.includes('未来卡')`)) === true)
 
 await setValue('[data-testid="study-task-input"]', '读完一章')
 await clickText('添加')

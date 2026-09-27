@@ -3,6 +3,41 @@ import { fetchJson } from '../lib/api'
 import { db } from './db'
 import { dayKeyOf } from './listen'
 
+export type StudyCardFilter = 'due' | 'all' | 'mature'
+
+/** 到期卡片包括今天与之前到期的卡片；日期比较使用本地日历，不受 UTC 偏移影响。 */
+export function isStudyCardDue(card: StudyCard, today = dayKeyOf()): boolean {
+  return card.dueOn <= today
+}
+
+/** “成熟”只表示已经形成可复习间隔，不等同于永久掌握。 */
+export function isStudyCardMature(card: StudyCard): boolean {
+  return card.repetitions >= 3 || card.intervalDays >= 7
+}
+
+export function filterStudyCards(cards: StudyCard[], filter: StudyCardFilter, today = dayKeyOf()): StudyCard[] {
+  if (filter === 'all') return cards
+  if (filter === 'mature') return cards.filter(isStudyCardMature)
+  return cards.filter((card) => isStudyCardDue(card, today))
+}
+
+export interface StudyCardSummary {
+  total: number
+  due: number
+  reviewedToday: number
+  mature: number
+}
+
+export function summarizeStudyCards(cards: StudyCard[], now = new Date()): StudyCardSummary {
+  const today = dayKeyOf(now)
+  return {
+    total: cards.length,
+    due: cards.filter((card) => isStudyCardDue(card, today)).length,
+    reviewedToday: cards.filter((card) => card.lastReviewedAt !== null && dayKeyOf(new Date(card.lastReviewedAt)) === today).length,
+    mature: cards.filter(isStudyCardMature).length,
+  }
+}
+
 function addDays(dayKey: string, days: number): string {
   const date = new Date(`${dayKey}T12:00:00`)
   date.setDate(date.getDate() + days)
@@ -43,7 +78,7 @@ export async function generateStudyCards(input: { subject: string; goal: string;
   return items
 }
 
-export async function reviewStudyCard(id: string, grade: 'again' | 'good' | 'easy'): Promise<void> {
+export async function reviewStudyCard(id: string, grade: 'again' | 'good' | 'easy'): Promise<StudyCard> {
   const current = await db.studyCards.get(id)
   if (current === undefined) throw new Error('这张卡已经不存在')
   const now = Date.now()
@@ -53,14 +88,17 @@ export async function reviewStudyCard(id: string, grade: 'again' | 'good' | 'eas
   const nextInterval = grade === 'again'
     ? 1
     : Math.max(1, Math.round(current.intervalDays * (grade === 'easy' ? nextEase + 0.35 : nextEase)))
-  await db.studyCards.update(id, {
+  const updated: StudyCard = {
+    ...current,
     dueOn: addDays(today, nextInterval),
     intervalDays: nextInterval,
     ease: nextEase,
     repetitions: nextRepetitions,
     lastReviewedAt: now,
     updatedAt: now,
-  })
+  }
+  await db.studyCards.put(updated)
+  return updated
 }
 
 export async function deleteStudyCard(id: string): Promise<void> {
