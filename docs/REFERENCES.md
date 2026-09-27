@@ -116,6 +116,8 @@
 | [memex](https://github.com/memex-lab/memex) | 🔧 | 本地优先双端 AI 日记：碎片生活 → 多 Agent 整理为时间线卡片与共鸣洞察 |
 | [InternalBeyond](https://github.com/Sui-IB/InternalBeyond) | 🔧 | 离线单文件个人空间：像素房间、日志/日记、AI 书信、记忆星图、音乐播放器 |
 | [Duetto](https://github.com/avisforevelyn/Duetto) | 🔧 | 双人一起听歌播放器，AI 记住你们听过的每一首歌 |
+| [netease-music-mcp](https://github.com/luuu-h/netease-music-mcp) | 🔧 | 网易云搜索 / 歌词 / 播放控制与 `listening_context`；借工具契约，不照搬 VPS 本机 mpv 播放链 |
+| [Tasogare](https://github.com/EnhydrInk/tasogare) | 🔧 | PDF / EPUB / TXT 阅读器 + 双色划线 / 批注 / 生词 / 进度 + AI 翻书 MCP，作为完整共读底座 |
 | [co-reading-kit](https://github.com/Youxuuuuu/co-reading-kit) | 📐 | 轻量共读 MCP：EPUB/TXT/MD 切 chunk，AI 只读相关片段 + 写长期阅读笔记 |
 | [coread](https://github.com/meowmana/coread) | 🔧 | 共读室：epub 导入、共享划线、评论回复、MCP（stdio / SSE） |
 | [柚月小手机](https://github.com/gaigai315/yuzuki-phone) | 🎯 | 虚拟手机：微信式聊天、朋友圈、微博热搜、剧情注入模式 |

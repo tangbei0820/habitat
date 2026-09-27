@@ -2428,3 +2428,27 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 重启验证 | `systemctl restart habitat-server` → active；health 200；**新代码标记** `/api/surf/feeds` 返回默认源（旧代码 404）；nginx 下发新产物 `assets/index-CKsLavCS.js`；MCP 工具面 probe 2/2 |
 
 **待办移交**：真机验收 §6.6 第 2~5、7 条（浏览器填 key 发消息 / SW 激活+安装 / 断网只读 / 备份往返 / Android PWA）——需要北北的浏览器和手机，agent 测不了。
+
+### T-057 · 2026-09-27 · 原始蓝图回归与 Habitat v2 规则补全—— **规划完成，未施工**
+
+**背景**：复盘发现历史 Phase 的“完成”只代表限定切片交付，不能代表最初产品蓝图已经完整落成；
+朋友圈、拍一拍、关系暂停、每日品读、公开思绪、完整 Nocturne、可编程外观等此前未形成正式规则，
+一起听、共读、学习、相册、Life 等则仍存在真实应用与 CRUD / 简写页面之间的落差。
+
+**本次只改文档，不改业务代码。**
+
+| 文档 | 补充内容 |
+| --- | --- |
+| `HABITAT_V2_PLAN.md` | Provider Center 四张独立能力卡与草稿测试 / 保存 / 存为方案；Chat 搜索、日期跳转、联网搜索、压缩与关系互动；Nocturne 原生 Dashboard；Eventide + Desire 分层；朋友圈、每日品读、完整 Living Apps；Appearance Studio；阶段编号改为 V2-A~V2-F |
+| `HABITAT_V2_MIGRATION_AUDIT.md` | 保留 T-056 基线审查，但加 T-057 覆盖说明；与新版主权记忆和蓝图回归冲突的旧建议不再作为施工依据 |
+| `docs/PRODUCT_SPEC.md` | 将上述方向落为产品行为、权限、失败降级、数据来源和验收规则；公开思绪与 Provider reasoning 分离；相册自动收集；共读 / 一起听真实闭环；Life 与通知事件源；CSS 安全与回退 |
+| `docs/REFERENCES.md` | 补入 Tasogare 与 netease-music-mcp，并明确只借共读底座、音乐工具契约，不照搬外部 UI 或 VPS 本机播放形态 |
+| `AGENTS.md` | 当前阶段切换为 Habitat v2 蓝图回归完成；历史 Phase 7A–7C 只表示旧切片完成，后续统一使用 V2-A~V2-F |
+| 记忆口径 | Surf 不再自动晋升长期记忆；Activity / Desire Thought / Public Thought / Nocturne 分层。小栖自有第一人称记忆可自主新增，保护节点与破坏性操作仍需确认 |
+
+**Provider Center 必验流程**：四张卡片分别为主聊天、语音、识图、生图；每张均走
+`URL / Key → 拉取模型 → 选择或手填模型 → 真实能力测试 → 保存 → 可选存为方案`。
+模型列表成功不冒充能力可用，测试使用未保存草稿，整套方案切换必须原子化，密钥不回传浏览器。
+
+**停止点**：规划与规则已经补齐；所有条目仍是待施工范围，下一批必须按 V2-A 起重新切片，
+不得把本条记录当成功能完成，也不得自动开始实现。
