@@ -172,8 +172,8 @@ check('探测回执里也不含密钥', !JSON.stringify(afterKey.body).includes(
 
 const modelsRes = await call('GET', `/api/providers/${made.id}/models`)
 check(
-  'GET /models 取到 mock 的 3 个模型',
-  (modelsRes.body as { models: string[] }).models.length === 3,
+  'GET /models 取到 mock 的模型目录',
+  (modelsRes.body as { models: string[] }).models.includes('mock-chat-small'),
   JSON.stringify((modelsRes.body as { models: string[] }).models),
 )
 

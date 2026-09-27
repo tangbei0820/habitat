@@ -109,6 +109,45 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 
 （方案 id 不存在仍返回 404 —— 那是调用方错误，不是探测结果。）
 
+## V2-A · Provider Center 四通道
+
+Provider Profile 仍由 `/api/providers` 管理；以下接口只管理“哪个能力使用哪份连接 / 模型”与四通道方案，
+不会复制或回显 `api_secret`。
+
+### `GET /api/provider-center`
+
+返回当前 `bindings` 与命名 `schemes`。老库首次访问时，会从原 active profile 中为**真实配置过模型**的槽位补种绑定；
+没有模型的能力保持未配置，不伪造默认值。
+
+### `POST /api/providers/draft/models`
+
+使用未保存草稿代请求上游 `/models`。请求可传 `profileId` 复用现有连接，也可传 `baseUrl / apiKey / headers / streamOptions` 覆盖；
+`apiKey` 只活在本次请求中。返回 `{ ok, latencyMs, models, errorCategory, error }`，失败分类包括
+`authentication / network / timeout / protocol / unsupported / empty-models / unknown`。
+
+### `POST /api/providers/draft/test`
+
+请求体在上述草稿上增加 `capability`、`model`、可选 `secondaryModel` 与识图测试用 `dataUrl`。
+测试不是 `/models` 冒充：`chat` 发最小流式请求、`voice` 真合成一段音频、`vision` 真识图、`image` 真生图。
+成功时语音 / 生图返回 `previewDataUrl`，识图返回 `description`；密钥永不出现在响应中。
+
+### `PUT /api/provider-center/bindings`
+
+保存一张能力卡：`{ capability, profileId, model, secondaryModel?, lastTestedAt?, lastLatencyMs?, lastError? }`。
+手工改任一卡后，当前绑定不再冒充某个命名方案，所有 scheme 的 `isActive` 会清零。
+
+### 四通道方案
+
+| Method | Path | 行为 |
+| --- | --- | --- |
+| `POST` | `/api/provider-center/schemes` | 将当前四张完整绑定存为方案；缺任一能力则拒绝 |
+| `PATCH` | `/api/provider-center/schemes/:id` | 重命名 |
+| `POST` | `/api/provider-center/schemes/:id/copy` | 复制（仍只引用 profileId） |
+| `POST` | `/api/provider-center/schemes/:id/activate` | 校验全部引用后，在一个 SQLite 事务中切换四张卡 |
+| `DELETE` | `/api/provider-center/schemes/:id` | 只删方案，不删 Provider / 密钥 / 当前绑定 |
+
+被当前绑定或任一方案引用的 Provider，`DELETE /api/providers/:id` 返回 `400 BAD_REQUEST` 并列出引用，防止误删。
+
 ## Phase 1 已实现（切片三 · 方案管理）
 
 让方案能在设置页里增删改，不必手写 `.env`。
@@ -136,7 +175,7 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 返回 `201` + 脱敏视图。`id` 由 `name` 派生：小写、**中文字符原样保留**（它会出现在账本与日志里，可读比好看重要）、其余字符压成 `-`；冲突自动加 `-2`、`-3`。
 
 - 忽略 `isActive`，**库里一条方案都没有时自动设为默认**（单方案场景不该还要多点一次）
-- 除 `name` / `baseUrl` / `modelMap.chat` 外均可省略；`keyRef` 留空 = 该上游不需要鉴权
+- `name` / `baseUrl` 必填；`modelMap` 至少含一个已知能力模型（允许媒体专用连接没有 chat）；`keyRef` 留空 = 该上游不需要鉴权
 - `streamOptions` 缺省 `true`；**必须传布尔值**，传其它类型返回 `400 BAD_REQUEST`。要关就显式传 `false`
 
 ### `PATCH /api/providers/:id`
@@ -181,7 +220,7 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 | --- | --- | --- |
 | `name` 缺失 / 超 60 字 | 400 | `BAD_REQUEST` |
 | `baseUrl` 非法 URL 或非 http(s) | 400 | `BAD_REQUEST` |
-| `modelMap.chat` 缺失 | 400 | `BAD_REQUEST` |
+| `modelMap` 未配置任何能力模型 | 400 | `BAD_REQUEST` |
 | `keyRef` 不是合法环境变量名 | 400 | `BAD_REQUEST` |
 | `PATCH` 请求体为空对象 | 400 | `BAD_REQUEST` |
 | `POST /:id/secret` 的 `secret` 为空 | 400 | `BAD_REQUEST` |

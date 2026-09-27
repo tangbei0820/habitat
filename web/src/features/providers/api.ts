@@ -11,6 +11,13 @@ import type {
   ApiProfilePublic,
   ApiProfileUpdateInput,
   LlmProbeResult,
+  ProviderCapabilityBinding,
+  ProviderCenterState,
+  ProviderDraftInput,
+  ProviderDraftModelsResult,
+  ProviderDraftTestInput,
+  ProviderDraftTestResult,
+  ProviderScheme,
 } from '@shared/types'
 import { fetchJson } from '../../lib/api'
 
@@ -77,4 +84,52 @@ export function clearProviderSecret(id: string): Promise<ProviderKeyState> {
 /** 「测试连接」：失败也是**结果**（ok=false + 原因），不是异常 */
 export function testProvider(id: string): Promise<LlmProbeResult> {
   return fetchJson<LlmProbeResult>(`${providerPath(id)}/test`, { method: 'POST' })
+}
+
+export function getProviderCenter(): Promise<ProviderCenterState> {
+  return fetchJson<ProviderCenterState>('/api/provider-center')
+}
+
+export function pullDraftModels(input: ProviderDraftInput): Promise<ProviderDraftModelsResult> {
+  return fetchJson<ProviderDraftModelsResult>('/api/providers/draft/models', {
+    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input),
+  })
+}
+
+export function testDraft(input: ProviderDraftTestInput): Promise<ProviderDraftTestResult> {
+  return fetchJson<ProviderDraftTestResult>('/api/providers/draft/test', {
+    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input),
+  })
+}
+
+export function saveCapabilityBinding(input: Omit<ProviderCapabilityBinding, 'updatedAt'>): Promise<ProviderCapabilityBinding> {
+  return fetchJson<ProviderCapabilityBinding>('/api/provider-center/bindings', {
+    method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify(input),
+  })
+}
+
+export function createScheme(name: string): Promise<ProviderScheme> {
+  return fetchJson<ProviderScheme>('/api/provider-center/schemes', {
+    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ name }),
+  })
+}
+
+export function renameScheme(id: string, name: string): Promise<ProviderScheme> {
+  return fetchJson<ProviderScheme>(`/api/provider-center/schemes/${encodeURIComponent(id)}`, {
+    method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ name }),
+  })
+}
+
+export function copyScheme(id: string, name: string): Promise<ProviderScheme> {
+  return fetchJson<ProviderScheme>(`/api/provider-center/schemes/${encodeURIComponent(id)}/copy`, {
+    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ name }),
+  })
+}
+
+export function activateScheme(id: string): Promise<ProviderScheme> {
+  return fetchJson<ProviderScheme>(`/api/provider-center/schemes/${encodeURIComponent(id)}/activate`, { method: 'POST' })
+}
+
+export function deleteScheme(id: string): Promise<{ deleted: true }> {
+  return fetchJson<{ deleted: true }>(`/api/provider-center/schemes/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }

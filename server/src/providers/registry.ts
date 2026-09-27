@@ -12,7 +12,15 @@
  */
 import { ErrorCodes } from '@shared/errors.js'
 import type { LLMProvider } from '@shared/providers.js'
-import type { ApiKeySource, ApiProfile, ApiProfileModelMap, ApiProfilePublic } from '@shared/types.js'
+import type {
+  ApiKeySource,
+  ApiProfile,
+  ApiProfileModelMap,
+  ApiProfilePublic,
+  ProviderCapability,
+  ProviderCapabilityBinding,
+} from '@shared/types.js'
+import { getCapabilityBinding, seedCapabilityBindings } from '../db/provider-center.js'
 import { getProfile, getSecret, listProfiles } from '../db/profiles.js'
 import { ProviderError } from './errors.js'
 import { OpenAICompatProvider } from './openai-compat.js'
@@ -72,7 +80,7 @@ function parseProfile(value: unknown, index: number): { profile: ApiProfile } | 
   if (baseUrl === undefined || baseUrl === '') return { problem: `方案 '${id}' 缺 baseUrl` }
 
   const modelMap = parseModelMap(value.modelMap)
-  if (modelMap.chat === undefined) return { problem: `方案 '${id}' 的 modelMap.chat 未指定` }
+  if (Object.keys(modelMap).length === 0) return { problem: `方案 '${id}' 未指定任何能力模型` }
 
   const headers = parseHeaders(value.headers)
   return {
@@ -160,6 +168,13 @@ export class LlmRegistry {
     return profile === undefined ? null : this.toPublic(profile)
   }
 
+  /** 读取四通道绑定；老库首次访问时从原 active profile 安全补种。 */
+  binding(capability: ProviderCapability): ProviderCapabilityBinding | null {
+    const active = listProfiles().find((profile) => profile.isActive) ?? listProfiles()[0] ?? null
+    seedCapabilityBindings(active)
+    return getCapabilityBinding(capability)
+  }
+
   require(id: string): ApiProfile {
     const profile = getProfile(id)
     if (profile === null) {
@@ -178,6 +193,40 @@ export class LlmRegistry {
   mediaProvider(id: string): OpenAICompatProvider {
     const profile = this.require(id)
     return new OpenAICompatProvider(profile, this.resolveKey(profile).key)
+  }
+
+  /** 默认业务调用按能力绑定解析；没绑定时兼容回退到旧 active profile。 */
+  capabilityProvider(capability: ProviderCapability): {
+    profile: ApiProfilePublic
+    provider: OpenAICompatProvider
+    binding: ProviderCapabilityBinding | null
+  } | null {
+    const binding = this.binding(capability)
+    const fallback = this.active()
+    if (binding === null) {
+      if (fallback === null) return null
+      return { profile: fallback, provider: this.mediaProvider(fallback.id), binding: null }
+    }
+    const profile = this.require(binding.profileId)
+    const modelMap = { ...profile.modelMap }
+    if (capability === 'chat') modelMap.chat = binding.model
+    else if (capability === 'voice') {
+      modelMap.tts = binding.model
+      if (binding.secondaryModel !== null) modelMap.transcription = binding.secondaryModel
+    } else if (capability === 'vision') modelMap.vision = binding.model
+    else modelMap.image = binding.model
+    const resolved = { ...profile, modelMap }
+    return {
+      profile: this.toPublic(resolved),
+      provider: new OpenAICompatProvider(resolved, this.resolveKey(profile).key),
+      binding,
+    }
+  }
+
+  /** 未保存草稿专用 Adapter。apiKey 不落库，也不进入任何返回值。 */
+  draftProvider(profile: ApiProfile, apiKey?: string): OpenAICompatProvider {
+    const key = apiKey === undefined ? this.resolveKey(profile).key : apiKey
+    return new OpenAICompatProvider(profile, key)
   }
 
   /** 脱敏视图：密钥永不下发；header 只给**名字**，因为值里可能藏着凭证 */

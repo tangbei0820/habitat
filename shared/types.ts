@@ -478,6 +478,92 @@ export interface ListenSession {
 /** 适配器类型。§7.1：以 OpenAI Chat Completions 兼容协议为最小公分母，后续可加原生适配器 */
 export type LlmProviderKind = 'openai-compat'
 
+/** Provider Center 的四个独立能力入口（PRODUCT_SPEC §9.3）。 */
+export type ProviderCapability = 'chat' | 'voice' | 'vision' | 'image'
+
+/** 当前生产绑定。voice 的 secondaryModel 用于可选的语音转写模型。 */
+export interface ProviderCapabilityBinding {
+  capability: ProviderCapability
+  profileId: string
+  model: string
+  secondaryModel: string | null
+  lastTestedAt: number | null
+  lastLatencyMs: number | null
+  lastError: string | null
+  updatedAt: number
+}
+
+export interface ProviderBindingSnapshot {
+  profileId: string
+  model: string
+  secondaryModel: string | null
+}
+
+export type ProviderSchemeBindings = Partial<Record<ProviderCapability, ProviderBindingSnapshot>>
+
+/** 四通道绑定的命名快照；只引用 profileId，不复制密钥。 */
+export interface ProviderScheme {
+  id: string
+  name: string
+  bindings: ProviderSchemeBindings
+  isActive: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ProviderCenterState {
+  bindings: ProviderCapabilityBinding[]
+  schemes: ProviderScheme[]
+}
+
+export type ProviderDraftErrorCategory =
+  | 'authentication'
+  | 'network'
+  | 'timeout'
+  | 'protocol'
+  | 'unsupported'
+  | 'empty-models'
+  | 'unknown'
+
+/** 未保存草稿：密钥只随本次请求进入服务端，任何响应都不会回显。 */
+export interface ProviderDraftInput {
+  profileId?: string
+  provider?: LlmProviderKind
+  baseUrl?: string
+  apiKey?: string
+  headers?: Record<string, string>
+  streamOptions?: boolean
+}
+
+export interface ProviderDraftModelsResult {
+  ok: boolean
+  latencyMs: number
+  models: string[]
+  errorCategory: ProviderDraftErrorCategory | null
+  error: string | null
+}
+
+export interface ProviderDraftTestInput extends ProviderDraftInput {
+  capability: ProviderCapability
+  model: string
+  secondaryModel?: string
+  /** vision 测试图；只在识图能力测试中使用。 */
+  dataUrl?: string
+}
+
+export interface ProviderDraftTestResult {
+  capability: ProviderCapability
+  ok: boolean
+  latencyMs: number
+  testedAt: number
+  errorCategory: ProviderDraftErrorCategory | null
+  error: string | null
+  /** 语音或生图测试的可预览 data URL；聊天 / 识图为 null。 */
+  previewDataUrl: string | null
+  /** 识图测试的文本结果。 */
+  description: string | null
+}
+
 /** 同一方案下不同服务各用哪个模型（§6.2 modelMap） */
 export interface ApiProfileModelMap {
   chat?: string

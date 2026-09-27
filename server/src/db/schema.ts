@@ -4,6 +4,8 @@
  */
 import type {
   ApiProfileModelMap,
+  ProviderCapability,
+  ProviderSchemeBindings,
   AutomationPolicy,
   ContentAuthor,
   DiaryVisibility,
@@ -127,9 +129,33 @@ export const apiSecret = sqliteTable('api_secret', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+/** 四个能力当前各自使用哪份连接与模型。 */
+export const providerCapabilityBinding = sqliteTable('provider_capability_binding', {
+  capability: text('capability').$type<ProviderCapability>().primaryKey(),
+  profileId: text('profile_id').notNull(),
+  model: text('model').notNull(),
+  secondaryModel: text('secondary_model'),
+  lastTestedAt: integer('last_tested_at'),
+  lastLatencyMs: integer('last_latency_ms'),
+  lastError: text('last_error'),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+/** 四通道绑定的命名快照。密钥仍只存在 api_secret。 */
+export const providerScheme = sqliteTable('provider_scheme', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull().unique(),
+  bindings: text('bindings_json', { mode: 'json' }).$type<ProviderSchemeBindings>().notNull(),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
 export type ApiProfileRow = typeof apiProfile.$inferSelect
 export type NewApiProfile = typeof apiProfile.$inferInsert
 export type ApiSecretRow = typeof apiSecret.$inferSelect
+export type ProviderCapabilityBindingRow = typeof providerCapabilityBinding.$inferSelect
+export type ProviderSchemeRow = typeof providerScheme.$inferSelect
 
 /**
  * AppKv：进程级的少量键值状态（当前只有「方案种子是否已导入过」）。

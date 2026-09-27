@@ -135,7 +135,10 @@ async function clickButton(text, exact = false) {
     ? `b.textContent.trim() === ${JSON.stringify(text)}`
     : `b.textContent.includes(${JSON.stringify(text)})`
   return evaluate(`(() => {
-    const btn = [...document.querySelectorAll('button')].find((b) => ${predicate})
+    const buttons = ['创建','保存'].includes(${JSON.stringify(text)})
+      ? (document.querySelector('form')?.querySelectorAll('button') ?? [])
+      : document.querySelectorAll('button')
+    const btn = [...buttons].find((b) => ${predicate})
     if (!btn) return 'missing'
     btn.click()
     return 'ok'
@@ -145,7 +148,8 @@ async function clickButton(text, exact = false) {
 /** 按标签文案定位表单控件，用原生 setter 覆盖赋值（React 受控组件必须这样才收得到） */
 async function fillField(labelText, value) {
   const result = await evaluate(`(() => {
-    const label = [...document.querySelectorAll('label')]
+    const form = document.querySelector('form')
+    const label = [...(form?.querySelectorAll('label') ?? [])]
       .find((l) => l.textContent.includes(${JSON.stringify(labelText)}))
     const input = label ? label.querySelector('input') : null
     if (!input) return 'missing'
@@ -192,13 +196,75 @@ async function clickRowButton(profileName, buttonText) {
 await send('Runtime.enable')
 await send('Page.enable')
 await send('Page.navigate', { url: `${APP}/setting` })
-await waitFor(`document.body.innerText.includes('API 方案')`, '设置页就绪', 30000)
+await waitFor(`document.body?.innerText.includes('API 方案') === true`, '设置页就绪', 30000)
 // ⚠️ 方案列表是异步拉的：只等标题会出现，会读到「读取中…」的空壳（第一次跑抢赢了、第二次就露馅）
 await waitFor(
-  `document.body.innerText.includes(${JSON.stringify(seedName)})`,
+  `document.body?.innerText.includes(${JSON.stringify(seedName)}) === true`,
   '方案列表加载完成',
   30000,
 )
+
+/* ---------- 0. Provider Center 四通道主路径 ---------- */
+await waitFor(
+  `['chat','voice','vision','image'].every((id) => document.querySelector('[data-testid="provider-card-' + id + '"]'))`,
+  '四张能力卡就绪',
+  30000,
+)
+const cardTitles = await evaluate(`['主聊天 API','语音 API','识图 API','生图 API'].every((title) => document.body.innerText.includes(title))`)
+check('Provider Center 展示四张独立能力卡', cardTitles)
+const cardActions = await evaluate(`['chat','voice','vision','image'].every((id) => {
+  const card = document.querySelector('[data-testid="provider-card-' + id + '"]')
+  const text = card?.innerText ?? ''
+  return ['拉取模型','测试连接','保存','恢复上次保存'].every((label) => text.includes(label))
+})`)
+check('每张卡都有拉模型 / 测试 / 保存 / 恢复', cardActions)
+
+async function clickCardButton(capability, label) {
+  const result = await evaluate(`(() => {
+    const card = document.querySelector('[data-testid="provider-card-${capability}"]')
+    const button = [...(card?.querySelectorAll('button') ?? [])].find((item) => item.textContent.trim() === ${JSON.stringify(label)})
+    if (!button) return 'missing'
+    button.click()
+    return 'ok'
+  })()`)
+  if (result !== 'ok') throw new Error(`能力卡按钮不可点：${capability} / ${label}`)
+}
+
+await clickCardButton('chat', '拉取模型')
+await waitFor(`document.querySelector('[data-testid="provider-card-chat"]')?.innerText.includes('已拉取')`, '草稿模型列表回填')
+check('主聊天卡可用未保存草稿拉取模型', true)
+await clickCardButton('chat', '测试连接')
+await waitFor(`document.querySelector('[data-testid="provider-test-chat"]')?.innerText.includes('真实调用通过')`, '主聊天真实调用通过', 30000)
+check('主聊天卡执行真实流式测试', true)
+await clickCardButton('chat', '保存')
+await waitFor(`document.querySelector('[data-testid="provider-card-chat"]')?.innerText.includes('已连接')`, '主聊天绑定保存')
+check('测试通过后可保存单卡绑定', true)
+
+const schemeName = '验收四通道方案'
+await evaluate(`(() => {
+  const root = document.querySelector('[data-testid="provider-schemes"]')
+  const input = root?.querySelector('input')
+  if (!input) return false
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(schemeName)})
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  return true
+})()`)
+await sleep(200)
+await evaluate(`(() => {
+  const root = document.querySelector('[data-testid="provider-schemes"]')
+  const button = [...root.querySelectorAll('button')].find((item) => item.textContent.trim() === '存为方案')
+  button?.click()
+})()`)
+await waitFor(`document.querySelector('[data-testid="provider-schemes"]')?.innerText.includes(${JSON.stringify(schemeName)})`, '四通道方案落库')
+check('四张卡可存为原子切换方案', true)
+await evaluate(`(() => {
+  const root = document.querySelector('[data-testid="provider-schemes"]')
+  const row = [...root.querySelectorAll('li')].find((item) => item.textContent.includes(${JSON.stringify(schemeName)}))
+  const button = [...(row?.querySelectorAll('button') ?? [])].find((item) => item.textContent.trim() === '删除')
+  button?.click()
+})()`)
+await waitFor(`!document.querySelector('[data-testid="provider-schemes"]')?.innerText.includes(${JSON.stringify(schemeName)})`, '验收方案清理')
+check('方案可删除且不删除 Provider 连接', true)
 
 /* ---------- 1. 列表与凭据来源文案 ---------- */
 const initialText = await evaluate('document.body.innerText')

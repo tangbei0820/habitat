@@ -69,8 +69,9 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | 脚本 | 前置 | 覆盖 |
 | --- | --- | --- |
 | `npx tsx scripts/probe-mock.ts` | mock MCP :3333 | MCP 会话生命周期（握手 + `tools/list` + GET SSE + DELETE，共 5 项） |
-| `npx tsx scripts/probe-llm.ts` | mock 上游 :3334 | LLM 方案 / Adapter 全链（32 项） |
+| `npx tsx scripts/probe-llm.ts` | mock 上游 :3334 | LLM 方案 / Adapter 全链（33 项） |
 | `npx tsx scripts/probe-providers.ts` | mock 上游 + server（自定 `HABITAT_DB_PATH`） | 方案 CRUD / 密钥进出 / 参数校验（52 项） |
+| `npx tsx scripts/probe-provider-center.ts` | mock 上游 + server（**全新独立库**） | V2-A 四通道草稿拉模型 / 四类真实测试 / 独立绑定 / 默认业务路由 / 方案原子切换 / 引用保护（30 项） |
 | `npx tsx scripts/probe-diagnostics.ts` | server（须与脚本用**同一个** `HABITAT_DB_PATH`） | 诊断查询端点（48 项） |
 | `npx tsx scripts/probe-diag-retention.ts` | **不需要 server**（自带一次性临时库，跑完自删） | 诊断日志保留策略（15 项） |
 | `npx tsx scripts/probe-memory.ts` | mock MCP + server | Phase 3A 记忆**只读**链路：`breath`(boot) / `trace`(search) 两路径、参数边界、已移除的写端点应 404、诊断留痕（21 项） |
@@ -113,7 +114,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `node web/scripts/verify-batch6-skin.mjs` | **UI 换装第 6 批 · 真播放/伴学/独处哨兵**：`<audio>` 真播放时长落盘进「生活痕迹」、无链接曲目明说拒绝、今天的三件小事加勾删、`/solo` 程序化雨声 + 计时落盘、沉浸式无底栏（29 项） |
 | `node web/scripts/verify-prod.mjs` | **生产构建 + PWA 冒烟**（T-048）：SW 注册激活、manifest 字段、断网重载外壳仍在（离线=只读）、`/api/` 断网拿不到 HTML 兜底（10 项；需先 `npm run build` + `vite preview`） |
 | `node web/scripts/verify-chat-skin.mjs` | **UI 换装第 3 批 · 对话页哨兵**：列表顶栏与胶囊按钮是真 SVG 图标、气泡方向与底色（用户黑右 / AI 白左）且圆角来自令牌（颜色解析成 rgb() 再比）、操作行常显可点（触屏路径）、输入胶囊停靠不遮消息、圆形发送键、**11 项能力入口齐**、界面无 emoji 图标（31 项） |
-| `node web/scripts/verify-providers.mjs` | API 方案管理 UI（24 项） |
+| `node web/scripts/verify-providers.mjs` | Provider Center 四张能力卡 + 四通道方案 + 旧连接管理回归（31 项；Node 20 运行时加 `--experimental-websocket`） |
 | `node web/scripts/verify-llm.mjs` | **Phase 6.5 P2 · 小栖档案（App Launcher）**：卡片与服务端能力快照**逐条比对**（不写死能力名）、可用状态一致、不可用必给原因、有界面的模块真能启动（含 7A 记忆页入口）、没界面的不做假入口（17 项） |
 | `node web/scripts/verify-tokens.mjs` | **UI 换装地基哨兵**：新设计令牌齐不齐、**翻译层（旧名 → 新令牌）逐条相等**、13 个通用积木类的**计算结果**（CSS 写了 ≠ 生效）、浅/深两套确实不同并各截一张图（24 项，**不需要 server**） |
 | `node web/scripts/verify-shell.mjs` | **UI 换装外壳哨兵**：胶囊底栏（语义 / 5 个真链接 / 顺序 / 中文标签 / 浮起形态 / 选中=实心）、`--bottom-nav-height` = 高度 + 悬空值、进门三态（首访 `/welcome` → 进过后 `/chat` → `/welcome` 可直达）、子页面**真网址** + 只在前进时播滑入、**各页文本不含 emoji**（31 项） |

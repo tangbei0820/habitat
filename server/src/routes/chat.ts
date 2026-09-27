@@ -196,17 +196,17 @@ export function registerChatRoutes(
   app.post('/api/chat', async (request, reply): Promise<void> => {
     // —— 写响应头之前的失败都还能返回结构化 JSON（走统一错误处理器）——
     const body = parseBody(request.body)
-    const profile =
-      body.profileId === undefined
-        ? registry.active()
-        : registry.toPublic(registry.require(body.profileId))
+    const resolved = body.profileId === undefined ? registry.capabilityProvider('chat') : null
+    const profile = body.profileId === undefined
+      ? resolved?.profile ?? null
+      : registry.toPublic(registry.require(body.profileId))
     if (profile === null) {
       throw new ProviderError(
         ErrorCodes.ProviderNotConfigured,
-        '没有可用的 LLM 方案：请到「设置 → API 方案」添加（或在 server/.env 里配置 HABITAT_LLM_PROFILES）',
+        '没有可用的主聊天 API：请到「设置 → Provider Center」完成主聊天卡片',
       )
     }
-    const provider = registry.provider(profile.id)
+    const provider = resolved?.provider ?? registry.provider(profile.id)
     const model = body.model ?? provider.defaultModel
 
     const counterpartAt = new Date()

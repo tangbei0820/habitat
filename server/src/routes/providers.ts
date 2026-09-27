@@ -11,12 +11,32 @@
 import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors'
 import type {
+  ApiProfile,
   ApiProfileCreateInput,
   ApiProfileModelMap,
   ApiProfilePublic,
   ApiProfileUpdateInput,
   LlmProbeResult,
+  ProviderCapability,
+  ProviderCenterState,
+  ProviderDraftErrorCategory,
+  ProviderDraftModelsResult,
+  ProviderDraftTestInput,
+  ProviderDraftTestResult,
+  ProviderScheme,
 } from '@shared/types'
+import {
+  activateProviderScheme,
+  copyProviderScheme,
+  createProviderScheme,
+  deleteProviderScheme,
+  listCapabilityBindings,
+  listProviderSchemes,
+  profileBindingReferences,
+  renameProviderScheme,
+  saveCapabilityBinding,
+  seedCapabilityBindings,
+} from '../db/provider-center.js'
 import { createProfile, clearSecret, setSecret, updateProfile } from '../db/profiles.js'
 import { activateProfile, deleteProfile } from '../db/profiles.js'
 import { ProviderError } from '../providers/errors.js'
@@ -29,6 +49,8 @@ const NAME_MAX_LENGTH = 60
 /** 环境变量名规范（POSIX 的保守子集） */
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 const EXTRA_MODEL_SLOTS = ['tts', 'transcription', 'vision', 'image', 'embedding'] as const
+const CAPABILITIES = new Set<ProviderCapability>(['chat', 'voice', 'vision', 'image'])
+const TEST_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
 
 interface IdParams {
   id: string
@@ -79,14 +101,15 @@ function parseBaseUrl(raw: unknown): string {
 function parseModelMapInput(raw: unknown): ApiProfileModelMap {
   const record = asRecord(raw)
   if (record === null) throw new ProviderError(ErrorCodes.BadRequest, 'modelMap 必须是对象')
+  const map: ApiProfileModelMap = {}
   const chat = record.chat
-  if (typeof chat !== 'string' || chat.trim() === '') {
-    throw new ProviderError(ErrorCodes.BadRequest, 'modelMap.chat 必填（该方案用哪个模型对话）')
-  }
-  const map: ApiProfileModelMap = { chat: chat.trim() }
+  if (typeof chat === 'string' && chat.trim() !== '') map.chat = chat.trim()
   for (const slot of EXTRA_MODEL_SLOTS) {
     const value = record[slot]
     if (typeof value === 'string' && value.trim() !== '') map[slot] = value.trim()
+  }
+  if (Object.keys(map).length === 0) {
+    throw new ProviderError(ErrorCodes.BadRequest, 'modelMap 至少要配置一个能力模型')
   }
   return map
 }
@@ -169,6 +192,120 @@ function parseSecretInput(raw: unknown): string {
   return secret.trim()
 }
 
+function parseCapability(raw: unknown): ProviderCapability {
+  if (typeof raw !== 'string' || !CAPABILITIES.has(raw as ProviderCapability)) {
+    throw new ProviderError(ErrorCodes.BadRequest, 'capability 必须是 chat / voice / vision / image')
+  }
+  return raw as ProviderCapability
+}
+
+function parseRequiredModel(raw: unknown, field = 'model'): string {
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    throw new ProviderError(ErrorCodes.BadRequest, `${field} 必填`)
+  }
+  return raw.trim()
+}
+
+function parseOptionalProfileId(raw: unknown): string | undefined {
+  if (raw === undefined) return undefined
+  if (typeof raw !== 'string' || raw.trim() === '') throw new ProviderError(ErrorCodes.BadRequest, 'profileId 不能为空')
+  return raw.trim()
+}
+
+function draftProfile(raw: unknown, registry: LlmRegistry, capability?: ProviderCapability): {
+  profile: ApiProfile
+  apiKey?: string
+  record: Record<string, unknown>
+} {
+  const record = requireRecord(raw)
+  const profileId = parseOptionalProfileId(record.profileId)
+  const existing = profileId === undefined ? undefined : registry.require(profileId)
+  const baseUrl = record.baseUrl === undefined
+    ? existing?.baseUrl
+    : parseBaseUrl(record.baseUrl)
+  if (baseUrl === undefined) throw new ProviderError(ErrorCodes.BadRequest, 'baseUrl 必填')
+  if (record.provider !== undefined && record.provider !== 'openai-compat') {
+    throw new ProviderError(ErrorCodes.BadRequest, '当前切片只支持 OpenAI-compatible')
+  }
+  const headers = record.headers === undefined ? existing?.headers : parseHeadersInput(record.headers)
+  const streamOptions = record.streamOptions === undefined
+    ? existing?.streamOptions ?? true
+    : parseStreamOptions(record.streamOptions)
+  const modelMap = { ...(existing?.modelMap ?? {}) }
+  if (capability !== undefined) {
+    const model = parseRequiredModel(record.model)
+    if (capability === 'chat') modelMap.chat = model
+    else if (capability === 'voice') {
+      modelMap.tts = model
+      if (record.secondaryModel !== undefined && String(record.secondaryModel).trim() !== '') {
+        modelMap.transcription = parseRequiredModel(record.secondaryModel, 'secondaryModel')
+      }
+    } else if (capability === 'vision') modelMap.vision = model
+    else modelMap.image = model
+  }
+  const apiKey = typeof record.apiKey === 'string' && record.apiKey.trim() !== '' ? record.apiKey.trim() : undefined
+  return {
+    profile: {
+      id: existing?.id ?? 'unsaved-draft',
+      name: existing?.name ?? '未保存草稿',
+      provider: 'openai-compat',
+      baseUrl,
+      keyRef: existing?.keyRef ?? '',
+      modelMap,
+      ...(headers === undefined ? {} : { headers }),
+      streamOptions,
+      isActive: false,
+    },
+    ...(apiKey === undefined ? {} : { apiKey }),
+    record,
+  }
+}
+
+function errorCategory(err: unknown): ProviderDraftErrorCategory {
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase()
+  if (err instanceof ProviderError && err.code === ErrorCodes.ProviderUnauthorized) return 'authentication'
+  if (message.includes('超时') || message.includes('timeout') || message.includes('未响应')) return 'timeout'
+  if (message.includes('/models') && (message.includes('404') || message.includes('405'))) return 'unsupported'
+  if (message.includes('解析') || message.includes('json') || message.includes('响应体')) return 'protocol'
+  if (message.includes('连接') || message.includes('fetch') || message.includes('network')) return 'network'
+  return 'unknown'
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function parseBindingInput(raw: unknown): {
+  capability: ProviderCapability
+  profileId: string
+  model: string
+  secondaryModel: string | null
+  lastTestedAt: number | null
+  lastLatencyMs: number | null
+  lastError: string | null
+} {
+  const record = requireRecord(raw)
+  const capability = parseCapability(record.capability)
+  const profileId = parseOptionalProfileId(record.profileId)
+  if (profileId === undefined) throw new ProviderError(ErrorCodes.BadRequest, 'profileId 必填')
+  const numericOrNull = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
+  return {
+    capability,
+    profileId,
+    model: parseRequiredModel(record.model),
+    secondaryModel: typeof record.secondaryModel === 'string' && record.secondaryModel.trim() !== ''
+      ? record.secondaryModel.trim()
+      : null,
+    lastTestedAt: numericOrNull(record.lastTestedAt),
+    lastLatencyMs: numericOrNull(record.lastLatencyMs),
+    lastError: typeof record.lastError === 'string' && record.lastError.trim() !== '' ? record.lastError.trim() : null,
+  }
+}
+
+function parseSchemeName(raw: unknown): string {
+  return parseName(requireRecord(raw).name)
+}
+
 export function registerProviderRoutes(app: FastifyInstance, registry: LlmRegistry): void {
   /* ---------- 读 ---------- */
 
@@ -179,6 +316,137 @@ export function registerProviderRoutes(app: FastifyInstance, registry: LlmRegist
     active: registry.active(),
     profiles: registry.list(),
   }))
+
+  app.get('/api/provider-center', async (): Promise<ProviderCenterState> => {
+    const active = registry.active()
+    seedCapabilityBindings(active === null ? null : registry.require(active.id))
+    return { bindings: listCapabilityBindings(), schemes: listProviderSchemes() }
+  })
+
+  /* ---------- 未保存草稿：拉模型 / 真实能力测试 ---------- */
+
+  app.post('/api/providers/draft/models', async (request): Promise<ProviderDraftModelsResult> => {
+    const draft = draftProfile(request.body, registry)
+    const provider = registry.draftProvider(draft.profile, draft.apiKey)
+    const started = Date.now()
+    try {
+      const models = await provider.listModels()
+      if (models.length === 0) {
+        return { ok: false, latencyMs: Date.now() - started, models: [], errorCategory: 'empty-models', error: '上游返回了空模型列表，可继续手填模型 ID' }
+      }
+      return { ok: true, latencyMs: Date.now() - started, models, errorCategory: null, error: null }
+    } catch (err) {
+      return { ok: false, latencyMs: Date.now() - started, models: [], errorCategory: errorCategory(err), error: errorMessage(err) }
+    }
+  })
+
+  app.post('/api/providers/draft/test', async (request): Promise<ProviderDraftTestResult> => {
+    const raw = requireRecord(request.body)
+    const capability = parseCapability(raw.capability)
+    const draft = draftProfile(request.body, registry, capability)
+    const input = draft.record as unknown as ProviderDraftTestInput
+    const provider = registry.draftProvider(draft.profile, draft.apiKey)
+    const started = Date.now()
+    const testedAt = Date.now()
+    try {
+      let previewDataUrl: string | null = null
+      let description: string | null = null
+      if (capability === 'chat') {
+        let sawReply = false
+        for await (const chunk of provider.streamChat([{ role: 'user', content: '请只回复 OK' }], { maxTokens: 8 })) {
+          if (chunk.type === 'delta' && (chunk.delta.content ?? '') !== '') sawReply = true
+        }
+        if (!sawReply) throw new ProviderError(ErrorCodes.ProviderUpstreamError, '流式请求完成，但没有返回正文')
+      } else if (capability === 'voice') {
+        const result = await provider.synthesize('这是栖息地的语音连接测试。')
+        previewDataUrl = `data:${result.mimeType};base64,${Buffer.from(result.audio).toString('base64')}`
+      } else if (capability === 'vision') {
+        const result = await provider.vision(typeof input.dataUrl === 'string' ? input.dataUrl : TEST_IMAGE, '请用一句话描述测试图片。')
+        description = result.description
+      } else {
+        const result = await provider.generate('A tiny warm lamp icon on a plain background')
+        previewDataUrl = result.dataUrl
+      }
+      return {
+        capability,
+        ok: true,
+        latencyMs: Date.now() - started,
+        testedAt,
+        errorCategory: null,
+        error: null,
+        previewDataUrl,
+        description,
+      }
+    } catch (err) {
+      return {
+        capability,
+        ok: false,
+        latencyMs: Date.now() - started,
+        testedAt,
+        errorCategory: errorCategory(err),
+        error: errorMessage(err),
+        previewDataUrl: null,
+        description: null,
+      }
+    }
+  })
+
+  /* ---------- 四通道绑定与方案 ---------- */
+
+  app.put('/api/provider-center/bindings', async (request) => {
+    const input = parseBindingInput(request.body)
+    registry.require(input.profileId)
+    return saveCapabilityBinding(input)
+  })
+
+  app.post('/api/provider-center/schemes', async (request, reply): Promise<ProviderScheme> => {
+    try {
+      const scheme = createProviderScheme(parseSchemeName(request.body))
+      reply.status(201)
+      return scheme
+    } catch (err) {
+      throw new ProviderError(ErrorCodes.BadRequest, errorMessage(err))
+    }
+  })
+
+  app.patch<{ Params: IdParams }>('/api/provider-center/schemes/:id', async (request): Promise<ProviderScheme> => {
+    try {
+      const scheme = renameProviderScheme(request.params.id, parseSchemeName(request.body))
+      if (scheme === null) throw new ProviderError(ErrorCodes.NotFound, '方案不存在')
+      return scheme
+    } catch (err) {
+      if (err instanceof ProviderError) throw err
+      throw new ProviderError(ErrorCodes.BadRequest, errorMessage(err))
+    }
+  })
+
+  app.post<{ Params: IdParams }>('/api/provider-center/schemes/:id/copy', async (request, reply): Promise<ProviderScheme> => {
+    try {
+      const scheme = copyProviderScheme(request.params.id, parseSchemeName(request.body))
+      if (scheme === null) throw new ProviderError(ErrorCodes.NotFound, '方案不存在')
+      reply.status(201)
+      return scheme
+    } catch (err) {
+      if (err instanceof ProviderError) throw err
+      throw new ProviderError(ErrorCodes.BadRequest, errorMessage(err))
+    }
+  })
+
+  app.post<{ Params: IdParams }>('/api/provider-center/schemes/:id/activate', async (request): Promise<ProviderScheme> => {
+    try {
+      const scheme = activateProviderScheme(request.params.id)
+      if (scheme === null) throw new ProviderError(ErrorCodes.NotFound, '方案不存在')
+      return scheme
+    } catch (err) {
+      if (err instanceof ProviderError) throw err
+      throw new ProviderError(ErrorCodes.BadRequest, errorMessage(err))
+    }
+  })
+
+  app.delete<{ Params: IdParams }>('/api/provider-center/schemes/:id', async (request): Promise<{ deleted: true }> => {
+    if (!deleteProviderScheme(request.params.id)) throw new ProviderError(ErrorCodes.NotFound, '方案不存在')
+    return { deleted: true }
+  })
 
   app.get<{ Params: IdParams }>(
     '/api/providers/:id/models',
@@ -210,6 +478,10 @@ export function registerProviderRoutes(app: FastifyInstance, registry: LlmRegist
     '/api/providers/:id',
     async (request): Promise<{ deleted: true; id: string; active: ApiProfilePublic | null }> => {
       const { id } = request.params
+      const references = profileBindingReferences(id)
+      if (references.length > 0) {
+        throw new ProviderError(ErrorCodes.BadRequest, `连接仍被引用，不能删除：${references.join('、')}`)
+      }
       if (!deleteProfile(id)) {
         throw new ProviderError(ErrorCodes.ProviderNotFound, `未知的 LLM 方案 '${id}'`)
       }

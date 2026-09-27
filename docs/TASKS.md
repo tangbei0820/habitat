@@ -95,7 +95,7 @@
 - [x] ~~**`--bottom-nav-height` 是估的 4rem**~~ —— 已修（T-008）：`BottomNav` 用 `ResizeObserver` 实测自身高度后写回 `--bottom-nav-height`，改图标 / 字号自动跟随，不再需要手动同步。
 - [x] ~~**思维链整段存进 `metadata.reasoning`，无长度上限**~~ —— 已修（T-008）：`db/chat.ts` 加 `capReasoning()` / `REASONING_LIMIT = 32000`，超限保留头尾并插入截断说明（头尾各半 —— 开头是推理起点、结尾是结论，中间最适合丢）。写入路径（`addVersion`、流式草稿、收尾定性）统一走它。
 - [ ] **验收脚本的断言绑定了 mock 的固定回复文案** —— 改 `mock-openai.ts` 的回复就要同步改 `web/scripts/verify-chat.mjs` 的断言。→ 让 mock 回显请求内容，断言改成检查回显。
-- [ ] **`probe-llm.ts` / `probe-providers.ts` 的「模型列表」断言是既存失败的**（T-035 发现，未修）—— 两支都断言 `models.length === 3`，而 `mock-openai.ts` 的 `MODELS` 早已长到 **7 个**（相机 / 语音 / 图像等槽位加进来时没同步）。**与本轮改动无关**（`MODELS` 与这两个脚本都不在 T-035 的改动面内），但它意味着这两支其实一直没真绿过 —— 「全绿」的印象是假的。→ 断言应改为「包含 `mock-chat-small` 且数量与 mock 声明一致」，或干脆由 mock 暴露 `/__models` 让脚本对齐，别再硬编码数字。
+- [x] ~~**`probe-llm.ts` / `probe-providers.ts` 的「模型列表」断言曾绑定旧数量**~~ —— 已修（T-058）：两支改为断言关键能力模型存在，不再硬编码 `models.length === 3`；`probe-llm.ts` 当前 **33/33**，`probe-providers.ts` 当前 **52/52**。
 - [x] ~~**`verify-home.mjs` 对机器负载敏感**~~ —— 已修（T-032）：仅把 `Page.navigate` 后的页面就绪等待放宽到 60s；普通交互断言仍保留 30s，避免真回归被整体长超时掩盖。流水线继续串行，README 已同步。
 - [ ] **CDP 验收脚本有两条「流水线级」约束，目前靠注释口头传承** —— ① `Runtime.enable` 会把**上一个会话**的 console 消息重放一遍，不清桶的话「控制台零异常」会被上游脚本的报错污染成假红；② 新建会话后「路由变了 ≠ 输入框已挂载」，`setValue` 会**静默**返回 `'missing'`，后面白等 30s 才超时、且报错完全指不到原因。两条都已写进 `verify-export.mjs` / `verify-offline.mjs` 的注释。→ 写到第三个脚本时该把 `waitFor` / `setValue` / 清桶抽成 `web/scripts/lib/` 的公共 helper。
 - [ ] **`probe-nocturne-live.ts` 默认不打印 boot 正文** —— 那是本人记忆，默认只打印字数（要看得加 `NOCTURNE_PROBE_PREVIEW=1`）。代价是排查「召回内容对不对」时得多敲一个环境变量。→ 保持现状；若日后要做召回质量评估，应改成写文件而不是打屏。
@@ -2452,3 +2452,21 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 
 **停止点**：规划与规则已经补齐；所有条目仍是待施工范围，下一批必须按 V2-A 起重新切片，
 不得把本条记录当成功能完成，也不得自动开始实现。
+
+### T-058 · 2026-09-27 · V2-A 第一切片：Provider Center 四通道—— **完成**
+
+**边界**：只施工主聊天 / 语音 / 识图 / 生图四张能力卡与四通道方案；不进入 Codex Subscription、MCP、Nocturne、Chat 或 Living Apps。
+
+| 交付 | 说明 |
+| --- | --- |
+| 四张能力卡 | 设置页固定展示主聊天、语音、识图、生图；每张卡可选择 / 新建可复用 Provider Profile，填写 Base URL / Key / Headers，拉模型或手填 ID，执行真实能力测试，通过后独立保存，并可恢复上次保存 |
+| 未保存草稿接口 | `/api/providers/draft/models` 与 `/api/providers/draft/test` 由服务端代请求；Key 只进不出；拉取失败分类；测试分别走流式 Chat、真实 TTS、真实视觉、真实生图，语音 / 图片返回预览 |
+| 能力绑定 | 新表 `provider_capability_binding`；聊天与 Wake / Solitude 默认读 chat 绑定，ASR/TTS、vision、image 分别读自己的绑定；显式传 `profileId` 的兼容调用仍保留 |
+| 四通道方案 | 新表 `provider_scheme`；存为方案 / 重命名 / 复制 / 删除 / 设为当前；激活前验证引用，SQLite 事务中原子替换四个绑定；方案只存 profileId + model，不复制密钥 |
+| 兼容与保护 | 老 active profile 按已有 modelMap 槽位补种，未配置的不伪造；媒体专用 profile 允许没有 chat；被绑定或方案引用的 Provider 禁止误删并列出引用 |
+
+**参考取舍**：实查 OmniRouter 与 VCPToolBox。借 Provider / 模型分层、能力标记、连接状态、主配置复用与专项覆盖；不引入权重轮询、智能路由、自动禁用、巨型配置文件和插件级多层优先级。
+
+**验收**：`probe-provider-center` **30/30**（四类真实调用、密钥不回显、默认业务路由、方案原子切换、引用保护）；`probe-llm` **33/33**；旧 `probe-providers` **52/52**；浏览器 `verify-providers` **31/31**（含四张卡草稿拉模型 / 流式测试 / 保存 / 存方案，旧 CRUD 全回归）；两端 typecheck + web build 通过。
+
+**明确未做**：ElevenLabs 原生参数与试听细节、Codex Subscription Adapter、Provider 自动故障切换，留在 V2-A 后续切片；本批没有以 OpenAI-compatible 占位冒充它们已完成。

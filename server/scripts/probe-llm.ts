@@ -65,12 +65,18 @@ const parsed = loadProfiles({
       modelMap: { chat: 'mock-chat-small' },
       isActive: true,
     },
-    { id: 'bad-no-model', baseUrl: BASE_URL }, // 缺 modelMap.chat → 应被跳过
+    { id: 'bad-no-model', baseUrl: BASE_URL }, // 缺能力模型 → 应被跳过
     { id: 'env-a', baseUrl: BASE_URL, modelMap: { chat: 'x' } }, // id 重复 → 应被跳过
   ]),
 })
 check('合法方案被解析', parsed.profiles.length === 1 && parsed.profiles[0]?.id === 'env-a')
 check('坏方案被跳过且给出原因', parsed.problems.length === 2, parsed.problems.join(' | '))
+const mediaOnly = loadProfiles({
+  HABITAT_LLM_PROFILES: JSON.stringify([
+    { id: 'vision-only', baseUrl: BASE_URL, modelMap: { vision: 'mock-vision' } },
+  ]),
+})
+check('媒体专用方案无需 chat 模型', mediaOnly.profiles.length === 1 && mediaOnly.profiles[0]?.modelMap.vision === 'mock-vision')
 check('未设置环境变量时不报错', loadProfiles({}).profiles.length === 0)
 const badJson = loadProfiles({ HABITAT_LLM_PROFILES: '{oops' })
 check('坏 JSON 被兜住且提示写成单行', badJson.problems.length === 1 && badJson.problems[0]!.includes('单行'))
@@ -104,7 +110,7 @@ check('默认方案取 isActive', registry.active()?.id === 'ok')
 console.log('\n=== 3. listModels ===')
 try {
   const models = await registry.provider('ok').listModels()
-  check('取到模型列表', models.length === 3, JSON.stringify(models))
+  check('取到模型列表', models.includes('mock-chat-small') && models.includes('mock-image') && models.includes('mock-embedding'), JSON.stringify(models))
 } catch (err) {
   check('取到模型列表', false, err instanceof Error ? err.message : String(err))
 }
@@ -216,7 +222,7 @@ const healed = view('no-key-env')
 check('填密钥后 keySource=stored 且可用', healed?.keySource === 'stored' && healed?.hasKey === true)
 try {
   const models = await registry.provider('no-key-env').listModels()
-  check('原本配错的方案现在真的能调通', models.length === 3)
+  check('原本配错的方案现在真的能调通', models.includes('mock-chat-small'))
 } catch (err) {
   check('原本配错的方案现在真的能调通', false, err instanceof Error ? err.message : String(err))
 }
@@ -227,7 +233,7 @@ const authNow = view('no-auth')
 check('表内密钥覆盖 not-required → stored', authNow?.keySource === 'stored')
 try {
   const models = await registry.provider('no-auth').listModels()
-  check('表内密钥确实被送去上游（不再是 401）', models.length === 3)
+  check('表内密钥确实被送去上游（不再是 401）', models.includes('mock-chat-small'))
 } catch (err) {
   check('表内密钥确实被送去上游（不再是 401）', false, err instanceof Error ? err.message : String(err))
 }

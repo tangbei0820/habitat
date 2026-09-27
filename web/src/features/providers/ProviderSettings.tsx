@@ -6,12 +6,15 @@
  * - **删除用两步确认**而不用 `window.confirm` —— 原生弹窗会阻塞页面、在无头浏览器里还得额外处理，
  *   而「点一次变『确认删除？』」既够拦住误触，又能被自动化验收直接驱动
  */
-import { useState, type ComponentType, type ReactNode } from 'react'
-import type { ApiKeySource, ApiProfileCreateInput, ApiProfilePublic, LlmProbeResult } from '@shared/types'
+import { useCallback, useEffect, useState, type ComponentType, type ReactNode } from 'react'
+import type { ApiKeySource, ApiProfileCreateInput, ApiProfilePublic, LlmProbeResult, ProviderCenterState } from '@shared/types'
 import { IconAlert, IconCheck, IconClose, IconKey, type IconProps } from '../../components/qixi/Icons'
 import { ProviderForm } from './ProviderForm'
+import { ProviderCapabilityCard } from './ProviderCapabilityCard'
 import { useProviders } from './useProviders'
 import { useOnlineStatus } from '../offline/useOnlineStatus'
+import * as api from './api'
+import { ApiRequestError } from '../../lib/api'
 
 const LABEL_STYLE = { color: 'var(--text-secondary)' } as const
 const SECTION_STYLE = {
@@ -180,13 +183,82 @@ export function ProviderSettings() {
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [center, setCenter] = useState<ProviderCenterState>({ bindings: [], schemes: [] })
+  const [centerLoading, setCenterLoading] = useState(true)
+  const [centerError, setCenterError] = useState<string | null>(null)
+  const [schemeName, setSchemeName] = useState('')
+
+  const reloadCenter = useCallback(() => {
+    setCenterLoading(true)
+    api.getProviderCenter()
+      .then((value) => { setCenter(value); setCenterError(null) })
+      .catch((error: unknown) => setCenterError(error instanceof ApiRequestError ? error.message : String(error)))
+      .finally(() => setCenterLoading(false))
+  }, [])
+
+  useEffect(() => reloadCenter(), [reloadCenter])
+
+  function changed(): void {
+    ctrl.reload()
+    reloadCenter()
+  }
+
+  async function createScheme(): Promise<void> {
+    if (schemeName.trim() === '') return
+    try {
+      await api.createScheme(schemeName.trim())
+      setSchemeName('')
+      reloadCenter()
+    } catch (error) {
+      setCenterError(error instanceof ApiRequestError ? error.message : String(error))
+    }
+  }
 
   async function handleCreate(input: ApiProfileCreateInput, secret: string | null): Promise<void> {
     if (await ctrl.create(input, secret)) setCreating(false)
   }
 
   return (
-    <section className="mb-4 rounded-lg border p-4" style={SECTION_STYLE}>
+    <div className="mb-4">
+      <div className="setting-group-label">Provider Center</div>
+      <section className="grid gap-3 lg:grid-cols-2" data-testid="provider-center">
+        {(['chat', 'voice', 'vision', 'image'] as const).map((capability) => (
+          <ProviderCapabilityCard
+            key={`${capability}:${center.bindings.find((item) => item.capability === capability)?.updatedAt ?? 'none'}:${ctrl.profiles.length}`}
+            capability={capability}
+            profiles={ctrl.profiles}
+            binding={center.bindings.find((item) => item.capability === capability)}
+            busy={ctrl.mutating || centerLoading}
+            onChanged={changed}
+          />
+        ))}
+      </section>
+
+      <section className="mt-3 rounded-lg border p-4" style={SECTION_STYLE} data-testid="provider-schemes">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div><h3 className="text-sm font-semibold">四通道方案</h3><p className="text-xs" style={LABEL_STYLE}>一次切换主聊天、语音、识图与生图；密钥不会被复制。</p></div>
+        </div>
+        <div className="flex gap-2">
+          <input className="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-base)' }} value={schemeName} onChange={(event) => setSchemeName(event.target.value)} placeholder="方案名称" />
+          <button type="button" className="rounded-md border px-3 py-2 text-xs" disabled={schemeName.trim() === ''} onClick={() => void createScheme()}>存为方案</button>
+        </div>
+        {centerError !== null && <p className="mt-2 text-xs" style={{ color: 'var(--danger)' }}>{centerError}</p>}
+        <ul className="mt-3 flex flex-col gap-2">
+          {center.schemes.map((scheme) => (
+            <li key={scheme.id} className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs" style={{ borderColor: 'var(--border-soft)' }}>
+              <span className="font-medium">{scheme.name}</span>{scheme.isActive && <span style={{ color: 'var(--accent-strong)' }}>当前</span>}
+              <span className="ml-auto flex flex-wrap gap-1">
+                {!scheme.isActive && <button type="button" className="rounded border px-2 py-1" onClick={() => void api.activateScheme(scheme.id).then(reloadCenter).catch((error: unknown) => setCenterError(String(error)))}>设为当前</button>}
+                <button type="button" className="rounded border px-2 py-1" onClick={() => { const name = window.prompt('新名称', scheme.name); if (name?.trim()) void api.renameScheme(scheme.id, name.trim()).then(reloadCenter).catch((error: unknown) => setCenterError(String(error))) }}>重命名</button>
+                <button type="button" className="rounded border px-2 py-1" onClick={() => { const name = window.prompt('副本名称', `${scheme.name} 副本`); if (name?.trim()) void api.copyScheme(scheme.id, name.trim()).then(reloadCenter).catch((error: unknown) => setCenterError(String(error))) }}>复制</button>
+                <button type="button" className="rounded border px-2 py-1" style={{ color: 'var(--danger)' }} onClick={() => void api.deleteScheme(scheme.id).then(reloadCenter).catch((error: unknown) => setCenterError(String(error)))}>删除</button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="mt-3 rounded-lg border p-4" style={SECTION_STYLE}>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold" style={LABEL_STYLE}>
           API 方案
@@ -271,6 +343,7 @@ export function ProviderSettings() {
           ),
         )}
       </ul>
-    </section>
+      </section>
+    </div>
   )
 }

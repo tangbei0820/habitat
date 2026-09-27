@@ -10,7 +10,7 @@
 > **纯修 bug、补测试、改接口、改部署等不涉及产品交互的任务，不强制查 GitHub 参考项目。**
 >
 > 任务完成后立即停止。不得自行扩展需求、重构无关代码、继续优化或执行下一阶段任务。超出当前范围的问题统一写入 `docs/TASKS.md`。
-> 最后更新：2026-09-26
+> 最后更新：2026-09-27
 
 ---
 
@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：**宿主 nginx 1.18.0** + habitat-server + Nocturne / Ombre Brain（容器 nginx）+ eventide-sidecar；Caddy 仅为早期方案记录                      |
-| 当前阶段 | **Habitat v2 蓝图回归完成，待按新路线施工**：生产仍为 **T-056 / https://habitat.beiyan.cc**；T-057 已把最初构想中的遗漏补回 `HABITAT_V2_PLAN.md` 与 `docs/PRODUCT_SPEC.md`（Provider 四通道、完整 Chat、原生 Nocturne、Eventide + Desire、朋友圈 / 每日品读、Living Apps、Life、Appearance Studio）。历史 Phase 7A / 7B / 7C 仍表示当时切片完成，**不再等同于模块完整**；后续阶段统一编号 **V2-A~V2-F**。下一步 = 北北确认 V2-A 的第一施工切片后再开工，不自动进入实现。 |
+| 当前阶段 | **Habitat v2 已开工**：生产仍为 **T-056 / https://habitat.beiyan.cc**；T-057 完成蓝图回归，T-058 完成 **V2-A 第一切片 Provider Center 四通道**（主聊天 / 语音 / 识图 / 生图独立绑定、未保存草稿拉模型与真实测试、四通道方案原子切换）。历史 Phase 7A / 7B / 7C 只表示旧切片完成，**不等同于模块完整**；后续统一编号 **V2-A~V2-F**。下一步必须重新切片，不能自动扩进 Codex / MCP / Nocturne。 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -293,8 +293,10 @@ habitat/
 
 ### 下一步
 
-0. 🚀 **部署上 VPS**：代码与验收侧已就绪（T-046~T-049），照 `docs/DEPLOYMENT.md` §6 的步骤 + 7 条验收清单做实机操作（DNS 子域 / certbot / systemd / nginx / `.env`）。
-1. **Phase 6.5 收口后的收尾项**（都在 `docs/TASKS.md`，没有新的功能批次）：
+0. ✅ **V2-A 第一切片（T-058）**：Provider Center 四通道已完成并独立验收；OpenAI-compatible 现役链路已真正按能力分流。ElevenLabs 原生 Provider、Codex Subscription、MCP / Nocturne 属后续独立切片，未冒充完成。
+
+1. 🚀 **部署上 VPS**：生产当前仍是 T-056；T-058 尚未部署。部署前照 `docs/DEPLOYMENT.md` §6 备份 SQLite，再更新代码、重启、跑四通道健康检查。
+2. **Phase 6.5 收口后的收尾项**（都在 `docs/TASKS.md`）：
    - ⏳ `memory.write` 仍未实施：Nocturne 实例的写工具（`hold`）没接。真要写时先读 `docs/MEMORY.md` 的工具面
    - ⏳ 确认卡**没有过期 / 撤回**机制；其**前端交互**（点按钮 / 刷新后状态还在）仍无人眼之外的覆盖
    - ⏳ 工具卡片总排在助手气泡之后 —— 模型在工具调用后又说话时顺序会反

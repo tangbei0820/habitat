@@ -413,3 +413,19 @@ AI 的日记只能由 AI 侧写入（P1 的工具层，`db/diary.ts` 的 `create
 **决策只能做一次**：`settleEvent()` 带 `status='pending'` 条件更新，已决的返回 `null` 并让调用方报错。
 这不是顺手加的校验 —— 确认卡点两下就会写两篇日记。同一条纪律的另一个面是
 「**拒绝不等于删掉**」：拒绝只改事件状态，绝不动日记本身。
+
+---
+
+## 13. V2-A Provider Center（服务端 SQLite，T-058）
+
+`api_profile` / `api_secret` 继续分别承担“可复用连接配置 / 只进不出的凭据”；没有复制一套媒体 Provider。
+新增两张表只表达四个能力如何绑定这些连接：
+
+| 表 | 字段 | 关键不变量 |
+|---|---|---|
+| `provider_capability_binding` | `capability`（主键）/ `profile_id` / `model` / `secondary_model` / 最近测试时间、延迟、错误 / `updated_at` | 四种 capability 各至多一行；`voice.secondary_model` 是可选 ASR，其余为空；手改单卡会清除 scheme 的 active 标记 |
+| `provider_scheme` | `id` / 唯一 `name` / `bindings_json` / `is_active` / 时间 | JSON 只保存四份 `{profileId, model, secondaryModel}` 快照，**不含密钥**；激活前验证所有引用，四行绑定在一个事务中整体替换 |
+
+演进规则：启动时 `CREATE TABLE IF NOT EXISTS` 补表；不改 Dexie、不升前端备份版本。老库在首次读取 Provider Center 时，
+只按原 active profile 已存在的 `modelMap` 槽位补种绑定，未配置能力保持空。删除 Provider 前同时检查当前绑定与所有方案引用；
+仍被引用时拒绝，避免留下指向不存在连接的方案。

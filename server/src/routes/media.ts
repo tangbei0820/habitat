@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors'
-import type { MediaImageResult, MediaTranscriptionResult, MediaVisionResult } from '@shared/types'
+import type { MediaImageResult, MediaTranscriptionResult, MediaVisionResult, ProviderCapability } from '@shared/types'
 import { recordUsage } from '../db/usage.js'
 import { ProviderError } from '../providers/errors.js'
 import type { LlmRegistry } from '../providers/registry.js'
@@ -24,12 +24,14 @@ function text(value: unknown, name: string, max: number): string {
   return result
 }
 
-function active(registry: LlmRegistry, profileId: unknown) {
-  const profile = typeof profileId === 'string' && profileId !== ''
-    ? registry.toPublic(registry.require(profileId))
-    : registry.active()
-  if (profile === null) throw new ProviderError(ErrorCodes.ProviderNotConfigured, '没有可用的 API 方案')
-  return { profile, provider: registry.mediaProvider(profile.id) }
+function active(registry: LlmRegistry, capability: ProviderCapability, profileId: unknown) {
+  if (typeof profileId === 'string' && profileId !== '') {
+    const profile = registry.toPublic(registry.require(profileId))
+    return { profile, provider: registry.mediaProvider(profile.id) }
+  }
+  const resolved = registry.capabilityProvider(capability)
+  if (resolved === null) throw new ProviderError(ErrorCodes.ProviderNotConfigured, `没有可用的${capability} API 绑定`)
+  return resolved
 }
 
 function parseDataUrl(value: unknown, allowed: ReadonlySet<string>, maxBytes: number, label: string): { data: Uint8Array; mimeType: string } {
@@ -50,7 +52,7 @@ function parseDataUrl(value: unknown, allowed: ReadonlySet<string>, maxBytes: nu
 export function registerMediaRoutes(app: FastifyInstance, registry: LlmRegistry): void {
   app.post('/api/media/transcriptions', async (request): Promise<MediaTranscriptionResult> => {
     const body = record(request.body)
-    const { profile, provider } = active(registry, body.profileId)
+    const { profile, provider } = active(registry, 'voice', body.profileId)
     const parsed = parseDataUrl(body.dataUrl, AUDIO_MIMES, MAX_AUDIO_BYTES, '音频')
     const result = await provider.transcribe(parsed.data, parsed.mimeType)
     recordUsage({ profileId: profile.id, service: 'transcription', model: result.model })
@@ -59,7 +61,7 @@ export function registerMediaRoutes(app: FastifyInstance, registry: LlmRegistry)
 
   app.post('/api/media/vision', async (request): Promise<MediaVisionResult> => {
     const body = record(request.body)
-    const { profile, provider } = active(registry, body.profileId)
+    const { profile, provider } = active(registry, 'vision', body.profileId)
     parseDataUrl(body.dataUrl, IMAGE_MIMES, MAX_IMAGE_BYTES, '图片')
     const result = await provider.vision(body.dataUrl as string, typeof body.prompt === 'string' ? body.prompt : undefined)
     recordUsage({ profileId: profile.id, service: 'vision', model: result.model })
@@ -68,7 +70,7 @@ export function registerMediaRoutes(app: FastifyInstance, registry: LlmRegistry)
 
   app.post('/api/media/images', async (request): Promise<MediaImageResult> => {
     const body = record(request.body)
-    const { profile, provider } = active(registry, body.profileId)
+    const { profile, provider } = active(registry, 'image', body.profileId)
     const result = await provider.generate(text(body.prompt, 'prompt', MAX_PROMPT_CHARS))
     parseDataUrl(result.dataUrl, IMAGE_MIMES, MAX_IMAGE_BYTES, '图片')
     recordUsage({ profileId: profile.id, service: 'image', model: result.model })
@@ -77,7 +79,7 @@ export function registerMediaRoutes(app: FastifyInstance, registry: LlmRegistry)
 
   app.post('/api/media/speech', async (request, reply): Promise<void> => {
     const body = record(request.body)
-    const { profile, provider } = active(registry, body.profileId)
+    const { profile, provider } = active(registry, 'voice', body.profileId)
     const result = await provider.synthesize(
       text(body.text, 'text', MAX_SPEECH_CHARS),
       typeof body.voice === 'string' && body.voice.trim() !== '' ? body.voice.trim() : undefined,

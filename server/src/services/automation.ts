@@ -272,10 +272,9 @@ export class AutomationService {
   }
 
   private activeProvider(): { provider: ReturnType<LlmRegistry['provider']>; model: string } {
-    const profile = this.registry.active()
-    if (profile === null) throw new Error('没有可供主动行为使用的 LLM 方案')
-    const provider = this.registry.provider(profile.id)
-    return { provider, model: provider.defaultModel }
+    const resolved = this.registry.capabilityProvider('chat')
+    if (resolved === null) throw new Error('没有可供主动行为使用的主聊天 API')
+    return { provider: resolved.provider, model: resolved.provider.defaultModel }
   }
 
   private async memoryContext(): Promise<string> {

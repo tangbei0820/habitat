@@ -112,6 +112,28 @@ CREATE TABLE IF NOT EXISTS api_secret (
   updated_at INTEGER NOT NULL
 )
 `)
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS provider_capability_binding (
+  capability TEXT PRIMARY KEY CHECK (capability IN ('chat', 'voice', 'vision', 'image')),
+  profile_id TEXT NOT NULL,
+  model TEXT NOT NULL,
+  secondary_model TEXT,
+  last_tested_at INTEGER,
+  last_latency_ms INTEGER,
+  last_error TEXT,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_provider_binding_profile ON provider_capability_binding (profile_id);
+CREATE TABLE IF NOT EXISTS provider_scheme (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  bindings_json TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_provider_scheme_active ON provider_scheme (is_active, updated_at DESC);
+`)
 // 进程级键值状态（方案种子导入标记等）
 sqlite.exec(`
 CREATE TABLE IF NOT EXISTS app_kv (
