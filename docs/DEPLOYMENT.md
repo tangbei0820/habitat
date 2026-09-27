@@ -353,6 +353,7 @@ WantedBy=multi-user.target
 | `HABITAT_DB_PATH=./data/habitat.db` | 默认即可 | 备份=停服后拷文件 |
 | `MCP_NOCTURNE_URL` | `http://127.0.0.1:<NGINX_PORT>/mcp`（**内网直连**，见 §3.1/§4） | 不走公网 TLS，绕开 Node 20 SNI 问题 |
 | `MCP_NOCTURNE_TOKEN` | 同宿主 nginx 秘密路径的 Bearer | 见 §3.3 |
+| `NOCTURNE_DASHBOARD_URL` | `https://beiyan.cc/dashboard/`（只填受保护页面 URL） | Habitat 的原生 Dashboard 入口；不填账号、密码或 query token |
 | `EVENTIDE_URL` | 暂留空 | sidecar 未部署；留空不影响启动 |
 | `WEB_PUSH_*` | 可选 | 三项齐全才启用推送 |
 | LLM 密钥 | **不进 .env**：设置页填（`api_secret` 表优先，只进不出） | `HABITAT_LLM_PROFILES` 仅首次种子 |

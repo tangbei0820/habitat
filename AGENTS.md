@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：**宿主 nginx 1.18.0** + habitat-server + Nocturne / Ombre Brain（容器 nginx）+ eventide-sidecar；Caddy 仅为早期方案记录                      |
-| 当前阶段 | **Habitat v2 已开工**：生产仍为 **T-056 / https://habitat.beiyan.cc**；T-057 完成蓝图回归，T-058 完成 **V2-A 第一切片 Provider Center 四通道**，T-059 完成 **MCP Manager 基础切片**（服务端注册、脱敏凭据、启停热加载、真实测试、工具摘要与自主策略元数据）。历史 Phase 7A / 7B / 7C 只表示旧切片完成，**不等同于模块完整**；后续统一编号 **V2-A~V2-F**。下一步必须重新切片，不能自动扩进 Codex / Nocturne / Chat / Living Apps。 |
+| 当前阶段 | **Habitat v2 已开工**：生产仍为 **T-056 / https://habitat.beiyan.cc**；T-057 完成蓝图回归，T-058 完成 **V2-A 第一切片 Provider Center 四通道**，T-059 完成 **MCP Manager 基础切片**，T-060 完成 **Nocturne 原生 Dashboard 受保护入口**（配置状态、302 入口、iframe / 新窗口回退，不下发 MCP 凭据）。历史 Phase 7A / 7B / 7C 只表示旧切片完成，**不等同于模块完整**；后续统一编号 **V2-A~V2-F**。下一步必须重新切片，不能自动扩进 Codex / Chat / Living Apps。 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -293,9 +293,9 @@ habitat/
 
 ### 下一步
 
-0. ✅ **V2-A 第一、第二切片（T-058 / T-059）**：Provider Center 四通道与 MCP Manager 基础闭环已独立验收；MCP 连接配置由服务端持有，原始工具尚未自动绑定给模型。ElevenLabs 原生 Provider、Codex Subscription、Nocturne 原生 Dashboard 属后续独立切片，未冒充完成。
+0. ✅ **V2-A 第一至第三切片（T-058 / T-059 / T-060）**：Provider Center 四通道、MCP Manager 基础闭环、Nocturne 原生 Dashboard 受保护入口已独立验收；MCP 连接配置与 Dashboard 目标均由服务端持有，浏览器不接触 MCP token。Nocturne 原生页面仍由上游负责认证与权限，Habitat 只提供受保护入口与 iframe / 新窗口回退；ElevenLabs 原生 Provider、Codex Subscription、原始工具自主绑定属后续独立切片，未冒充完成。
 
-1. 🚀 **部署上 VPS**：生产当前仍是 T-056；T-058 / T-059 尚未部署。部署前照 `docs/DEPLOYMENT.md` §6 备份 SQLite，再更新代码、重启、跑 Provider Center 与 MCP Manager 健康检查。
+1. 🚀 **部署上 VPS**：生产当前仍是 T-056；T-058 / T-059 / T-060 尚未部署。部署前照 `docs/DEPLOYMENT.md` §6 备份 SQLite，再更新代码、重启、设置 `NOCTURNE_DASHBOARD_URL`，跑 Provider Center、MCP Manager 与 Dashboard 入口健康检查。
 2. **Phase 6.5 收口后的收尾项**（都在 `docs/TASKS.md`）：
    - ⏳ `memory.write` 仍未实施：Nocturne 实例的写工具（`hold`）没接。真要写时先读 `docs/MEMORY.md` 的工具面
    - ⏳ 确认卡**没有过期 / 撤回**机制；其**前端交互**（点按钮 / 刷新后状态还在）仍无人眼之外的覆盖

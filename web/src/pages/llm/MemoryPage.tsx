@@ -136,6 +136,16 @@ export function MemoryPage() {
           )}
         </div>
 
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3" style={{ borderColor: 'var(--border-soft)' }} data-testid="memory-dashboard-entry">
+          <div>
+            <div className="text-sm font-medium">进入记忆深处</div>
+            <div className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>打开同一套 Nocturne 原生 Dashboard，管理记忆树、审计与回滚。</div>
+          </div>
+          <Link to="/llm/memory/dashboard" className="rounded-lg border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }} data-testid="memory-dashboard-link">
+            打开管理器
+          </Link>
+        </div>
+
         {/* 记忆全文（breath） */}
         <section className="mt-4">
           <div className="flex items-center justify-between">

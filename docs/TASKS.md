@@ -2487,3 +2487,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **参考取舍**：实查 VCPToolBox README。借鉴“服务端配置 + 工具面管理”分层；不引入大型插件优先级体系，不把 raw 配置和 secret 暴露到普通设置页。
 
 **待优化（后续切片）**：工具级权限与自主绑定、stdio / 本地进程 MCP、OAuth / 更细的 header 编辑、Nocturne 原生 Dashboard、Codex Subscription Adapter；本批不提前施工。
+
+### T-060 · 2026-09-27 · V2-A 第三切片：Nocturne 原生 Dashboard 受保护入口—— **完成**
+
+**边界**：只做从 Habitat 记忆摘要页进入已部署 Nocturne 原生管理器；不复制 Nocturne 前端、不向浏览器下发 MCP token、不进入 Codex Subscription、Chat、工具自主绑定或其它 Living Apps。
+
+| 交付 | 说明 |
+| --- | --- |
+| 服务端配置与入口 | `NOCTURNE_DASHBOARD_URL` 只接受 `http(s)`；拒绝账号密码与 query token。`GET /api/nocturne/dashboard` 只返回 `configured/error`，不回传目标 URL；`GET /api/nocturne/dashboard/open` 在配置有效时返回受保护 302。 |
+| Habitat 页面 | LLM → 记忆页新增「进入记忆深处」入口；`/llm/memory/dashboard` 提供原生页面 iframe，CSP / 登录态不允许嵌入时可切换「新窗口打开」。 |
+| 安全边界 | Habitat 不代传 Nocturne MCP 凭据、不代理原始数据库；认证、权限、原生 Memory Explorer / Review / Maintenance 页面继续由 Nocturne 自己负责。 |
+| 运维与验收 | `.env.example`、部署文档、API 文档与 README 探针同步；`probe:nocturne-dashboard` 覆盖状态脱敏、302 目标与 token 不泄漏。 |
+
+**参考取舍**：实查 [Nocturne Memory README](https://github.com/Dataojitori/nocturne_memory) 及其原生前端路由。借鉴 Memory Explorer / Review & Audit / Maintenance 的完整原生管理器入口形态；不复制 React 应用、不把上游内部 schema 重新建模进 Habitat。
+
+**验收**：两端 typecheck、web build、`probe:nocturne-dashboard` 6/6、`git diff --check`。
+
+**待优化（后续切片）**：若实际部署的 CSP / 登录策略禁止 iframe，再评估同源反代或受控新窗口登录流程；本批不做服务端反向代理、不改 Nocturne 认证、不把 Dashboard 原始数据同步成 Habitat 平行模型。

@@ -775,6 +775,12 @@ export interface McpTestResult {
   error: string | null
 }
 
+/** Nocturne 原生 Dashboard 受保护入口状态；不向浏览器下发 MCP URL / token。 */
+export interface NocturneDashboardState {
+  configured: boolean
+  error: string | null
+}
+
 /* ---------- Eventide 状态（服务端 SQLite + Python sidecar） ---------- */
 
 /**

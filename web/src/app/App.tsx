@@ -18,6 +18,7 @@ import { EventidePage } from '../pages/life/EventidePage'
 import { SoloPage } from '../pages/solo/SoloPage'
 import { LlmPage } from '../pages/llm/LlmPage'
 import { MemoryPage } from '../pages/llm/MemoryPage'
+import { NocturneDashboardPage } from '../pages/llm/NocturneDashboardPage'
 import { SettingPage } from '../pages/setting/SettingPage'
 import { WorldbookPage } from '../pages/setting/WorldbookPage'
 import { WelcomePage } from '../pages/welcome/WelcomePage'
@@ -94,6 +95,7 @@ const router = createBrowserRouter(
         { path: '/home/:module', element: <HomeModulePage /> },
         { path: '/llm', element: <LlmPage /> },
         { path: '/llm/memory', element: <MemoryPage /> },
+        { path: '/llm/memory/dashboard', element: <NocturneDashboardPage /> },
         { path: '/life', element: <LifePage /> },
         { path: '/life/eventide', element: <EventidePage /> },
         { path: '/solo', element: <SoloPage /> },

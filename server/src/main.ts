@@ -24,6 +24,7 @@ import { registerHealthRoutes } from './routes/health.js'
 import { registerProviderRoutes } from './routes/providers.js'
 import { registerMemoryRoutes } from './routes/memory.js'
 import { registerMcpRoutes } from './routes/mcp.js'
+import { registerNocturneDashboardRoutes } from './routes/nocturne-dashboard.js'
 import { registerMomentRoutes } from './routes/moment.js'
 import { registerPromptRoutes } from './routes/prompt.js'
 import { registerStateRoutes } from './routes/state.js'
@@ -114,6 +115,7 @@ const importedProfiles = importProfiles(seedProfiles)
 const llmRegistry = new LlmRegistry()
 registerProviderRoutes(app, llmRegistry)
 registerMcpRoutes(app, gateway)
+registerNocturneDashboardRoutes(app)
 registerChatRoutes(app, llmRegistry, stateProvider, memoryProvider, capabilityService)
 registerMediaRoutes(app, llmRegistry)
 registerToolRoutes(app, gateway)
