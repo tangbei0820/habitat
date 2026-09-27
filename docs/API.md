@@ -38,7 +38,7 @@ MCP Gateway 聚合健康。设置页「MCP 工具网关」数据源。
 
 ## Phase 1 已实现（切片一 · 通用 OpenAI 兼容层）
 
-方案（ApiProfile）以「baseUrl + 鉴权 + 模型映射」描述，任何 OpenAI Chat Completions 兼容的服务（DeepSeek 官方、各类中转、本地 vLLM / Ollama 的 `/v1`）都能直接接。
+方案（ApiProfile）以「provider + baseUrl + 鉴权 + 模型映射」描述。`openai-compat` 覆盖 DeepSeek 官方、各类中转、本地 vLLM / Ollama 的 `/v1`；`elevenlabs` 目前只用于语音能力，走原生 TTS 接口。
 
 > ⚠️ **密钥永不下发**：响应里的 `keyRef` 只是「持有密钥的环境变量名」，不是密钥本身。`headerNames` 同理只给名字，因为部分中转把凭证放在自定义头里。
 > 切片三起，密钥还可以直接存在服务端（见下），但**任何端点都不会把它读回来** —— 前端只能拿到 `hasKey` / `keySource`。
@@ -122,14 +122,18 @@ Provider Profile 仍由 `/api/providers` 管理；以下接口只管理“哪个
 ### `POST /api/providers/draft/models`
 
 使用未保存草稿代请求上游 `/models`。请求可传 `profileId` 复用现有连接，也可传 `baseUrl / apiKey / headers / streamOptions` 覆盖；
-`apiKey` 只活在本次请求中。返回 `{ ok, latencyMs, models, errorCategory, error }`，失败分类包括
+也可传 `provider: "elevenlabs"`；`apiKey` 只活在本次请求中。返回 `{ ok, latencyMs, models, errorCategory, error }`，失败分类包括
 `authentication / network / timeout / protocol / unsupported / empty-models / unknown`。
 
 ### `POST /api/providers/draft/test`
 
-请求体在上述草稿上增加 `capability`、`model`、可选 `secondaryModel` 与识图测试用 `dataUrl`。
+请求体在上述草稿上增加 `capability`、`model`、可选 `secondaryModel`、ElevenLabs 语音用 `voiceId` 与识图测试用 `dataUrl`。
 测试不是 `/models` 冒充：`chat` 发最小流式请求、`voice` 真合成一段音频、`vision` 真识图、`image` 真生图。
 成功时语音 / 生图返回 `previewDataUrl`，识图返回 `description`；密钥永不出现在响应中。
+
+当 `provider` 为 `elevenlabs` 时，只允许 `capability: "voice"`；`model` 写 ElevenLabs 模型 ID（如
+`eleven_multilingual_v2`），`voiceId` 写 voice ID。服务端使用 `xi-api-key` 调用
+`/v1/text-to-speech/:voice_id`，不会把 ElevenLabs 连接伪装成聊天 / 识图 / 生图 Provider。
 
 ### `PUT /api/provider-center/bindings`
 
@@ -187,6 +191,7 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
 ```json
 {
   "name": "DeepSeek 官方",
+  "provider": "openai-compat",
   "baseUrl": "https://api.deepseek.com/v1",
   "modelMap": { "chat": "deepseek-chat" },
   "keyRef": "DEEPSEEK_API_KEY",
@@ -199,7 +204,7 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
 返回 `201` + 脱敏视图。`id` 由 `name` 派生：小写、**中文字符原样保留**（它会出现在账本与日志里，可读比好看重要）、其余字符压成 `-`；冲突自动加 `-2`、`-3`。
 
 - 忽略 `isActive`，**库里一条方案都没有时自动设为默认**（单方案场景不该还要多点一次）
-- `name` / `baseUrl` 必填；`modelMap` 至少含一个已知能力模型（允许媒体专用连接没有 chat）；`keyRef` 留空 = 该上游不需要鉴权
+- `name` / `baseUrl` 必填；`provider` 缺省为 `openai-compat`；`modelMap` 至少含一个已知能力模型（允许媒体专用连接没有 chat）；`keyRef` 留空 = 该上游不需要鉴权
 - `streamOptions` 缺省 `true`；**必须传布尔值**，传其它类型返回 `400 BAD_REQUEST`。要关就显式传 `false`
 
 ### `PATCH /api/providers/:id`

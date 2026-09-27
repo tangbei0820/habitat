@@ -23,6 +23,7 @@ import type {
 import { getCapabilityBinding, seedCapabilityBindings } from '../db/provider-center.js'
 import { getProfile, getSecret, listProfiles } from '../db/profiles.js'
 import { ProviderError } from './errors.js'
+import { ElevenLabsProvider } from './elevenlabs.js'
 import { OpenAICompatProvider } from './openai-compat.js'
 
 const PROFILES_ENV_KEY = 'HABITAT_LLM_PROFILES'
@@ -41,12 +42,14 @@ function parseModelMap(value: unknown): ApiProfileModelMap {
   const map: ApiProfileModelMap = {}
   const chat = asString(source.chat)
   const tts = asString(source.tts)
+  const voice = asString(source.voice)
   const transcription = asString(source.transcription)
   const vision = asString(source.vision)
   const image = asString(source.image)
   const embedding = asString(source.embedding)
   if (chat !== undefined && chat !== '') map.chat = chat
   if (tts !== undefined && tts !== '') map.tts = tts
+  if (voice !== undefined && voice !== '') map.voice = voice
   if (transcription !== undefined && transcription !== '') map.transcription = transcription
   if (vision !== undefined && vision !== '') map.vision = vision
   if (image !== undefined && image !== '') map.image = image
@@ -72,8 +75,8 @@ function parseProfile(value: unknown, index: number): { profile: ApiProfile } | 
   if (id === undefined || id === '') return { problem: `第 ${index + 1} 条缺 id` }
 
   const provider = asString(value.provider) ?? 'openai-compat'
-  if (provider !== 'openai-compat') {
-    return { problem: `方案 '${id}' 的 provider='${provider}' 暂不支持（当前仅 openai-compat）` }
+  if (provider !== 'openai-compat' && provider !== 'elevenlabs') {
+    return { problem: `方案 '${id}' 的 provider='${provider}' 暂不支持` }
   }
 
   const baseUrl = asString(value.baseUrl)
@@ -87,7 +90,7 @@ function parseProfile(value: unknown, index: number): { profile: ApiProfile } | 
     profile: {
       id,
       name: asString(value.name) ?? id,
-      provider: 'openai-compat',
+      provider,
       baseUrl,
       // keyRef 缺省为空串 = 该上游不需要鉴权（本地 vLLM / Ollama）
       keyRef: asString(value.keyRef) ?? '',
@@ -186,25 +189,33 @@ export class LlmRegistry {
   /** Adapter 工厂：业务代码只拿 LLMProvider，不碰具体服务商 */
   provider(id: string): LLMProvider {
     const profile = this.require(id)
-    return new OpenAICompatProvider(profile, this.resolveKey(profile).key)
+    return this.adapter(profile, this.resolveKey(profile).key)
   }
 
   /** Phase 5 媒体能力与聊天共用同一方案 / 凭据，但拿到完整兼容适配器。 */
-  mediaProvider(id: string): OpenAICompatProvider {
+  mediaProvider(id: string): OpenAICompatProvider | ElevenLabsProvider {
     const profile = this.require(id)
-    return new OpenAICompatProvider(profile, this.resolveKey(profile).key)
+    return this.adapter(profile, this.resolveKey(profile).key)
   }
 
   /** 默认业务调用按能力绑定解析；没绑定时兼容回退到旧 active profile。 */
   capabilityProvider(capability: ProviderCapability): {
     profile: ApiProfilePublic
-    provider: OpenAICompatProvider
+    provider: OpenAICompatProvider | ElevenLabsProvider
     binding: ProviderCapabilityBinding | null
   } | null {
     const binding = this.binding(capability)
     const fallback = this.active()
     if (binding === null) {
       if (fallback === null) return null
+      const fallbackModel = capability === 'chat'
+        ? fallback.modelMap.chat
+        : capability === 'voice'
+          ? fallback.modelMap.tts
+          : capability === 'vision'
+            ? fallback.modelMap.vision
+            : fallback.modelMap.image
+      if (fallbackModel === undefined || fallbackModel === '') return null
       return { profile: fallback, provider: this.mediaProvider(fallback.id), binding: null }
     }
     const profile = this.require(binding.profileId)
@@ -218,15 +229,15 @@ export class LlmRegistry {
     const resolved = { ...profile, modelMap }
     return {
       profile: this.toPublic(resolved),
-      provider: new OpenAICompatProvider(resolved, this.resolveKey(profile).key),
+      provider: this.adapter(resolved, this.resolveKey(profile).key),
       binding,
     }
   }
 
   /** 未保存草稿专用 Adapter。apiKey 不落库，也不进入任何返回值。 */
-  draftProvider(profile: ApiProfile, apiKey?: string): OpenAICompatProvider {
+  draftProvider(profile: ApiProfile, apiKey?: string): OpenAICompatProvider | ElevenLabsProvider {
     const key = apiKey === undefined ? this.resolveKey(profile).key : apiKey
-    return new OpenAICompatProvider(profile, key)
+    return this.adapter(profile, key)
   }
 
   /** 脱敏视图：密钥永不下发；header 只给**名字**，因为值里可能藏着凭证 */
@@ -261,5 +272,11 @@ export class LlmRegistry {
     const value = this.env[profile.keyRef]
     if (value === undefined || value === '') return { key: null, source: 'missing' }
     return { key: value, source: 'env' }
+  }
+
+  private adapter(profile: ApiProfile, key: string | null): OpenAICompatProvider | ElevenLabsProvider {
+    return profile.provider === 'elevenlabs'
+      ? new ElevenLabsProvider(profile, key)
+      : new OpenAICompatProvider(profile, key)
   }
 }

@@ -2794,3 +2794,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:sticker-tools` **4/4**；两端 typecheck / web build / diff 检查通过。 |
 
 **待优化（后续功能）**：工具卡与最终助手气泡的历史排序仍沿用既有限制；图库最近使用 / 分类管理 / 拖拽排序、远程白名单与 GIF 策略、MCP 贴纸接入另起任务。本批未部署生产。
+
+### T-079 · 2026-09-28 · V2-A 后续：ElevenLabs 原生 TTS Provider—— **完成（本地）**
+
+**边界**：只把 ElevenLabs 原生同步 TTS 接入 Provider Center 的“语音 API”卡；不改现有 OpenAI-compatible 语音链路，不进入实时通话、Streaming TTS、Codex 或自动故障切换。
+
+| 交付 | 说明 |
+| --- | --- |
+| 原生适配器 | 新增 `ElevenLabsProvider`：`/v1/models` 拉取模型，`/v1/text-to-speech/:voice_id` 生成 MP3；鉴权固定走服务端 `xi-api-key`，密钥不回浏览器。 |
+| 语音卡入口 | Provider Center 语音卡可选择 `ElevenLabs（原生 TTS）`，填写模型 ID 与 Voice ID，走真实测试试听后再保存 / 绑定；其它三张能力卡不会展示或复用 ElevenLabs 连接。 |
+| 数据兼容 | Provider 类型扩为 `openai-compat | elevenlabs`；voice ID 复用现有 `modelMap` JSON，不新增 SQLite / Dexie 表或备份版本。 |
+| 能力边界 | ElevenLabs 连接若被用于聊天、识图、生图或转写会明确返回未配置 / 不支持错误，不伪装成全能力 Provider。 |
+| 参考取舍 | 使用 [ElevenLabs 官方 Create speech 文档](https://elevenlabs.io/docs/api-reference/text-to-speech/convert) 的同步接口与 `xi-api-key` 语义；不引入官方 SDK、异步 flows、语音设计或通话协议。 |
+| 验收 | `probe:elevenlabs` **4/4**；两端 typecheck / web build / diff 检查通过。 |
+
+**待优化（后续功能）**：voice 列表 / 试听管理、稳定性 / 速率限制提示、Streaming TTS、通话模式与 Provider 自动故障切换另起任务。本批未部署生产。

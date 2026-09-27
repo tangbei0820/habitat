@@ -7,6 +7,7 @@ import type {
   ProviderDraftInput,
   ProviderDraftModelsResult,
   ProviderDraftTestResult,
+  LlmProviderKind,
 } from '@shared/types'
 import { ApiRequestError } from '../../lib/api'
 import { IconChevronDown } from '../../components/qixi/Icons'
@@ -26,9 +27,9 @@ function toMessage(error: unknown): string {
   return error instanceof ApiRequestError ? error.message : error instanceof Error ? error.message : String(error)
 }
 
-function modelMap(capability: ProviderCapability, model: string, secondaryModel: string): ApiProfileModelMap {
+function modelMap(capability: ProviderCapability, model: string, secondaryModel: string, voiceId: string): ApiProfileModelMap {
   if (capability === 'chat') return { chat: model }
-  if (capability === 'voice') return { tts: model, ...(secondaryModel === '' ? {} : { transcription: secondaryModel }) }
+  if (capability === 'voice') return { tts: model, ...(voiceId === '' ? {} : { voice: voiceId }), ...(secondaryModel === '' ? {} : { transcription: secondaryModel }) }
   if (capability === 'vision') return { vision: model }
   return { image: model }
 }
@@ -54,14 +55,17 @@ interface Props {
 }
 
 export function ProviderCapabilityCard({ capability, profiles, binding, busy, onChanged }: Props) {
-  const initialProfile = profiles.find((profile) => profile.id === binding?.profileId) ?? profiles[0]
+  const availableProfiles = capability === 'voice' ? profiles : profiles.filter((profile) => profile.provider === 'openai-compat')
+  const initialProfile = availableProfiles.find((profile) => profile.id === binding?.profileId) ?? availableProfiles[0]
   const [profileId, setProfileId] = useState(initialProfile?.id ?? '__new__')
+  const [providerKind, setProviderKind] = useState<LlmProviderKind>(capability === 'voice' ? initialProfile?.provider ?? 'openai-compat' : 'openai-compat')
   const [connectionName, setConnectionName] = useState('')
   const [baseUrl, setBaseUrl] = useState(initialProfile?.baseUrl ?? '')
   const [apiKey, setApiKey] = useState('')
   const [headersText, setHeadersText] = useState('')
   const [model, setModel] = useState(binding?.model ?? '')
   const [secondaryModel, setSecondaryModel] = useState(binding?.secondaryModel ?? '')
+  const [voiceId, setVoiceId] = useState(capability === 'voice' ? initialProfile?.modelMap.voice ?? '' : '')
   const [models, setModels] = useState<string[]>([])
   const [modelResult, setModelResult] = useState<ProviderDraftModelsResult | null>(null)
   const [testResult, setTestResult] = useState<ProviderDraftTestResult | null>(null)
@@ -71,23 +75,28 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(() => capability === 'chat')
   const meta = META[capability]
-  const selected = profiles.find((profile) => profile.id === profileId)
+  const selected = availableProfiles.find((profile) => profile.id === profileId)
   const panelId = `provider-capability-${capability}-panel`
 
   const draft = useMemo<ProviderDraftInput>(() => ({
     ...(profileId === '__new__' ? {} : { profileId }),
+    provider: providerKind,
     baseUrl: baseUrl.trim(),
     ...(apiKey.trim() === '' ? {} : { apiKey: apiKey.trim() }),
     ...(headersText.trim() === '' ? {} : { headers: (() => { try { return parseHeaders(headersText) } catch { return undefined } })() }),
-  }), [apiKey, baseUrl, headersText, profileId])
+  }), [apiKey, baseUrl, headersText, profileId, providerKind])
 
-  const fingerprint = JSON.stringify({ draft, capability, model: model.trim(), secondaryModel: secondaryModel.trim(), testImage })
-  const canSave = testResult?.ok === true && testedFingerprint === fingerprint && model.trim() !== '' && baseUrl.trim() !== ''
+  const fingerprint = JSON.stringify({ draft, capability, model: model.trim(), secondaryModel: secondaryModel.trim(), voiceId: voiceId.trim(), testImage })
+  const canSave = testResult?.ok === true && testedFingerprint === fingerprint && model.trim() !== '' && baseUrl.trim() !== '' && (capability !== 'voice' || providerKind !== 'elevenlabs' || voiceId.trim() !== '')
 
   function selectProfile(next: string): void {
     setProfileId(next)
-    const profile = profiles.find((item) => item.id === next)
+    const profile = availableProfiles.find((item) => item.id === next)
+    setProviderKind(capability === 'voice' ? profile?.provider ?? 'openai-compat' : 'openai-compat')
     setBaseUrl(profile?.baseUrl ?? '')
+    setModel(capability === 'voice' ? profile?.modelMap.tts ?? '' : profile?.modelMap[capability] ?? '')
+    setSecondaryModel(capability === 'voice' ? profile?.modelMap.transcription ?? '' : '')
+    setVoiceId(capability === 'voice' ? profile?.modelMap.voice ?? '' : '')
     setConnectionName('')
     setApiKey('')
     setHeadersText('')
@@ -101,6 +110,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     const headers = parseHeaders(headersText)
     return {
       ...(profileId === '__new__' ? {} : { profileId }),
+      provider: providerKind,
       baseUrl: baseUrl.trim(),
       ...(apiKey.trim() === '' ? {} : { apiKey: apiKey.trim() }),
       ...(headers === undefined ? {} : { headers }),
@@ -129,8 +139,9 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     try {
       const currentFingerprint = fingerprint
       const result = await api.testDraft({
-        ...strictDraft(), capability, model: model.trim(),
+      ...strictDraft(), capability, model: model.trim(),
         ...(secondaryModel.trim() === '' ? {} : { secondaryModel: secondaryModel.trim() }),
+        ...(voiceId.trim() === '' ? {} : { voiceId: voiceId.trim() }),
         ...(testImage === undefined ? {} : { dataUrl: testImage }),
       })
       setTestResult(result)
@@ -153,16 +164,17 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
       if (profileId === '__new__') {
         if (connectionName.trim() === '') throw new Error('新连接需要填写名称')
         const created = await api.createProvider({
-          name: connectionName.trim(), baseUrl: baseUrl.trim(), modelMap: modelMap(capability, model.trim(), secondaryModel.trim()),
+          name: connectionName.trim(), provider: providerKind, baseUrl: baseUrl.trim(), modelMap: modelMap(capability, model.trim(), secondaryModel.trim(), voiceId.trim()),
           ...(headers === undefined ? {} : { headers }),
         })
         targetId = created.id
       } else {
-        const current = profiles.find((profile) => profile.id === profileId)
+        const current = availableProfiles.find((profile) => profile.id === profileId)
         if (current === undefined) throw new Error('选择的连接已不存在')
+        if (current.provider !== providerKind) throw new Error('不能在已有连接上切换 Provider 类型，请新建连接')
         await api.updateProvider(profileId, {
           baseUrl: baseUrl.trim(),
-          modelMap: { ...current.modelMap, ...modelMap(capability, model.trim(), secondaryModel.trim()) },
+          modelMap: { ...current.modelMap, ...modelMap(capability, model.trim(), secondaryModel.trim(), voiceId.trim()) },
           ...(headers === undefined ? {} : { headers }),
         })
       }
@@ -187,11 +199,13 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
   }
 
   function restore(): void {
-    const profile = profiles.find((item) => item.id === binding?.profileId) ?? profiles[0]
+    const profile = availableProfiles.find((item) => item.id === binding?.profileId) ?? availableProfiles[0]
     setProfileId(profile?.id ?? '__new__')
+    setProviderKind(capability === 'voice' ? profile?.provider ?? 'openai-compat' : 'openai-compat')
     setBaseUrl(profile?.baseUrl ?? '')
     setModel(binding?.model ?? '')
     setSecondaryModel(binding?.secondaryModel ?? '')
+    setVoiceId(capability === 'voice' ? profile?.modelMap.voice ?? '' : '')
     setConnectionName('')
     setApiKey('')
     setHeadersText('')
@@ -232,13 +246,14 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
 
       {expanded && <div id={panelId} data-testid={`provider-card-panel-${capability}`}>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="text-xs">Provider 类型<input className={INPUT} style={INPUT_STYLE} value="OpenAI-compatible" disabled /></label>
-        <label className="text-xs">连接<select className={INPUT} style={INPUT_STYLE} value={profileId} onChange={(event) => selectProfile(event.target.value)}><option value="__new__">+ 新建连接</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
+        <label className="text-xs">Provider 类型{capability === 'voice' ? <select className={INPUT} style={INPUT_STYLE} value={providerKind} onChange={(event) => { const next = event.target.value as LlmProviderKind; setProviderKind(next); if (next === 'elevenlabs' && baseUrl.trim() === '') setBaseUrl('https://api.elevenlabs.io/v1'); if (next === 'elevenlabs' && model.trim() === '') setModel('eleven_multilingual_v2'); setTestResult(null); setTestedFingerprint(null) }}><option value="openai-compat">OpenAI-compatible</option><option value="elevenlabs">ElevenLabs（原生 TTS）</option></select> : <input className={INPUT} style={INPUT_STYLE} value="OpenAI-compatible" disabled />}</label>
+        <label className="text-xs">连接<select className={INPUT} style={INPUT_STYLE} value={profileId} onChange={(event) => selectProfile(event.target.value)}><option value="__new__">+ 新建连接</option>{availableProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
         {profileId === '__new__' && <label className="text-xs">连接名称<input className={INPUT} style={INPUT_STYLE} value={connectionName} onChange={(event) => setConnectionName(event.target.value)} placeholder="例如：OpenAI 语音" /></label>}
-        <label className="text-xs">Base URL<input className={INPUT} style={INPUT_STYLE} value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.openai.com/v1" /></label>
+        <label className="text-xs">Base URL<input className={INPUT} style={INPUT_STYLE} value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder={providerKind === 'elevenlabs' ? 'https://api.elevenlabs.io/v1' : 'https://api.openai.com/v1'} /></label>
         <label className="text-xs">API Key<input className={INPUT} style={INPUT_STYLE} type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={selected?.hasKey === true ? '已保存；留空沿用' : '粘贴密钥（本地服务可留空）'} /></label>
         <label className="text-xs sm:col-span-2">自定义 Headers（JSON，可选）<textarea className={INPUT} style={INPUT_STYLE} value={headersText} onChange={(event) => setHeadersText(event.target.value)} placeholder={selected?.headerNames.length ? `已保存：${selected.headerNames.join('、')}；留空沿用` : '{"X-Header":"value"}'} rows={2} /></label>
         <label className="text-xs">{meta.model}<input className={INPUT} style={INPUT_STYLE} list={`models-${capability}`} value={model} onChange={(event) => setModel(event.target.value)} placeholder="可拉取，也可手填模型 ID" /><datalist id={`models-${capability}`}>{models.map((item) => <option key={item} value={item} />)}</datalist></label>
+        {capability === 'voice' && providerKind === 'elevenlabs' && <label className="text-xs">Voice ID<input className={INPUT} style={INPUT_STYLE} value={voiceId} onChange={(event) => setVoiceId(event.target.value)} placeholder="例如：21m00Tcm4TlvDq8ikWAM" /></label>}
         {capability === 'voice' && <label className="text-xs">语音转写模型（可选）<input className={INPUT} style={INPUT_STYLE} value={secondaryModel} onChange={(event) => setSecondaryModel(event.target.value)} placeholder="例如 whisper-1" /></label>}
         {capability === 'vision' && <label className="text-xs sm:col-span-2">测试图片（可选）<input className="mt-1 block text-xs" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void readTestImage(event)} /></label>}
       </div>

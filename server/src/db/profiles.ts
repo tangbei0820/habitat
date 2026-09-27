@@ -51,7 +51,7 @@ function toProfile(row: ApiProfileRow): ApiProfile {
   return {
     id: row.id,
     name: row.name,
-    provider: 'openai-compat',
+    provider: row.provider === 'elevenlabs' ? 'elevenlabs' : 'openai-compat',
     baseUrl: row.baseUrl,
     keyRef: row.keyRef,
     modelMap: row.modelMap,
@@ -112,7 +112,7 @@ export function createProfile(input: ApiProfileCreateInput): ApiProfile {
     .values({
       id,
       name: input.name,
-      provider: 'openai-compat',
+      provider: input.provider ?? 'openai-compat',
       baseUrl: input.baseUrl,
       keyRef: input.keyRef ?? '',
       modelMap: input.modelMap,
@@ -139,6 +139,7 @@ export function updateProfile(id: string, patch: ApiProfileUpdateInput): ApiProf
 
   const values: Partial<ApiProfileRow> = { updatedAt: Date.now() }
   if (patch.name !== undefined) values.name = patch.name
+  if (patch.provider !== undefined) values.provider = patch.provider
   if (patch.baseUrl !== undefined) values.baseUrl = patch.baseUrl
   if (patch.keyRef !== undefined) values.keyRef = patch.keyRef
   if (patch.modelMap !== undefined) values.modelMap = patch.modelMap

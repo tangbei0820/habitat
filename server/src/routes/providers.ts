@@ -48,7 +48,7 @@ const PROBE_SAMPLE_SIZE = 5
 const NAME_MAX_LENGTH = 60
 /** 环境变量名规范（POSIX 的保守子集） */
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
-const EXTRA_MODEL_SLOTS = ['tts', 'transcription', 'vision', 'image', 'embedding'] as const
+const EXTRA_MODEL_SLOTS = ['tts', 'voice', 'transcription', 'vision', 'image', 'embedding'] as const
 const CAPABILITIES = new Set<ProviderCapability>(['chat', 'voice', 'vision', 'image'])
 const TEST_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
 
@@ -75,6 +75,12 @@ function parseName(raw: unknown): string {
     throw new ProviderError(ErrorCodes.BadRequest, `name 最长 ${NAME_MAX_LENGTH} 字（收到 ${name.length} 字）`)
   }
   return name
+}
+
+function parseProvider(raw: unknown): 'openai-compat' | 'elevenlabs' {
+  if (raw === undefined || raw === 'openai-compat') return 'openai-compat'
+  if (raw === 'elevenlabs') return 'elevenlabs'
+  throw new ProviderError(ErrorCodes.BadRequest, 'provider 必须是 openai-compat 或 elevenlabs')
 }
 
 /** 只接受 http/https；顺手去掉结尾斜杠，否则会拼出 `//chat/completions` */
@@ -155,6 +161,7 @@ function parseCreateInput(raw: unknown): ApiProfileCreateInput {
   const record = requireRecord(raw)
   return {
     name: parseName(record.name),
+    provider: parseProvider(record.provider),
     baseUrl: parseBaseUrl(record.baseUrl),
     modelMap: parseModelMapInput(record.modelMap),
     ...(record.keyRef === undefined ? {} : { keyRef: parseKeyRefInput(record.keyRef) }),
@@ -171,6 +178,7 @@ function parseUpdateInput(raw: unknown): ApiProfileUpdateInput {
   const record = requireRecord(raw)
   const patch: ApiProfileUpdateInput = {}
   if (record.name !== undefined) patch.name = parseName(record.name)
+  if (record.provider !== undefined) patch.provider = parseProvider(record.provider)
   if (record.baseUrl !== undefined) patch.baseUrl = parseBaseUrl(record.baseUrl)
   if (record.modelMap !== undefined) patch.modelMap = parseModelMapInput(record.modelMap)
   if (record.keyRef !== undefined) patch.keyRef = parseKeyRefInput(record.keyRef)
@@ -224,8 +232,9 @@ function draftProfile(raw: unknown, registry: LlmRegistry, capability?: Provider
     ? existing?.baseUrl
     : parseBaseUrl(record.baseUrl)
   if (baseUrl === undefined) throw new ProviderError(ErrorCodes.BadRequest, 'baseUrl 必填')
-  if (record.provider !== undefined && record.provider !== 'openai-compat') {
-    throw new ProviderError(ErrorCodes.BadRequest, '当前切片只支持 OpenAI-compatible')
+  const provider = record.provider === undefined ? existing?.provider ?? 'openai-compat' : parseProvider(record.provider)
+  if (provider === 'elevenlabs' && capability !== undefined && capability !== 'voice') {
+    throw new ProviderError(ErrorCodes.BadRequest, 'ElevenLabs 连接只能绑定语音能力')
   }
   const headers = record.headers === undefined ? existing?.headers : parseHeadersInput(record.headers)
   const streamOptions = record.streamOptions === undefined
@@ -237,6 +246,11 @@ function draftProfile(raw: unknown, registry: LlmRegistry, capability?: Provider
     if (capability === 'chat') modelMap.chat = model
     else if (capability === 'voice') {
       modelMap.tts = model
+      if (provider === 'elevenlabs') {
+        const voiceId = typeof record.voiceId === 'string' ? record.voiceId.trim() : ''
+        if (voiceId === '') throw new ProviderError(ErrorCodes.BadRequest, 'ElevenLabs voiceId 必填')
+        modelMap.voice = voiceId
+      }
       if (record.secondaryModel !== undefined && String(record.secondaryModel).trim() !== '') {
         modelMap.transcription = parseRequiredModel(record.secondaryModel, 'secondaryModel')
       }
@@ -248,7 +262,7 @@ function draftProfile(raw: unknown, registry: LlmRegistry, capability?: Provider
     profile: {
       id: existing?.id ?? 'unsaved-draft',
       name: existing?.name ?? '未保存草稿',
-      provider: 'openai-compat',
+      provider,
       baseUrl,
       keyRef: existing?.keyRef ?? '',
       modelMap,
@@ -395,7 +409,10 @@ export function registerProviderRoutes(app: FastifyInstance, registry: LlmRegist
 
   app.put('/api/provider-center/bindings', async (request) => {
     const input = parseBindingInput(request.body)
-    registry.require(input.profileId)
+    const profile = registry.require(input.profileId)
+    if (profile.provider === 'elevenlabs' && input.capability !== 'voice') {
+      throw new ProviderError(ErrorCodes.BadRequest, 'ElevenLabs 连接只能绑定语音能力')
+    }
     return saveCapabilityBinding(input)
   })
 

@@ -617,7 +617,7 @@ export interface ListenSession {
 /* ---------- LLM 方案（§6.2 ApiProfile / §7.1 多方案管理） ---------- */
 
 /** 适配器类型。§7.1：以 OpenAI Chat Completions 兼容协议为最小公分母，后续可加原生适配器 */
-export type LlmProviderKind = 'openai-compat'
+export type LlmProviderKind = 'openai-compat' | 'elevenlabs'
 
 /** Provider Center 的四个独立能力入口（PRODUCT_SPEC §9.3）。 */
 export type ProviderCapability = 'chat' | 'voice' | 'vision' | 'image'
@@ -688,6 +688,8 @@ export interface ProviderDraftTestInput extends ProviderDraftInput {
   capability: ProviderCapability
   model: string
   secondaryModel?: string
+  /** ElevenLabs 语音 ID；仅 voice 能力使用。 */
+  voiceId?: string
   /** vision 测试图；只在识图能力测试中使用。 */
   dataUrl?: string
 }
@@ -709,6 +711,8 @@ export interface ProviderDraftTestResult {
 export interface ApiProfileModelMap {
   chat?: string
   tts?: string
+  /** ElevenLabs voice id；仅 voice 能力使用，不是模型名。 */
+  voice?: string
   transcription?: string
   vision?: string
   image?: string
@@ -804,6 +808,7 @@ export interface ApiProfilePublic {
  */
 export interface ApiProfileCreateInput {
   name: string
+  provider?: LlmProviderKind
   baseUrl: string
   modelMap: ApiProfileModelMap
   /** 留空表示该上游不需要鉴权 */
