@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
-import type { ReadingNote, ReadingStatus } from '@shared/types'
+import type { ReadingFontSize, ReadingNote, ReadingStatus, ReadingTheme } from '@shared/types'
 import {
   addReadingAnnotation,
+  addReadingVocabulary,
   createReadingBook,
   createReadingNote,
   deleteReadingAnnotation,
+  deleteReadingVocabulary,
   deleteReadingNote,
   getReadingBook,
   listReadingNotes,
@@ -27,6 +29,14 @@ function formatReadingTime(seconds: number): string {
   return minutes === 0 ? '不到 1 分钟' : `${minutes} 分钟`
 }
 
+const READING_THEME_LABELS: Record<ReadingTheme, string> = { paper: '纸张', sepia: '暖页', night: '夜间' }
+const READING_FONT_LABELS: Record<ReadingFontSize, string> = { small: '小字', medium: '标准', large: '大字' }
+const READING_THEME_STYLE: Record<ReadingTheme, { surface: string; paragraph: string; text: string; muted: string }> = {
+  paper: { surface: 'var(--bg-surface-solid)', paragraph: 'var(--bg-surface-solid)', text: 'var(--text-primary)', muted: 'var(--text-secondary)' },
+  sepia: { surface: '#f4ead8', paragraph: '#fbf4e8', text: '#44382c', muted: '#806d58' },
+  night: { surface: '#1c1b1a', paragraph: '#272523', text: '#eee7dd', muted: '#b8ada0' },
+}
+
 export function ReadingModule() {
   const [items, setItems] = useState<ReadingNote[]>([])
   const [view, setView] = useState<'shelf' | 'reader'>('shelf')
@@ -34,6 +44,9 @@ export function ReadingModule() {
   const [search, setSearch] = useState('')
   const [annotationTarget, setAnnotationTarget] = useState<number | null>(null)
   const [annotationDraft, setAnnotationDraft] = useState('')
+  const [vocabularyTarget, setVocabularyTarget] = useState<number | null>(null)
+  const [vocabularyTerm, setVocabularyTerm] = useState('')
+  const [vocabularyNote, setVocabularyNote] = useState('')
   const [bookTitle, setBookTitle] = useState('')
   const [author, setAuthor] = useState('')
   const [status, setStatus] = useState<ReadingStatus>('reading')
@@ -135,25 +148,50 @@ export function ReadingModule() {
     catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
   }
 
+  async function saveVocabulary(): Promise<void> {
+    if (selectedId === null || selectedBook === null || vocabularyTarget === null) return
+    try {
+      const next = await addReadingVocabulary(selectedId, vocabularyTarget, vocabularyTerm, vocabularyNote)
+      replaceItem(next); setVocabularyTarget(null); setVocabularyTerm(''); setVocabularyNote(''); setError(null)
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
+  }
+
+  async function removeVocabulary(vocabularyId: string): Promise<void> {
+    if (selectedId === null) return
+    try { replaceItem(await deleteReadingVocabulary(selectedId, vocabularyId)); setError(null) }
+    catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
+  }
+
   if (view === 'reader' && selected !== null && selectedBook !== null) {
     const currentParagraph = Math.min(selectedBook.currentParagraph, Math.max(0, paragraphs.length - 1))
     const annotations = selectedBook.annotations
-    return <div data-testid="reading-reader" className="space-y-4">
+    const vocabulary = selectedBook.vocabulary
+    const palette = READING_THEME_STYLE[selectedBook.theme]
+    return <div data-testid="reading-reader" className="space-y-4" style={{ color: palette.text }}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <button type="button" onClick={() => { setView('shelf'); setSearch(''); setAnnotationTarget(null) }} className="rounded-full border px-3 py-1.5 text-sm" style={{ borderColor: 'var(--border-soft)' }}>← 回到书架</button>
-        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>TXT 阅读器 · 内容只保存在本机</span>
+        <button type="button" onClick={() => { setView('shelf'); setSearch(''); setAnnotationTarget(null); setVocabularyTarget(null) }} className="rounded-full border px-3 py-1.5 text-sm" style={{ borderColor: 'var(--border-soft)' }}>← 回到书架</button>
+        <span className="text-xs" style={{ color: palette.muted }}>TXT 阅读器 · 内容只保存在本机</span>
       </div>
-      <section className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">{selected.bookTitle}</h2>{selected.author !== null && <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{selected.author}</p>}</div><div className="text-right text-xs" style={{ color: 'var(--text-secondary)' }}><div>{progressLabel(currentParagraph, paragraphs.length)}</div><div>已读 {formatReadingTime(selectedBook.readingSeconds)}</div></div></div>
+      <section data-testid="reading-reader-surface" className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: palette.surface }}>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">{selected.bookTitle}</h2>{selected.author !== null && <p className="mt-1 text-xs" style={{ color: palette.muted }}>{selected.author}</p>}</div><div className="text-right text-xs" style={{ color: palette.muted }}><div>{progressLabel(currentParagraph, paragraphs.length)}</div><div>已读 {formatReadingTime(selectedBook.readingSeconds)}</div></div></div>
+        <div className="mt-4 flex flex-wrap items-center gap-2"><span className="text-xs" style={{ color: palette.muted }}>阅读外观</span>{(Object.keys(READING_THEME_LABELS) as ReadingTheme[]).map((theme) => <button key={theme} type="button" onClick={() => { if (selectedId !== null) void updateReadingBookState(selectedId, { theme }).then(replaceItem).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err))) }} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: selectedBook.theme === theme ? 'var(--accent-strong)' : 'var(--border-soft)', color: selectedBook.theme === theme ? 'var(--accent-strong)' : palette.muted }}>{READING_THEME_LABELS[theme]}</button>)}{(Object.keys(READING_FONT_LABELS) as ReadingFontSize[]).map((fontSize) => <button key={fontSize} type="button" onClick={() => { if (selectedId !== null) void updateReadingBookState(selectedId, { fontSize }).then(replaceItem).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err))) }} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: selectedBook.fontSize === fontSize ? 'var(--accent-strong)' : 'var(--border-soft)', color: selectedBook.fontSize === fontSize ? 'var(--accent-strong)' : palette.muted }}>{READING_FONT_LABELS[fontSize]}</button>)}</div>
         <div className="mt-4 flex items-center gap-3"><label htmlFor="reading-progress" className="sr-only">阅读进度</label><input id="reading-progress" data-testid="reading-progress" type="range" min={0} max={Math.max(0, paragraphs.length - 1)} value={currentParagraph} onChange={(event) => void setParagraph(Number(event.target.value))} className="min-w-0 flex-1" /><button type="button" onClick={() => void toggleBookmark()} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)', color: selectedBook.bookmarkParagraph === currentParagraph ? 'var(--accent-strong)' : 'var(--text-secondary)' }}>{selectedBook.bookmarkParagraph === currentParagraph ? '已书签' : '夹书签'}</button></div>
-        <div className="mt-4 flex flex-wrap items-center gap-2"><label htmlFor="reading-search" className="sr-only">搜索正文</label><input id="reading-search" data-testid="reading-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索这本书……" className="min-w-[12rem] flex-1 rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />{search.trim() !== '' && <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>命中 {matchingParagraphs.length} 段</span>}</div>
+        <div className="mt-4 flex flex-wrap items-center gap-2"><label htmlFor="reading-search" className="sr-only">搜索正文</label><input id="reading-search" data-testid="reading-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索这本书……" className="min-w-[12rem] flex-1 rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />{search.trim() !== '' && <span className="text-xs" style={{ color: palette.muted }}>命中 {matchingParagraphs.length} 段</span>}</div>
       </section>
       <section className="space-y-2" aria-label="正文">
         {paragraphs.map((paragraph, index) => {
           const paragraphAnnotations = annotations.filter((annotation) => annotation.paragraphIndex === index)
+          const paragraphVocabulary = vocabulary.filter((word) => word.paragraphIndex === index)
           const isCurrent = index === currentParagraph
           const isMatch = matchingParagraphs.includes(index)
-          return <article key={`${selected.id}-${index}`} data-testid={`reading-paragraph-${index}`} className="rounded-lg border p-4 transition" style={{ borderColor: isCurrent ? 'var(--accent-strong)' : 'var(--border-soft)', backgroundColor: isMatch ? 'color-mix(in srgb, var(--accent-soft) 45%, transparent)' : 'var(--bg-surface-solid)', opacity: paragraph === '' ? 0.55 : 1 }} onClick={() => void setParagraph(index)}><p className="whitespace-pre-wrap break-words text-sm leading-7">{paragraph === '' ? ' ' : paragraph}</p><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><button type="button" onClick={(event) => { event.stopPropagation(); setAnnotationTarget(index); setAnnotationDraft('') }} style={{ color: 'var(--accent-strong)' }}>划线 / 批注</button>{isCurrent && <span style={{ color: 'var(--text-secondary)' }}>正在这里</span>}</div>{annotationTarget === index && <div className="mt-3 rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)' }} onClick={(event) => event.stopPropagation()}><label htmlFor={`reading-annotation-${index}`} className="sr-only">批注内容</label><textarea id={`reading-annotation-${index}`} data-testid="reading-annotation" value={annotationDraft} onChange={(event) => setAnnotationDraft(event.target.value)} maxLength={2000} rows={3} placeholder="写下你想和小栖分享的想法……" className="w-full resize-y rounded-lg border bg-transparent p-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setAnnotationTarget(null)} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>取消</button><button type="button" onClick={() => void saveAnnotation()} className="rounded-full px-3 py-1.5 text-xs" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>保存批注</button></div></div>}{paragraphAnnotations.map((annotation) => <div key={annotation.id} className="mt-3 rounded-lg border-l-2 pl-3 text-xs" style={{ borderColor: 'var(--accent-strong)', color: 'var(--text-secondary)' }}><div>你的划线 · {annotation.note || '暂未写批注'}</div><button type="button" onClick={(event) => { event.stopPropagation(); void removeAnnotation(annotation.id) }} className="mt-1" style={{ color: 'var(--danger)' }}>删除这条批注</button></div>)}</article>
+          return <article key={`${selected.id}-${index}`} data-testid={`reading-paragraph-${index}`} className="rounded-lg border p-4 transition" style={{ borderColor: isCurrent ? 'var(--accent-strong)' : 'var(--border-soft)', backgroundColor: isMatch ? 'color-mix(in srgb, var(--accent-soft) 45%, transparent)' : palette.paragraph, color: palette.text, fontSize: selectedBook.fontSize === 'small' ? 14 : selectedBook.fontSize === 'large' ? 19 : 16, opacity: paragraph === '' ? 0.55 : 1 }} onClick={() => void setParagraph(index)}>
+            <p className="whitespace-pre-wrap break-words leading-7">{paragraph === '' ? ' ' : paragraph}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><button type="button" onClick={(event) => { event.stopPropagation(); setAnnotationTarget(index); setAnnotationDraft('') }} style={{ color: 'var(--accent-strong)' }}>划线 / 批注</button><button type="button" onClick={(event) => { event.stopPropagation(); setVocabularyTarget(index); setVocabularyTerm(''); setVocabularyNote('') }} style={{ color: 'var(--accent-strong)' }}>加入生词</button>{isCurrent && <span style={{ color: palette.muted }}>正在这里</span>}</div>
+            {annotationTarget === index && <div className="mt-3 rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)' }} onClick={(event) => event.stopPropagation()}><label htmlFor={`reading-annotation-${index}`} className="sr-only">批注内容</label><textarea id={`reading-annotation-${index}`} data-testid="reading-annotation" value={annotationDraft} onChange={(event) => setAnnotationDraft(event.target.value)} maxLength={2000} rows={3} placeholder="写下你想和小栖分享的想法……" className="w-full resize-y rounded-lg border bg-transparent p-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setAnnotationTarget(null)} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>取消</button><button type="button" onClick={() => void saveAnnotation()} className="rounded-full px-3 py-1.5 text-xs" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>保存批注</button></div></div>}
+            {vocabularyTarget === index && <div className="mt-3 rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)' }} onClick={(event) => event.stopPropagation()}><label htmlFor={`reading-vocabulary-${index}`} className="sr-only">生词</label><input id={`reading-vocabulary-${index}`} data-testid="reading-vocabulary" value={vocabularyTerm} onChange={(event) => setVocabularyTerm(event.target.value)} maxLength={120} placeholder="生词" className="w-full rounded-lg border bg-transparent p-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><input value={vocabularyNote} onChange={(event) => setVocabularyNote(event.target.value)} maxLength={1000} placeholder="词义或提醒（可选）" className="mt-2 w-full rounded-lg border bg-transparent p-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setVocabularyTarget(null)} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>取消</button><button type="button" onClick={() => void saveVocabulary()} className="rounded-full px-3 py-1.5 text-xs" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>保存生词</button></div></div>}
+            {paragraphAnnotations.map((annotation) => <div key={annotation.id} className="mt-3 rounded-lg border-l-2 pl-3 text-xs" style={{ borderColor: 'var(--accent-strong)', color: palette.muted }}><div>你的划线 · {annotation.note || '暂未写批注'}</div><button type="button" onClick={(event) => { event.stopPropagation(); void removeAnnotation(annotation.id) }} className="mt-1" style={{ color: 'var(--danger)' }}>删除这条批注</button></div>)}
+            {paragraphVocabulary.map((word) => <div key={word.id} className="mt-3 rounded-lg border-l-2 pl-3 text-xs" style={{ borderColor: 'var(--accent-strong)', color: palette.muted }}><div>生词 · <strong style={{ color: palette.text }}>{word.term}</strong>{word.note === '' ? '' : ` · ${word.note}`}</div><button type="button" onClick={(event) => { event.stopPropagation(); void removeVocabulary(word.id) }} className="mt-1" style={{ color: 'var(--danger)' }}>移除生词</button></div>)}
+          </article>
         })}
       </section>
       {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}

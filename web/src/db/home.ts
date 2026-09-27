@@ -16,7 +16,10 @@ import {
   type ReadingNote,
   type ReadingAnnotation,
   type ReadingBookState,
+  type ReadingFontSize,
   type ReadingStatus,
+  type ReadingTheme,
+  type ReadingVocabulary,
   type MusicTrack,
   type StudyRecord,
   type WishlistItem,
@@ -721,6 +724,13 @@ function isReadingAnnotation(value: unknown): value is ReadingAnnotation {
     (item.author === 'user' || item.author === 'companion') && typeof item.createdAt === 'number'
 }
 
+function isReadingVocabulary(value: unknown): value is ReadingVocabulary {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const item = value as Record<string, unknown>
+  return typeof item.id === 'string' && typeof item.paragraphIndex === 'number' && Number.isInteger(item.paragraphIndex) && item.paragraphIndex >= 0 &&
+    typeof item.term === 'string' && typeof item.note === 'string' && typeof item.createdAt === 'number'
+}
+
 /** 兼容旧的读书笔记：没有 reader 元数据就仍按普通笔记展示。 */
 export function getReadingBook(item: ReadingNote): ReadingBookState | null {
   const value = item.metadata?.reader
@@ -730,11 +740,14 @@ export function getReadingBook(item: ReadingNote): ReadingBookState | null {
   const bookmarkParagraph = raw.bookmarkParagraph
   const readingSeconds = raw.readingSeconds
   const annotations = raw.annotations
+  const vocabulary = raw.vocabulary
+  const theme: ReadingTheme = raw.theme === 'sepia' || raw.theme === 'night' ? raw.theme : 'paper'
+  const fontSize: ReadingFontSize = raw.fontSize === 'small' || raw.fontSize === 'large' ? raw.fontSize : 'medium'
   if (raw.format !== 'txt' || typeof raw.content !== 'string' || raw.content.length > MAX_READING_TEXT_CHARS ||
     typeof currentParagraph !== 'number' || !Number.isInteger(currentParagraph) || currentParagraph < 0 ||
     !(bookmarkParagraph === null || (typeof bookmarkParagraph === 'number' && Number.isInteger(bookmarkParagraph) && bookmarkParagraph >= 0)) ||
     typeof readingSeconds !== 'number' || !Number.isInteger(readingSeconds) || readingSeconds < 0 || !Array.isArray(annotations) ||
-    !annotations.every(isReadingAnnotation)) return null
+    !annotations.every(isReadingAnnotation) || (vocabulary !== undefined && (!Array.isArray(vocabulary) || !vocabulary.every(isReadingVocabulary)))) return null
   return {
     format: 'txt',
     content: raw.content,
@@ -742,6 +755,9 @@ export function getReadingBook(item: ReadingNote): ReadingBookState | null {
     bookmarkParagraph,
     readingSeconds,
     annotations,
+    theme,
+    fontSize,
+    vocabulary: vocabulary === undefined ? [] : vocabulary,
   }
 }
 
@@ -781,6 +797,7 @@ export async function createReadingBook(bookTitle: string, author: string, conte
   const at = Date.now()
   const reader: ReadingBookState = {
     format: 'txt', content: normalized, currentParagraph: 0, bookmarkParagraph: null, readingSeconds: 0, annotations: [],
+    theme: 'paper', fontSize: 'medium', vocabulary: [],
   }
   const item: ReadingNote = {
     id: nowId('reading-book'), type: 'reading-note', bookTitle: title,
@@ -791,7 +808,7 @@ export async function createReadingBook(bookTitle: string, author: string, conte
   return item
 }
 
-export async function updateReadingBookState(id: string, patch: Partial<Pick<ReadingBookState, 'currentParagraph' | 'bookmarkParagraph' | 'readingSeconds'>>): Promise<ReadingNote> {
+export async function updateReadingBookState(id: string, patch: Partial<Pick<ReadingBookState, 'currentParagraph' | 'bookmarkParagraph' | 'readingSeconds' | 'theme' | 'fontSize'>>): Promise<ReadingNote> {
   const item = await db.readingNotes.get(id)
   if (item === undefined) throw new Error('这本书已经不存在')
   const reader = getReadingBook(item)
@@ -801,6 +818,30 @@ export async function updateReadingBookState(id: string, patch: Partial<Pick<Rea
     metadata: { ...item.metadata, reader: { ...reader, ...patch } },
     updatedAt: Date.now(),
   }
+  await db.readingNotes.put(next)
+  return next
+}
+
+export async function addReadingVocabulary(id: string, paragraphIndex: number, term: string, note: string): Promise<ReadingNote> {
+  const item = await db.readingNotes.get(id)
+  if (item === undefined) throw new Error('这本书已经不存在')
+  const reader = getReadingBook(item)
+  if (reader === null) throw new Error('这不是可打开的阅读内容')
+  if (!Number.isInteger(paragraphIndex) || paragraphIndex < 0 || paragraphIndex >= reader.content.split('\n').length) throw new Error('生词位置无效')
+  const normalizedTerm = requiredText(term, '生词').slice(0, 120)
+  if (reader.vocabulary.some((word) => word.paragraphIndex === paragraphIndex && word.term === normalizedTerm)) throw new Error('这个生词已经记过了')
+  const vocabulary: ReadingVocabulary = { id: nowId('reading-vocabulary'), paragraphIndex, term: normalizedTerm, note: note.trim().slice(0, 1000), createdAt: Date.now() }
+  const next: ReadingNote = { ...item, metadata: { ...item.metadata, reader: { ...reader, vocabulary: [...reader.vocabulary, vocabulary] } }, updatedAt: Date.now() }
+  await db.readingNotes.put(next)
+  return next
+}
+
+export async function deleteReadingVocabulary(id: string, vocabularyId: string): Promise<ReadingNote> {
+  const item = await db.readingNotes.get(id)
+  if (item === undefined) throw new Error('这本书已经不存在')
+  const reader = getReadingBook(item)
+  if (reader === null) throw new Error('这不是可打开的阅读内容')
+  const next: ReadingNote = { ...item, metadata: { ...item.metadata, reader: { ...reader, vocabulary: reader.vocabulary.filter((word) => word.id !== vocabularyId) } }, updatedAt: Date.now() }
   await db.readingNotes.put(next)
   return next
 }

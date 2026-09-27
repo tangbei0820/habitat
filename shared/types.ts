@@ -426,12 +426,23 @@ export type ReadingStatus = 'want' | 'reading' | 'finished'
 /** 阅读器第一切片：保存在既有 ReadingNote.metadata.reader 下，不另造平行书库表。 */
 export type ReadingFormat = 'txt'
 
+export type ReadingTheme = 'paper' | 'sepia' | 'night'
+export type ReadingFontSize = 'small' | 'medium' | 'large'
+
 export interface ReadingAnnotation {
   id: string
   paragraphIndex: number
   text: string
   note: string
   author: 'user' | 'companion'
+  createdAt: number
+}
+
+export interface ReadingVocabulary {
+  id: string
+  paragraphIndex: number
+  term: string
+  note: string
   createdAt: number
 }
 
@@ -442,6 +453,9 @@ export interface ReadingBookState {
   bookmarkParagraph: number | null
   readingSeconds: number
   annotations: ReadingAnnotation[]
+  theme: ReadingTheme
+  fontSize: ReadingFontSize
+  vocabulary: ReadingVocabulary[]
 }
 
 export interface ReadingNote extends BaseObject {
