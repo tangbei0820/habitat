@@ -186,7 +186,17 @@ function toolFollowUpReply(body: Record<string, unknown>): string[] | null {
 }
 
 function backgroundReply(body: Record<string, unknown>): string[] | null {
-  const names = messagesOf(body).map((message) => (typeof message.name === 'string' ? message.name : ''))
+  const messages = messagesOf(body)
+  const names = messages.map((message) => (typeof message.name === 'string' ? message.name : ''))
+  const lastUser = [...messages].reverse().find((message) => message.role === 'user')
+  const lastUserText = typeof lastUser?.content === 'string' ? lastUser.content : ''
+  if (lastUserText.includes('学习主题：')) {
+    return [JSON.stringify({ cards: [
+      { front: 'hello', back: '你好；用于打招呼', example: 'Hello, nice to meet you.', hint: '想象见面时先说 hello。' },
+      { front: 'kind', back: '友善的；体贴的', example: 'It is kind of you to help.', hint: 'kind 和 kindness 都与善意有关。' },
+      { front: 'practice', back: '练习；实践', example: 'Practice makes progress.', hint: '把 practice 想成反复做来变熟。' },
+    ] })]
+  }
   if (names.includes('eventide_settlement')) {
     return [JSON.stringify({
       settlement_reason: 'mock 结算：本轮为普通延续。',

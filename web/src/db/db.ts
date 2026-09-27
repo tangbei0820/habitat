@@ -14,6 +14,7 @@ import type {
   SessionGroup,
   ListenSession,
   StudyRecord,
+  StudyCard,
   StudyTask,
   WishlistItem,
 } from '@shared/types'
@@ -81,6 +82,7 @@ export class HabitatDb extends Dexie {
   readingNotes!: Table<ReadingNote, string>
   musicTracks!: Table<MusicTrack, string>
   studyRecords!: Table<StudyRecord, string>
+  studyCards!: Table<StudyCard, string>
   homeWidgets!: Table<HomeWidget, string>
   /** 搬迁中转表：启动流程把旧表搬完、服务端确认后就清空，之后一直是空的 */
   legacyUploads!: Table<LegacyUpload, string>
@@ -262,6 +264,10 @@ export class HabitatDb extends Dexie {
     this.version(12).stores({
       listenSessions: 'id, kind, dayKey, createdAt',
       studyTasks: 'id, dayKey, createdAt',
+    })
+    // v13：AI 伴学卡片。复习状态属于用户本地学习进度，跟服务端生成调用分开存放。
+    this.version(13).stores({
+      studyCards: 'id, subject, dueOn, createdAt, updatedAt',
     })
     // 刻意没有 .upgrade()：搬迁不在版本变化时做，而在每次启动时做（见上方注释与 legacy-upload.ts）。
     // 也不在这里声明 diaries / moments —— 声明了也删不掉它们，省掉能少一份「以为删了」的误解。

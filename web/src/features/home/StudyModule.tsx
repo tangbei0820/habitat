@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { StudyRecord, StudyTask } from '@shared/types'
 import { IconCalendar, IconCheck } from '../../components/qixi/Icons'
 import { createStudyRecord, deleteStudyRecord, listStudyRecords, updateStudyRecord } from '../../db/home'
+import { deleteStudyCard, generateStudyCards, listStudyCards, reviewStudyCard } from '../../db/studyCards'
 import { createTask, deleteTask, listTodayTasks, toggleTask } from '../../db/studyTasks'
 
 function todayKey(): string { const now = new Date(); const pad = (value: number) => String(value).padStart(2, '0'); return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` }
@@ -9,7 +11,7 @@ function todayKey(): string { const now = new Date(); const pad = (value: number
 /**
  * 今日任务卡（第 6 批「学习伴学」）：「今天的三件小事」，真实存 Dexie（studyTasks，按天归组）。
  * 设计语义是**每天一页新纸**：昨天没做完的不追到今天 —— 那会从「陪你」变成「催你」。
- * 小栖的点评 / 复习卡片**刻意不做**：没有任何真实来源，做出来就是假数据（SPEC §6.3）。
+ * AI 伴学卡片在下方单独走服务端生成；这里保留轻量的本地任务，不把任务完成伪装成 AI 教学进度。
  */
 function TodayTasks() {
   const [tasks, setTasks] = useState<StudyTask[]>([])
@@ -116,6 +118,118 @@ function WeekRhythm({ items }: { items: StudyRecord[] }) {
   )
 }
 
+function AiStudyCards() {
+  const navigate = useNavigate()
+  const [subject, setSubject] = useState('英语')
+  const [goal, setGoal] = useState('记住今天能用上的几个词和短语')
+  const [level, setLevel] = useState('初学者')
+  const [count, setCount] = useState('3')
+  const [cards, setCards] = useState<Awaited<ReturnType<typeof listStudyCards>>>([])
+  const [index, setIndex] = useState(0)
+  const [flipped, setFlipped] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const refresh = useCallback(async (): Promise<void> => {
+    const next = await listStudyCards(subject.trim() === '' ? undefined : subject.trim())
+    setCards(next)
+    setIndex((current) => Math.min(current, Math.max(0, next.length - 1)))
+    setFlipped(false)
+  }, [subject])
+
+  useEffect(() => { void refresh().catch(() => setCards([])) }, [refresh])
+
+  async function generate(): Promise<void> {
+    setBusy(true)
+    setError(null)
+    setNotice(null)
+    try {
+      await generateStudyCards({ subject, goal, level, count: Number(count) })
+      await refresh()
+      setNotice('小栖给你放好了新卡片，先翻一张看看。')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function grade(value: 'again' | 'good' | 'easy'): Promise<void> {
+    const current = cards[index]
+    if (current === undefined) return
+    setError(null)
+    try {
+      await reviewStudyCard(current.id, value)
+      const rest = cards.filter((card) => card.id !== current.id)
+      setCards(rest)
+      setIndex((position) => Math.min(position, Math.max(0, rest.length - 1)))
+      setFlipped(false)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function discuss(): Promise<void> {
+    const current = cards[index]
+    if (current === undefined) return
+    const prompt = `我在学${current.subject}，刚看到卡片“${current.front}”。请和我一起练习：解释它的用法，再给我一个小练习。`
+    try { await navigator.clipboard.writeText(prompt) } catch { /* 剪贴板权限不足时仍继续打开对话 */ }
+    window.localStorage.setItem('habitat:study-discussion', prompt)
+    navigate('/chat')
+  }
+
+  const current = cards[index]
+  return (
+    <section className="card" style={{ padding: '18px 20px' }} data-testid="study-ai-cards">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="cell-label"><IconCheck size={13} /> 小栖今天给你的卡片</div>
+          <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>不追进度，翻开一张，记住一点就够了。</p>
+        </div>
+        {cards.length > 0 && <span className="t-caption" style={{ color: 'var(--text-secondary)' }}>{Math.min(index + 1, cards.length)} / {cards.length}</span>}
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={80} placeholder="学习主题" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-card-subject" />
+        <input value={goal} onChange={(event) => setGoal(event.target.value)} maxLength={240} placeholder="今天想学会什么" className="rounded-lg border bg-transparent px-3 py-2 text-sm sm:col-span-2" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-card-goal" />
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <select value={level} onChange={(event) => setLevel(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} aria-label="当前水平">
+          <option>初学者</option><option>有一点基础</option><option>进阶</option>
+        </select>
+        <select value={count} onChange={(event) => setCount(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} aria-label="卡片数量">
+          <option value="3">3 张</option><option value="5">5 张</option><option value="8">8 张</option>
+        </select>
+        <button type="button" onClick={() => void generate()} disabled={busy || subject.trim() === '' || goal.trim() === ''} className="btn-pill" style={{ minHeight: 38, padding: '0 16px', fontSize: 12.5 }}>{busy ? '小栖正在整理…' : '生成一组卡片'}</button>
+      </div>
+      {error !== null && <p className="mt-2 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+      {notice !== null && <p className="mt-2 text-xs" style={{ color: 'var(--accent-strong)' }}>{notice}</p>}
+      {current === undefined ? (
+        <div className="mt-3 rounded-lg border p-4 text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }} data-testid="study-card-empty">
+          这里会留下你和小栖一起翻过的卡片。先告诉它想学什么吧。
+        </div>
+      ) : (
+        <div className="mt-3 rounded-xl border p-4" style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-surface-solid)' }} data-testid="study-card-current">
+          <button type="button" onClick={() => setFlipped((value) => !value)} className="min-h-[150px] w-full text-left" aria-label={flipped ? '收起卡片答案' : '翻开卡片答案'}>
+            <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{flipped ? '答案' : '记忆面'}</span>
+            <strong className="mt-2 block text-xl leading-8">{flipped ? current.back : current.front}</strong>
+            {!flipped && <span className="mt-3 block text-xs" style={{ color: 'var(--text-secondary)' }}>点一下翻开 · 先在心里想想</span>}
+            {flipped && current.example !== null && <span className="mt-3 block whitespace-pre-wrap text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>{current.example}</span>}
+            {flipped && current.hint !== null && <span className="mt-2 block text-xs" style={{ color: 'var(--accent-strong)' }}>记忆提示：{current.hint}</span>}
+          </button>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => void grade('again')} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>再看一遍</button>
+            <button type="button" onClick={() => void grade('good')} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>记住了</button>
+            <button type="button" onClick={() => void grade('easy')} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>很轻松</button>
+            <button type="button" onClick={() => void discuss()} className="ml-auto text-xs" style={{ color: 'var(--accent-strong)' }}>去对话里讨论</button>
+            <button type="button" onClick={() => void deleteStudyCard(current.id).then(refresh).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))} className="text-xs" style={{ color: 'var(--text-tertiary)' }}>删掉</button>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 export function StudyModule() {
   const [items, setItems] = useState<StudyRecord[]>([])
   const [subject, setSubject] = useState('')
@@ -147,6 +261,7 @@ export function StudyModule() {
   }
   const totalMinutes = items.reduce((sum, item) => sum + item.durationMinutes, 0)
   return <div className="space-y-4">
+    <AiStudyCards />
     <TodayTasks />
     <WeekRhythm items={items} />
     <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>

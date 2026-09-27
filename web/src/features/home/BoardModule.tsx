@@ -22,6 +22,7 @@ export function BoardModule() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [filter, setFilter] = useState<'all' | 'user' | 'companion'>('all')
   /** 留言板 Widget 是否在主屏上（不同 kind 的 Widget 互不影响，各管各的） */
   const [onHome, setOnHome] = useState(false)
 
@@ -77,6 +78,8 @@ export function BoardModule() {
     }
   }
 
+  const visibleItems = filter === 'all' ? items : items.filter((item) => item.author === filter)
+
   return (
     <div className="space-y-4">
       <form onSubmit={(event) => void submit(event)} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
@@ -107,12 +110,30 @@ export function BoardModule() {
         </button>
       </div>
 
+      <div className="flex items-center gap-2 border-b pb-2" style={{ borderColor: 'var(--border-soft)' }} data-testid="board-filter">
+        {([['all', '全部'], ['user', '我写的'], ['companion', '小栖写的']] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={filter === value}
+            onClick={() => setFilter(value)}
+            className="rounded-full px-3 py-1.5 text-xs"
+            style={{ background: filter === value ? 'var(--bg-subtle)' : 'transparent', color: filter === value ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+          >
+            {label}
+          </button>
+        ))}
+        <span className="ml-auto text-xs" style={{ color: 'var(--text-tertiary)' }}>{visibleItems.length} 条</span>
+      </div>
+
       {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
       {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在读取留言…</p> : items.length === 0 ? (
         <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>还没有留言。第一条就从今天开始。</p>
+      ) : visibleItems.length === 0 ? (
+        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>这一栏还没有留言。</p>
       ) : (
         <ul className="space-y-2">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <li key={item.id} data-testid="moment-item" data-author={item.author} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
               <p className="whitespace-pre-wrap break-words text-sm">{item.content}</p>
               <div className="mt-3 flex items-center justify-between gap-3 text-xs" style={{ color: 'var(--text-secondary)' }}>

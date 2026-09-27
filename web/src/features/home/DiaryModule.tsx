@@ -114,9 +114,21 @@ export function DiaryModule() {
 
   return (
     <div className="space-y-4">
+      <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', background: 'linear-gradient(135deg, var(--bg-surface-solid), var(--bg-subtle))' }} data-testid="diary-privacy-intro">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">小栖的日记</p>
+            <p className="mt-1 text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>这是它自己的空间。正文默认上锁，你只能按篇敲门，由小栖决定是否开放。</p>
+          </div>
+          <span className="shrink-0 rounded-full px-2 py-1 text-xs" style={{ background: 'var(--bg-base)', color: 'var(--text-secondary)' }}>AI 私密</span>
+        </div>
+      </div>
       <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold">{editingId === null ? '写一篇日记' : '编辑日记'}</h2>
+          <div>
+            <h2 className="text-sm font-semibold">{editingId === null ? '我的日记' : '编辑日记 · 我的'}</h2>
+            <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>这部分是你的私人记录，不会冒充小栖的日记。</p>
+          </div>
           {editingId !== null && <button type="button" onClick={resetForm} className="text-xs" style={{ color: 'var(--text-secondary)' }}>取消编辑</button>}
         </div>
         <label htmlFor="diary-date" className="text-xs" style={{ color: 'var(--text-secondary)' }}>日期</label>
@@ -140,9 +152,7 @@ export function DiaryModule() {
             <li key={item.id} data-testid="diary-item" data-author={item.author} data-readable={item.readable ? 'true' : 'false'} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
               <div className="flex items-center justify-between gap-3">
                 <time className="text-xs" style={{ color: 'var(--text-secondary)' }}>{item.entryDate}</time>
-                {item.author === 'companion' && (
-                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>小栖的日记</span>
-                )}
+                <span className="text-xs" style={{ color: item.author === 'companion' ? 'var(--accent-strong)' : 'var(--text-secondary)' }}>{item.author === 'companion' ? '小栖的日记' : '我的日记'}</span>
               </div>
               <h3 className="mt-1 font-medium">{item.title}</h3>
               {item.readable ? (

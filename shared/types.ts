@@ -448,6 +448,29 @@ export interface StudyRecord extends BaseObject {
   durationMinutes: number
 }
 
+/** AI 伴学卡片：正文由服务端生成，复习状态由浏览器本地持有。 */
+export interface StudyCard extends BaseObject {
+  type: 'study-card'
+  subject: string
+  front: string
+  back: string
+  example: string | null
+  hint: string | null
+  source: 'ai' | 'user'
+  dueOn: string
+  intervalDays: number
+  ease: number
+  repetitions: number
+  lastReviewedAt: number | null
+}
+
+export interface StudyCardDraft {
+  front: string
+  back: string
+  example: string | null
+  hint: string | null
+}
+
 /* ---------- 学习伴学 · 今日任务（第 6 批；纯本地，按天归组） ---------- */
 
 export interface StudyTask {

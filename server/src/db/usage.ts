@@ -19,6 +19,7 @@ export type UsageService =
   | 'proactive-wake'
   | 'solitude'
   | 'dream'
+  | 'study'
 
 export interface UsageInput {
   profileId: string

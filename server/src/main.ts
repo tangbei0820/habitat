@@ -31,6 +31,7 @@ import { registerStateRoutes } from './routes/state.js'
 import { registerAutomationRoutes } from './routes/automation.js'
 import { registerLifeRoutes } from './routes/life.js'
 import { registerMediaRoutes } from './routes/media.js'
+import { registerStudyRoutes } from './routes/study.js'
 import { registerToolRoutes } from './routes/tools.js'
 import { registerWorldbookRoutes } from './routes/worldbook.js'
 import { AutomationService, startAutomationScheduler } from './services/automation.js'
@@ -118,6 +119,7 @@ registerMcpRoutes(app, gateway)
 registerNocturneDashboardRoutes(app)
 registerChatRoutes(app, llmRegistry, stateProvider, memoryProvider, capabilityService)
 registerMediaRoutes(app, llmRegistry)
+registerStudyRoutes(app, llmRegistry)
 registerToolRoutes(app, gateway)
 const automationService = new AutomationService(llmRegistry, stateProvider, memoryProvider, app.log)
 registerAutomationRoutes(app, automationService)

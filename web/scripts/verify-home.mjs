@@ -1,5 +1,5 @@
 /**
- * Phase 2 Home 完整验收：八个生活模块 + 主屏 Widget + Dexie v12 持久化 / 备份 v10。
+ * Phase 2 Home 完整验收：八个生活模块 + 主屏 Widget + Dexie v13 持久化 / 备份 v11。
  * 前置：vite + 无头 Edge CDP；用 Node >= 22 运行（需全局 WebSocket）。
  * 请使用隔离的浏览器 profile：验收最后会导入一份空 v1 备份来验兼容性。
  *
@@ -186,7 +186,7 @@ await sleep(500)
 await waitFor(`document.body.innerText.includes('未来的约定')`, '倒数日刷新保留')
 check('倒数日新增并跨刷新保留', true)
 
-await navigate('/home/diary', '写一篇日记')
+await navigate('/home/diary', '我的日记')
 await setValue('#diary-title', '施工日记')
 await setValue('#diary-content', '今天把共同生活又往前推进了一点。')
 await clickButton('保存日记')
@@ -1042,7 +1042,7 @@ const backupCheck = await evaluate(`(async () => {
     legacyV7BookmarkCategoryId: legacyV7Bookmark === undefined ? 'no-row' : legacyV7Bookmark.categoryId,
   }
 })()`)
-check('备份 v10 覆盖八类本地 Home 数据并可整体恢复（日记 / 留言板已归服务端）', backupCheck.version === 10 && backupCheck.exportedHome >= 7 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
+check('备份 v11 覆盖本地 Home 数据并可整体恢复（日记 / 留言板已归服务端）', backupCheck.version === 11 && backupCheck.exportedHome >= 7 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
 check(
   '备份 v7 带走会话分组与归属（含折叠状态）',
   backupCheck.exportedGroups === 1 &&
@@ -1193,7 +1193,7 @@ const dbShape = await evaluate(`(async () => {
   db.close()
   return value
 })()`)
-check('Dexie 已升到 v12：v11 全部表 + 第 6 批的 listenSessions / studyTasks', dbShape.version === 120 && ['wishlist', 'countdowns', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets', 'legacyUploads', 'listenSessions', 'studyTasks'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
+check('Dexie 已升到 v13：v12 全部表 + AI 伴学卡片', dbShape.version === 130 && ['wishlist', 'countdowns', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets', 'legacyUploads', 'listenSessions', 'studyTasks', 'studyCards'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
 // 旧表壳**删不掉**（Dexie 的 stores() 跨版本累加，省略 ≠ 删除，见 db.ts 类注释 v11 条），
 // 所以这里验的是「搬走了」而不是「表没了」：旧表清空 + 中转表清空。
 // 两者都为 0 才有意义 —— 中转表清空的前置是「服务端已确认」（见 legacy-upload.ts 的三条纪律）。

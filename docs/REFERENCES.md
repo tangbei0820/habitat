@@ -112,6 +112,7 @@
 |---|---|---|
 | [Journal](https://github.com/BomBomLab/Journal) | 🔧 | 把 timeline/diary/todo 数据渲染成日/周/月**手帐视图** —— 时间线参照 |
 | [shared-page](https://github.com/KKarsyline/shared-page) | 📐 | 人机共用手帐日历：三种笔迹、可渲染整页 PNG 的 MCP、互赞便签、桌面小组件 |
+| [StudyIndex](https://github.com/ethanhunt1011/studyindex) | 🔧 | AI 学习闭环：主题 / 资料 → 结构化计划 → 闪卡复习 → 进度与遗忘曲线；只借卡片与复习节奏，不引入其账号 / 云端依赖 |
 | [dwell-on-something](https://github.com/xinwithyu/dwell-on-something) | 📐 | 自主心跳 + 双人待办 + **五视图日记** + 专属日报 + 日历 + 手表健康接入 |
 | [memex](https://github.com/memex-lab/memex) | 🔧 | 本地优先双端 AI 日记：碎片生活 → 多 Agent 整理为时间线卡片与共鸣洞察 |
 | [InternalBeyond](https://github.com/Sui-IB/InternalBeyond) | 🔧 | 离线单文件个人空间：像素房间、日志/日记、AI 书信、记忆星图、音乐播放器 |

@@ -200,18 +200,21 @@ check('刚导出过就不再提醒', (await exists('[data-testid="backup-stale-h
     const now = Date.now()
     await dbm.db.listenSessions.put({ id: 'music:2026-09-25', kind: 'music', dayKey: '2026-09-25', seconds: 95, updatedAt: now, createdAt: now })
     await dbm.db.studyTasks.put({ id: 'task-verify-roundtrip', dayKey: '2026-09-25', label: '验收往返任务', done: false, createdAt: now })
+    await dbm.db.studyCards.put({ id: 'study-card-verify-roundtrip', type: 'study-card', subject: '英语', front: 'hello', back: '你好', example: 'Hello there.', hint: '打招呼', source: 'ai', dueOn: '2026-09-25', intervalDays: 1, ease: 2.5, repetitions: 0, lastReviewedAt: null, createdAt: now, updatedAt: now })
     const backup = await backupLib.exportAll()
-    const exported = { version: backup.version, listen: backup.listenSessions.length, tasks: backup.studyTasks.length }
+    const exported = { version: backup.version, listen: backup.listenSessions.length, tasks: backup.studyTasks.length, cards: backup.studyCards.length }
     await backupLib.importAll(backup)
     const listenRow = await dbm.db.listenSessions.get('music:2026-09-25')
     const taskRow = await dbm.db.studyTasks.get('task-verify-roundtrip')
+    const cardRow = await dbm.db.studyCards.get('study-card-verify-roundtrip')
     const msgCount = await dbm.db.messages.count()
-    return { ...exported, listenOk: listenRow !== undefined && listenRow.seconds === 95, taskOk: taskRow !== undefined && taskRow.label === '验收往返任务', msgCount }
+    return { ...exported, listenOk: listenRow !== undefined && listenRow.seconds === 95, taskOk: taskRow !== undefined && taskRow.label === '验收往返任务', cardOk: cardRow !== undefined && cardRow.front === 'hello', msgCount }
   })()`)
-  check('备份格式已升 v10', roundtrip.version === 10, `v${roundtrip.version}`)
+  check('备份格式已升 v11', roundtrip.version === 11, `v${roundtrip.version}`)
   check('一起听时长进了备份', roundtrip.listen >= 1 && roundtrip.listenOk, `listenSessions ${roundtrip.listen} 条`)
   check('学习任务进了备份', roundtrip.tasks >= 1 && roundtrip.taskOk, `studyTasks ${roundtrip.tasks} 条`)
-  check('v10 往返导入不丢既有数据（消息还在）', roundtrip.msgCount >= 2, `${roundtrip.msgCount} 条消息`)
+  check('AI 伴学卡片进了备份', roundtrip.cards >= 1 && roundtrip.cardOk, `studyCards ${roundtrip.cards} 条`)
+  check('v11 往返导入不丢既有数据（消息还在）', roundtrip.msgCount >= 2, `${roundtrip.msgCount} 条消息`)
 }
 
 /* ---------- 四、导入前的覆盖警告 ---------- */

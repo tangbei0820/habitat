@@ -5,8 +5,7 @@
  * 离开页面时）把积攒的秒数**累加**上去。为什么是累加而不是一行一次会话：
  * 「这周一起听了多久」只需要一个和，分行的会话明细没人看。
  *
- * ⚠️ 这两张新表（listenSessions / studyTasks）**暂时不在备份里** —— 备份是逐表枚举的
- * 白名单（`lib/backup.ts`，格式 v8），加表要升格式并处理旧版兼容，本批刻意不碰，见 TASKS 遗留。
+ * `listenSessions` / `studyTasks` 已进入备份白名单；学习卡片另存于 `studyCards`，由学习仓储管理。
  */
 import type { ListenKind } from '@shared/types'
 import { db } from './db'

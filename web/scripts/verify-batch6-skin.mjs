@@ -9,7 +9,7 @@
  *   - 「收下一首歌」表单与歌单是 Phase 2 原能力，字段没动（verify-home 依赖）。
  * 学习（screens-study.jsx）：
  *   - 「今天的三件小事」真实存 Dexie（studyTasks，按天归组），可加 / 勾 / 删；
- *   - 「一周节奏」是真 studyRecords 聚合；小栖的点评 / 复习卡片**不做**（无真实来源）。
+ *   - 「一周节奏」是真 studyRecords 聚合；AI 伴学卡片入口可见，未配置 API 时不伪造卡片数据。
  * 独处（screens-solo.jsx）：
  *   - /solo 独立页：计时真走、雨声是程序化生成（Web Audio），秒数累计 kind='rain'；
  *   - 「小栖也在听」同样不搬。
@@ -249,8 +249,8 @@ check('拒绝时没进播放态', (await evaluate(`document.querySelector('[data
 await go('/home/study')
 await waitFor(`document.querySelector('[data-testid="study-tasks"]') !== null`, '任务卡挂载')
 check('「一周节奏」卡在（真 studyRecords 聚合）', (await evaluate(`document.querySelector('[data-testid="study-week"]') !== null && document.querySelector('[data-testid="study-week"]').innerText.includes('这一周')`)) === true)
-check('小栖点评 / 复习卡片没做（无真实来源不造假）',
-  !(await evaluate(`document.body.innerText.includes('小栖点评') || document.body.innerText.includes('复习卡片')`)))
+check('AI 伴学卡片入口存在（未配置 API 时不伪造卡片）',
+  await evaluate(`document.body.innerText.includes('小栖今天给你的卡片') && document.body.innerText.includes('生成一组卡片')`))
 check('空任务提示诚实', (await evaluate(`document.body.innerText.includes('还空着')`)) === true)
 
 await setValue('[data-testid="study-task-input"]', '读完一章')
