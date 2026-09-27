@@ -5,6 +5,14 @@
 import type { ErrorCode } from './errors'
 import type { LlmChatMessage, LlmUsage } from './providers'
 
+/** 本轮聊天可供 AI 选择的本地表情元数据；图片正文留在浏览器，避免进模型上下文。 */
+export interface ChatStickerCatalogItem {
+  id: string
+  name: string
+  category: string | null
+  tags: readonly string[]
+}
+
 export type SseEventType =
   | 'health'
   | 'chat-delta'
@@ -40,6 +48,8 @@ export interface ChatStreamRequest {
   maxTokens?: number
   /** 用户从聊天“更多功能”明确发起的联网检索；缺省时 AI 看不到 Web 工具。 */
   webSearch?: { query: string }
+  /** 当前浏览器本地图库的轻量目录；服务端只用它做本轮工具校验，不持久化。 */
+  stickerCatalog?: ChatStickerCatalogItem[]
 }
 
 /** 上下文压缩的非流式请求：原消息只在本次调用中用于生成摘要，服务端不落聊天正文。 */
@@ -103,6 +113,8 @@ export interface ChatToolCallPayload {
    * 前端看到 `eventId` 才知道该显示按钮。两个字段各管一件事，不要合并。
    */
   eventId?: string
+  /** `sticker_send` 成功时返回的本地图库 id；前端据此取快照并落一条 sticker 消息。 */
+  stickerId?: string
 }
 
 /** `chat-usage`：上游末包用量（在 `chat-done` 之前到达） */

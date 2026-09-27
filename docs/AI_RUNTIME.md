@@ -76,6 +76,8 @@
 | `messageboard.write` | board | autonomous | `messageboard_write` | 可用 · 立即写入小栖留言 |
 | `messageboard.update` | board | autonomous | `messageboard_update` | 可用 · 只能修改小栖自己的留言 |
 | `web.search` | web | user-only（本轮授权后临时 autonomous） | `web_search` | 仅聊天显式联网搜索入口可用；普通聊天 / 后台自动化不开放 |
+| `sticker.search` | tools | autonomous | `sticker_search` | 本轮有本地图库元数据时可用；只检索，不发送 |
+| `sticker.send` | tools | autonomous | `sticker_send` | 本轮有本地图库元数据时可用；一次选择一张 |
 | `tools.list` | tools | autonomous | `tools_list` | 可用 |
 
 > 日记 / 留言板的能力**没有外部依赖**（权威存储就是本机 SQLite，见 `DATA_MODEL.md` §11），
@@ -123,6 +125,10 @@ AI 那边**零感知**。这条在 T-031（工具面 0/5 命中）之后才变�
 `autonomous` 并注入一条授权 system 段。普通聊天、主动唤醒与 Solitude 不会因为注册表
 存在该项而自行出网。搜索结果以不可信资料回灌 `role=tool`，前端同时落一张工具卡；
 失败也必须回灌失败事实，不能让模型凭空编造搜索结论。
+
+### 3.2 本地表情图库的按轮绑定
+
+表情包图片属于浏览器本地数据，不上传服务端。聊天请求只带最多 100 项的名称 / 分类 / 标签元数据快照；服务端据此临时绑定 `sticker.search` 与 `sticker.send`，请求没有本地图库时两项工具完全不进入本轮工具列表。搜索结果只返回可读元数据和稳定 id，发送工具再次校验 id 必须来自本轮快照，并在成功帧中返回 `stickerId`。前端收到成功帧后从本地图库取图片，按发送时的名称 / 标签 / 图片快照写入独立 `sticker` 消息，因此图库条目后来删除也不会破坏历史消息。找不到条目、图库变更或发送失败时均返回 `ok:false` / 明确提示，不制造空白图片或“已发送”的假成功；模型可以选择 no-op，不能把表情包当成每轮必做动作。
 
 ---
 

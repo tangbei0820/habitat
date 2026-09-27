@@ -289,13 +289,18 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
   "messages": [{ "role": "user", "content": "你好" }],
   "temperature": 0.8,
   "maxTokens": 1024,
-  "webSearch": { "query": "想查的公开网页问题" }
+  "webSearch": { "query": "想查的公开网页问题" },
+  "stickerCatalog": [
+    { "id": "sticker-happy", "name": "开心抱抱", "category": "情绪", "tags": ["开心", "拥抱"] }
+  ]
 }
 ```
 
 `profileId` 缺省用注册表里 `isActive` 的方案；`model` 缺省用 `profile.modelMap.chat`。
 `webSearch` 只由聊天“更多功能 → 联网搜索”入口生成；缺省时本轮不会向模型暴露 Web 工具。
 存在时服务端会把 `web.search` 临时提升为本轮可调用能力，先执行公开网页检索，再把带查询、标题、来源链接、摘要、完成时间和成功 / 失败状态的工具结果回灌同一轮模型。网页内容标记为不可信资料，不执行脚本、不登录、不提交表单；搜索失败不得伪造答案。
+
+`stickerCatalog` 是浏览器本地图库的轻量元数据快照（最多 100 项，只含 id / 名称 / 分类 / 标签），用于让本轮模型在需要时选择表情包；图片 data URL、图库数据库和用户文件不会上传或由服务端保存。缺省或为空时，本轮不绑定 `sticker.search` / `sticker.send`。工具成功后只回传被选中的 `stickerId`，前端再从本地图库解析并按发送时快照落一条独立 `sticker` 消息。
 
 ### `POST /api/chat/compact`（上下文摘要）
 
@@ -348,11 +353,14 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
   "source": "Nocturne",       // 展示来源
   "ok": true,
   "summary": "按「散步」检索到记忆",
-  "detail": "…"               // 可折叠详情，**服务端已裁剪**；失败时是给用户看的错误说明
+  "detail": "…",              // 可折叠详情，**服务端已裁剪**；失败时是给用户看的错误说明
+  "stickerId": "sticker-happy" // 仅 sticker_send 成功时出现
 }
 ```
 
 联网搜索的工具名为 `web_search`、能力 id 为 `web.search`、展示来源为 `Web`。它不是默认自主工具：只有请求体带 `webSearch.query` 时才进入本轮 tools；普通聊天与后台自动化都不会因为能力注册表存在该项而自行出网。
+
+表情包工具名为 `sticker_search` / `sticker_send`，能力 id 分别为 `sticker.search` / `sticker.send`，仅在本轮带有非空 `stickerCatalog` 时绑定。`sticker_search` 只搜索本轮元数据，不发送图片；`sticker_send` 只接受本轮目录中的 id，成功返回 `stickerId`，失败会把事实回灌模型并由前端给出明确提示，不会伪造一张失效图片。模型可以选择不调用，也不应每轮自动发送。
 
 三条纪律：
 

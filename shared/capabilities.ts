@@ -59,6 +59,9 @@ export type CapabilityId =
   /* —— 共享留言板 —— */
   | 'messageboard.write'
   | 'messageboard.update'
+  /* —— 聊天表情包（图库来自本轮前端，不把图片原文塞进模型上下文） —— */
+  | 'sticker.search'
+  | 'sticker.send'
   /* —— 联网检索（仅在用户明确授权的本轮暴露） —— */
   | 'web.search'
   /* —— 自我认知 —— */
@@ -390,6 +393,47 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
           content: { type: 'string', description: '修改后的留言内容，不超过 500 字' },
         },
         required: ['id', 'content'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'sticker.search',
+    module: 'tools',
+    label: '搜索表情包',
+    summary: '按语境在本地表情图库里找图',
+    modelHint: '按当前语境搜索本地表情图库。找到合适的表情后可再决定发送，找不到时就不发送。不要每轮强行调用。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'sticker_search',
+      description: '按关键词搜索本轮可用的本地表情图库，只返回名称、分类、标签与 id，不会自动发送。没有合适的结果时可以不发送。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '描述想表达的语气或场景，例如 开心、安慰、晚安' },
+          limit: { type: 'number', description: '最多返回几张，省略则返回少量结果' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'sticker.send',
+    module: 'tools',
+    label: '发送表情包',
+    summary: '把选中的本地表情包发进当前聊天',
+    modelHint: '只有当表情能补充语气时才发送一张刚搜索到的表情包；每轮最多一张，也可以明确不发送。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'sticker_send',
+      description: '发送一张刚从本地图库搜索到的表情包。每次只发送一张；不要凭空猜 stickerId，也不要为了凑热闹发送。',
+      parameters: {
+        type: 'object',
+        properties: {
+          stickerId: { type: 'string', description: 'sticker_search 返回的表情包 id' },
+        },
+        required: ['stickerId'],
         additionalProperties: false,
       },
     },

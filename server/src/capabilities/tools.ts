@@ -15,6 +15,7 @@
  */
 import type { CapabilityAutonomy, CapabilityId, CapabilityModule, CapabilitySnapshot, CapabilityToolSchema } from '@shared/capabilities.js'
 import { CAPABILITY_DEFINITIONS } from '@shared/capabilities.js'
+import type { ChatStickerCatalogItem } from '@shared/events.js'
 import type { LlmToolCall, MemoryProvider, StateProvider } from '@shared/providers.js'
 import { describeState } from '@shared/state-summary.js'
 import { getCompanionDiaryView, listCompanionDiaryViews, createCompanionDiary, setDiaryFragmentVisibility, updateCompanionDiary } from '../db/diary.js'
@@ -69,6 +70,8 @@ export interface ToolOutcome {
    * 于是北北会收到一串一模一样的确认卡。
    */
   eventId?: string
+  /** 表情包工具成功选择的本地图库 id；图片快照由浏览器按 id 取回。 */
+  stickerId?: string
 }
 
 /** 工具正文进模型上下文的上限：记忆全文可能很长，但也不能无界 */
@@ -134,6 +137,10 @@ export interface ToolRuntime {
   capabilities: CapabilityService
   /** 显式联网检索请求的授权查询；普通聊天为 null，防止模型借工具越权搜索。 */
   webSearchQuery?: string
+  /** 本轮由浏览器带来的本地表情轻量目录，不写服务端数据库。 */
+  stickerCatalog?: readonly ChatStickerCatalogItem[]
+  /** 本次聊天请求已发送的表情；防止模型在多轮工具循环里重复发图。 */
+  stickerSentId?: string
 }
 
 type ParsedArgs = { ok: true; value: Record<string, unknown> } | { ok: false; error: string }
@@ -387,6 +394,34 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
           ok: true,
           text: `留言已更新（id: ${updated.id}）。`,
           summary: '修改了留言板上的留言',
+        }
+      }
+
+      case 'sticker.search': {
+        const query = typeof value.query === 'string' ? value.query.trim().toLocaleLowerCase() : ''
+        if (query === '') return failure(tool, '缺少必填参数 query')
+        const limit = Math.min(Math.max(Math.round(normalizeLimit(value.limit) ?? 6), 1), 12)
+        const matches = (runtime.stickerCatalog ?? [])
+          .filter((sticker) => [sticker.name, sticker.category ?? '', ...sticker.tags].join(' ').toLocaleLowerCase().includes(query))
+          .slice(0, limit)
+        if (matches.length === 0) return { ok: true, text: `没有找到与「${query}」匹配的表情包。可以不发送。`, summary: '没有找到合适的表情包' }
+        const text = matches.map((sticker) => `- ${sticker.name}（id: ${sticker.id}${sticker.category === null ? '' : `，分类：${sticker.category}`}${sticker.tags.length === 0 ? '' : `，标签：${sticker.tags.join('、')}`}）`).join('\n')
+        return { ok: true, text: `找到 ${matches.length} 张表情包：\n${text}`, summary: `找到 ${matches.length} 张表情包`, detail: clip(text, DETAIL_LIMIT) }
+      }
+
+      case 'sticker.send': {
+        const stickerId = typeof value.stickerId === 'string' ? value.stickerId.trim() : ''
+        if (stickerId === '') return failure(tool, '缺少必填参数 stickerId')
+        if (runtime.stickerSentId !== undefined) return failure(tool, '本轮已经发送过一张表情包，未重复发送')
+        const sticker = (runtime.stickerCatalog ?? []).find((item) => item.id === stickerId)
+        if (sticker === undefined) return failure(tool, '这张表情包不在本轮可用图库中，未发送')
+        runtime.stickerSentId = sticker.id
+        return {
+          ok: true,
+          text: `已发送表情包《${sticker.name}》。这一动作已完成，不要再次发送同一张。`,
+          summary: `发送了表情包《${sticker.name}》`,
+          detail: `${sticker.name}（${sticker.id}）`,
+          stickerId: sticker.id,
         }
       }
 

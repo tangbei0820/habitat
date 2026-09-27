@@ -57,7 +57,7 @@ import { formatDayLabel, formatDuration, isSameDay } from '../../lib/format'
 import { log } from '../../lib/log'
 import { describeImage, generateImage, synthesizeSpeech, transcribeAudio } from '../../lib/media'
 import { useOnlineStatus } from '../../features/offline/useOnlineStatus'
-import { createStickerFromFile, listStickers } from '../../db/stickers'
+import { createStickerFromFile, getSticker, listStickers } from '../../db/stickers'
 
 /** 首屏只拉最近这么多条（§9 风险8：按时间分页，不全量读）；向上翻页也用它 */
 const PAGE_SIZE = 60
@@ -421,10 +421,21 @@ export function ChatWindowPage() {
     }
 
     try {
+      const stickerCatalog = stickers.length === 0
+        ? await listStickers()
+        : stickers
       await streamChat(
         {
           messages: history,
           ...(options.webSearchQuery === undefined ? {} : { webSearch: { query: options.webSearchQuery } }),
+          ...(stickerCatalog.length === 0 ? {} : {
+            stickerCatalog: stickerCatalog.map((sticker) => ({
+              id: sticker.id,
+              name: sticker.name,
+              category: sticker.category,
+              tags: sticker.tags,
+            })),
+          }),
         },
         {
           onDelta: (delta) => {
@@ -767,6 +778,45 @@ export function ChatWindowPage() {
     } catch (err) {
       // 卡片没落库不该把回复本身作废（正文还在流）；但必须留痕，不能静默
       log.error('工具调用卡片落库失败', err)
+    }
+    if (call.ok && call.stickerId !== undefined) {
+      let sticker
+      try {
+        sticker = await getSticker(call.stickerId)
+      } catch (err) {
+        log.error('读取 AI 表情包失败', err)
+        setErrorText('AI 选中的表情包读取失败，未发送')
+        return
+      }
+      if (sticker === null) {
+        setErrorText('AI 选中的表情包已不在本地图库中，未发送')
+        return
+      }
+      const stickerMessage = newMessage({
+        sessionId,
+        role: 'assistant',
+        blocks: [{
+          kind: 'sticker',
+          payload: {
+            stickerId: sticker.id,
+            name: sticker.name,
+            imageDataUrl: sticker.imageDataUrl,
+            mimeType: sticker.mimeType,
+            source: 'AI 自主选择',
+            tags: sticker.tags,
+          },
+          order: 0,
+        }],
+      })
+      try {
+        await appendMessage(stickerMessage)
+      } catch (err) {
+        log.error('保存 AI 表情包消息失败', err)
+        setErrorText('AI 选中的表情包保存失败，未发送')
+        return
+      }
+      setMessages((prev) => [...prev, stickerMessage])
+      await touchSession(sessionId)
     }
   }
 

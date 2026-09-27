@@ -14,6 +14,7 @@
     "probe:chat-context": "tsx scripts/probe-chat-context.ts",
     "probe:chat-compact": "tsx scripts/probe-chat-compact.ts",
     "probe:chat-web-search": "tsx scripts/probe-chat-web-search.ts",
+    "probe:sticker-tools": "tsx scripts/probe-sticker-tools.ts",
     "probe:nocturne-tools": "tsx scripts/probe-nocturne-tools.ts",
     "probe:mcp-manager": "tsx scripts/probe-mcp-manager.ts",
     "probe:nocturne-dashboard": "tsx scripts/probe-nocturne-dashboard.ts",

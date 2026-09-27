@@ -48,6 +48,10 @@ export async function listStickers(): Promise<Sticker[]> {
   return db.stickers.orderBy('updatedAt').reverse().toArray()
 }
 
+export async function getSticker(id: string): Promise<Sticker | null> {
+  return (await db.stickers.get(id)) ?? null
+}
+
 export async function createSticker(input: {
   name: string
   imageDataUrl: string
