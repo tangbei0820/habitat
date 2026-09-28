@@ -6,6 +6,8 @@ import { diary } from '../src/db/schema.js'
 import { createCompanionDiary, getDiaryView } from '../src/db/diary.js'
 import { executeTool, type BoundTool } from '../src/capabilities/tools.js'
 import { requestDiaryAccess, decideEvent } from '../src/services/event-inbox.js'
+import { listEvents } from '../src/db/event.js'
+import { listNotifications } from '../src/db/activity.js'
 import { runtimeEvent } from '../src/db/schema.js'
 
 let passed = 0
@@ -53,6 +55,9 @@ try {
   if (request.ok) {
     const decision = await decideEvent(request.event.id, 'companion', true)
     check('AI 同意后只开放被请求片段', decision.ok && getDiaryView(created.id)?.fragments.find((fragment) => fragment.id === 'fragment-1')?.readable === true)
+    const settled = listEvents({ decider: 'companion' }).find((item) => item.id === request.event.id)
+    check('已结算的片段申请仍出现在申请历史', settled?.status === 'approved' && settled.result !== null)
+    check('片段申请结算会生成可追溯的站内通知', listNotifications().some((item) => item.metadata.eventId === request.event.id && item.metadata.category === 'diary'))
   }
   const deniedRequest = requestDiaryAccess(created.id, 'fragment-2')
   if (deniedRequest.ok) eventIds.push(deniedRequest.event.id)

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { DiaryFragmentView, DiaryView } from '@shared/types'
+import type { DiaryFragmentView, DiaryView, RuntimeEvent } from '@shared/types'
 import { listEvents, requestDiaryAccess } from '../../db/events'
 import { createDiary, deleteDiary, listDiaries, updateDiary } from '../../db/home'
 
@@ -38,22 +38,25 @@ export function DiaryModule() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [requestedIds, setRequestedIds] = useState<ReadonlySet<string>>(new Set())
   const [requestedFragmentIds, setRequestedFragmentIds] = useState<ReadonlySet<string>>(new Set())
+  const [requestHistory, setRequestHistory] = useState<RuntimeEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   async function refresh(query = search): Promise<void> {
     // 日记与「待小栖决定的请求」一起拉：少了后者，用户点完按钮看不出任何变化
-    const [diaries, pending] = await Promise.all([
+    const [diaries, pending, history] = await Promise.all([
       listDiaries(query),
       listEvents({ decider: 'companion', status: 'pending' }),
+      listEvents({ decider: 'companion', limit: 100 }),
     ])
     setItems(diaries)
     setRequestedIds(new Set(pending.map((item) => item.targetId).filter((id): id is string => id !== null)))
     setRequestedFragmentIds(new Set(pending.flatMap((item) =>
       item.targetId !== null && typeof item.targetFragmentId === 'string'
-        ? [fragmentRequestKey(item.targetId, item.targetFragmentId)]
+      ? [fragmentRequestKey(item.targetId, item.targetFragmentId)]
         : [],
     )))
+    setRequestHistory(history.filter((item) => item.kind === 'diary_access_request'))
   }
 
   useEffect(() => {
@@ -128,6 +131,13 @@ export function DiaryModule() {
     }
   }
 
+  function requestStatusLabel(event: RuntimeEvent): string {
+    if (event.status === 'pending') return '等小栖决定'
+    if (event.status === 'approved') return '小栖已开放'
+    if (event.status === 'denied') return '小栖暂未开放'
+    return '处理失败'
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', background: 'linear-gradient(135deg, var(--bg-surface-solid), var(--bg-subtle))' }} data-testid="diary-privacy-intro">
@@ -165,6 +175,21 @@ export function DiaryModule() {
         <input id="diary-search" value={search} onChange={(event) => setSearch(event.target.value)} maxLength={120} placeholder="搜索标题或已开放内容" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
         {search !== '' && <button type="button" onClick={() => setSearch('')} className="text-xs" style={{ color: 'var(--text-secondary)' }}>清除</button>}
       </div>
+      <details data-testid="diary-request-history" className="rounded-lg border" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
+        <summary className="cursor-pointer px-4 py-3 text-sm font-medium">查看申请记录{requestHistory.length > 0 ? ` · ${requestHistory.length}` : ''}</summary>
+        <div className="space-y-2 border-t px-4 py-3" style={{ borderColor: 'var(--border-soft)' }}>
+          {requestHistory.length === 0 ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>还没有发起过查看申请。</p> : requestHistory.map((event) => (
+            <article key={event.id} data-testid="diary-request-history-item" className="rounded-lg p-3" style={{ background: 'var(--bg-subtle)' }}>
+              <div className="flex items-start justify-between gap-3">
+                <strong className="text-sm">{event.title}</strong>
+                <span className="shrink-0 text-xs" style={{ color: event.status === 'approved' ? 'var(--accent-strong)' : 'var(--text-secondary)' }}>{requestStatusLabel(event)}</span>
+              </div>
+              <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{new Date(event.createdAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+              {event.result !== null && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{event.result}</p>}
+            </article>
+          ))}
+        </div>
+      </details>
       {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在翻开日记……</p> : items.length === 0 ? (
         <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>{search === '' ? '还没有日记。今天可以成为第一页。' : '没有找到匹配的日记。私密正文不会参与搜索。'}</p>
       ) : (

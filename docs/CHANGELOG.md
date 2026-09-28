@@ -1008,3 +1008,9 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 倒数日支持编辑标题与日期，并将 `countdown.updated` 投影到 Life 时间线；修正倒数日时间线标题不应落成“生活事件”的投影问题。
 - 日记查看申请结算后新增站内授权结果通知，并复用既有通知分类、免打扰与 Web Push 门控；不新增 schema 或平行通知模型。
 - 验收：`probe:diary` 47/47、`probe:countdown-life` 7/7；两端 typecheck、前端 build、`git diff --check` 通过。
+
+### 2026-09-28 · T-098 · V2-A Home 基础模块第三阶段（本地）
+
+- 日记页新增折叠式查看申请历史，直接展示 Runtime Event 的待决 / 已开放 / 拒绝 / 失败状态与结果，不泄露私密正文。
+- 通知卡点击后可按既有 `metadata.route` 回到真实来源页面；收藏搜索纳入来源元数据，统一来源组件补齐日记 / 作品 / 相册 / 共读模块回链。
+- 无 SQLite / Dexie / 备份版本变化；`probe:diary-fragments` 11/11，两端 typecheck 与前端 build 通过。

@@ -3074,3 +3074,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 公网验收 | `https://habitat.beiyan.cc/api/life/day/2026-09-28` 返回 `timeline`；远端 `server/src/routes/life.ts` SHA-256 与本地一致。 |
 
 **阶段边界**：本阶段到此停止；日记富文本 / 申请历史、留言板分组、收藏标签 / 深链、倒数日分类 / 重复 / 到期提醒等继续留在 T-096 的待优化清单，不提前施工。
+
+### T-098 · 2026-09-28 · V2-A Home 基础模块第三阶段：申请历史与来源回链 —— **完成（本地）**
+
+**范围**：把已存在的 Event Inbox / 通知 / Bookmark 来源事实呈现完整；不新建申请表、通知表或平行来源模型。
+
+| 交付 | 说明 |
+| --- | --- |
+| 日记申请历史 | 日记页新增可折叠申请记录，展示待决、已开放、拒绝、失败与 AI 返回结果；直接复用 `GET /api/inbox` 的已决事件，私密正文仍不进入列表。 |
+| 通知结果回链 | 带 `metadata.route` 的通知点击后先标已读，再打开对应真实页面；没有路由的通知保持站内阅读行为。 |
+| 收藏来源 | 收藏中心搜索纳入来源元数据；日记 / 作品 / 相册 / 共读来源可复用统一来源组件回到对应模块，保留原对象 id。 |
+| 数据边界 | 无 SQLite / Dexie / 备份版本变化；继续复用 RuntimeEvent、NotificationRecord、Bookmark 的既有字段。 |
+
+**参考取舍**：延续 [Journal](https://github.com/BomBomLab/Journal) 的历史分层与结构化事件渲染，以及 [shared-page](https://github.com/KKarsyline/shared-page) 的来源可追溯原则；不复制其 UI / runtime。
+
+**验收**：`npm run typecheck`、`npm run build`、`git diff --check` 通过；`probe:diary-fragments` **11/11**（覆盖申请历史与授权结果通知）。
+
+**阶段边界**：本阶段只到“可追溯”。日记富文本 / 图片、留言板分组、收藏标签与服务端分页、倒数日重复提醒、愿望清单扩展仍不施工。

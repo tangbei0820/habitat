@@ -26,6 +26,23 @@ export function ContentSourceLink({ item }: { item: BaseObject }) {
       </div>
     )
   }
+  const homeModuleRoutes: Record<string, string> = {
+    'home-diary': '/home/diary',
+    'home-works': '/home/works',
+    'home-album': '/home/album',
+    'home-reading': '/home/reading',
+  }
+  const homeRoute = typeof sourceModule === 'string' ? homeModuleRoutes[sourceModule] : undefined
+  if (homeRoute !== undefined) {
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+        <span>来源：{sourceModule === 'home-diary' ? '日记' : sourceModule === 'home-works' ? '作品' : sourceModule === 'home-album' ? '相册' : '共读'}</span>
+        <Link to={`${homeRoute}#${encodeURIComponent(item.sourceId)}`} className="underline" style={{ color: 'var(--accent-strong)' }}>
+          查看来源
+        </Link>
+      </div>
+    )
+  }
   if (item.sessionId === undefined) return null
   const actor = roleLabel(item.metadata)
   const sourceAt = item.metadata?.sourceCreatedAt

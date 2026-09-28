@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { LifeLedgerView, LifeMonthSummary, LifeRuntimeView, NotificationPreferences, NotificationRecord, PushStatus, RuntimeEvent } from '@shared/types'
 import { listEvents } from '../../db/events'
 import { weekListenSeconds } from '../../db/listen'
@@ -114,6 +114,7 @@ function LedgerView({ month }: { month: string }) {
 }
 
 function NotificationsView() {
+  const navigate = useNavigate()
   const [items, setItems] = useState<NotificationRecord[] | null>(null)
   const [push, setPush] = useState<PushStatus | null>(null)
   const [subscribed, setSubscribed] = useState(false)
@@ -152,13 +153,21 @@ function NotificationsView() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setTesting(false) }
   }
+  async function openNotification(item: NotificationRecord): Promise<void> {
+    try {
+      if (item.readAt === null) await markNotificationRead(item.id)
+      const route = item.metadata.route
+      if (typeof route === 'string' && route.startsWith('/')) navigate(route)
+      else await refresh()
+    } catch (reason) { report(reason) }
+  }
   const report = (reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))
   return <div className="space-y-3"><ErrorLine value={error}/>{notice !== null && <p className="rounded-lg p-3 text-sm" style={{ color: 'var(--accent-strong)', background: 'var(--bg-subtle)' }}>{notice}</p>}
     <Panel><div className="flex items-center justify-between gap-3"><div><h2 className="font-medium">通知偏好</h2><p className="text-xs" style={{ color: 'var(--text-secondary)' }}>只影响推送与主动打扰，站内通知仍会保留。</p></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={preferences?.enabled ?? true} disabled={preferences === null} onChange={(event) => preferences !== null && setPreferences({ ...preferences, enabled: event.target.checked })}/>总开关</label></div>
       {preferences !== null && <><div className="mt-3 flex flex-wrap items-center gap-3 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={preferences.quietHoursEnabled} onChange={(event) => setPreferences({ ...preferences, quietHoursEnabled: event.target.checked })}/>免打扰</label><label className="flex items-center gap-2">从 <input type="time" value={preferences.quietStart} onChange={(event) => setPreferences({ ...preferences, quietStart: event.target.value })} className="rounded border bg-transparent px-2 py-1"/></label><label className="flex items-center gap-2">到 <input type="time" value={preferences.quietEnd} onChange={(event) => setPreferences({ ...preferences, quietEnd: event.target.value })} className="rounded border bg-transparent px-2 py-1"/></label></div><div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">{categoryLabels.map(([key, label]) => <label key={key} className="flex items-center gap-2"><input type="checkbox" checked={preferences.categories[key]} onChange={(event) => setPreferences({ ...preferences, categories: { ...preferences.categories, [key]: event.target.checked } })}/>{label}</label>)}</div><div className="mt-3 flex justify-end"><button disabled={saving} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" onClick={() => void savePreferences()}>{saving ? '保存中…' : '保存通知偏好'}</button></div></>}
     </Panel>
     <Panel><div className="flex items-center justify-between gap-3"><div><h2 className="font-medium">Web Push</h2><p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{!browserPushSupported() ? '当前浏览器不支持' : !push?.configured ? '服务端尚未配置 VAPID，站内通知仍可用' : subscribed ? '已启用' : '可选启用'}</p>{push?.lastError && <p className="mt-1 text-xs" style={{ color: 'var(--danger)' }}>最近失败：{push.lastError}</p>}</div><div className="flex gap-2"><button disabled={!browserPushSupported() || !push?.configured} onClick={() => void togglePush()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">{subscribed ? '关闭' : '启用'}</button><button disabled={!subscribed || testing} onClick={() => void testPush()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">{testing ? '发送中…' : '发送测试通知'}</button></div></div></Panel>
-    <div className="flex items-center justify-between"><span className="text-sm">未读 {items?.filter((item) => item.readAt === null).length ?? 0}</span><button className="text-sm underline" onClick={() => void markAllNotificationsRead().then(refresh).catch(report)}>全部已读</button></div><LoadingOrEmpty loading={items === null && error === null} empty={items?.length === 0}>{items?.map((item) => <button key={item.id} className="block w-full text-left" onClick={() => item.readAt === null && void markNotificationRead(item.id).then(refresh).catch(report)}><Panel className={item.readAt === null ? 'border-l-4' : 'opacity-70'}><div className="flex justify-between gap-3"><strong>{item.title}</strong><small>{dateTime(item.createdAt)}</small></div><p className="mt-1 whitespace-pre-wrap text-sm">{item.body}</p></Panel></button>)}</LoadingOrEmpty></div>
+    <div className="flex items-center justify-between"><span className="text-sm">未读 {items?.filter((item) => item.readAt === null).length ?? 0}</span><button className="text-sm underline" onClick={() => void markAllNotificationsRead().then(refresh).catch(report)}>全部已读</button></div><LoadingOrEmpty loading={items === null && error === null} empty={items?.length === 0}>{items?.map((item) => <button key={item.id} className="block w-full text-left" onClick={() => void openNotification(item)}><Panel className={item.readAt === null ? 'border-l-4' : 'opacity-70'}><div className="flex justify-between gap-3"><strong>{item.title}</strong><small>{dateTime(item.createdAt)}</small></div><p className="mt-1 whitespace-pre-wrap text-sm">{item.body}</p>{typeof item.metadata.route === 'string' && <span className="mt-2 block text-xs underline" style={{ color: 'var(--accent-strong)' }}>打开相关页面</span>}</Panel></button>)}</LoadingOrEmpty></div>
 }
 
 /**

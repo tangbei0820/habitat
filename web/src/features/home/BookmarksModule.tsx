@@ -153,7 +153,10 @@ export function BookmarksModule() {
     () => filterByCategory(items, selection, categories, (item) => item.categoryId).filter((item) => {
       const query = search.trim().toLocaleLowerCase()
       if (query === '') return true
-      return [item.title, item.note ?? '', item.targetId].join('\n').toLocaleLowerCase().includes(query)
+      const sourceMetadata = Object.entries(item.metadata ?? {})
+        .filter(([key]) => key.startsWith('source'))
+        .map(([, value]) => typeof value === 'string' || typeof value === 'number' ? String(value) : '')
+      return [item.title, item.note ?? '', item.targetId, ...sourceMetadata].join('\n').toLocaleLowerCase().includes(query)
     }),
     [items, selection, categories, search],
   )
