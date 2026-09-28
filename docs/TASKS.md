@@ -3013,3 +3013,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:countdown-life` **6/6**；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-088，本批未部署。 |
 
 **待优化（后续功能）**：倒数日编辑 / 分类 / 重复事件、到期自动通知与通知偏好联动另起任务。
+
+### T-094 · 2026-09-28 · V2-A 后续：收藏事实进入 Life—— **完成（本地）**
+
+**边界**：只把现有收藏中心与原位收藏入口的新增、删除、分类变化投影到服务端 EventLog；不复制收藏正文，不改变 Bookmark / Dexie / 备份结构，也不扩展标签、搜索或排序。
+
+| 交付 | 说明 |
+| --- | --- |
+| 事实写入 | 新增 `POST /api/life/events/bookmark`，严格白名单三类 `bookmark.*` 事件；聊天消息、留言、外部链接的收藏入口和收藏中心分类 / 删除成功后尽力追加事实。 |
+| 时间线 | Life 将收藏操作投影为“收藏了 / 移除了 / 调整分类”，保留对象类型与标题摘要；不把收藏正文或原始对象直接送入服务端。 |
+| 月历 | `LifeDaySummary` 新增 `bookmarkActivityCount`，月历新增收藏活动摘要卡；统计只读服务端 EventLog。 |
+| 数据边界 | 无 SQLite / Dexie schema 变化；复用现有 `Bookmark` 的 targetType / sourceId / categoryId 语义。 |
+| 参考取舍 | 实查 [shared-page](https://github.com/KKarsyline/shared-page) README 的结构化事件、来源可追溯与人机共用数据契约；只借“先保留结构化来源再渲染”的思路，不引入其独立日历后端或 MCP。 |
+| 验收 | `probe:bookmark-life` **6/6**；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-088，本批未部署。 |
+
+**待优化（后续功能）**：收藏搜索 / 标签、多来源深链统一跳转、AI 自主收藏与通知联动另起任务。

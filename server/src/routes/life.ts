@@ -76,6 +76,16 @@ const COUNTDOWN_EVENT_TYPES = new Set([
   'countdown.widget.updated',
 ])
 
+const BOOKMARK_EVENT_TYPES = new Set([
+  'bookmark.created',
+  'bookmark.deleted',
+  'bookmark.category.updated',
+])
+
+const BOOKMARK_TARGET_TYPES = new Set([
+  'external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'music-track', 'study-record',
+])
+
 function optionalNonnegativeInteger(body: Record<string, unknown>, key: string, max = 1_000_000_000): number | undefined {
   if (body[key] === undefined) return undefined
   const value = body[key]
@@ -212,6 +222,33 @@ function countdownEventBody(value: unknown): {
   }
 }
 
+function bookmarkEventBody(value: unknown): {
+  eventType: string
+  metrics: Record<string, unknown>
+  refId: string
+} {
+  const body = objectBody(value)
+  const eventType = boundedText(body, 'eventType', 48)
+  if (!BOOKMARK_EVENT_TYPES.has(eventType)) throw new RequestError(ErrorCodes.BadRequest, '不支持的收藏事件类型')
+  const bookmarkId = boundedText(body, 'bookmarkId', 160)
+  const targetType = boundedText(body, 'targetType', 40)
+  if (!BOOKMARK_TARGET_TYPES.has(targetType)) throw new RequestError(ErrorCodes.BadRequest, '不支持的收藏对象类型')
+  const title = boundedText(body, 'title', 160)
+  const hasCategoryId = Object.prototype.hasOwnProperty.call(body, 'categoryId')
+  const categoryId = body.categoryId === undefined || body.categoryId === null ? null : boundedText(body, 'categoryId', 160)
+  const categoryName = body.categoryName === undefined || body.categoryName === null ? null : boundedText(body, 'categoryName', 120)
+  if (eventType === 'bookmark.category.updated' && body.categoryId === undefined && body.categoryName === undefined) throw new RequestError(ErrorCodes.BadRequest, '收藏分类事件需要分类信息')
+  return {
+    eventType,
+    refId: bookmarkId,
+    metrics: {
+      source: 'bookmark', targetType, title,
+      ...(hasCategoryId ? { categoryId } : {}),
+      ...(categoryName === null ? {} : { categoryName }),
+    },
+  }
+}
+
 export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, state: StateProvider | null): void {
   app.get('/api/life/month', async (request) => {
     const query = request.query as Record<string, unknown>
@@ -242,6 +279,12 @@ export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, st
   app.post('/api/life/events/countdown', async (request, reply) => {
     const input = countdownEventBody(request.body)
     const at = input.at ?? Date.now()
+    const id = appendEventLog(input.eventType, input.metrics, input.refId, at)
+    return reply.status(201).send({ ok: true, id, dayKey: dayKeyOf(at), at })
+  })
+  app.post('/api/life/events/bookmark', async (request, reply) => {
+    const input = bookmarkEventBody(request.body)
+    const at = Date.now()
     const id = appendEventLog(input.eventType, input.metrics, input.refId, at)
     return reply.status(201).send({ ok: true, id, dayKey: dayKeyOf(at), at })
   })

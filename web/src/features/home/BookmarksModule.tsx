@@ -28,12 +28,18 @@ import {
   type CategorySelection,
 } from './categories'
 import { ContentSourceLink } from './ContentSourceLink'
+import { appendBookmarkLifeEvent } from '../life/api'
 
 type SheetTarget = { kind: 'item'; id: string } | { kind: 'move'; id: string }
 
 /** 二次确认的自动退回时间：确认态不该在列表里长期挂着 */
 const CONFIRM_MS = 3000
 const TOAST_MS = 2500
+
+function emitBookmarkLifeEvent(event: Parameters<typeof appendBookmarkLifeEvent>[0]): void {
+  /* Life 是跨模块投影；收藏中心必须在服务端短暂不可用时仍可用。 */
+  void appendBookmarkLifeEvent(event).catch(() => undefined)
+}
 
 export function BookmarksModule() {
   const [items, setItems] = useState<Bookmark[]>([])
@@ -91,7 +97,8 @@ export function BookmarksModule() {
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
     try {
-      await createExternalBookmark(title, href, note)
+      const created = await createExternalBookmark(title, href, note)
+      emitBookmarkLifeEvent({ eventType: 'bookmark.created', bookmarkId: created.id, targetType: created.targetType, title: created.title })
       setTitle('')
       setHref('')
       setNote('')
@@ -107,7 +114,9 @@ export function BookmarksModule() {
 
   async function remove(id: string): Promise<void> {
     try {
+      const item = items.find((candidate) => candidate.id === id)
       await deleteBookmark(id)
+      if (item !== undefined) emitBookmarkLifeEvent({ eventType: 'bookmark.deleted', bookmarkId: item.id, targetType: item.targetType, title: item.title })
       setConfirmingId(null)
       setError(null)
       await refresh()
@@ -117,7 +126,12 @@ export function BookmarksModule() {
   }
 
   async function applyMove(bookmarkId: string, categoryId: string | null): Promise<void> {
+    const bookmark = items.find((item) => item.id === bookmarkId)
     await setBookmarkCategory(bookmarkId, categoryId)
+    if (bookmark !== undefined) {
+      const categoryName = categoryId === null ? null : (categories.find((category) => category.id === categoryId)?.name ?? null)
+      emitBookmarkLifeEvent({ eventType: 'bookmark.category.updated', bookmarkId: bookmark.id, targetType: bookmark.targetType, title: bookmark.title, categoryId, categoryName })
+    }
     await refresh()
     setError(null)
     const name = categoryId === null ? null : (categories.find((c) => c.id === categoryId)?.name ?? null)

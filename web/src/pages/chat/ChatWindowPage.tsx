@@ -60,6 +60,7 @@ import { log } from '../../lib/log'
 import { describeImage, generateImage, synthesizeSpeech, transcribeAudio } from '../../lib/media'
 import { useOnlineStatus } from '../../features/offline/useOnlineStatus'
 import { createStickerFromFile, getSticker, listStickers } from '../../db/stickers'
+import { appendBookmarkLifeEvent } from '../../features/life/api'
 
 /** 首屏只拉最近这么多条（§9 风险8：按时间分页，不全量读）；向上翻页也用它 */
 const PAGE_SIZE = 60
@@ -1007,7 +1008,8 @@ export function ChatWindowPage() {
         break
       case 'bookmark':
         try {
-          await createMessageBookmark(message)
+          const created = await createMessageBookmark(message)
+          void appendBookmarkLifeEvent({ eventType: 'bookmark.created', bookmarkId: created.id, targetType: created.targetType, title: created.title }).catch(() => undefined)
           setErrorText(null)
           showToast('已加入收藏')
         } catch (err) {

@@ -28,6 +28,7 @@ function emptyDay(dayKey: string): LifeDaySummary {
     listeningDurationMs: 0,
     studyActivityCount: 0,
     countdownActivityCount: 0,
+    bookmarkActivityCount: 0,
   }
 }
 
@@ -51,6 +52,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     if (row.eventType === 'listening.progress' && typeof row.metricsJson.deltaSeconds === 'number') day.listeningDurationMs += Math.max(0, row.metricsJson.deltaSeconds * 1000)
     if (row.eventType.startsWith('study.')) day.studyActivityCount += 1
     if (row.eventType.startsWith('countdown.')) day.countdownActivityCount += 1
+    if (row.eventType.startsWith('bookmark.')) day.bookmarkActivityCount += 1
     days.set(row.dayKey, day)
   }
   for (const row of db.select().from(usageRecord).where(and(gte(usageRecord.dayKey, `${month}-01`), lt(usageRecord.dayKey, `${end}-01`))).all()) {
@@ -71,6 +73,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     totals.listeningDurationMs += day.listeningDurationMs
     totals.studyActivityCount += day.studyActivityCount
     totals.countdownActivityCount += day.countdownActivityCount
+    totals.bookmarkActivityCount += day.bookmarkActivityCount
     totals.pricedCostCents += day.pricedCostCents
     totals.unpricedCalls += day.unpricedCalls
   }
@@ -238,6 +241,26 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
     else if (row.eventType === 'countdown.deleted') title = `移除了「${title}」`
     else title = `${metricText(metrics, 'action') === 'pinned' ? '把' : '从主屏撤下'}「${title}」`
     detail = targetDate ? `日期 ${targetDate}` : null
+  } else if (row.eventType.startsWith('bookmark.')) {
+    source = '收藏'
+    const bookmarkTitle = metricText(metrics, 'title') ?? '一条内容'
+    const targetType = metricText(metrics, 'targetType')
+    const targetLabel: Record<string, string> = {
+      'chat-message': '聊天消息',
+      moment: '留言',
+      'external-link': '链接',
+      artwork: '作品',
+      photo: '图片',
+      diary: '日记',
+      'reading-note': '共读',
+      'music-track': '音乐',
+      'study-record': '学习记录',
+    }
+    if (row.eventType === 'bookmark.created') title = `收藏了「${bookmarkTitle}」`
+    else if (row.eventType === 'bookmark.deleted') title = `移除了收藏「${bookmarkTitle}」`
+    else title = `调整了收藏「${bookmarkTitle}」的分类`
+    const categoryName = metricText(metrics, 'categoryName')
+    detail = [targetType ? `来源 ${targetLabel[targetType] ?? targetType}` : null, categoryName ? `归入「${categoryName}」` : '未分类'].filter(Boolean).join(' · ')
   } else if (row.eventType === 'capability.diary.create' || row.eventType === 'capability.diary.update') {
     source = '日记'; title = row.eventType.endsWith('.create') ? '写下了一篇日记' : '更新了一篇日记'; detail = metricTitle
   } else if (row.eventType === 'capability.messageboard.write' || row.eventType === 'capability.messageboard.update') {

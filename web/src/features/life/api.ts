@@ -102,6 +102,22 @@ export function appendCountdownLifeEvent(event: CountdownLifeEvent): Promise<voi
   }).then(() => undefined)
 }
 
+export type BookmarkLifeEvent = {
+  eventType: 'bookmark.created' | 'bookmark.deleted' | 'bookmark.category.updated'
+  bookmarkId: string
+  targetType: string
+  title: string
+  categoryId?: string | null
+  categoryName?: string | null
+}
+
+/** 收藏操作只投影对象摘要与来源类型，不复制收藏正文。 */
+export function appendBookmarkLifeEvent(event: BookmarkLifeEvent): Promise<void> {
+  return fetchJson('/api/life/events/bookmark', {
+    method: 'POST', headers: jsonHeaders, body: JSON.stringify(event),
+  }).then(() => undefined)
+}
+
 export function loadLifeLedger(month: string): Promise<LifeLedgerView> {
   return fetchJson(`/api/life/ledger?month=${encodeURIComponent(month)}`)
 }

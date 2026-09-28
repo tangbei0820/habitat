@@ -12,6 +12,11 @@ import {
   removeHomeWidget,
   updateMoment,
 } from '../../db/home'
+import { appendBookmarkLifeEvent } from '../life/api'
+
+function emitBookmarkLifeEvent(event: Parameters<typeof appendBookmarkLifeEvent>[0]): void {
+  void appendBookmarkLifeEvent(event).catch(() => undefined)
+}
 
 /**
  * 留言板（SPEC §3.3）。
@@ -105,7 +110,8 @@ export function BoardModule() {
     if (favoriteIds.has(item.id)) return
     try {
       setFavoritingId(item.id)
-      await createMomentBookmark(item)
+      const created = await createMomentBookmark(item)
+      emitBookmarkLifeEvent({ eventType: 'bookmark.created', bookmarkId: created.id, targetType: created.targetType, title: created.title })
       setFavoriteIds((current) => new Set(current).add(item.id))
       setError(null)
     } catch (err: unknown) {
