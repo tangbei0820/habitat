@@ -123,7 +123,13 @@ Provider Profile 仍由 `/api/providers` 管理；以下接口只管理“哪个
 
 使用未保存草稿代请求上游 `/models`。请求可传 `profileId` 复用现有连接，也可传 `baseUrl / apiKey / headers / streamOptions` 覆盖；
 也可传 `provider: "elevenlabs"`；`apiKey` 只活在本次请求中。返回 `{ ok, latencyMs, models, errorCategory, error }`，失败分类包括
-`authentication / network / timeout / protocol / unsupported / empty-models / unknown`。
+`authentication / network / timeout / protocol / unsupported / empty-models / empty-voices / unknown`。
+
+### `POST /api/providers/draft/voices`
+
+只接受 `provider: "elevenlabs"` 的未保存草稿，服务端使用本次请求的密钥调用原生 `/v1/voices`，
+返回脱敏后的 `id / name / category / description / labels` 音色目录；不返回上游预览 URL，
+试听仍通过 `/api/providers/draft/test` 的真实 TTS 预览完成。非 ElevenLabs 草稿返回 `unsupported`。
 
 ### `POST /api/providers/draft/test`
 

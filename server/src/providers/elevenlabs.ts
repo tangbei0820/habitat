@@ -12,8 +12,9 @@ import type {
   StreamChatOptions,
   TTSProvider,
   TranscriptionProvider,
+  VoiceCatalogProvider,
 } from '@shared/providers.js'
-import type { ApiProfile } from '@shared/types.js'
+import type { ApiProfile, ElevenLabsVoiceOption } from '@shared/types.js'
 import { ProviderError } from './errors.js'
 
 const HEADER_TIMEOUT_MS = 30_000
@@ -35,7 +36,7 @@ async function responseSnippet(response: Response): Promise<string | null> {
   }
 }
 
-export class ElevenLabsProvider implements LLMProvider, TTSProvider, TranscriptionProvider, ImageProvider {
+export class ElevenLabsProvider implements LLMProvider, TTSProvider, TranscriptionProvider, ImageProvider, VoiceCatalogProvider {
   constructor(
     private readonly profile: ApiProfile,
     private readonly key: string | null,
@@ -61,6 +62,32 @@ export class ElevenLabsProvider implements LLMProvider, TTSProvider, Transcripti
     return rows
       .map((item) => isRecord(item) ? (asString(item.model_id) ?? asString(item.id)) : undefined)
       .filter((model): model is string => model !== undefined && model.trim() !== '')
+  }
+
+  async listVoices(opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<ElevenLabsVoiceOption[]> {
+    const response = await this.request('/voices', { signal: opts?.signal, timeoutMs: opts?.timeoutMs })
+    let body: unknown
+    try {
+      body = await response.json()
+    } catch (error) {
+      throw new ProviderError(ErrorCodes.ProviderUpstreamError, '解析 ElevenLabs 音色列表失败', String(error))
+    }
+    const rows = isRecord(body) && Array.isArray(body.voices) ? body.voices : []
+    return rows.flatMap((item): ElevenLabsVoiceOption[] => {
+      if (!isRecord(item)) return []
+      const id = asString(item.voice_id) ?? asString(item.id)
+      const name = asString(item.name) ?? id
+      if (id === undefined || id.trim() === '' || name === undefined || name.trim() === '') return []
+      const rawLabels = isRecord(item.labels) ? item.labels : {}
+      const labels = Object.fromEntries(Object.entries(rawLabels).flatMap(([key, value]) => typeof value === 'string' ? [[key, value]] : []))
+      return [{
+        id: id.trim(),
+        name: name.trim(),
+        category: asString(item.category) ?? null,
+        description: asString(item.description) ?? null,
+        labels,
+      }]
+    })
   }
 
   async synthesize(text: string, voice?: string): Promise<{ audio: Uint8Array; mimeType: string; model: string }> {

@@ -2823,3 +2823,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:elevenlabs` **4/4**；两端 typecheck / web build / diff 检查通过。 |
 
 **待优化（后续功能）**：style / speaker boost、voice 列表与试听选择、Streaming TTS、通话模式与 Provider 自动故障切换另起任务。本批未部署生产。
+
+### T-081 · 2026-09-28 · V2-A 后续：ElevenLabs 音色目录与选择—— **完成（本地）**
+
+**边界**：只补原生 ElevenLabs 的音色目录拉取与语音卡选择；试听复用现有真实 TTS 测试预览，不接第三方预览 URL、Streaming TTS 或通话。
+
+| 交付 | 说明 |
+| --- | --- |
+| 服务端目录 | 新增 `POST /api/providers/draft/voices`，服务端调用 `/v1/voices`，只返回音色 ID、名称、分类、描述与字符串标签；API Key 不出服务端。 |
+| 设置入口 | ElevenLabs 语音卡增加“拉取音色”，成功后可从下拉列表选择并回填 Voice ID；仍保留手填 ID 以覆盖空目录或新音色。 |
+| 试听路径 | 选中音色后仍必须点击“测试连接”，由 Habitat 服务端真实调用 TTS 并在原位播放预览；不把上游 `preview_url` 交给浏览器。 |
+| 数据边界 | 音色目录只在当前设置草稿内存中存在，保存仍只写现有 `modelMap.voice`，不新增 SQLite / Dexie 表或备份版本。 |
+| 参考取舍 | 实查 [voice-mcp](https://github.com/garan0613/voice-mcp) 的内联播放器 / 文本可追溯思路；仅借“选中后原位试听”的可观测交互，不接其 MCP 运行时或云端 UI。 |
+| 验收 | `probe-elevenlabs` **5/5**；两端 typecheck / web build / diff 检查通过。 |
+
+**待优化（后续功能）**：音色收藏 / 分类、style / speaker boost、Streaming TTS、通话模式与 Provider 自动故障切换另起任务。本批未部署生产。

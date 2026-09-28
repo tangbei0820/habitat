@@ -1,4 +1,4 @@
-/** T-079：ElevenLabs 原生 TTS Adapter 纯逻辑验收。 */
+/** T-081：ElevenLabs 原生 Provider 的模型 / 音色目录与 TTS 纯逻辑验收。 */
 import { ElevenLabsProvider } from '../src/providers/elevenlabs.js'
 
 const requests: Array<{ url: string; method: string; headers: Headers; body: string }> = []
@@ -10,6 +10,9 @@ globalThis.fetch = async (input, init) => {
   requests.push({ url, method, headers, body })
   if (url.endsWith('/v1/models')) {
     return new Response(JSON.stringify([{ model_id: 'eleven_multilingual_v2' }, { model_id: 'eleven_flash_v2_5' }]), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  if (url.endsWith('/v1/voices')) {
+    return new Response(JSON.stringify({ voices: [{ voice_id: 'voice-123', name: '栖息地', category: 'premade', description: '温柔', labels: { language: 'zh', gender: 'female' } }] }), { status: 200, headers: { 'content-type': 'application/json' } })
   }
   return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'audio/mpeg' } })
 }
@@ -27,6 +30,9 @@ function check(label: string, condition: boolean): void {
 
 const models = await provider.listModels()
 check('原生模型列表可解析 model_id', models.length === 2 && models[0] === 'eleven_multilingual_v2')
+
+const voices = await provider.listVoices()
+check('原生音色列表可解析 voice_id 与元数据', voices.length === 1 && voices[0].id === 'voice-123' && voices[0].name === '栖息地' && voices[0].labels.language === 'zh')
 
 const speech = await provider.synthesize('你好，栖息地。')
 const speechRequest = requests.find((request) => request.method === 'POST')

@@ -6,9 +6,11 @@ import type {
   ProviderCapabilityBinding,
   ProviderDraftInput,
   ProviderDraftModelsResult,
+  ProviderDraftVoicesResult,
   ProviderDraftTestResult,
   LlmProviderKind,
   ElevenLabsVoiceSettings,
+  ElevenLabsVoiceOption,
 } from '@shared/types'
 import { ApiRequestError } from '../../lib/api'
 import { IconChevronDown } from '../../components/qixi/Icons'
@@ -72,10 +74,12 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
   const [voiceSpeed, setVoiceSpeed] = useState(String(initialProfile?.modelMap.voiceSettings?.speed ?? 1))
   const [models, setModels] = useState<string[]>([])
   const [modelResult, setModelResult] = useState<ProviderDraftModelsResult | null>(null)
+  const [voices, setVoices] = useState<ElevenLabsVoiceOption[]>([])
+  const [voiceResult, setVoiceResult] = useState<ProviderDraftVoicesResult | null>(null)
   const [testResult, setTestResult] = useState<ProviderDraftTestResult | null>(null)
   const [testedFingerprint, setTestedFingerprint] = useState<string | null>(null)
   const [testImage, setTestImage] = useState<string | undefined>()
-  const [working, setWorking] = useState<'models' | 'test' | 'save' | null>(null)
+  const [working, setWorking] = useState<'models' | 'voices' | 'test' | 'save' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(() => capability === 'chat')
   const meta = META[capability]
@@ -123,6 +127,8 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     setHeadersText('')
     setModels([])
     setModelResult(null)
+    setVoices([])
+    setVoiceResult(null)
     setTestResult(null)
     setTestedFingerprint(null)
   }
@@ -145,6 +151,22 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
       const result = await api.pullDraftModels(strictDraft())
       setModelResult(result)
       setModels(result.models)
+      if (!result.ok) setError(result.error)
+    } catch (cause) {
+      setError(toMessage(cause))
+    } finally {
+      setWorking(null)
+    }
+  }
+
+  async function pullVoices(): Promise<void> {
+    if (providerKind !== 'elevenlabs') return
+    setWorking('voices')
+    setError(null)
+    try {
+      const result = await api.pullDraftVoices(strictDraft())
+      setVoiceResult(result)
+      setVoices(result.voices)
       if (!result.ok) setError(result.error)
     } catch (cause) {
       setError(toMessage(cause))
@@ -234,6 +256,8 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     setConnectionName('')
     setApiKey('')
     setHeadersText('')
+    setVoices([])
+    setVoiceResult(null)
     setTestResult(null)
     setTestedFingerprint(null)
     setError(null)
@@ -271,14 +295,14 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
 
       {expanded && <div id={panelId} data-testid={`provider-card-panel-${capability}`}>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="text-xs">Provider 类型{capability === 'voice' ? <select className={INPUT} style={INPUT_STYLE} value={providerKind} onChange={(event) => { const next = event.target.value as LlmProviderKind; setProviderKind(next); if (next === 'elevenlabs') { setBaseUrl('https://api.elevenlabs.io/v1'); setModel('eleven_multilingual_v2'); setVoiceStability('0.5'); setVoiceSimilarity('0.75'); setVoiceSpeed('1') } setTestResult(null); setTestedFingerprint(null) }}><option value="openai-compat">OpenAI-compatible</option><option value="elevenlabs">ElevenLabs（原生 TTS）</option></select> : <input className={INPUT} style={INPUT_STYLE} value="OpenAI-compatible" disabled />}</label>
+        <label className="text-xs">Provider 类型{capability === 'voice' ? <select className={INPUT} style={INPUT_STYLE} value={providerKind} onChange={(event) => { const next = event.target.value as LlmProviderKind; setProviderKind(next); if (next === 'elevenlabs') { setBaseUrl('https://api.elevenlabs.io/v1'); setModel('eleven_multilingual_v2'); setVoiceStability('0.5'); setVoiceSimilarity('0.75'); setVoiceSpeed('1') } setVoices([]); setVoiceResult(null); setTestResult(null); setTestedFingerprint(null) }}><option value="openai-compat">OpenAI-compatible</option><option value="elevenlabs">ElevenLabs（原生 TTS）</option></select> : <input className={INPUT} style={INPUT_STYLE} value="OpenAI-compatible" disabled />}</label>
         <label className="text-xs">连接<select className={INPUT} style={INPUT_STYLE} value={profileId} onChange={(event) => selectProfile(event.target.value)}><option value="__new__">+ 新建连接</option>{availableProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
         {profileId === '__new__' && <label className="text-xs">连接名称<input className={INPUT} style={INPUT_STYLE} value={connectionName} onChange={(event) => setConnectionName(event.target.value)} placeholder="例如：OpenAI 语音" /></label>}
         <label className="text-xs">Base URL<input className={INPUT} style={INPUT_STYLE} value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder={providerKind === 'elevenlabs' ? 'https://api.elevenlabs.io/v1' : 'https://api.openai.com/v1'} /></label>
         <label className="text-xs">API Key<input className={INPUT} style={INPUT_STYLE} type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={selected?.hasKey === true ? '已保存；留空沿用' : '粘贴密钥（本地服务可留空）'} /></label>
         <label className="text-xs sm:col-span-2">自定义 Headers（JSON，可选）<textarea className={INPUT} style={INPUT_STYLE} value={headersText} onChange={(event) => setHeadersText(event.target.value)} placeholder={selected?.headerNames.length ? `已保存：${selected.headerNames.join('、')}；留空沿用` : '{"X-Header":"value"}'} rows={2} /></label>
         <label className="text-xs">{meta.model}<input className={INPUT} style={INPUT_STYLE} list={`models-${capability}`} value={model} onChange={(event) => setModel(event.target.value)} placeholder="可拉取，也可手填模型 ID" /><datalist id={`models-${capability}`}>{models.map((item) => <option key={item} value={item} />)}</datalist></label>
-        {capability === 'voice' && providerKind === 'elevenlabs' && <label className="text-xs">Voice ID<input className={INPUT} style={INPUT_STYLE} value={voiceId} onChange={(event) => setVoiceId(event.target.value)} placeholder="例如：21m00Tcm4TlvDq8ikWAM" /></label>}
+        {capability === 'voice' && providerKind === 'elevenlabs' && <label className="text-xs">Voice ID<input className={INPUT} style={INPUT_STYLE} value={voiceId} onChange={(event) => setVoiceId(event.target.value)} placeholder="例如：21m00Tcm4TlvDq8ikWAM" />{voices.length > 0 && <select className={INPUT} style={INPUT_STYLE} value={voiceId} onChange={(event) => setVoiceId(event.target.value)} aria-label="已拉取音色"><option value="">从已拉取音色中选择</option>{voices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name} · {voice.id}{voice.category === null ? '' : ` · ${voice.category}`}</option>)}</select>}</label>}
         {capability === 'voice' && providerKind === 'elevenlabs' && <>
           <label className="text-xs">稳定性（0–1）<input className={INPUT} style={INPUT_STYLE} type="number" min="0" max="1" step="0.05" value={voiceStability} onChange={(event) => setVoiceStability(event.target.value)} /></label>
           <label className="text-xs">相似度（0–1）<input className={INPUT} style={INPUT_STYLE} type="number" min="0" max="1" step="0.05" value={voiceSimilarity} onChange={(event) => setVoiceSimilarity(event.target.value)} /></label>
@@ -289,11 +313,13 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
       </div>
 
       {modelResult !== null && <p className="mt-2 text-xs" style={{ color: modelResult.ok ? 'var(--accent-strong)' : 'var(--danger)' }}>{modelResult.ok ? `已拉取 ${modelResult.models.length} 个模型（${modelResult.latencyMs}ms）` : `${modelResult.errorCategory ?? 'unknown'}：${modelResult.error}`}</p>}
+      {voiceResult !== null && <p className="mt-2 text-xs" style={{ color: voiceResult.ok ? 'var(--accent-strong)' : 'var(--danger)' }} data-testid="provider-voices-result">{voiceResult.ok ? `已拉取 ${voiceResult.voices.length} 个音色（${voiceResult.latencyMs}ms）` : `${voiceResult.errorCategory ?? 'unknown'}：${voiceResult.error}`}</p>}
       {testResult !== null && <div className="mt-2 text-xs" style={{ color: testResult.ok ? 'var(--accent-strong)' : 'var(--danger)' }} data-testid={`provider-test-${capability}`}>{testResult.ok ? `真实调用通过（${testResult.latencyMs}ms）` : `${testResult.errorCategory ?? 'unknown'}：${testResult.error}`}{testResult.description !== null && <p>{testResult.description}</p>}{testResult.previewDataUrl !== null && (capability === 'voice' ? <audio className="mt-2 w-full" controls src={testResult.previewDataUrl} /> : <img className="mt-2 max-h-32 rounded-md" src={testResult.previewDataUrl} alt="能力测试预览" />)}</div>}
       {error !== null && <p className="mt-2 text-xs" style={{ color: 'var(--danger)' }}>{error}</p>}
 
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" className="rounded-md border px-3 py-1.5 text-xs" disabled={busy || working !== null || baseUrl.trim() === ''} onClick={() => void pullModels()}>{working === 'models' ? '拉取中…' : '拉取模型'}</button>
+        {capability === 'voice' && providerKind === 'elevenlabs' && <button type="button" className="rounded-md border px-3 py-1.5 text-xs" disabled={busy || working !== null || baseUrl.trim() === ''} onClick={() => void pullVoices()}>{working === 'voices' ? '拉取中…' : '拉取音色'}</button>}
         <button type="button" className="rounded-md border px-3 py-1.5 text-xs" disabled={busy || working !== null || baseUrl.trim() === '' || model.trim() === ''} onClick={() => void test()}>{working === 'test' ? '测试中…' : '测试连接'}</button>
         <button type="button" className="rounded-md px-3 py-1.5 text-xs" style={{ background: 'var(--accent-strong)', color: 'var(--accent-on-strong)', opacity: canSave ? 1 : 0.5 }} disabled={busy || working !== null || !canSave} onClick={() => void save()}>{working === 'save' ? '保存中…' : '保存'}</button>
         <button type="button" className="rounded-md border px-3 py-1.5 text-xs" disabled={working !== null} onClick={restore}>恢复上次保存</button>

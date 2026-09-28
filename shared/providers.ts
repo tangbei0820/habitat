@@ -211,6 +211,10 @@ export interface TTSProvider {
   synthesize(text: string, voice?: string): Promise<{ audio: Uint8Array; mimeType: string; model: string }>
 }
 
+export interface VoiceCatalogProvider {
+  listVoices(opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<import('./types').ElevenLabsVoiceOption[]>
+}
+
 export interface ImageProvider {
   vision(dataUrl: string, prompt?: string): Promise<import('./types').MediaVisionResult>
   generate(prompt: string): Promise<import('./types').MediaImageResult>

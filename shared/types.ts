@@ -664,6 +664,7 @@ export type ProviderDraftErrorCategory =
   | 'protocol'
   | 'unsupported'
   | 'empty-models'
+  | 'empty-voices'
   | 'unknown'
 
 /** 未保存草稿：密钥只随本次请求进入服务端，任何响应都不会回显。 */
@@ -681,6 +682,22 @@ export interface ProviderDraftModelsResult {
   ok: boolean
   latencyMs: number
   models: string[]
+  errorCategory: ProviderDraftErrorCategory | null
+  error: string | null
+}
+
+export interface ElevenLabsVoiceOption {
+  id: string
+  name: string
+  category: string | null
+  description: string | null
+  labels: Record<string, string>
+}
+
+export interface ProviderDraftVoicesResult {
+  ok: boolean
+  latencyMs: number
+  voices: ElevenLabsVoiceOption[]
   errorCategory: ProviderDraftErrorCategory | null
   error: string | null
 }

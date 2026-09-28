@@ -15,6 +15,7 @@ import type {
   ProviderCenterState,
   ProviderDraftInput,
   ProviderDraftModelsResult,
+  ProviderDraftVoicesResult,
   ProviderDraftTestInput,
   ProviderDraftTestResult,
   ProviderScheme,
@@ -92,6 +93,12 @@ export function getProviderCenter(): Promise<ProviderCenterState> {
 
 export function pullDraftModels(input: ProviderDraftInput): Promise<ProviderDraftModelsResult> {
   return fetchJson<ProviderDraftModelsResult>('/api/providers/draft/models', {
+    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input),
+  })
+}
+
+export function pullDraftVoices(input: ProviderDraftInput): Promise<ProviderDraftVoicesResult> {
+  return fetchJson<ProviderDraftVoicesResult>('/api/providers/draft/voices', {
     method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(input),
   })
 }

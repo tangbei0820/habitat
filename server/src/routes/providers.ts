@@ -21,6 +21,7 @@ import type {
   ProviderCenterState,
   ProviderDraftErrorCategory,
   ProviderDraftModelsResult,
+  ProviderDraftVoicesResult,
   ProviderDraftTestInput,
   ProviderDraftTestResult,
   ProviderScheme,
@@ -374,6 +375,27 @@ export function registerProviderRoutes(app: FastifyInstance, registry: LlmRegist
       return { ok: true, latencyMs: Date.now() - started, models, errorCategory: null, error: null }
     } catch (err) {
       return { ok: false, latencyMs: Date.now() - started, models: [], errorCategory: errorCategory(err), error: errorMessage(err) }
+    }
+  })
+
+  app.post('/api/providers/draft/voices', async (request): Promise<ProviderDraftVoicesResult> => {
+    const draft = draftProfile(request.body, registry)
+    const started = Date.now()
+    if (draft.profile.provider !== 'elevenlabs') {
+      return { ok: false, latencyMs: Date.now() - started, voices: [], errorCategory: 'unsupported', error: '只有 ElevenLabs 原生连接支持拉取音色' }
+    }
+    const provider = registry.draftProvider(draft.profile, draft.apiKey)
+    if (!('listVoices' in provider)) {
+      return { ok: false, latencyMs: Date.now() - started, voices: [], errorCategory: 'unsupported', error: '当前 ElevenLabs 适配器未提供音色目录' }
+    }
+    try {
+      const voices = await provider.listVoices()
+      if (voices.length === 0) {
+        return { ok: false, latencyMs: Date.now() - started, voices: [], errorCategory: 'empty-voices', error: '上游返回了空音色列表，可继续手填 Voice ID' }
+      }
+      return { ok: true, latencyMs: Date.now() - started, voices, errorCategory: null, error: null }
+    } catch (err) {
+      return { ok: false, latencyMs: Date.now() - started, voices: [], errorCategory: errorCategory(err), error: errorMessage(err) }
     }
   })
 
