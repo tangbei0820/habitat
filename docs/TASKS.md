@@ -2837,4 +2837,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 参考取舍 | 实查 [voice-mcp](https://github.com/garan0613/voice-mcp) 的内联播放器 / 文本可追溯思路；仅借“选中后原位试听”的可观测交互，不接其 MCP 运行时或云端 UI。 |
 | 验收 | `probe-elevenlabs` **5/5**；两端 typecheck / web build / diff 检查通过。 |
 
-**待优化（后续功能）**：音色收藏 / 分类、style / speaker boost、Streaming TTS、通话模式与 Provider 自动故障切换另起任务。本批未部署生产。
+**待优化（后续功能）**：音色收藏 / 分类、Streaming TTS、通话模式与 Provider 自动故障切换另起任务。本批未部署生产。
+
+### T-082 · 2026-09-28 · V2-A 后续：ElevenLabs 风格与说话人增强—— **完成（本地）**
+
+**边界**：只补原生 ElevenLabs 同步 TTS 的 `style` 与 `use_speaker_boost` per-request 参数；不修改云端音色默认值，不进入 Streaming TTS 或通话。
+
+| 交付 | 说明 |
+| --- | --- |
+| 设置入口 | ElevenLabs 语音卡新增风格增强（0–1）与说话人增强开关，切换连接 / 恢复保存会回填。 |
+| 请求映射 | 复用现有 `modelMap.voiceSettings` JSON，服务端映射到 `voice_settings.style / use_speaker_boost`；旧配置缺省为 style 0、speaker boost 开启。 |
+| 校验与失败 | 前后端分别校验 style 范围与 speaker boost 布尔值；参数变化会使旧测试结果失效，必须重新真实试听后保存。 |
+| 参考取舍 | 按 [ElevenLabs 默认声音设置文档](https://elevenlabs.io/docs/api-reference/voices/settings/get-default) 采用官方字段与范围；不调用“编辑云端 voice 设置”接口，避免改变账号级默认。 |
+| 验收 | `probe-elevenlabs` **5/5**；两端 typecheck / web build / diff 检查通过。 |
+
+**待优化（后续功能）**：音色收藏 / 分类、Streaming TTS、通话模式与 Provider 自动故障切换另起任务。本批未部署生产。

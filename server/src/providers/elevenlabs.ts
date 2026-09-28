@@ -108,6 +108,8 @@ export class ElevenLabsProvider implements LLMProvider, TTSProvider, Transcripti
           voice_settings: {
             ...(this.profile.modelMap.voiceSettings.stability === undefined ? {} : { stability: this.profile.modelMap.voiceSettings.stability }),
             ...(this.profile.modelMap.voiceSettings.similarityBoost === undefined ? {} : { similarity_boost: this.profile.modelMap.voiceSettings.similarityBoost }),
+            ...(this.profile.modelMap.voiceSettings.style === undefined ? {} : { style: this.profile.modelMap.voiceSettings.style }),
+            ...(this.profile.modelMap.voiceSettings.useSpeakerBoost === undefined ? {} : { use_speaker_boost: this.profile.modelMap.voiceSettings.useSpeakerBoost }),
             ...(this.profile.modelMap.voiceSettings.speed === undefined ? {} : { speed: this.profile.modelMap.voiceSettings.speed }),
           },
         }),

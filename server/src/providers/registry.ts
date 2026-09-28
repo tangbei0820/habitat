@@ -42,9 +42,13 @@ function parseVoiceSettings(value: unknown): ElevenLabsVoiceSettings | undefined
   const settings: ElevenLabsVoiceSettings = {}
   const stability = value.stability
   const similarityBoost = value.similarityBoost
+  const style = value.style
+  const useSpeakerBoost = value.useSpeakerBoost
   const speed = value.speed
   if (typeof stability === 'number' && Number.isFinite(stability) && stability >= 0 && stability <= 1) settings.stability = stability
   if (typeof similarityBoost === 'number' && Number.isFinite(similarityBoost) && similarityBoost >= 0 && similarityBoost <= 1) settings.similarityBoost = similarityBoost
+  if (typeof style === 'number' && Number.isFinite(style) && style >= 0 && style <= 1) settings.style = style
+  if (typeof useSpeakerBoost === 'boolean') settings.useSpeakerBoost = useSpeakerBoost
   if (typeof speed === 'number' && Number.isFinite(speed) && speed >= 0.7 && speed <= 1.2) settings.speed = speed
   return Object.keys(settings).length === 0 ? undefined : settings
 }

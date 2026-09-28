@@ -139,7 +139,7 @@ Provider Profile 仍由 `/api/providers` 管理；以下接口只管理“哪个
 
 当 `provider` 为 `elevenlabs` 时，只允许 `capability: "voice"`；`model` 写 ElevenLabs 模型 ID（如
 `eleven_multilingual_v2`），`voiceId` 写 voice ID。服务端使用 `xi-api-key` 调用
-`/v1/text-to-speech/:voice_id`；`voiceSettings` 可覆盖 `stability`、`similarityBoost` 与 `speed`，
+`/v1/text-to-speech/:voice_id`；`voiceSettings` 可覆盖 `stability`、`similarityBoost`、`style`、`useSpeakerBoost` 与 `speed`，
 服务端转换为上游的 `voice_settings`。不会把 ElevenLabs 连接伪装成聊天 / 识图 / 生图 Provider。
 
 ### `PUT /api/provider-center/bindings`

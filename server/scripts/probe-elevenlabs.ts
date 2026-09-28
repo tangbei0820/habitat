@@ -1,4 +1,4 @@
-/** T-081：ElevenLabs 原生 Provider 的模型 / 音色目录与 TTS 纯逻辑验收。 */
+/** T-082：ElevenLabs 原生 Provider 的模型 / 音色目录 / 声音参数纯逻辑验收。 */
 import { ElevenLabsProvider } from '../src/providers/elevenlabs.js'
 
 const requests: Array<{ url: string; method: string; headers: Headers; body: string }> = []
@@ -19,7 +19,7 @@ globalThis.fetch = async (input, init) => {
 
 const provider = new ElevenLabsProvider({
   id: 'voice-probe', name: 'Voice probe', provider: 'elevenlabs', baseUrl: 'https://api.elevenlabs.io/v1', keyRef: '',
-  modelMap: { tts: 'eleven_multilingual_v2', voice: 'voice-123', voiceSettings: { stability: 0.5, similarityBoost: 0.75, speed: 1.1 } }, isActive: false,
+  modelMap: { tts: 'eleven_multilingual_v2', voice: 'voice-123', voiceSettings: { stability: 0.5, similarityBoost: 0.75, style: 0.4, useSpeakerBoost: false, speed: 1.1 } }, isActive: false,
 }, 'xi-test')
 
 let passed = 0
@@ -40,7 +40,7 @@ check('TTS 请求使用 xi-api-key 与原生路径', speech.audio.byteLength ===
 
 const payload = speechRequest === undefined ? null : JSON.parse(speechRequest.body) as Record<string, unknown>
 const voiceSettings = payload?.voice_settings as Record<string, unknown> | undefined
-check('TTS 请求携带 model_id、文本与声音参数', payload?.model_id === 'eleven_multilingual_v2' && payload?.text === '你好，栖息地。' && voiceSettings?.stability === 0.5 && voiceSettings?.similarity_boost === 0.75 && voiceSettings?.speed === 1.1)
+check('TTS 请求携带 model_id、文本与声音参数', payload?.model_id === 'eleven_multilingual_v2' && payload?.text === '你好，栖息地。' && voiceSettings?.stability === 0.5 && voiceSettings?.similarity_boost === 0.75 && voiceSettings?.style === 0.4 && voiceSettings?.use_speaker_boost === false && voiceSettings?.speed === 1.1)
 
 const noVoice = new ElevenLabsProvider({
   id: 'missing-voice', name: 'Missing voice', provider: 'elevenlabs', baseUrl: 'https://api.elevenlabs.io/v1', keyRef: '',

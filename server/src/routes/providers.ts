@@ -101,6 +101,11 @@ function parseVoiceSettings(raw: unknown): ElevenLabsVoiceSettings | undefined {
   }
   number('stability', 0, 1)
   number('similarityBoost', 0, 1)
+  number('style', 0, 1)
+  if (record.useSpeakerBoost !== undefined) {
+    if (typeof record.useSpeakerBoost !== 'boolean') throw new ProviderError(ErrorCodes.BadRequest, 'voiceSettings.useSpeakerBoost 必须是布尔值')
+    settings.useSpeakerBoost = record.useSpeakerBoost
+  }
   number('speed', 0.7, 1.2)
   return Object.keys(settings).length === 0 ? undefined : settings
 }

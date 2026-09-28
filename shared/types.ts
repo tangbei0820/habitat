@@ -883,6 +883,8 @@ export interface McpServerHealth {
 export interface ElevenLabsVoiceSettings {
   stability?: number
   similarityBoost?: number
+  style?: number
+  useSpeakerBoost?: boolean
   speed?: number
 }
 

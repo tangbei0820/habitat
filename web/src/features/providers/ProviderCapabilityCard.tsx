@@ -71,6 +71,8 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
   const [voiceId, setVoiceId] = useState(capability === 'voice' ? initialProfile?.modelMap.voice ?? '' : '')
   const [voiceStability, setVoiceStability] = useState(String(initialProfile?.modelMap.voiceSettings?.stability ?? 0.5))
   const [voiceSimilarity, setVoiceSimilarity] = useState(String(initialProfile?.modelMap.voiceSettings?.similarityBoost ?? 0.75))
+  const [voiceStyle, setVoiceStyle] = useState(String(initialProfile?.modelMap.voiceSettings?.style ?? 0))
+  const [voiceSpeakerBoost, setVoiceSpeakerBoost] = useState(initialProfile?.modelMap.voiceSettings?.useSpeakerBoost ?? true)
   const [voiceSpeed, setVoiceSpeed] = useState(String(initialProfile?.modelMap.voiceSettings?.speed ?? 1))
   const [models, setModels] = useState<string[]>([])
   const [modelResult, setModelResult] = useState<ProviderDraftModelsResult | null>(null)
@@ -96,7 +98,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
 
   function currentVoiceSettings(): ElevenLabsVoiceSettings | undefined {
     if (capability !== 'voice' || providerKind !== 'elevenlabs') return undefined
-    return { stability: Number(voiceStability), similarityBoost: Number(voiceSimilarity), speed: Number(voiceSpeed) }
+    return { stability: Number(voiceStability), similarityBoost: Number(voiceSimilarity), style: Number(voiceStyle), useSpeakerBoost: voiceSpeakerBoost, speed: Number(voiceSpeed) }
   }
 
   function voiceSettingsValid(): boolean {
@@ -104,6 +106,8 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     return settings === undefined || (
       settings.stability !== undefined && settings.stability >= 0 && settings.stability <= 1 &&
       settings.similarityBoost !== undefined && settings.similarityBoost >= 0 && settings.similarityBoost <= 1 &&
+      settings.style !== undefined && settings.style >= 0 && settings.style <= 1 &&
+      settings.useSpeakerBoost !== undefined &&
       settings.speed !== undefined && settings.speed >= 0.7 && settings.speed <= 1.2
     )
   }
@@ -121,6 +125,8 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     setVoiceId(capability === 'voice' ? profile?.modelMap.voice ?? '' : '')
     setVoiceStability(String(profile?.modelMap.voiceSettings?.stability ?? 0.5))
     setVoiceSimilarity(String(profile?.modelMap.voiceSettings?.similarityBoost ?? 0.75))
+    setVoiceStyle(String(profile?.modelMap.voiceSettings?.style ?? 0))
+    setVoiceSpeakerBoost(profile?.modelMap.voiceSettings?.useSpeakerBoost ?? true)
     setVoiceSpeed(String(profile?.modelMap.voiceSettings?.speed ?? 1))
     setConnectionName('')
     setApiKey('')
@@ -252,6 +258,8 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     setVoiceId(capability === 'voice' ? profile?.modelMap.voice ?? '' : '')
     setVoiceStability(String(profile?.modelMap.voiceSettings?.stability ?? 0.5))
     setVoiceSimilarity(String(profile?.modelMap.voiceSettings?.similarityBoost ?? 0.75))
+    setVoiceStyle(String(profile?.modelMap.voiceSettings?.style ?? 0))
+    setVoiceSpeakerBoost(profile?.modelMap.voiceSettings?.useSpeakerBoost ?? true)
     setVoiceSpeed(String(profile?.modelMap.voiceSettings?.speed ?? 1))
     setConnectionName('')
     setApiKey('')
@@ -295,7 +303,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
 
       {expanded && <div id={panelId} data-testid={`provider-card-panel-${capability}`}>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="text-xs">Provider 类型{capability === 'voice' ? <select className={INPUT} style={INPUT_STYLE} value={providerKind} onChange={(event) => { const next = event.target.value as LlmProviderKind; setProviderKind(next); if (next === 'elevenlabs') { setBaseUrl('https://api.elevenlabs.io/v1'); setModel('eleven_multilingual_v2'); setVoiceStability('0.5'); setVoiceSimilarity('0.75'); setVoiceSpeed('1') } setVoices([]); setVoiceResult(null); setTestResult(null); setTestedFingerprint(null) }}><option value="openai-compat">OpenAI-compatible</option><option value="elevenlabs">ElevenLabs（原生 TTS）</option></select> : <input className={INPUT} style={INPUT_STYLE} value="OpenAI-compatible" disabled />}</label>
+        <label className="text-xs">Provider 类型{capability === 'voice' ? <select className={INPUT} style={INPUT_STYLE} value={providerKind} onChange={(event) => { const next = event.target.value as LlmProviderKind; setProviderKind(next); if (next === 'elevenlabs') { setBaseUrl('https://api.elevenlabs.io/v1'); setModel('eleven_multilingual_v2'); setVoiceStability('0.5'); setVoiceSimilarity('0.75'); setVoiceStyle('0'); setVoiceSpeakerBoost(true); setVoiceSpeed('1') } setVoices([]); setVoiceResult(null); setTestResult(null); setTestedFingerprint(null) }}><option value="openai-compat">OpenAI-compatible</option><option value="elevenlabs">ElevenLabs（原生 TTS）</option></select> : <input className={INPUT} style={INPUT_STYLE} value="OpenAI-compatible" disabled />}</label>
         <label className="text-xs">连接<select className={INPUT} style={INPUT_STYLE} value={profileId} onChange={(event) => selectProfile(event.target.value)}><option value="__new__">+ 新建连接</option>{availableProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
         {profileId === '__new__' && <label className="text-xs">连接名称<input className={INPUT} style={INPUT_STYLE} value={connectionName} onChange={(event) => setConnectionName(event.target.value)} placeholder="例如：OpenAI 语音" /></label>}
         <label className="text-xs">Base URL<input className={INPUT} style={INPUT_STYLE} value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder={providerKind === 'elevenlabs' ? 'https://api.elevenlabs.io/v1' : 'https://api.openai.com/v1'} /></label>
@@ -306,6 +314,8 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
         {capability === 'voice' && providerKind === 'elevenlabs' && <>
           <label className="text-xs">稳定性（0–1）<input className={INPUT} style={INPUT_STYLE} type="number" min="0" max="1" step="0.05" value={voiceStability} onChange={(event) => setVoiceStability(event.target.value)} /></label>
           <label className="text-xs">相似度（0–1）<input className={INPUT} style={INPUT_STYLE} type="number" min="0" max="1" step="0.05" value={voiceSimilarity} onChange={(event) => setVoiceSimilarity(event.target.value)} /></label>
+          <label className="text-xs">风格增强（0–1）<input className={INPUT} style={INPUT_STYLE} type="number" min="0" max="1" step="0.05" value={voiceStyle} onChange={(event) => setVoiceStyle(event.target.value)} /></label>
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={voiceSpeakerBoost} onChange={(event) => setVoiceSpeakerBoost(event.target.checked)} />说话人增强</label>
           <label className="text-xs">语速（0.7–1.2）<input className={INPUT} style={INPUT_STYLE} type="number" min="0.7" max="1.2" step="0.05" value={voiceSpeed} onChange={(event) => setVoiceSpeed(event.target.value)} /></label>
         </>}
         {capability === 'voice' && <label className="text-xs">语音转写模型（可选）<input className={INPUT} style={INPUT_STYLE} value={secondaryModel} onChange={(event) => setSecondaryModel(event.target.value)} placeholder="例如 whisper-1" /></label>}
