@@ -1163,3 +1163,9 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 片段、用户批注、小栖批注可分别收藏，收藏快照保留作品、作者、段落与来源；新增 `daily-reading` 主屏 Widget，只展示短摘要并回链模块页。
 - 历史支持书名 / 作者 / 片段搜索与二次确认删除；新增 `reading.daily.comment` Life 事件与 `POST /api/reading/daily/comment`。
 - `probe:reading-life` 14/14，mock Provider 端点成功 / 失败分支、两端 typecheck、前端 build、验收脚本语法与 diff check 通过；独立浏览器 targeted e2e 8/8。
+
+### 2026-09-28 · T-123 · 每日品读模块收口部署 VPS（生产）
+
+- 本地提交 `202ef7a` 已部署到 `https://habitat.beiyan.cc`，生产 `.env` / SQLite 未覆盖，重启前备份为 `habitat.db.bak-20260928-202ef7a`。
+- `habitat-server` active；服务器本机与服务器自检公网 `/api/health` 均返回 `{"ok":true}`；线上 bundle `assets/index-DvBxPobU.js` 已检出每日品读双方批注、批注收藏、首页 Widget 与 `/api/reading/daily/comment` 标记。
+- 无 Provider 的评论请求按预期返回 400；`reading.daily.comment` Life 事件返回 201，验收用 `ref_id=deploy-reading-202ef7a` 已精确删除并复查为 0；阶段到此停止。

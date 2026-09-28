@@ -3434,6 +3434,14 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 
 **明确延期**：PDF / EPUB / 网络文学来源、跨设备同步、批注线程 / 编辑、Widget 拖拽编排仍归共读 / Home 后续任务；不在本批扩展阅读器范围。
 
-### T-123 · 2026-09-28 · V2-D 每日品读模块收口部署 VPS —— **待部署**
+### T-123 · 2026-09-28 · V2-D 每日品读模块收口部署 VPS —— **完成（生产）**
 
 **范围**：部署 T-122 的每日品读模块收口到 `https://habitat.beiyan.cc`；保留生产 `.env` / SQLite，完成备份、重启、健康、静态资源与新端点验收后停止本阶段。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `202ef7a` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与 `.workbuddy`。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-202ef7a`；生产 SQLite 与 `.env` 未被部署包覆盖。 |
+| 服务状态 | `habitat-server` active；服务器本机 `127.0.0.1:3000` 与服务器自检公网 `/api/health` 均返回 `{"ok":true}`。 |
+| 公网验收 | 首页引用 `assets/index-DvBxPobU.js`；bundle 含 `每日品读`、`daily-reading`、`reading.daily.comment`、`reading-annotation`、`home-widget-daily-reading` 与 `/api/reading/daily/comment`。无 Provider 的评论请求返回 400；线上 `reading.daily.comment` Life 请求返回 201 后按精确 `ref_id` 清理。 |
+| 阶段边界 | 每日品读核心模块到此完成并停止；PDF / EPUB、批注线程 / 编辑、跨设备同步与 Widget 拖拽编排继续留在后续任务。 |

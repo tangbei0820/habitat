@@ -202,7 +202,9 @@ habitat/
 
 **T-121 已完成（生产）**：每日品读第一阶段已部署至 `https://habitat.beiyan.cc`；生产 SQLite 重启前备份为 `habitat.db.bak-20260928-fd72eb9`，`habitat-server` active，服务器本机与服务器自检公网 `/api/health` 均返回 `{"ok":true}`，正确 JSON 的 `reading.daily.swapped` 请求返回 201，临时探针事件已清理，生产 bundle `assets/index-X9zoWOm1.js` 含 `每日品读`、`daily-reading`、`dailyReadings`、`reading.daily.swapped` 与 `reading-excerpt` 标记。
 
-**T-122 已完成（本地）**：每日品读补齐双方锚点批注、小栖回应、批注独立收藏、每日品读首页 Widget、历史搜索 / 删除与 `POST /api/reading/daily/comment`；T-123 部署后再更新生产证据。
+**T-122 已完成（本地）**：每日品读补齐双方锚点批注、小栖回应、批注独立收藏、每日品读首页 Widget、历史搜索 / 删除与 `POST /api/reading/daily/comment`。
+
+**T-123 已完成（生产）**：每日品读模块收口已部署至 `https://habitat.beiyan.cc`；生产 SQLite 重启前备份为 `habitat.db.bak-20260928-202ef7a`，`habitat-server` active，服务器本机与服务器自检公网 `/api/health` 均返回 `{"ok":true}`，bundle `assets/index-DvBxPobU.js` 含双方批注、批注收藏、每日品读 Widget 与服务端回应端点标记；线上 Life 事件探针返回 201 后已清理，无测试数据残留。本阶段到此停止，PDF/EPUB、批注线程 / 编辑、跨设备同步与 Widget 拖拽编排不在本阶段展开。
 
 **T-114 已完成（本地）**：日记页在既有 AI-only 安全视图上增加按 `entryDate` 的时间线分段与可访问性标记，无 schema / API 变化；浏览器 CDP 未启动，未冒充浏览器回归通过。
 
