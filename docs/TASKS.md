@@ -3060,7 +3060,7 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 
 **验收**：`npm run typecheck`、`npm run build`、`git diff --check` 通过；`probe:diary` **47/47**、`probe:countdown-life` **7/7**（隔离 DB）；本地搜索与 `countdown.updated` 时间线烟测通过。
 
-**待优化（后续任务）**：日记富文本 / 图片、申请历史与更细通知 UI；留言板分组 / 历史 / AI 自主收藏；收藏标签、统一深链与服务端分页；倒数日分类 / 重复 / 到期提醒；愿望清单编辑与 Life 事实。以上均不在本批继续施工。
+**待优化（后续任务）**：日记富文本 / 图片；留言板分组 / 历史 / AI 自主收藏；收藏标签与服务端分页；愿望清单编辑与 Life 事实。倒数日分类 / 重复 / 到期提醒已由 T-100 收口。
 
 ### T-097 · 2026-09-28 · V2-A Home 基础模块第二阶段部署 VPS —— **完成（生产）**
 
@@ -3103,4 +3103,32 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 服务状态 | `habitat-server` active，Node 20；本机与公网 health 均返回 `ok: true`。 |
 | 公网验收 | `https://habitat.beiyan.cc/api/life/day/2026-09-28` 正常返回；首页已引用 `index-BBkKQpcJ.js`；远端 `event-inbox.ts` SHA-256 与本地一致。 |
 
-**阶段边界**：本阶段到此停止；下一阶段再处理收藏标签 / 服务端分页、日记富文本 / 图片、留言板分组、倒数日重复 / 到期提醒或愿望清单扩展。
+**阶段边界**：本阶段到此停止；下一阶段再处理收藏标签 / 服务端分页、日记富文本 / 图片、留言板分组或愿望清单扩展。
+
+### T-100 · 2026-09-28 · V2-A Home 基础模块第四阶段：倒数日完整化 —— **完成（本地）**
+
+**范围**：在现有本地 CountdownDay 上补齐分类、每年重复、提醒与通知幂等；不把本地倒数日搬到服务端，也不假装实现后台常驻调度。
+
+| 交付 | 说明 |
+| --- | --- |
+| 结构与迁移 | `CountdownDay` 新增 `category`（纪念日 / 事件 / 截止日 / 其它）、`repeat`（不重复 / 每年）与 `reminder`（不提醒 / 当天 / 提前一天）；Dexie 升到 v15，老记录自动补默认值。 |
+| 页面交互 | 新建 / 编辑可设置三项；列表与主屏 Widget 按下一次发生日计算，展示分类、重复、提醒标签；Home Bento 同步识别每年重复日期。 |
+| 通知联动 | 打开 Home 或倒数日页时检查到期项，写入现有通知收件箱；`reminderKey` 客户端 + 服务端双重去重，Push 失败不回滚站内事实，通知点击回 `/home/countdown`。 |
+| 备份与 Life | 备份格式升 v13，旧备份导入补字段；`countdown.updated` 及三项摘要进入 Life EventLog，新增通知接口文档与探针。 |
+| 参考取舍 | 延续 Journal 的结构化时间线思路与 shared-page 的来源可追溯原则；不引入平行日历 / 提醒表或独立调度器。 |
+| 验收 | `probe:countdown-life` **9/9**；两端 typecheck、前端 build、`git diff --check` 通过；本地生产包已部署并完成公网健康、静态资源、通知偏好与提醒路由冒烟。 |
+
+**待优化（明确延期）**：服务端后台常驻提醒（需要把 CountdownDay 同步为服务端事实或引入调度队列）、每周 / 每月 / 自定义 RRULE、提醒时区独立配置；不在本阶段继续施工。
+
+### T-101 · 2026-09-28 · V2-A Home 基础模块第四阶段部署 VPS —— **完成（生产）**
+
+**范围**：将 T-100 的倒数日字段迁移、重复计算、通知幂等与 Life 投影更新部署到 `https://habitat.beiyan.cc`；不覆盖生产 `.env`、SQLite 数据或 nginx 配置。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `087b6c0` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与临时目录。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-087b6c0`；生产 `.env` 与 SQLite 未覆盖。 |
+| 服务状态 | `habitat-server` active；本机 `/api/health` 与服务器自 curl 公网域名均返回 `ok: true`。 |
+| 公网验收 | 首页已引用 `index-BgtV80yX.js`；通知偏好返回 countdown 分类；提醒路由对非法请求返回结构化 400，远端 `automation.ts` SHA-256 与本地一致。 |
+
+**阶段边界**：本阶段到此停止；下一阶段再处理愿望清单、收藏标签 / 分页、日记富文本 / 图片或留言板分组等其它 Home 缺口。

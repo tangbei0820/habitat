@@ -1014,3 +1014,16 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 日记页新增折叠式查看申请历史，直接展示 Runtime Event 的待决 / 已开放 / 拒绝 / 失败状态与结果，不泄露私密正文。
 - 通知卡点击后可按既有 `metadata.route` 回到真实来源页面；收藏搜索纳入来源元数据，统一来源组件补齐日记 / 作品 / 相册 / 共读模块回链。
 - 无 SQLite / Dexie / 备份版本变化；`probe:diary-fragments` 11/11，两端 typecheck 与前端 build 通过。
+
+### 2026-09-28 · T-100 · V2-A Home 基础模块第四阶段：倒数日完整化（本地）
+
+- 倒数日新增分类、每年重复与提醒配置；Dexie 升 v15，旧记录自动补默认值，备份格式升 v13 并兼容旧备份导入。
+- Home 与倒数日模块按下一次发生日展示重复事件；提醒通过现有通知收件箱联动，客户端 / 服务端以 `reminderKey` 去重，Push 失败不影响站内事实。
+- `countdown.updated` Life 事件补充结构化摘要；新增倒数日提醒接口与 `probe:countdown-life` 9/9 验收。
+- 两端 typecheck、前端 build、`git diff --check` 通过；不引入平行提醒表或服务端常驻调度器。
+
+### 2026-09-28 · T-101 · V2-A Home 基础模块第四阶段部署 VPS（生产）
+
+- 提交 `087b6c0` 已部署至 `https://habitat.beiyan.cc`，保留生产 `.env` / SQLite，并创建备份 `habitat.db.bak-20260928-087b6c0`。
+- `habitat-server` active；服务器本机与服务器自 curl 公网域名健康检查通过，首页引用 `index-BgtV80yX.js`。
+- 远端 `server/src/routes/automation.ts` SHA-256 与本地一致；通知偏好含 countdown 分类，提醒路由非法请求返回结构化 400。
