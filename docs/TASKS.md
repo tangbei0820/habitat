@@ -2913,7 +2913,7 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 
 **待优化（明确延期）**：WebRTC / WebSocket 全双工、实时打断、句级 TTS 队列、锁屏 / CallKit、PSTN、后台系统来电与通话转写搜索；这些不在本批继续施工。
 
-### T-087 · 2026-09-28 · V2-A 后续：通知偏好、免打扰与 Push 测试—— **完成（本地）**
+### T-087 · 2026-09-28 · V2-A 后续：通知偏好、免打扰与 Push 测试—— **完成（生产）**
 
 **边界**：只补 Life → 通知的可持久化偏好与推送出口门控；不重构通知事实源、不引入平行通知表，不把站内通知变成可丢失的 Push 副本。
 
@@ -2926,4 +2926,16 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 参考取舍 | 实查 WORKKK README 的实时状态监控、可折叠信息块思路，仅借“状态可见 / 失败可诊断”；Phosphene 与通知交互不直接相关，未引入。 |
 | 验收 | 两端 `typecheck`、前端 `build`、`git diff --check`；HTTP 冒烟覆盖偏好读写、Quiet Hours / 通话收件箱门控、站内通知保留与 Push 测试失败反馈。 |
 
-**待优化（明确延期）**：浏览器通知权限引导、系统级锁屏通知样式、多设备订阅管理、按用户时区的独立通知时区编辑；不在本批继续施工。生产仍停在 T-072，本批未部署。
+**待优化（明确延期）**：浏览器通知权限引导、系统级锁屏通知样式、多设备订阅管理、按用户时区的独立通知时区编辑；不在本批继续施工。
+
+### T-088 · 2026-09-28 · V2-A 后续切片统一部署 VPS—— **完成（生产）**
+
+**范围**：将 T-073～T-087 已完成提交与最新前端产物统一更新到 `https://habitat.beiyan.cc`；不覆盖生产 `.env`、SQLite 数据或 nginx 配置。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `aac8b07`（含 T-073～T-087）打包上传；排除 `.git`、`server/data`、依赖目录与临时文件，保留生产配置与数据库。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-aac8b07`；生产 `.env` 未覆盖。 |
+| 服务状态 | `habitat-server` 重启后 active；首次探测发生在进程完成启动前，等待后复验通过；Node `v20.16.0`，Nocturne 工具面自检正常。 |
+| 公网验收 | 服务器本机与 `https://habitat.beiyan.cc/api/health` 均返回 `ok: true`；首页引用 `index-BoKHzI44.js`；`GET /api/notifications/preferences` 返回通知偏好默认结构。 |
+| 用户验证 | 请刷新 `https://habitat.beiyan.cc`；若浏览器仍显示旧壳，执行一次强制刷新或清理该站点旧缓存。 |
