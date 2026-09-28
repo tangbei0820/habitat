@@ -212,7 +212,7 @@ check('刚导出过就不再提醒', (await exists('[data-testid="backup-stale-h
     const msgCount = await dbm.db.messages.count()
     return { ...exported, listenOk: listenRow !== undefined && listenRow.seconds === 95, taskOk: taskRow !== undefined && taskRow.label === '验收往返任务', cardOk: cardRow !== undefined && cardRow.front === 'hello', materialOk: materialRow !== undefined && materialRow.title === '验收词表', msgCount }
   })()`)
-  check('备份格式已升 v18', roundtrip.version === 18, `v${roundtrip.version}`)
+  check('备份格式已升 v20', roundtrip.version === 20, `v${roundtrip.version}`)
   check('一起听时长进了备份', roundtrip.listen >= 1 && roundtrip.listenOk, `listenSessions ${roundtrip.listen} 条`)
   check('学习任务进了备份', roundtrip.tasks >= 1 && roundtrip.taskOk, `studyTasks ${roundtrip.tasks} 条`)
   check('AI 伴学卡片进了备份', roundtrip.cards >= 1 && roundtrip.cardOk, `studyCards ${roundtrip.cards} 条`)

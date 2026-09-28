@@ -13,6 +13,17 @@
 - 验收：服务端 `probe:feed` 17/17（含三级回应级联）、`probe:listening` 8/8、`probe:moment-groups` 13/13；两端 typecheck、前端 build、脚本语法检查与 diff 检查通过。浏览器新增回应 / 一起听历史断言通过；整支既有 Home 回归仍有倒数日刷新、音乐空态与学习卡片旧断言失败，未命中本批路径。生产部署未执行。
 - 本批不包含朋友圈附件 / 通知 / AI 自主发布、NetEase 搜索与 AI 评论、PDF / EPUB 共读器或 Widget 拖拽编排。
 
+## 2026-09-28 · V2-A · P2 Appearance / Widget / 离线 / 移动端
+
+### T-126 · 主屏编排与可恢复外观
+
+- 主屏 Widget 新增稳定 `sortOrder`，Dexie 升 v22、备份格式升 v20；主屏提供键盘 / 触控可达的上移 / 下移编排入口，并用 Dexie `liveQuery` 同步多标签页变化。
+- 设置页新增 Appearance Studio：字体缩放、行高、气泡宽度 / 圆角、主屏卡片间距 / 透明度、自定义 CSS 的预览 / 保存 / 恢复默认；AppShell 注入主题根，Chat / Home / 思绪 / Widget 提供稳定 `data-*` hooks。
+- 自定义 CSS 保存前拒绝远程资源、脚本、`@import`、at-rule 与大括号错误，并自动限制在 Habitat 主题根内；不进入内容备份。
+- 离线横幅增加 `/api/health` 轻量探测与重试，区分浏览器离线和服务不可达；会话行增加 450ms 移动端长按打开既有操作菜单，更多按钮触控目标扩大到 44px。
+- 更新 Home / Chat / Export 验收脚本的 Dexie / 备份版本断言；两端 typecheck、前端 build、脚本语法与 diff 检查通过。生产部署未执行。
+- 本批不引入复杂拖拽、主题包 / 字体背景资源导入、离线发送队列、Blob / OPFS 迁移或下一阶段 Living Apps / Provider 深化。
+
 ## 2026-09-28 · V2-A · P0 收口
 
 ### T-124 · Provider / Runtime / Chat 正确性

@@ -79,6 +79,7 @@ export interface LegacyUpload {
  * v19：学习资料（T-116）；保存用户明确提供的 TXT / Markdown 内容或外部链接，不上传浏览器文件。
  * v20：每日品读片段历史（T-120）；只保存书架段落快照与来源锚点，批注继续写回 ReadingBookState。
  * v21：会话分组显式排序（P0）；旧分组按创建顺序补 sortOrder，之后拖拽只改这一列。
+ * v22：主屏 Widget 显式排序（P2）；旧 Widget 按创建顺序补 sortOrder。
  */
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
@@ -354,6 +355,15 @@ export class HabitatDb extends Dexie {
         await Promise.all(groups.map((group: SessionGroup, index: number) => tx.table('sessionGroups').put({
           ...group,
           sortOrder: typeof group.sortOrder === 'number' ? group.sortOrder : index,
+        })))
+      })
+    this.version(22)
+      .stores({ homeWidgets: 'id, &kind, createdAt, sortOrder' })
+      .upgrade(async (tx) => {
+        const widgets = await tx.table('homeWidgets').orderBy('createdAt').toArray()
+        await Promise.all(widgets.map((widget: HomeWidget, index: number) => tx.table('homeWidgets').put({
+          ...widget,
+          sortOrder: typeof widget.sortOrder === 'number' ? widget.sortOrder : index,
         })))
       })
     // 刻意没有 .upgrade()：搬迁不在版本变化时做，而在每次启动时做（见上方注释与 legacy-upload.ts）。

@@ -1306,9 +1306,9 @@ async function scopedBoardMoments(scope: BoardWidgetScope): Promise<Moment[] | n
   return data.items
 }
 
-/** 按「上主屏的先后」返回（`createdAt` 升序）：先放的在前面，位置不随点选跳动 */
+/** 按主屏显式顺序返回：换一个引用不改变卡片位置。 */
 export async function listHomeWidgets(): Promise<HomeWidget[]> {
-  return db.homeWidgets.orderBy('createdAt').toArray()
+  return db.homeWidgets.orderBy('sortOrder').toArray()
 }
 
 /**
@@ -1363,12 +1363,15 @@ export async function putHomeWidget(kind: HomeWidgetKind, refId: string | null, 
   const existing = await db.homeWidgets.where('kind').equals(kind).first()
   if (existing === undefined) {
     const at = Date.now()
+    const existingWidgets = await db.homeWidgets.toArray()
+    const sortOrder = existingWidgets.reduce((max, widget) => Math.max(max, widget.sortOrder ?? 0), -1) + 1
     await db.homeWidgets.add({
       id: nowId('widget'),
       type: 'home-widget',
       kind,
       refId,
       boardScope,
+      sortOrder,
       createdAt: at,
       updatedAt: at,
     })
@@ -1377,6 +1380,27 @@ export async function putHomeWidget(kind: HomeWidgetKind, refId: string | null, 
   // 引用没变就一个字都不写：否则每次进页面顺手点一下都会刷新 `updatedAt`
   if (existing.refId === refId && JSON.stringify(existing.boardScope ?? null) === JSON.stringify(boardScope)) return
   await db.homeWidgets.update(existing.id, { refId, boardScope, updatedAt: Date.now() })
+}
+
+/** 调整主屏 Widget 顺序；只写顺序列，不复制或改写卡片引用。 */
+export async function reorderHomeWidgets(ids: string[]): Promise<HomeWidget[]> {
+  const current = await listHomeWidgets()
+  const known = new Set(current.map((widget) => widget.id))
+  const orderedIds = [...ids.filter((id) => known.has(id)), ...current.map((widget) => widget.id).filter((id) => !ids.includes(id))]
+  await db.transaction('rw', db.homeWidgets, async () => {
+    await Promise.all(orderedIds.map((id, index) => db.homeWidgets.update(id, { sortOrder: index, updatedAt: Date.now() })))
+  })
+  return listHomeWidgets()
+}
+
+export async function moveHomeWidget(id: string, direction: -1 | 1): Promise<HomeWidget[]> {
+  const current = await listHomeWidgets()
+  const index = current.findIndex((widget) => widget.id === id)
+  const target = index + direction
+  if (index < 0 || target < 0 || target >= current.length) return current
+  const ids = current.map((widget) => widget.id)
+  ;[ids[index], ids[target]] = [ids[target], ids[index]]
+  return reorderHomeWidgets(ids)
 }
 
 export async function removeHomeWidget(kind: HomeWidgetKind): Promise<void> {

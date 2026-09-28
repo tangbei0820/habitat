@@ -55,7 +55,7 @@ export function BackupPanel() {
       setLastExportAt(backup.exportedAt)
       setIsError(false)
       const homeCount = backup.wishlist.length + backup.countdowns.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.dailyReadings.length + backup.musicTracks.length + backup.studyRecords.length
-      setMessage(`已导出 ${backup.sessions.length} 个会话、${backup.messages.length} 条消息、${homeCount} 条生活记录（日记与留言板在服务端，不在本地备份内）`)
+      setMessage(`已导出 ${backup.sessions.length} 个会话、${backup.messages.length} 条消息、${homeCount} 条生活记录、${backup.homeWidgets.length} 个主屏 Widget（日记与留言板在服务端，不在本地备份内）`)
     } catch (err: unknown) {
       log.error('导出备份失败', err)
       setIsError(true)

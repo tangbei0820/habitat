@@ -9,6 +9,7 @@ import { PromptSettings } from '../../features/setting/PromptSettings'
 import { ProviderSettings } from '../../features/providers/ProviderSettings'
 import { McpManager } from '../../features/mcp/McpManager'
 import { PhotoCollectionSettings } from '../../features/home/PhotoCollectionSettings'
+import { AppearanceStudio } from '../../features/setting/AppearanceStudio'
 import { ApiRequestError } from '../../lib/api'
 import { getMcpHealth, getServerHealth } from '../../lib/health'
 import { log } from '../../lib/log'
@@ -117,6 +118,8 @@ export function SettingPage() {
         <PromptSettings />
 
         <PhotoCollectionSettings />
+
+        <AppearanceStudio />
 
         <ProviderSettings />
 

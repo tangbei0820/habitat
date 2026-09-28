@@ -12,7 +12,7 @@
  * 行内操作（置顶 / 移入移出分组 / 删除）统一收进「⋯」菜单：
  * 会话本身就带标题，行内再并排三个按钮，长标题会被挤成省略号。
  */
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { ChatSession, SessionGroup } from '@shared/types'
 import { ActionSheet, type SheetAction } from '../../components/ActionSheet'
@@ -48,6 +48,8 @@ type NameSheetState =
 /** 二次确认的自动退回时间：确认态不该在列表里长期挂着 */
 const CONFIRM_MS = 3000
 const TOAST_MS = 2500
+const SESSION_LONG_PRESS_MS = 450
+const SESSION_PRESS_MOVE_TOLERANCE = 10
 
 export function ChatListPage() {
   const navigate = useNavigate()
@@ -65,6 +67,8 @@ export function ChatListPage() {
   const confirmTimerRef = useRef<number | null>(null)
   const groupConfirmTimerRef = useRef<number | null>(null)
   const toastTimerRef = useRef<number | null>(null)
+  const sessionPressRef = useRef<{ id: string; timer: number; x: number; y: number } | null>(null)
+  const sessionLongPressedRef = useRef(false)
 
   useEffect(() => {
     // 只在挂载时拉一次：之后所有变更都由操作本身触发 `reload()`，避免「列表自己刷自己」造成的竞态
@@ -79,9 +83,44 @@ export function ChatListPage() {
       for (const ref of [confirmTimerRef, groupConfirmTimerRef, toastTimerRef]) {
         if (ref.current !== null) window.clearTimeout(ref.current)
       }
+      if (sessionPressRef.current !== null) window.clearTimeout(sessionPressRef.current.timer)
     },
     [],
   )
+
+  function cancelSessionPress(): void {
+    if (sessionPressRef.current !== null) {
+      window.clearTimeout(sessionPressRef.current.timer)
+      sessionPressRef.current = null
+    }
+  }
+
+  function startSessionPress(id: string, event: ReactPointerEvent<HTMLLIElement>): void {
+    if (event.pointerType === 'mouse') return
+    cancelSessionPress()
+    sessionLongPressedRef.current = false
+    sessionPressRef.current = {
+      id,
+      x: event.clientX,
+      y: event.clientY,
+      timer: window.setTimeout(() => {
+        sessionPressRef.current = null
+        sessionLongPressedRef.current = true
+        setSheet({ kind: 'session', id })
+        if ('vibrate' in navigator) navigator.vibrate?.(8)
+      }, SESSION_LONG_PRESS_MS),
+    }
+  }
+
+  function moveSessionPress(event: ReactPointerEvent<HTMLLIElement>): void {
+    const press = sessionPressRef.current
+    if (press === null) return
+    if (Math.abs(event.clientX - press.x) > SESSION_PRESS_MOVE_TOLERANCE || Math.abs(event.clientY - press.y) > SESSION_PRESS_MOVE_TOLERANCE) cancelSessionPress()
+  }
+
+  function endSessionPress(): void {
+    if (sessionPressRef.current !== null) cancelSessionPress()
+  }
 
   async function reload(): Promise<void> {
     const [nextSessions, nextGroups] = await Promise.all([listSessions(), listSessionGroups()])
@@ -326,6 +365,17 @@ export function ChatListPage() {
           // 置顶的行换一层底色：它已经跨分组浮到最上面，不给点区别就看不出「它为什么在这儿」
           ...(pinned ? { backgroundColor: 'var(--bg-subtle)' } : {}),
         }}
+        onPointerDown={(event) => startSessionPress(s.id, event)}
+        onPointerMove={moveSessionPress}
+        onPointerUp={endSessionPress}
+        onPointerCancel={cancelSessionPress}
+        onClick={(event) => {
+          if (sessionLongPressedRef.current) {
+            event.preventDefault()
+            event.stopPropagation()
+            sessionLongPressedRef.current = false
+          }
+        }}
       >
         <Link
           to={`/chat/${s.id}`}
@@ -359,7 +409,8 @@ export function ChatListPage() {
             data-testid={`session-menu-${s.id}`}
             aria-label={`会话操作：${s.title}`}
             className="icon-btn shrink-0"
-            style={{ width: 30, height: 30, color: 'var(--text-tertiary)' }}
+            style={{ width: 44, height: 44, color: 'var(--text-tertiary)' }}
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={() => setSheet({ kind: 'session', id: s.id })}
           >
             <IconMore size={15} />

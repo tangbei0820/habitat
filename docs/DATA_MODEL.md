@@ -217,7 +217,7 @@ interface SessionGroup extends BaseObject {
 | 留言收藏 → 原留言 | `Bookmark.targetType='moment'` + `sourceId` + `metadata.source*` | 保存作者、创建时间与正文快照；编辑原留言不回写既有收藏；来源链接回 `/home/board#<id>` |
 | 作品 → 来源内容 | `BaseObject.sourceId` / `sessionId` | 本体尽量**引用原始对象**，必要时存稳定快照（SPEC §3.6.3） |
 | 相册 → 来源消息 | `BaseObject.sourceId` / `sessionId` | 保留原图 + 来源 + 时间 + 发送方 / 生成方（SPEC §4.4） |
-| 主屏 Widget → 被展示内容 | `HomeWidget.kind` + `refId` / `boardScope`（本地表 `homeWidgets`） | **只存引用、不复制数据**（SPEC §1.4）；留言板 `boardScope` 可指向 recent / group / moment；每日品读 `refId` 指向 `DailyReadingEntry.id`；唯一索引 `&kind` 从数据层保证**每种 Widget 至多一条**；引用失效时渲染层不渲染，删实体时同事务清引用 |
+| 主屏 Widget → 被展示内容 | `HomeWidget.kind` + `refId` / `boardScope`（本地表 `homeWidgets`） | **只存引用、不复制数据**（SPEC §1.4）；留言板 `boardScope` 可指向 recent / group / moment；每日品读 `refId` 指向 `DailyReadingEntry.id`；唯一索引 `&kind` 从数据层保证**每种 Widget 至多一条**；`sortOrder` 只负责展示顺序；引用失效时渲染层不渲染，删实体时同事务清引用 |
 | 收藏 → 分类 | `Bookmark.categoryId`（本地表 `bookmarkCategories`） | 单归属；删分类**不删收藏**，同事务把类内 `categoryId` 置 `null`（SPEC §3.5.4） |
 | 照片 → 相册 | `Photo.collectionId`（本地表 `photoCollections`） | 单归属；删相册**不删照片**，同事务把册内 `collectionId` 置 `null`（SPEC §3.7.3）。⚠️ 「移出相册」只置空归属，与「删除照片」是两件事 |
 
@@ -260,6 +260,9 @@ interface SessionGroup extends BaseObject {
 | v17 | 170 | `Bookmark` 补 `tags[]` 多维标签（T-104）；upgrade 为老收藏补空数组，不新增索引 |
 | v18 | 180 | `HomeWidget` 补 `boardScope`（T-108）；老留言板 Widget 迁移为 `{kind:'recent'}`，倒数日明确写 `null` |
 | v19 | 190 | 新增 `studyMaterials`（T-116）；保存本地 TXT / Markdown 文字资料与安全 `http(s)` 链接，纯新增表，不需要 `upgrade()` 回调 |
+| v20 | 200 | 每日品读历史 `dailyReadings`（T-120）；保存片段快照与来源锚点 |
+| v21 | 210 | `SessionGroup.sortOrder`（P0）；老分组按创建顺序补顺位 |
+| v22 | 220 | `HomeWidget.sortOrder`（T-126）；老 Widget 按创建顺序补顺位，主屏支持可访问上下调序 |
 
 Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画版本（`verify-chat.mjs`）。
 **每次升版都要在 `db.ts` 的版本注释里写清「为什么」**；只写「加了张表」等于没写。
@@ -307,6 +310,9 @@ Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画
 | v15 | 收藏补 `tags[]` 多维标签；旧版导入时补空数组，标签不改变分类的单归属语义 |
 | v16 | `HomeWidget` 补 `boardScope`（T-108）；旧版导入时留言板范围回退为 `recent`，倒数日范围为 `null` |
 | v17 | + 学习资料 `studyMaterials`（T-116）；旧版导入时按空处理，链接不在导入阶段抓取远程内容 |
+| v18 | + 每日品读历史 `dailyReadings`（T-120）；旧版导入时按空处理 |
+| v19 | + 会话分组顺序与兼容字段（P0） |
+| v20 | + 主屏 Widget `sortOrder`（T-126）；旧版备份按 `createdAt` 顺序兼容 |
 > ⚠️ v7 导入时**必须按 `kind` 去重**：`&kind` 是唯一索引，手改过的备份（例如两条 `board`）会让
 > `bulkAdd` 抛 `ConstraintError`，导致**整份备份一个字都导不进去**。保留 `createdAt` 最早的那条，
 > 与「先上主屏的在前」的排序语义一致。

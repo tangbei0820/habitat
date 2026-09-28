@@ -329,8 +329,7 @@ export type BoardWidgetScope =
  * 每种 `kind` 全表最多一条（由 Dexie `&kind` 唯一索引兜住）：
  * 「换一个倒数日上主屏」是**改 `refId`**，不是再加一条。
  *
- * 刻意不设 `order`：v0.1 至多两个 Widget，先后按 `createdAt` 定就够；
- * 等真做拖拽编排（§5.1）时再加，不留没有生产者的字段。
+ * `sortOrder` 是展示层顺序，不改变被引用内容本身；拖拽编排暂时用可访问的上移 / 下移操作。
  */
 export interface HomeWidget extends BaseObject {
   type: 'home-widget'
@@ -339,6 +338,8 @@ export interface HomeWidget extends BaseObject {
   refId: string | null
   /** 倒数日为 null；老备份 / 老库迁移为留言板最近 3 条。 */
   boardScope: BoardWidgetScope | null
+  /** 主屏上的稳定顺序；同一批导入数据也能恢复用户编排。 */
+  sortOrder: number
 }
 
 /**

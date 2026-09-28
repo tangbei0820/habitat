@@ -285,6 +285,7 @@ export function ChatBubble({
       )}
       <div
         data-bubble-mode={bubbleMode}
+        data-chat-part={isUser ? 'user-bubble' : 'assistant-bubble'}
         data-testid={`chat-bubble-${message.id}`}
         className={bubbleClass}
         style={bubbleStyle}

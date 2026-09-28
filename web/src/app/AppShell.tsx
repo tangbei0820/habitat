@@ -1,9 +1,29 @@
+import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { OfflineBanner } from '../features/offline/OfflineBanner'
 import { UpdatePrompt } from '../features/pwa/UpdatePrompt'
 import { BottomNav } from './BottomNav'
 import { WELCOME_PATH } from './entry'
 import { IncomingCallPrompt } from '../features/chat/IncomingCallPrompt'
+import { appearanceCss, useAppearance } from '../theme/useAppearance'
+
+function AppearanceRuntime() {
+  const saved = useAppearance((state) => state.saved)
+  const preview = useAppearance((state) => state.preview)
+
+  useEffect(() => {
+    const styleId = 'habitat-custom-appearance'
+    const style = document.getElementById(styleId) ?? document.createElement('style')
+    style.id = styleId
+    style.textContent = appearanceCss(preview ?? saved)
+    if (style.parentNode === null) document.head.appendChild(style)
+    return () => {
+      // 保留节点，切换路由时不闪烁；下一次状态更新会覆盖内容。
+    }
+  }, [preview, saved])
+
+  return null
+}
 
 /**
  * 会话窗口是**沉浸式**的：自持滚动容器（虚拟列表要自己控制 scrollTop），
@@ -28,7 +48,8 @@ export function AppShell() {
   return (
     // ⚠️ `relative` 是必需的：底栏是**浮起**的绝对定位胶囊（`.bottom-nav`），
     // 没有这个定位祖先，它会相对视口展开、在桌面宽屏上横跨整个屏幕而不是这个 448px 列。
-    <div className="relative mx-auto flex h-full max-w-md flex-col">
+    <div className="relative mx-auto flex h-full max-w-md flex-col" data-habitat-theme-root>
+      <AppearanceRuntime />
       {/* 新版本 / 可离线横幅：放文档流里，出现时把内容推下去而不是盖住 */}
       <UpdatePrompt />
       {/* 离线横幅同理；两条都只在「有事」时才占位 */}

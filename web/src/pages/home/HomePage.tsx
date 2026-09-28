@@ -101,7 +101,7 @@ export function HomePage() {
   }, [])
 
   return (
-    <div>
+    <div data-page="home">
       {/* 页头：低存在感。⚠️ `<header>` 与顺序（header → widgets → entries）被 verify-home 的布局断言依赖 */}
       <header style={{ padding: '18px 20px 4px' }}>
         <div className="t-caption" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.1em', marginBottom: 4 }}>

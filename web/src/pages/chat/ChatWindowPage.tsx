@@ -1354,7 +1354,7 @@ export function ChatWindowPage() {
   const statusText = !online ? '离线' : sending ? '正在回复…' : '在线'
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col" data-page="chat">
       {/*
         低存在感顶栏（设计 §9.2）：头像 + 名字 + 状态点，没有实线分隔、没有底色。
         ⚠️ 与设计稿的两处差异，都是栖息地的真实需要：

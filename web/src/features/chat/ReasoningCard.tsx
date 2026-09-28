@@ -12,7 +12,7 @@ export function ReasoningCard({ reasoning, variant = 'thought' }: { reasoning: s
   const [open, setOpen] = useState(false)
   const provider = variant === 'provider'
   return (
-    <div className="mb-1.5" data-testid={provider ? 'provider-reasoning-card' : 'reasoning-card'}>
+    <div className="mb-1.5" data-chat-part="thought-card" data-testid={provider ? 'provider-reasoning-card' : 'reasoning-card'}>
       <button
         type="button"
         data-testid={provider ? 'provider-reasoning-toggle' : 'reasoning-toggle'}

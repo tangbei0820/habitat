@@ -50,7 +50,8 @@ export const BACKUP_FORMAT = 'habitat-backup'
  * ⚠️ 但**旧备份（v2–v8）里带着它们**，导入时不能丢：走 `legacyUploads` 转存到服务端，
  * 详见 `importAll` 与 `db/legacy-upload.ts`。
  */
-export const BACKUP_VERSION = 19
+/** v20：主屏 Widget 的 sortOrder 进入备份；旧备份按创建时间顺序兼容。 */
+export const BACKUP_VERSION = 20
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -222,7 +223,8 @@ function looksLikeHomeWidget(value: unknown): value is HomeWidget {
     isRecord(value) &&
     typeof value.id === 'string' &&
     value.type === 'home-widget' &&
-    (value.kind === 'board' || value.kind === 'countdown' || value.kind === 'daily-reading')
+    (value.kind === 'board' || value.kind === 'countdown' || value.kind === 'daily-reading') &&
+    (value.sortOrder === undefined || (typeof value.sortOrder === 'number' && Number.isFinite(value.sortOrder)))
   )
 }
 
@@ -658,13 +660,18 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：存在无法识别的主屏 Widget')
   }
   const homeWidgetsByKind = new Map<string, HomeWidget>()
-  for (const widget of [...homeWidgetsAll].sort((a, b) => Number(a.createdAt) - Number(b.createdAt))) {
+  for (const widget of [...homeWidgetsAll].sort((a, b) => {
+    const aOrder = typeof a.sortOrder === 'number' ? a.sortOrder : Number(a.createdAt)
+    const bOrder = typeof b.sortOrder === 'number' ? b.sortOrder : Number(b.createdAt)
+    return aOrder - bOrder
+  })) {
     if (!homeWidgetsByKind.has(widget.kind)) {
       // `refId` 归一化：非字符串一律当 null，免得一个手改出来的数字一路流到 `db.countdowns.get()`
       homeWidgetsByKind.set(widget.kind, {
         ...widget,
         refId: typeof widget.refId === 'string' ? widget.refId : null,
         boardScope: normalizeBoardWidgetScope((widget as HomeWidget & { boardScope?: unknown }).boardScope, version, widget.kind),
+        sortOrder: typeof widget.sortOrder === 'number' ? widget.sortOrder : homeWidgetsByKind.size,
       })
     }
   }
