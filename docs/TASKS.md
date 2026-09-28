@@ -2955,3 +2955,17 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm run typecheck`、`npm run build`、`git diff --check` 通过；前端时间线只渲染后端生成的字符串字段，系统统计可折叠。生产仍停在 T-088，本批未部署。
 
 **待优化（后续功能）**：聊天正文 / 朋友圈 / 相册等仍需各自追加真实 Life EventLog；时间线筛选、详情深链与服务端分页另起任务，不在本批扩展。
+
+### T-090 · 2026-09-28 · V2-A 后续：Chat 完成事实进入 Life—— **完成（本地）**
+
+**边界**：只为成功完成的 `/api/chat` 轮次追加不含正文的 `chat.turn.completed` EventLog，并让 Life 时间线可读展示；不改变 ChatMessage 的本地归属，不把聊天文本 / 模型输出复制到服务端，也不处理朋友圈、收藏、相册等其它事件源。
+
+| 交付 | 说明 |
+| --- | --- |
+| 事实写入 | 聊天流正常收口后写入会话回链、上下文条数、工具轮次与 `usageRecordId`；事实写入失败只留服务端 warning，不影响已经完成的聊天。 |
+| 时间线展示 | Life 将 `chat.turn.completed` 映射为“聊天 · 聊了一会儿”，可显示上下文 / 工具轮次摘要；原始类型与会话 ID 仍可追溯。 |
+| 隐私边界 | 不保存用户或小栖正文、不改前端 Dexie、不新增 SQLite / 备份版本；未带 `sessionId` 的后台请求也能记录为无回链事实。 |
+| 参考取舍 | 继续借鉴 [WORKKK](https://github.com/zhizhou-xiee/workkk) README 的“当前状态先可见、历史与细节按需展开”信息层级；不采用其游戏化状态、成就或库存模型。 |
+| 验收 | `probe:phase4` 新增聊天完成事实断言；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-088，本批未部署。 |
+
+**待优化（后续功能）**：朋友圈、收藏 / 作品 / 相册、一起听、学习与倒数日仍需各自接入真实 Life EventLog；本批不扩展其它来源。

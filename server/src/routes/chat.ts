@@ -38,6 +38,7 @@ import type { CapabilityService } from '../capabilities/registry.js'
 import { buildBoundTools, executeTool, toLlmTools, type BoundTool, type ToolRuntime } from '../capabilities/tools.js'
 import { assembleChatContext } from '../context/chat-context.js'
 import { finishAutomationRun, getAutomationPolicy, noteCounterpartActivity } from '../db/automation.js'
+import { appendEventLog } from '../db/activity.js'
 import { markResultsDelivered } from '../db/event.js'
 import { getPersonaPrompt } from '../db/prompt.js'
 import { listEnabledWorldbookEntries } from '../db/worldbook.js'
@@ -574,6 +575,19 @@ export function registerChatRoutes(
       request.log.error({ err, profileId: profile.id }, 'UsageRecord 写入失败')
     }
     finishAutomationRun(chatRunId, 'completed', null, usageRecordId)
+
+    // ChatMessage 正文归浏览器本地；Life 只需要一条不含正文的共同生活事实。
+    // 记录失败不能反过来让已经完成的聊天失败，因此只留日志并继续收尾。
+    try {
+      appendEventLog('chat.turn.completed', {
+        sessionId: body.sessionId ?? null,
+        messageCount: body.messages.length,
+        toolRounds,
+        usageRecordId,
+      }, body.sessionId ?? null)
+    } catch (err) {
+      request.log.warn({ err, sessionId: body.sessionId }, '聊天完成事实写入 Life 失败')
+    }
 
     // 上游已完整结束就结算本轮；即使客户端中途断开，也不能丢掉已经发生的互动后效。
     // 任何失败只写日志，不能把成功聊天改判成失败。

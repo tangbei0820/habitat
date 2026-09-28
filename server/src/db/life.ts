@@ -161,6 +161,12 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
     source = '通话'; title = '通话结束'
     const duration = metricText(metrics, 'durationMs')
     detail = duration ? `时长 ${Math.max(0, Math.round(Number(duration) / 60000))} 分钟` : metricText(metrics, 'status')
+  } else if (row.eventType === 'chat.turn.completed') {
+    source = '聊天'
+    title = '聊了一会儿'
+    const messageCount = metricText(metrics, 'messageCount')
+    const toolRounds = metricText(metrics, 'toolRounds')
+    detail = [messageCount ? `上下文 ${messageCount} 条` : null, toolRounds && Number(toolRounds) > 0 ? `工具 ${toolRounds} 轮` : null].filter(Boolean).join(' · ') || null
   } else if (row.eventType === 'capability.diary.create' || row.eventType === 'capability.diary.update') {
     source = '日记'; title = row.eventType.endsWith('.create') ? '写下了一篇日记' : '更新了一篇日记'; detail = metricTitle
   } else if (row.eventType === 'capability.messageboard.write' || row.eventType === 'capability.messageboard.update') {

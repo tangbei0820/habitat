@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：**宿主 nginx 1.18.0** + habitat-server + Nocturne / Ombre Brain（容器 nginx）+ eventide-sidecar；Caddy 仅为早期方案记录                      |
-| 当前阶段 | **Habitat v2 已开工**：生产已更新至 **T-088 / https://habitat.beiyan.cc**；T-057 完成蓝图回归，T-058 完成 **V2-A 第一切片 Provider Center 四通道**，T-059 完成 **MCP Manager 基础切片**，T-060 完成 **Nocturne 原生 Dashboard 受保护入口**，T-061 完成当前代码全量 VPS 部署与公网实测，T-062 完成 **Provider Center 单列折叠布局**，T-063～T-071 的 Home / 一起听 / 共读 / 日记权限 / 留言板 / AI 伴学改动已在本轮随当前提交统一部署；T-072 完成生产备份、重启与公网健康 / 静态资源验收；T-073 完成 **V2-B 聊天历史搜索与日期导航（本地，未部署）**；T-074 完成 **V2-B 思绪三路协议（本地，未部署）**；T-075 完成 **V2-B 上下文压缩基础闭环（本地，未部署）**；T-076 完成 **V2-B 显式联网搜索（本地，未部署）**；T-077 完成 **V2-B 本地表情图库与手动表情消息（本地，未部署）**；T-078 完成 **V2-B 表情包 AI 自主搜索 / 发送（本地，未部署）**；T-079 完成 **V2-A ElevenLabs 原生 TTS Provider（本地，未部署）**；T-080 完成 **V2-A ElevenLabs 声音参数（本地，未部署）**；T-081 完成 **V2-A ElevenLabs 音色目录与选择（本地，未部署）**；T-082 完成 **V2-A ElevenLabs 风格与说话人增强（本地，未部署）**；T-083 完成 **V2-A Streaming TTS 传输（本地，未部署）**；T-084 完成 **V2-A 聊天内通话模式（本地，未部署）**；T-085 完成 **V2-A 连续语音会话与轮流说话（本地，未部署）**；T-086 完成 **V2-A 完整应用内电话系统（已部署）**；T-087 完成 **V2-A 通知偏好、免打扰与 Push 测试（已部署）**；T-088 完成 **V2-A 后续切片统一部署与公网验收**；T-089 完成 **V2-A Life 共同生活时间线（本地，未部署）**。历史 Phase 7A / 7B / 7C 只表示旧切片完成，**不等同于模块完整**；后续统一编号 **V2-A~V2-F**。下一步按完整用户功能推进，遇到产品语义分歧再停下确认。 |
+| 当前阶段 | **Habitat v2 已开工**：生产已更新至 **T-088 / https://habitat.beiyan.cc**；T-057 完成蓝图回归，T-058 完成 **V2-A 第一切片 Provider Center 四通道**，T-059 完成 **MCP Manager 基础切片**，T-060 完成 **Nocturne 原生 Dashboard 受保护入口**，T-061 完成当前代码全量 VPS 部署与公网实测，T-062 完成 **Provider Center 单列折叠布局**，T-063～T-071 的 Home / 一起听 / 共读 / 日记权限 / 留言板 / AI 伴学改动已在本轮随当前提交统一部署；T-072 完成生产备份、重启与公网健康 / 静态资源验收；T-073 完成 **V2-B 聊天历史搜索与日期导航（本地，未部署）**；T-074 完成 **V2-B 思绪三路协议（本地，未部署）**；T-075 完成 **V2-B 上下文压缩基础闭环（本地，未部署）**；T-076 完成 **V2-B 显式联网搜索（本地，未部署）**；T-077 完成 **V2-B 本地表情图库与手动表情消息（本地，未部署）**；T-078 完成 **V2-B 表情包 AI 自主搜索 / 发送（本地，未部署）**；T-079 完成 **V2-A ElevenLabs 原生 TTS Provider（本地，未部署）**；T-080 完成 **V2-A ElevenLabs 声音参数（本地，未部署）**；T-081 完成 **V2-A ElevenLabs 音色目录与选择（本地，未部署）**；T-082 完成 **V2-A ElevenLabs 风格与说话人增强（本地，未部署）**；T-083 完成 **V2-A Streaming TTS 传输（本地，未部署）**；T-084 完成 **V2-A 聊天内通话模式（本地，未部署）**；T-085 完成 **V2-A 连续语音会话与轮流说话（本地，未部署）**；T-086 完成 **V2-A 完整应用内电话系统（已部署）**；T-087 完成 **V2-A 通知偏好、免打扰与 Push 测试（已部署）**；T-088 完成 **V2-A 后续切片统一部署与公网验收**；T-089 完成 **V2-A Life 共同生活时间线（本地，未部署）**；T-090 完成 **V2-A Chat 完成事实进入 Life（本地，未部署）**。历史 Phase 7A / 7B / 7C 只表示旧切片完成，**不等同于模块完整**；后续统一编号 **V2-A~V2-F**。下一步按完整用户功能推进，遇到产品语义分歧再停下确认。 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -297,6 +297,8 @@ habitat/
 0. ✅ **T-087 V2-A 通知偏好 / 免打扰 / Push 测试已完成并已部署**：复用服务端 `app_kv` 保存总开关、分类开关与 Quiet Hours；站内收件箱事实不丢失，Wake / 来电 Push 按策略门控；Life → 通知提供分类面板、保存、Push 状态与测试通知。
 
 0. ✅ **T-088 V2-A 后续切片统一部署已完成**：将 T-073～T-087 当前提交与最新前端产物上传 VPS；生产 `.env`、SQLite 数据与 nginx 配置未覆盖；重启前备份数据库，`habitat-server` active，内网 / 公网 `/api/health` 均返回 `ok: true`，首页已切换到 `index-BoKHzI44.js`。
+
+0. ✅ **T-090 V2-A 后续：Chat 完成事实进入 Life 已完成（本地）**：成功聊天只追加不含正文的 `chat.turn.completed` EventLog，Life 时间线可读显示并保留会话回链；生产仍停在 T-088，本批未部署。
 
 0. ✅ **T-082 本地 V2-A 后续：ElevenLabs 风格与说话人增强已完成**：语音卡新增 style 与 speaker boost，服务端映射到原生 `voice_settings`，参数变化要求重新测试；`probe:elevenlabs` 5/5；生产仍停在 T-072，本批未部署。
 
