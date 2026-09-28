@@ -3028,3 +3028,17 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:bookmark-life` **6/6**；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-088，本批未部署。 |
 
 **待优化（后续功能）**：收藏搜索 / 标签、多来源深链统一跳转、AI 自主收藏与通知联动另起任务。
+
+### T-095 · 2026-09-28 · V2-A 后续：T-089～T-094 部署 VPS—— **完成（生产）**
+
+**范围**：将 Life 共同生活时间线、聊天 / 一起听 / 学习 / 倒数日 / 收藏事实投影统一部署到 `https://habitat.beiyan.cc`；不覆盖生产 `.env`、SQLite 数据或 nginx 配置。
+
+| 项 | 结果 |
+| --- | --- |
+| 本地验收 | `npm run typecheck`、`npm run build`、`git diff --check` 通过；构建产物为 `index-CvtvXgr6.js`。 |
+| 代码上机 | 通过排除 `.git`、依赖目录、`server/data`、`server/.env` 的压缩包更新 `/srv/habitat`；远端 `server/src/routes/life.ts` 与本地 SHA-256 一致。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-f2ababc`；生产 `.env` 与 SQLite 未覆盖。 |
+| 服务状态 | `habitat-server` 重启后 active；Node `v20.16.0`。 |
+| 公网验收 | `https://habitat.beiyan.cc/api/health` 返回 `ok: true`；`/api/life/day/2026-09-28` 返回 `timeline`；公网首页已引用新构建资产。 |
+
+**待优化（后续功能）**：下一批进入 Home 基础模块的通知、搜索、历史与完整应用能力；本批不扩展朋友圈、完整一起听 / 共读 / 学习第二阶段。
