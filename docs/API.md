@@ -9,6 +9,38 @@
 { "error": { "code": "MCP_HANDSHAKE_FAILED", "message": "…", "detail": "…" } }
 ```
 
+## Chat 关系互动（PRODUCT_SPEC §2.6）
+
+关系状态由服务端 SQLite 维护；暂停不删除聊天历史。普通聊天、主动消息和通话邀请在暂停期间返回结构化 `400`，系统通知、恢复申请和自动恢复仍可达。
+
+### `GET /api/relationship`
+
+返回当前状态与最近恢复申请：
+
+```json
+{
+  "state": { "status": "paused", "pausedBy": "user", "reason": "需要安静一下", "startedAt": 1790580000000, "expiresAt": 1790583600000, "updatedAt": 1790580000000 },
+  "requests": [{ "id": "…", "requestedBy": "companion", "decider": "user", "status": "pending", "createdAt": 1790580100000, "decidedAt": null }],
+  "now": 1790580200000
+}
+```
+
+### `POST /api/relationship/poke`
+
+用户发起一次拍一拍关系事件。请求体可为空，成功返回 `201 { event, snapshot }`；暂停期间返回 `400`。拍一拍不创建普通聊天消息、不触发模型回复，但会写入 `event_log`。
+
+### `POST /api/relationship/pause`
+
+用户暂停聊天：`{ "reason"?: string, "durationMinutes"?: number }`。时长会裁剪到 `1..60` 分钟，成功返回最新 `RelationshipSnapshot`。
+
+### `POST /api/relationship/recovery`
+
+用户申请恢复当前暂停：请求体可为空，返回 `{ request, snapshot }`。同一方已有 pending 申请时返回同一申请，不重复写入。
+
+### `POST /api/relationship/recovery/:id/decide`
+
+用户处理交给用户决定的申请：`{ "decision": "approve" | "deny" }`，返回最新 `RelationshipSnapshot`。Companion 侧通过 Runtime 的 `relationship_decide_recovery` 工具完成同一事实写入。
+
 ## Phase 0 已实现
 
 ### `GET /api/health`

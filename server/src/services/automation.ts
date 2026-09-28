@@ -26,6 +26,7 @@ import { localClock } from '../lib/time-window.js'
 import { fetchFeed, type FeedItem } from '../lib/rss.js'
 import { fetchPageText } from '../lib/web-fetch.js'
 import { createSurfRecord, fingerprintOf, getSurfFeeds, recentSurfFingerprints } from '../db/surf.js'
+import { getRelationshipSnapshot } from '../db/relationship.js'
 import { sendWebPush } from './push.js'
 
 export interface AutomationActionResult {
@@ -183,6 +184,11 @@ export async function executeWakeAction(
   try {
     let refId: string | null = null
     if (action.type === 'message') {
+      if (getRelationshipSnapshot(now.getTime()).state.status === 'paused') {
+        insertAutomationAction({ runId, idx, type: action.type, status: 'skipped', reason: '关系暂停中，主动消息被抑制', at: now.getTime() })
+        appendEventLog('automation.action.message.skipped', { runId, idx, reason: 'relationship-paused' }, runId, now.getTime())
+        return { status: 'skipped', refId: null }
+      }
       const notice = createNotification('wake', '小栖发来一条消息', action.content, { runId })
       void sendWebPush(notice).catch((error: unknown) => {
         log?.warn({ err: error }, 'Web Push 发送失败，站内通知已保留')
@@ -287,6 +293,9 @@ export class AutomationService {
   }
 
   private async runWake(now: Date): Promise<AutomationActionResult> {
+    if (getRelationshipSnapshot(now.getTime()).state.status === 'paused') {
+      return { kind: 'wake', status: 'skipped', reason: '关系暂停中，本轮不打扰', refId: null }
+    }
     // 决策轮一次性把所有行动内容都生成出来（执行器不再调 LLM）——
     // 所以预约的 token 预算要盖住「思考 + 全部行动正文」
     const decision = this.guard.reserve('wake', 2_000, now)

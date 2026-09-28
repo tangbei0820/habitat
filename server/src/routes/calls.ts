@@ -6,6 +6,7 @@ import { RequestError } from '../lib/errors.js'
 import { publishCallEvent, subscribeAllCalls, subscribeCall } from '../services/call-events.js'
 import { sendWebPush } from '../services/push.js'
 import { notificationDeliveryAllowed } from '../db/notification-preferences.js'
+import { getRelationshipSnapshot } from '../db/relationship.js'
 
 type IdParams = { id: string }
 type ChatQuery = { chatSessionId?: string }
@@ -63,6 +64,7 @@ function recordCallEnd(call: CallSessionRecord): void {
 
 export function registerCallRoutes(app: FastifyInstance): void {
   app.post('/api/calls', async (request, reply) => {
+    if (getRelationshipSnapshot().state.status === 'paused') throw new RequestError('BAD_REQUEST', '关系暂停期间不能发起通话')
     const body = bodyObject(request.body)
     const chatSessionId = requiredId(body.chatSessionId, 'chatSessionId')
     const call = publishState(createCall(chatSessionId, 'user'))
@@ -71,6 +73,7 @@ export function registerCallRoutes(app: FastifyInstance): void {
 
   /** Runtime / wake 使用这个入口向用户发起应用内来电。 */
   app.post('/api/calls/ring', async (request, reply) => {
+    if (getRelationshipSnapshot().state.status === 'paused') throw new RequestError('BAD_REQUEST', '关系暂停期间不能发起通话邀请')
     const body = bodyObject(request.body)
     const chatSessionId = requiredId(body.chatSessionId, 'chatSessionId')
     const call = createCall(chatSessionId, 'companion')

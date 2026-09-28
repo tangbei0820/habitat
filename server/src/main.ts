@@ -37,6 +37,7 @@ import { registerReadingRoutes } from './routes/reading.js'
 import { registerListeningRoutes } from './routes/listening.js'
 import { registerToolRoutes } from './routes/tools.js'
 import { registerWorldbookRoutes } from './routes/worldbook.js'
+import { registerRelationshipRoutes } from './routes/relationship.js'
 import { AutomationService, startAutomationScheduler } from './services/automation.js'
 import { registerMemoryWriteExecutor } from './services/event-inbox.js'
 
@@ -111,6 +112,7 @@ registerInboxRoutes(app)
 // Prompt / 世界书（7A · SPEC §9.4）：Runtime 在服务端拼上下文，所以这两份配置也归服务端
 registerPromptRoutes(app, capabilityService)
 registerWorldbookRoutes(app)
+registerRelationshipRoutes(app)
 
 // LLM 方案：**服务端 SQLite 是权威源**（见 db/profiles.ts）。
 // 环境变量 HABITAT_LLM_PROFILES 仅作**首次种子**：从未导入过时一次性导入，之后改 .env 不再生效

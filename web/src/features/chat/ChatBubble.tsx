@@ -122,6 +122,7 @@ export function ChatBubble({
 }) {
   const { message, text } = item
   const isUser = message.role === 'user'
+  const isSystem = message.role === 'system'
   const isRecalled = message.recalledAt !== null
   const isStreaming = message.status === 'streaming' || message.status === 'pending'
   const interrupted = message.status === 'aborted' || message.status === 'error'
@@ -131,7 +132,7 @@ export function ChatBubble({
   const edited = message.editedAt !== null
 
   // 「换一个」只给最后一条 AI 回复：改中间那条，后面已经发生的对话就与它脱节了
-  const canReroll = !isUser && item.isLast && text !== '' && !actions.busy && !isStreaming && !isRecalled
+  const canReroll = message.role === 'assistant' && item.isLast && text !== '' && !actions.busy && !isStreaming && !isRecalled
   // 「重发」出现在「最后一条是用户消息」时 —— 意味着这一轮压根没拿到回复（失败 / 停在首字之前）
   const canResend = isUser && item.isLast && !actions.busy && !isRecalled
 
@@ -176,7 +177,7 @@ export function ChatBubble({
   const showActions =
     !isStreaming &&
     !actions.busy &&
-    (isRecalled || versionCount > 1 || canReroll || canResend || item.isLast)
+    !isSystem && (isRecalled || versionCount > 1 || canReroll || canResend || item.isLast)
 
   /* ---------- 长按 / 右键 打开同一个菜单 ---------- */
   const pressRef = useRef<{ timer: number; x: number; y: number } | null>(null)
@@ -246,6 +247,7 @@ export function ChatBubble({
 
   const bubbleClass = [
     'msg-bubble',
+    isSystem ? 'is-system' : '',
     isRecalled ? 'is-recalled' : '',
     nativeAssistant ? 'is-native' : '',
     editing ? 'is-editing' : '',
@@ -435,7 +437,7 @@ export function ChatBubble({
     <>
       {item.dayLabel !== null && <div className="day-divider">{item.dayLabel}</div>}
       <div
-        className={`msg-row ${isUser ? 'from-user' : 'from-ai'}`}
+        className={`msg-row ${isUser ? 'from-user' : isSystem ? 'from-system' : 'from-ai'}`}
         data-message-id={message.id}
         data-status={message.status}
         data-selected={actions.selectMode ? String(selected) : undefined}

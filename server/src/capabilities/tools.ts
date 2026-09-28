@@ -28,6 +28,12 @@ import { notificationDeliveryAllowed } from '../db/notification-preferences.js'
 import { dayKeyOf } from '../db/usage.js'
 import { decideEvent, requestToolConfirm } from '../services/event-inbox.js'
 import { searchWeb } from '../lib/web-fetch.js'
+import {
+  decideRelationshipRecovery,
+  pauseRelationship,
+  pokeRelationship,
+  requestRelationshipRecovery,
+} from '../db/relationship.js'
 import type { CapabilityService } from './registry.js'
 
 /** 一个绑定好的工具：从能力声明来，能被执行 */
@@ -53,6 +59,7 @@ const MODULE_SOURCE: Readonly<Record<CapabilityModule, string>> = {
   state: 'Eventide',
   diary: '日记',
   board: '留言板',
+  relationship: '关系互动',
   tools: '系统',
   web: 'Web',
 }
@@ -400,6 +407,67 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
           ok: true,
           text: `留言已更新（id: ${updated.id}）。`,
           summary: '修改了留言板上的留言',
+        }
+      }
+
+      case 'relationship.poke': {
+        const snapshot = pokeRelationship('companion')
+        return {
+          ok: true,
+          text: '已向北北发起一次拍一拍。这不是普通聊天消息，不需要对方回复。',
+          summary: '拍了拍北北',
+          detail: `当前关系状态：${snapshot.state.status === 'active' ? '正常' : '暂停'}`,
+        }
+      }
+
+      case 'relationship.pause': {
+        const reason = value.reason === undefined ? null : typeof value.reason === 'string' ? value.reason.trim() : null
+        if (value.reason !== undefined && reason === null) return failure(tool, 'reason 必须是字符串')
+        if (reason !== null && reason.length > 200) return failure(tool, 'reason 最多 200 字')
+        const rawMinutes = value.durationMinutes === undefined ? 60 : value.durationMinutes
+        if (typeof rawMinutes !== 'number' || !Number.isFinite(rawMinutes) || rawMinutes <= 0) return failure(tool, 'durationMinutes 必须是正数')
+        try {
+          const snapshot = pauseRelationship('companion', reason, rawMinutes)
+          const minutes = Math.max(1, Math.min(60, Math.floor(rawMinutes)))
+          return {
+            ok: true,
+            text: `普通聊天、主动消息和通话邀请已暂停 ${minutes} 分钟；系统通知与恢复申请仍可达，到期会自动恢复。`,
+            summary: '暂时暂停了聊天',
+            detail: snapshot.state.expiresAt === null ? undefined : `预计 ${new Date(snapshot.state.expiresAt).toLocaleTimeString()} 自动恢复`,
+          }
+        } catch (error) {
+          return failure(tool, error instanceof Error ? error.message : String(error))
+        }
+      }
+
+      case 'relationship.request_recovery': {
+        try {
+          const request = requestRelationshipRecovery('companion')
+          return {
+            ok: true,
+            text: `已向北北申请恢复聊天（requestId: ${request.id}）。等待北北决定，不要重复申请。`,
+            summary: '申请恢复聊天',
+            detail: `申请状态：${request.status}`,
+          }
+        } catch (error) {
+          return failure(tool, error instanceof Error ? error.message : String(error))
+        }
+      }
+
+      case 'relationship.decide_recovery': {
+        const requestId = typeof value.requestId === 'string' ? value.requestId.trim() : ''
+        const decision = value.decision === 'approve' || value.decision === 'deny' ? value.decision : null
+        if (requestId === '' || decision === null) return failure(tool, '需要 requestId，以及 decision=approve 或 deny')
+        try {
+          const snapshot = decideRelationshipRecovery(requestId, 'companion', decision === 'approve')
+          return {
+            ok: true,
+            text: decision === 'approve' ? '已同意北北的恢复申请，普通聊天已恢复。' : '已拒绝北北的恢复申请，暂停仍然有效。',
+            summary: decision === 'approve' ? '同意恢复聊天' : '拒绝恢复聊天',
+            detail: `当前关系状态：${snapshot.state.status === 'active' ? '正常' : '暂停'}`,
+          }
+        } catch (error) {
+          return failure(tool, error instanceof Error ? error.message : String(error))
         }
       }
 

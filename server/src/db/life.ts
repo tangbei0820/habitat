@@ -201,6 +201,17 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
     } else if (row.eventType === 'reading.bookmark') title = `${metrics.enabled === true ? '夹入' : '移除'}书签 · ${book}`
     else if (row.eventType === 'reading.annotation') title = `写下批注 · ${book}`
     else if (row.eventType === 'reading.vocabulary') title = `收入生词 · ${book}`
+  } else if (row.eventType.startsWith('relationship.')) {
+    source = '关系互动'
+    const by = metricText(metrics, 'by') === 'companion' ? '小栖' : '你'
+    if (row.eventType === 'relationship.poked') title = `${by}拍了拍对方`
+    else if (row.eventType === 'relationship.paused') title = `${by}暂时暂停了聊天`
+    else if (row.eventType === 'relationship.auto_resumed') title = '聊天暂停到期，已自动恢复'
+    else if (row.eventType === 'relationship.recovery.requested') title = `${by}申请恢复聊天`
+    else if (row.eventType === 'relationship.recovery.approved') title = '恢复申请已同意，聊天已恢复'
+    else if (row.eventType === 'relationship.recovery.denied') title = '恢复申请被拒绝，暂停仍然有效'
+    else title = '关系状态发生变化'
+    detail = metricText(metrics, 'reason') ?? null
   } else if (row.eventType === 'call.ring') {
     source = '通话'; title = '发起通话邀请'; detail = '等待接听或拒绝'
   } else if (row.eventType === 'call.ended') {

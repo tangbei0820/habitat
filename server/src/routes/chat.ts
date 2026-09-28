@@ -42,6 +42,7 @@ import { appendEventLog } from '../db/activity.js'
 import { markResultsDelivered } from '../db/event.js'
 import { getPersonaPrompt } from '../db/prompt.js'
 import { listEnabledWorldbookEntries } from '../db/worldbook.js'
+import { getRelationshipSnapshot } from '../db/relationship.js'
 import { recordUsage } from '../db/usage.js'
 import { BudgetGuard } from '../lib/budget-guard.js'
 import { ToolCallAccumulator } from '../lib/tool-call-accumulator.js'
@@ -305,6 +306,10 @@ export function registerChatRoutes(
   app.post('/api/chat', async (request, reply): Promise<void> => {
     // —— 写响应头之前的失败都还能返回结构化 JSON（走统一错误处理器）——
     const body = parseBody(request.body)
+    const relationship = getRelationshipSnapshot()
+    if (relationship.state.status === 'paused') {
+      throw new ProviderError(ErrorCodes.BadRequest, '聊天暂时暂停中：可查看历史、申请恢复，暂停到期后会自动解除')
+    }
     const resolved = body.profileId === undefined ? registry.capabilityProvider('chat') : null
     let profile = body.profileId === undefined
       ? resolved?.profile ?? null

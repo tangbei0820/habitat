@@ -3,6 +3,16 @@
 > 本文件记「改了什么」（面向版本，按 Phase 组织）。
 > 「做到哪、还欠什么」在 `docs/TASKS.md`。
 
+## 2026-09-28 · V2-A · P0 Chat 关系互动
+
+### T-128 · 会话关系事件、暂停与双向恢复
+
+- 服务端新增 `relationship_state` / `relationship_request` 事实源，暂停最多 60 分钟；到期读取惰性自动恢复，恢复申请与拒绝 / 同意 / 到期均保留审计记录。
+- Chat 新增拍一拍、暂时拒绝回复、恢复申请与用户同意 / 拒绝入口；关系事件进入可见时间线但不会伪装成普通模型上下文。
+- 普通聊天、主动唤醒消息、通话邀请在暂停期间被服务端统一拦截；系统通知、恢复申请与自动恢复不受影响。
+- Capability Registry 新增 `relationship_poke`、`relationship_pause`、`relationship_request_recovery`、`relationship_decide_recovery`，Companion 可以自主决定互动 / 安静 / 申请或处理恢复，不再依赖写死文案。
+- 验收：`probe:relationship` **15/15**（含四项 Companion 工具真实执行）；两端 typecheck、`git diff --check` 通过。未部署 VPS，等待下一次明确部署指令。
+
 ## 2026-09-28 · V2-A · P1 Home Living Apps 共同生活核心
 
 ### T-125 · 朋友圈回应与一起听历史

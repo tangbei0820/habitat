@@ -475,6 +475,36 @@ export interface RuntimeEvent {
   expiresAt: number | null
 }
 
+/* ---------- 关系型互动（PRODUCT_SPEC §2.6） ---------- */
+
+export type RelationshipParty = 'user' | 'companion'
+export type RelationshipStatus = 'active' | 'paused'
+export type RelationshipRequestStatus = 'pending' | 'approved' | 'denied' | 'expired'
+
+export interface RelationshipState {
+  status: RelationshipStatus
+  pausedBy: RelationshipParty | null
+  reason: string | null
+  startedAt: number | null
+  expiresAt: number | null
+  updatedAt: number
+}
+
+export interface RelationshipRecoveryRequest {
+  id: string
+  requestedBy: RelationshipParty
+  decider: RelationshipParty
+  status: RelationshipRequestStatus
+  createdAt: number
+  decidedAt: number | null
+}
+
+export interface RelationshipSnapshot {
+  state: RelationshipState
+  requests: RelationshipRecoveryRequest[]
+  now: number
+}
+
 /**
  * 收藏用 `targetType + targetId` 统一指向一切（技术方案 §6.2）。
  * 当前 UI 只生产 external-link；其余取值给后续各模块的“收藏”按钮共用。

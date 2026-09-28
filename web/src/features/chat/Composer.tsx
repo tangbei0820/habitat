@@ -58,6 +58,8 @@ export interface ComposerProps {
   onDraftChange: (value: string) => void
   /** 正在生成（或正在录音后发送）：主按钮变「停止」 */
   sending: boolean
+  /** 关系暂停时保留输入区位置，但禁止继续发起普通消息 / 媒体动作。 */
+  interactionDisabled?: boolean
   /** 待回复消息条数（SPEC §2.4.3）：> 0 时「请求回复」可用 */
   unrepliedCount: number
   /** 发一条文本消息。`requestReply` 为 false = 「只发送」 */
@@ -84,6 +86,7 @@ export function Composer({
   draft,
   onDraftChange,
   sending,
+  interactionDisabled = false,
   unrepliedCount,
   onSend,
   onRequestReply,
@@ -374,7 +377,11 @@ export function Composer({
     */
     <div
       className="flex shrink-0 flex-col"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      aria-disabled={interactionDisabled}
+      style={{
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        ...(interactionDisabled ? { opacity: 0.58, pointerEvents: 'none' as const } : {}),
+      }}
     >
       {recording ? (
         <div

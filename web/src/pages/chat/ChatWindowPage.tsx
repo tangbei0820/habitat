@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import type { ChatToolCallPayload } from '@shared/events'
 import type { LlmChatMessage } from '@shared/providers'
-import type { ChatContextSummary, ChatMessage, ChatSession, MessageBlock, MessageStatus, Sticker, ToolResultBlock } from '@shared/types'
+import type { ChatContextSummary, ChatMessage, ChatSession, MessageBlock, MessageStatus, RelationshipSnapshot, Sticker, ToolResultBlock } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
 import { IconChevronLeft, IconClock, IconMic, IconSearch, IconSetting, IconToolbox } from '../../components/qixi/Icons'
 import { useChatDisplay } from '../../app/useChatDisplay'
@@ -63,6 +63,13 @@ import { useOnlineStatus } from '../../features/offline/useOnlineStatus'
 import { createStickerFromFile, getSticker, listStickers } from '../../db/stickers'
 import { appendBookmarkLifeEvent } from '../../features/life/api'
 import { usePhotoCollectionSettings } from '../../features/home/usePhotoCollectionSettings'
+import {
+  decideRelationshipRecovery,
+  getRelationship,
+  pauseRelationship,
+  pokeRelationship,
+  requestRelationshipRecovery,
+} from '../../features/chat/relationship'
 
 /** 首屏只拉最近这么多条（§9 风险8：按时间分页，不全量读）；向上翻页也用它 */
 const PAGE_SIZE = 60
@@ -124,6 +131,8 @@ function historyUpTo(messages: ChatMessage[], upToIndex: number, summary: ChatCo
   return projected.concat(messages
     .slice(start, end + 1)
     .filter((message) => message.recalledAt === null)
+    // 关系事件只进入用户可见的 Chat / Life 时间线，不伪装成模型需要回答的文字。
+    .filter((message) => message.metadata?.relationshipEvent === undefined)
     .map((message): LlmChatMessage => ({
       // Mini Terminal 是用户直接调用，不对应上游 LLM 的 tool_call_id；投影成 assistant 摘要，
       // 避免发送一条协议不完整的 role=tool 消息被 OpenAI 兼容端拒绝。
@@ -231,6 +240,7 @@ export function ChatWindowPage() {
   const [callHistoryOpen, setCallHistoryOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [stickers, setStickers] = useState<Sticker[]>([])
+  const [relationship, setRelationship] = useState<RelationshipSnapshot | null>(null)
 
   const abortRef = useRef<AbortController | null>(null)
   /**
@@ -375,6 +385,19 @@ export function ChatWindowPage() {
   useEffect(() => {
     if (incomingCallId !== null && session?.id === sessionId) setCallOpen(true)
   }, [incomingCallId, session?.id, sessionId])
+
+  // 关系状态是服务端事实源；轮询只用于到期自动恢复和 Companion 侧申请，不影响消息分页。
+  useEffect(() => {
+    let cancelled = false
+    const refresh = () => {
+      void getRelationship()
+        .then((snapshot) => { if (!cancelled) setRelationship(snapshot) })
+        .catch((err: unknown) => log.warn('读取关系状态失败', err))
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 30_000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [sessionId])
 
   // 离开页面即中止在跑的流，避免白烧 token
   useEffect(
@@ -965,6 +988,68 @@ export function ChatWindowPage() {
     setToast(text)
   }
 
+  /** 关系事件也进入当前聊天时间线，但作为 system 记录，不会被当作普通上下文或回复。 */
+  async function appendRelationshipTimeline(text: string, event: string): Promise<void> {
+    if (sessionId === undefined) return
+    const message = newMessage({
+      sessionId,
+      role: 'system',
+      text,
+      metadata: { relationshipEvent: event },
+    })
+    await appendMessage(message)
+    setMessages((prev) => [...prev, message])
+    await touchSession(sessionId)
+  }
+
+  async function handleRelationshipPoke(): Promise<void> {
+    if (!online) { showToast('当前离线，暂时不能拍一拍'); return }
+    try {
+      const result = await pokeRelationship()
+      setRelationship(result.snapshot)
+      await appendRelationshipTimeline('你拍了拍小栖。', 'poke')
+      showToast('已拍一拍，不会触发普通回复')
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function handleRelationshipPause(): Promise<void> {
+    if (!online) { showToast('当前离线，暂时不能暂停聊天'); return }
+    try {
+      const snapshot = await pauseRelationship(undefined, 60)
+      setRelationship(snapshot)
+      await appendRelationshipTimeline('你暂时暂停了聊天（最长 60 分钟）。系统通知与恢复申请仍可达。', 'paused')
+      showToast('聊天已暂停，60 分钟内自动恢复')
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function handleRelationshipRecoveryRequest(): Promise<void> {
+    if (!online) { showToast('当前离线，暂时不能申请恢复'); return }
+    try {
+      const result = await requestRelationshipRecovery()
+      setRelationship(result.snapshot)
+      await appendRelationshipTimeline('你申请恢复聊天，等待小栖决定。', 'recovery-requested')
+      showToast('恢复申请已送出')
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function handleRelationshipDecision(id: string, decision: 'approve' | 'deny'): Promise<void> {
+    if (!online) { showToast('当前离线，暂时不能处理申请'); return }
+    try {
+      const snapshot = await decideRelationshipRecovery(id, decision)
+      setRelationship(snapshot)
+      await appendRelationshipTimeline(decision === 'approve' ? '你同意了小栖的恢复申请，聊天已恢复。' : '你拒绝了小栖的恢复申请，暂停仍然有效。', `recovery-${decision}`)
+      showToast(decision === 'approve' ? '聊天已恢复' : '已拒绝恢复申请')
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   /** 把仓储层返回的新记录贴回列表；null 表示那条消息已经不在了，静默忽略 */
   function applyMessage(updated: ChatMessage | null): void {
     if (updated === null) return
@@ -1352,6 +1437,11 @@ export function ChatWindowPage() {
    * 照抄就等于在界面上凭空宣称一个不存在的状态。这里换成三个真实状态。
    */
   const statusText = !online ? '离线' : sending ? '正在回复…' : '在线'
+  const relationshipPaused = relationship?.state.status === 'paused'
+  const pendingCompanionRecovery = relationship?.requests.find((request) => request.status === 'pending' && request.decider === 'user') ?? null
+  const remainingMinutes = relationship?.state.expiresAt === null || relationship?.state.expiresAt === undefined
+    ? null
+    : Math.max(1, Math.ceil((relationship.state.expiresAt - Date.now()) / 60_000))
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-page="chat">
@@ -1431,6 +1521,47 @@ export function ChatWindowPage() {
           <IconSetting size={19} />
         </button>
       </header>
+
+      <section
+        data-testid="relationship-bar"
+        className="mx-3 mt-2 flex shrink-0 flex-wrap items-center gap-2 rounded-2xl px-3 py-2 text-xs"
+        style={{
+          backgroundColor: relationshipPaused ? 'color-mix(in srgb, var(--accent-soft) 76%, var(--bg-card))' : 'var(--bg-subtle)',
+          color: 'var(--text-secondary)',
+        }}
+      >
+        {relationshipPaused ? (
+          <>
+            <span className="flex-1 min-w-[180px]">
+              聊天暂时暂停 · {relationship?.state.pausedBy === 'companion' ? '小栖发起' : '你发起'}
+              {remainingMinutes === null ? '' : ` · 约 ${remainingMinutes} 分钟后自动恢复`}
+            </span>
+            {pendingCompanionRecovery !== null ? (
+              <>
+                <span>小栖申请恢复：</span>
+                <button type="button" className="btn-pill btn-strong" style={{ minHeight: 28, padding: '0 10px', fontSize: 12 }} onClick={() => void handleRelationshipDecision(pendingCompanionRecovery.id, 'approve')}>同意</button>
+                <button type="button" className="btn-pill btn-ghost" style={{ minHeight: 28, padding: '0 10px', fontSize: 12 }} onClick={() => void handleRelationshipDecision(pendingCompanionRecovery.id, 'deny')}>拒绝</button>
+              </>
+            ) : (
+              <button
+                type="button"
+                data-testid="relationship-recovery"
+                className="btn-pill btn-ghost"
+                style={{ minHeight: 28, padding: '0 10px', fontSize: 12 }}
+                onClick={() => void handleRelationshipRecoveryRequest()}
+              >
+                申请恢复
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="flex-1 min-w-[120px]">关系互动</span>
+            <button type="button" data-testid="relationship-poke" className="btn-pill btn-ghost" style={{ minHeight: 28, padding: '0 10px', fontSize: 12 }} onClick={() => void handleRelationshipPoke()}>拍一拍</button>
+            <button type="button" data-testid="relationship-pause" className="btn-pill btn-ghost" style={{ minHeight: 28, padding: '0 10px', fontSize: 12 }} onClick={() => void handleRelationshipPause()}>暂时拒绝回复</button>
+          </>
+        )}
+      </section>
 
       {historyOpen && (
         <ChatHistoryPanel
@@ -1568,6 +1699,7 @@ export function ChatWindowPage() {
             draft={draft}
             onDraftChange={setDraft}
             sending={sending || mediaBusy || callOpen}
+            interactionDisabled={relationshipPaused}
             unrepliedCount={unrepliedCount}
             onSend={(text, options) => void send(text, options)}
             onRequestReply={() => void requestReply()}

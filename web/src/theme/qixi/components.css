@@ -298,6 +298,19 @@ body {
   border-top-left-radius: var(--radius-sm);
   color: var(--text-primary);
 }
+
+/* 关系型互动是时间线事件，不冒充 AI 回复，也不显示消息对象操作。 */
+.msg-row.from-system {
+  justify-content: center;
+}
+.msg-row.from-system .msg-bubble.is-system {
+  max-width: min(92%, 560px);
+  background: var(--bg-subtle);
+  border: 1px dashed var(--border-soft);
+  color: var(--text-secondary);
+  box-shadow: none;
+  font-size: 12px;
+}
 .msg-row.from-user .msg-bubble {
   background: var(--accent-strong);
   color: var(--accent-on-strong);

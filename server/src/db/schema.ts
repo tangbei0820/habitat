@@ -13,6 +13,9 @@ import type {
   RuntimeEventDecider,
   RuntimeEventKind,
   RuntimeEventStatus,
+  RelationshipParty,
+  RelationshipRequestStatus,
+  RelationshipStatus,
   CallDirection,
   CallStatus,
   CallSpeaker,
@@ -432,6 +435,30 @@ export const runtimeEvent = sqliteTable('runtime_event', {
 
 export type RuntimeEventRow = typeof runtimeEvent.$inferSelect
 export type NewRuntimeEventRow = typeof runtimeEvent.$inferInsert
+
+/** 关系暂停的当前快照；固定 id = relationship-main，服务端是唯一事实源。 */
+export const relationshipState = sqliteTable('relationship_state', {
+  id: text('id').primaryKey(),
+  status: text('status', { enum: ['active', 'paused'] }).$type<RelationshipStatus>().notNull(),
+  pausedBy: text('paused_by', { enum: ['user', 'companion'] }).$type<RelationshipParty>(),
+  reason: text('reason'),
+  startedAt: integer('started_at'),
+  expiresAt: integer('expires_at'),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+/** 恢复申请与决定审计；拒绝 / 到期不删除。 */
+export const relationshipRequest = sqliteTable('relationship_request', {
+  id: text('id').primaryKey(),
+  requestedBy: text('requested_by', { enum: ['user', 'companion'] }).$type<RelationshipParty>().notNull(),
+  decider: text('decider', { enum: ['user', 'companion'] }).$type<RelationshipParty>().notNull(),
+  status: text('status', { enum: ['pending', 'approved', 'denied', 'expired'] }).$type<RelationshipRequestStatus>().notNull(),
+  createdAt: integer('created_at').notNull(),
+  decidedAt: integer('decided_at'),
+})
+
+export type RelationshipStateRow = typeof relationshipState.$inferSelect
+export type RelationshipRequestRow = typeof relationshipRequest.$inferSelect
 
 /**
  * 世界书条目（Phase 7A · SPEC §9.4.2）。服务端权威：Runtime 在这里拼上下文。

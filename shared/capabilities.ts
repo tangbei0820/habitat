@@ -23,7 +23,7 @@
  */
 
 /** 能力归属模块 —— 用于 LLM 页面卡片分组与详情页归属 */
-export type CapabilityModule = 'memory' | 'state' | 'diary' | 'board' | 'tools' | 'web'
+export type CapabilityModule = 'memory' | 'state' | 'diary' | 'board' | 'relationship' | 'tools' | 'web'
 
 /**
  * 自主级别：回答「这项能力 AI 自己能不能调」。
@@ -59,6 +59,11 @@ export type CapabilityId =
   /* —— 共享留言板 —— */
   | 'messageboard.write'
   | 'messageboard.update'
+  /* —— 关系互动（拍一拍 / 暂停 / 恢复申请） —— */
+  | 'relationship.poke'
+  | 'relationship.pause'
+  | 'relationship.request_recovery'
+  | 'relationship.decide_recovery'
   /* —— 聊天表情包（图库来自本轮前端，不把图片原文塞进模型上下文） —— */
   | 'sticker.search'
   | 'sticker.send'
@@ -395,6 +400,73 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
           content: { type: 'string', description: '修改后的留言内容，不超过 500 字' },
         },
         required: ['id', 'content'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'relationship.poke',
+    module: 'relationship',
+    label: '拍一拍',
+    summary: '发起一次不要求回复的轻量互动',
+    modelHint: '如果只是想轻轻提醒北北你在这里，可以拍一拍；它不会生成普通回复，也不要每轮都调用。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'relationship_poke',
+      description: '向北北发起一次轻量的拍一拍关系事件。不产生普通聊天消息，也不要求对方回复；不要为了凑动作频繁调用。',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    id: 'relationship.pause',
+    module: 'relationship',
+    label: '暂时暂停聊天',
+    summary: '暂时拒绝普通回复与主动打扰',
+    modelHint: '当你确实需要安静一会儿时，可以暂停聊天；最多 60 分钟，系统通知与恢复申请仍然可达。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'relationship_pause',
+      description: '暂时暂停普通聊天、主动消息和通话邀请。最多 60 分钟，到期自动恢复；只在确实需要安静时调用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          reason: { type: 'string', description: '可选原因，不超过 200 字' },
+          durationMinutes: { type: 'number', description: '暂停分钟数，1 到 60，省略则 60' },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'relationship.request_recovery',
+    module: 'relationship',
+    label: '申请恢复聊天',
+    summary: '请求结束当前暂停状态',
+    modelHint: '暂停期间可以申请恢复，但需要由北北决定是否同意；不要重复提交相同的待处理申请。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'relationship_request_recovery',
+      description: '申请恢复普通聊天。申请会交给北北决定，同一方已有待处理申请时不会重复创建。',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    id: 'relationship.decide_recovery',
+    module: 'relationship',
+    label: '决定恢复申请',
+    summary: '同意或拒绝北北发起的恢复申请',
+    modelHint: '北北申请恢复时，由你决定是否同意；拒绝不会删除申请，决定会被记录。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'relationship_decide_recovery',
+      description: '决定一条北北发起的聊天恢复申请。只能处理交给你决定、且仍处于待处理状态的申请。',
+      parameters: {
+        type: 'object',
+        properties: {
+          requestId: { type: 'string', description: '恢复申请 id' },
+          decision: { type: 'string', enum: ['approve', 'deny'], description: 'approve=同意恢复，deny=拒绝恢复' },
+        },
+        required: ['requestId', 'decision'],
         additionalProperties: false,
       },
     },

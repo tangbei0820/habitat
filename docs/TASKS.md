@@ -3509,3 +3509,17 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、`npm run build`、Provider 验收脚本语法检查与 `git diff --check` 通过；本批未启动浏览器 CDP，未冒充完整真机回归通过。
 
 **明确延期**：Provider Profile 密钥加密、Codex app-server 多线程恢复 / 取消、模型能力自动路由与 Header 密钥轮换仍留在后续 Provider 阶段。
+
+### T-128 · 2026-09-28 · P0 · Chat 关系互动收口 —— **完成（本地，未部署）**
+
+**范围**：按 `PRODUCT_SPEC.md` §2.6 完成拍一拍、双方暂时拒绝回复 / 暂停、双向恢复申请与 60 分钟自动解除；不进入会话设置深化、分组或下一 P0/P1 模块。
+
+| 交付 | 说明 |
+| --- | --- |
+| 事实源 | 服务端新增 `relationship_state` 与 `relationship_request`；固定主状态、最长 60 分钟、重复 pending 申请复用，拒绝 / 同意 / 到期不物理删除。 |
+| Chat 交互 | 聊天页关系状态条提供拍一拍、暂停、申请恢复、用户同意 / 拒绝；用户侧关系事件作为 `role=system` 时间线卡展示，并从模型上下文排除。 |
+| Runtime | Capability Registry 与执行层新增四项关系工具；Companion 可以自主拍一拍、暂停、申请恢复或决定北北的恢复申请，工具结果会继续回灌下一轮模型。 |
+| 抑制边界 | 普通聊天、Wake 主动消息、通话邀请在暂停期间由服务端统一阻断；系统通知、恢复请求与自动恢复继续可达；恢复不补发被抑制内容。 |
+| 验收 | `probe:relationship` **15/15**（含四项 Companion 工具真实执行）；两端 `npm run typecheck`、`git diff --check` 通过；未启动浏览器 CDP，未冒充完整浏览器回归通过。 |
+
+**明确延期**：关系事件的跨设备实时推送、独立关系历史筛选页与更细的“拒绝回复”理由编辑留待后续通知 / Chat polish；本批不部署 VPS。

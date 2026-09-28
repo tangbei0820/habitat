@@ -44,6 +44,17 @@ interface BaseObject {
 `sourceId` / `sessionId` 是**跨模块引用的骨架**（PRODUCT_SPEC §4）。收藏、作品、相册要「跳回原处」全靠它 ——
 **任何新实体都不要另发明一套来源字段**，否则跨模块联动会长出四套互不认识的引用方式。
 
+### 2.1 RelationshipState / RelationshipRecoveryRequest（服务端 SQLite）
+
+关系暂停不修改或删除 `ChatMessage`，服务端 SQLite 是唯一事实源：
+
+| 表 | 关键字段 | 说明 |
+|---|---|---|
+| `relationship_state` | 固定 `id='relationship-main'`、`status`、`paused_by`、`reason`、`started_at`、`expires_at`、`updated_at` | 当前关系快照；暂停时 `expires_at` 最多距开始 60 分钟，读取时惰性自动恢复 |
+| `relationship_request` | `id`、`requested_by`、`decider`、`status`、`created_at`、`decided_at` | 恢复申请审计；`pending / approved / denied / expired` 终态均保留，重复 pending 申请复用原记录 |
+
+关系事件（拍一拍、暂停、申请、决定、自动恢复）追加到 `event_log`，因此可以被 Life 时间线追溯；通知收件箱只保存系统 / 主动提示，不承担状态读取。前端聊天时间线中的用户侧关系卡是本地 `role='system'` 消息，带 `metadata.relationshipEvent`，历史组装时排除，避免关系事件伪装成模型需要回答的文本。
+
 ## 3. Chat
 
 ### 3.1 ChatSession（本地表 `sessions`）

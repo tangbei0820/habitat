@@ -365,6 +365,32 @@ if (!runtimeEventColumns.some((col) => col.name === 'expires_at')) {
   sqlite.exec('ALTER TABLE runtime_event ADD COLUMN expires_at INTEGER')
 }
 
+// 关系型互动（PRODUCT_SPEC §2.6）：暂停状态与恢复申请独立于 Runtime Event，
+// 这样“谁可以决定恢复”不会和日记 / 工具确认混成一张有不同载荷语义的表。
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS relationship_state (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('active', 'paused')),
+  paused_by TEXT CHECK (paused_by IN ('user', 'companion')),
+  reason TEXT,
+  started_at INTEGER,
+  expires_at INTEGER,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS relationship_request (
+  id TEXT PRIMARY KEY,
+  requested_by TEXT NOT NULL CHECK (requested_by IN ('user', 'companion')),
+  decider TEXT NOT NULL CHECK (decider IN ('user', 'companion')),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied', 'expired')),
+  created_at INTEGER NOT NULL,
+  decided_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_relationship_request_status ON relationship_request (status, created_at DESC);
+`)
+sqlite.exec(`INSERT INTO relationship_state (id, status, paused_by, reason, started_at, expires_at, updated_at)
+  VALUES ('relationship-main', 'active', NULL, NULL, NULL, NULL, ${Date.now()})
+  ON CONFLICT(id) DO NOTHING`)
+
 export const db = drizzle(sqlite, { schema })
 
 export function closeDb(): void {
