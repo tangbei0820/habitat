@@ -1,13 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import type { DiaryFragmentView, DiaryView, RuntimeEvent } from '@shared/types'
 import { listEvents, requestDiaryAccess } from '../../db/events'
-import { createDiary, deleteDiary, listDiaries, updateDiary } from '../../db/home'
-
-function todayKey(): string {
-  const now = new Date()
-  const pad = (value: number): string => String(value).padStart(2, '0')
-  return `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-}
+import { listDiaries } from '../../db/home'
 
 function fragmentRequestKey(diaryId: string, fragmentId: string): string {
   return `${diaryId}:${fragmentId}`
@@ -16,12 +10,9 @@ function fragmentRequestKey(diaryId: string, fragmentId: string): string {
 /**
  * 日记（SPEC §3.4）。
  *
- * 这一页上**两种日记并存**：
- * - 自己写的（`author='user'`）—— 可编辑、可删除，正文一直都在
- * - 小栖写的（`author='companion'`）—— 只给封面；它没开放时连正文都不下发
- *
- * 所以「编辑 / 删除」按 `item.editable` 显示，而不是「这一页的日记都能改」——
- * 后者会把 AI 的私密日记当成用户的普通内容（SPEC §6.2 明确区分这两者）。
+ * 这一页只呈现小栖自己的日记空间：用户能看到封面与已开放的内容，
+ * 但不能在这里创建、编辑或删除 AI 日记。服务端仍保留用户个人日记 API，
+ * 以兼容历史数据与导入备份；它们不会混入这个 AI 私密空间。
  *
  * 「请求查看」（Phase 6.5 P1）：点了只**挂一条待小栖决定的请求**，不直接解锁；
  * 片段级请求（T-069）同样只挂请求，不替它开放正文。
@@ -30,12 +21,7 @@ function fragmentRequestKey(diaryId: string, fragmentId: string): string {
  */
 export function DiaryModule() {
   const [items, setItems] = useState<DiaryView[]>([])
-  const [title, setTitle] = useState('')
-  const [content, setContent] = useState('')
-  const [entryDate, setEntryDate] = useState(todayKey)
   const [search, setSearch] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [requestedIds, setRequestedIds] = useState<ReadonlySet<string>>(new Set())
   const [requestedFragmentIds, setRequestedFragmentIds] = useState<ReadonlySet<string>>(new Set())
   const [requestHistory, setRequestHistory] = useState<RuntimeEvent[]>([])
@@ -49,7 +35,8 @@ export function DiaryModule() {
       listEvents({ decider: 'companion', status: 'pending' }),
       listEvents({ decider: 'companion', limit: 100 }),
     ])
-    setItems(diaries)
+    // 个人日记仍由服务端保留，但不应与小栖的私密日记混在同一个入口里。
+    setItems(diaries.filter((item) => item.author === 'companion'))
     setRequestedIds(new Set(pending.map((item) => item.targetId).filter((id): id is string => id !== null)))
     setRequestedFragmentIds(new Set(pending.flatMap((item) =>
       item.targetId !== null && typeof item.targetFragmentId === 'string'
@@ -68,52 +55,6 @@ export function DiaryModule() {
     }, 180)
     return () => window.clearTimeout(timer)
   }, [search])
-
-  function resetForm(): void {
-    setTitle('')
-    setContent('')
-    setEntryDate(todayKey())
-    setEditingId(null)
-  }
-
-  async function submit(event: FormEvent): Promise<void> {
-    event.preventDefault()
-    try {
-      if (editingId === null) await createDiary(title, content, entryDate)
-      else await updateDiary(editingId, title, content, entryDate)
-      resetForm()
-      setError(null)
-      await refresh()
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  function startEditing(item: DiaryView): void {
-    setTitle(item.title)
-    // 能进编辑的必然是自己的日记（按钮只在 editable 时渲染），正文一定有；`?? ''` 只是给类型收口
-    setContent(item.content ?? '')
-    setEntryDate(item.entryDate)
-    setEditingId(item.id)
-    setError(null)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  async function remove(id: string): Promise<void> {
-    if (deletingId !== id) {
-      setDeletingId(id)
-      return
-    }
-    try {
-      await deleteDiary(id)
-      if (editingId === id) resetForm()
-      setDeletingId(null)
-      setError(null)
-      await refresh()
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
 
   /**
    * 请求查看某篇小栖的日记。
@@ -144,30 +85,14 @@ export function DiaryModule() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold">小栖的日记</p>
-            <p className="mt-1 text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>这是它自己的空间。正文默认上锁，你可以按篇或按段敲门，由小栖决定是否开放。</p>
+            <p className="mt-1 text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>这是它自己的空间。正文默认上锁，你可以按篇或按段敲门，由小栖决定是否开放。这里不提供用户代写或修改入口。</p>
           </div>
           <span className="shrink-0 rounded-full px-2 py-1 text-xs" style={{ background: 'var(--bg-base)', color: 'var(--text-secondary)' }}>AI 私密</span>
         </div>
       </div>
-      <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">{editingId === null ? '我的日记' : '编辑日记 · 我的'}</h2>
-            <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>这部分是你的私人记录，不会冒充小栖的日记。</p>
-          </div>
-          {editingId !== null && <button type="button" onClick={resetForm} className="text-xs" style={{ color: 'var(--text-secondary)' }}>取消编辑</button>}
-        </div>
-        <label htmlFor="diary-date" className="text-xs" style={{ color: 'var(--text-secondary)' }}>日期</label>
-        <input id="diary-date" type="date" value={entryDate} onChange={(event) => setEntryDate(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
-        <label htmlFor="diary-title" className="sr-only">日记标题</label>
-        <input id="diary-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} placeholder="今天发生了什么？" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
-        <label htmlFor="diary-content" className="sr-only">日记正文</label>
-        <textarea id="diary-content" value={content} onChange={(event) => setContent(event.target.value)} maxLength={10000} rows={7} placeholder="慢慢写，不着急……" className="w-full resize-y rounded-lg border bg-transparent p-3 text-sm leading-6" style={{ borderColor: 'var(--border-soft)' }} />
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{content.length}/10000</span>
-          <button type="submit" disabled={title.trim() === '' || content.trim() === '' || entryDate === ''} className="rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>{editingId === null ? '保存日记' : '保存修改'}</button>
-        </div>
-      </form>
+      <div className="rounded-lg border px-4 py-3" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }} data-testid="diary-ai-only">
+        <p className="text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>小栖会在自主生活、唤醒或聊天后的合适时刻写下日记。你只能申请查看指定篇目或片段，是否开放由它自己决定。</p>
+      </div>
 
       {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
       <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
@@ -212,7 +137,7 @@ export function DiaryModule() {
             return <li key={item.id} data-testid="diary-item" data-author={item.author} data-readable={item.readable ? 'true' : 'false'} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
               <div className="flex items-center justify-between gap-3">
                 <time className="text-xs" style={{ color: 'var(--text-secondary)' }}>{item.entryDate}</time>
-                <span className="text-xs" style={{ color: item.author === 'companion' ? 'var(--accent-strong)' : 'var(--text-secondary)' }}>{item.author === 'companion' ? '小栖的日记' : '我的日记'}</span>
+                <span className="text-xs" style={{ color: 'var(--accent-strong)' }}>小栖的日记</span>
               </div>
               <h3 className="mt-1 font-medium">{item.title}</h3>
               {item.readable ? (
@@ -240,12 +165,6 @@ export function DiaryModule() {
                         请求查看
                       </button>
                     ))}
-                </div>
-              )}
-              {item.editable && (
-                <div className="mt-3 flex justify-end gap-3 text-xs">
-                  <button type="button" onClick={() => startEditing(item)} style={{ color: 'var(--accent-strong)' }}>编辑</button>
-                  <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deletingId === item.id ? '确认删除？' : '删除'}</button>
                 </div>
               )}
             </li>

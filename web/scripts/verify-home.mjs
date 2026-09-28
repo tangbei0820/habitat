@@ -213,20 +213,9 @@ await sleep(500)
 await waitFor(`document.body.innerText.includes('未来的约定')`, '倒数日刷新保留')
 check('倒数日新增并跨刷新保留', true)
 
-await navigate('/home/diary', '我的日记')
-await setValue('#diary-title', '施工日记')
-await setValue('#diary-content', '今天把共同生活又往前推进了一点。')
-await clickButton('保存日记')
-await waitFor(`document.body.innerText.includes('施工日记') && document.body.innerText.includes('今天把共同生活又往前推进了一点。')`, '日记落地')
-await clickButton('编辑')
-await waitFor(`document.body.innerText.includes('编辑日记')`, '进入日记编辑')
-await setValue('#diary-content', '今天把共同生活又往前推进了一大步。')
-await clickButton('保存修改')
-await waitFor(`document.body.innerText.includes('一大步')`, '日记修改落地')
-await send('Page.reload')
-await sleep(500)
-await waitFor(`document.body.innerText.includes('一大步')`, '日记修改刷新保留')
-check('日记新增、编辑并跨刷新保留', true)
+await navigate('/home/diary', '小栖的日记')
+await waitFor(`document.querySelector('[data-testid="diary-ai-only"]') !== null`, 'AI 私密日记入口')
+check('日记页不再提供普通用户 CRUD 表单', (await evaluate(`document.querySelector('#diary-title') === null && document.querySelector('#diary-content') === null && !document.body.innerText.includes('保存日记')`)) === true)
 
 // AI 日记的片段级开放：只把被小栖明确打开的段落下发，锁住的段落仍只显示占位。
 // 使用固定 id 保持探针幂等，避免每轮浏览器验收都在服务端堆一篇不可删除的 AI 日记。

@@ -812,7 +812,7 @@ export interface MessagePhotoCaptureOptions {
  */
 export async function createMessagePhotos(message: ChatMessage, options: MessagePhotoCaptureOptions = {}): Promise<MessagePhotoCaptureResult> {
   const allowedOrders = options.blockOrders === undefined ? null : new Set(options.blockOrders)
-  const images = message.blocks.filter((block) => block.kind === 'image' && (allowedOrders === null || allowedOrders.has(block.order)))
+  const images = message.blocks.filter((block): block is Extract<ChatMessage['blocks'][number], { kind: 'image' }> => block.kind === 'image' && (allowedOrders === null || allowedOrders.has(block.order)))
   if (images.length === 0) {
     if (options.throwOnAllSkipped === false) return { added: [], skipped: 0 }
     throw new Error('这条消息里没有可加入相册的图片')
