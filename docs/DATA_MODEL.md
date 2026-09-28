@@ -175,7 +175,7 @@ interface SessionGroup extends BaseObject {
 |---|---|---|
 | `WishlistItem` | `wishlist` | `title`, `status: 'open' \| 'done' \| 'paused' \| 'abandoned'`, `completedAt`, `author`, `targetDate`, `statusChangedAt`, `statusReason`, `progress[]` |
 | `CountdownDay` | `countdowns` | `title`, `targetDate`（本地 `YYYY-MM-DD`）, `category`, `repeat`, `reminder` |
-| `Bookmark` | `bookmarks` | `targetType`, `targetId`, `title`, `note`, `categoryId` |
+| `Bookmark` | `bookmarks` | `targetType`, `targetId`, `title`, `note`, `categoryId`, `tags[]` |
 | `Artwork` | `artworks` | `title`, `category`, `description`, `externalUrl` |
 | `Photo` | `photos` | `title`, `caption`, `imageDataUrl`, `mimeType`, `sizeBytes`, `takenAt`, `collectionId` |
 | `ReadingNote` | `readingNotes` | `bookTitle`, `author`, `status`, `note`；TXT 共读书籍的 `BaseObject.metadata.reader` 保存正文、当前段落、书签、阅读秒数、阅读外观（字体 / 主题）、文本锚点批注与生词（不新增平行书库表） |
@@ -252,6 +252,8 @@ interface SessionGroup extends BaseObject {
 | v13 | 130 | 新增 `studyCards`（AI 伴学卡片与本地复习状态，T-063）；生成走服务端 `/api/study/cards/generate`，纯新增表，不需要 `upgrade()` 回调 |
 | v14 | 140 | 新增 `stickers`（本地表情图库，T-077）；消息块保存发送时快照，纯新增表，不需要 `upgrade()` 回调 |
 | v15 | 150 | `CountdownDay` 补 `category` / `repeat` / `reminder`（T-100）；保留原日期索引，upgrade 为老记录补 `other` / `none` / `none` |
+| v16 | 160 | `WishlistItem` 补作者、目标日期、暂停 / 放弃状态、状态原因与嵌套进展（T-102）；upgrade 为老记录补默认值 |
+| v17 | 170 | `Bookmark` 补 `tags[]` 多维标签（T-104）；upgrade 为老收藏补空数组，不新增索引 |
 
 Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画版本（`verify-chat.mjs`）。
 **每次升版都要在 `db.ts` 的版本注释里写清「为什么」**；只写「加了张表」等于没写。
@@ -296,6 +298,7 @@ Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画
 | v12 | + 本地表情图库 `stickers`；旧版导入时按空处理，历史消息不依赖图库条目 |
 | v13 | 倒数日补分类、每年重复与提醒字段；旧版导入时为缺失字段补默认值 |
 | v14 | 愿望清单补作者、目标日期、暂停 / 放弃状态、状态原因与嵌套进展；旧版导入时补 `author=user`、空目标日 / 原因 / 进展 |
+| v15 | 收藏补 `tags[]` 多维标签；旧版导入时补空数组，标签不改变分类的单归属语义 |
 > ⚠️ v7 导入时**必须按 `kind` 去重**：`&kind` 是唯一索引，手改过的备份（例如两条 `board`）会让
 > `bulkAdd` 抛 `ConstraintError`，导致**整份备份一个字都导不进去**。保留 `createdAt` 最早的那条，
 > 与「先上主屏的在前」的排序语义一致。

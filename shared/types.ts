@@ -471,6 +471,8 @@ export interface Bookmark extends BaseObject {
   note: string | null
   /** 所属分类；`null` = 未分类。指向已不存在的分类时按未分类处理（SPEC §3.5.4 兜底区） */
   categoryId: string | null
+  /** 多维度标记；与 categoryId 的单归属收纳语义分开。 */
+  tags: string[]
 }
 
 export type ArtworkCategory = 'writing' | 'visual' | 'audio' | 'other'

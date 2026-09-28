@@ -109,12 +109,13 @@ export function appendCountdownLifeEvent(event: CountdownLifeEvent): Promise<voi
 }
 
 export type BookmarkLifeEvent = {
-  eventType: 'bookmark.created' | 'bookmark.deleted' | 'bookmark.category.updated'
+  eventType: 'bookmark.created' | 'bookmark.deleted' | 'bookmark.category.updated' | 'bookmark.tags.updated'
   bookmarkId: string
   targetType: string
   title: string
   categoryId?: string | null
   categoryName?: string | null
+  tags?: string[]
 }
 
 /** 收藏操作只投影对象摘要与来源类型，不复制收藏正文。 */

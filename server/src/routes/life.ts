@@ -81,6 +81,7 @@ const BOOKMARK_EVENT_TYPES = new Set([
   'bookmark.created',
   'bookmark.deleted',
   'bookmark.category.updated',
+  'bookmark.tags.updated',
 ])
 
 const WISHLIST_EVENT_TYPES = new Set([
@@ -256,6 +257,8 @@ function bookmarkEventBody(value: unknown): {
   const categoryId = body.categoryId === undefined || body.categoryId === null ? null : boundedText(body, 'categoryId', 160)
   const categoryName = body.categoryName === undefined || body.categoryName === null ? null : boundedText(body, 'categoryName', 120)
   if (eventType === 'bookmark.category.updated' && body.categoryId === undefined && body.categoryName === undefined) throw new RequestError(ErrorCodes.BadRequest, '收藏分类事件需要分类信息')
+  const tags = body.tags
+  if (tags !== undefined && (!Array.isArray(tags) || tags.length > 12 || tags.some((tag) => typeof tag !== 'string' || tag.trim() === '' || tag.trim().length > 20))) throw new RequestError(ErrorCodes.BadRequest, '收藏标签不合法')
   return {
     eventType,
     refId: bookmarkId,
@@ -263,6 +266,7 @@ function bookmarkEventBody(value: unknown): {
       source: 'bookmark', targetType, title,
       ...(hasCategoryId ? { categoryId } : {}),
       ...(categoryName === null ? {} : { categoryName }),
+      ...(tags === undefined ? {} : { tags: [...new Set((tags as string[]).map((tag) => tag.trim()))] }),
     },
   }
 }

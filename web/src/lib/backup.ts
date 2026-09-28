@@ -47,7 +47,7 @@ export const BACKUP_FORMAT = 'habitat-backup'
  * ⚠️ 但**旧备份（v2–v8）里带着它们**，导入时不能丢：走 `legacyUploads` 转存到服务端，
  * 详见 `importAll` 与 `db/legacy-upload.ts`。
  */
-export const BACKUP_VERSION = 14
+export const BACKUP_VERSION = 15
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -309,6 +309,7 @@ function looksLikeBookmark(value: unknown): value is Bookmark {
   ) return false
   const targetTypes = ['external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'music-track', 'study-record']
   if (!targetTypes.includes(value.targetType)) return false
+  if (value.tags !== undefined && (!Array.isArray(value.tags) || value.tags.length > 12 || value.tags.some((tag) => typeof tag !== 'string' || tag.trim() === '' || tag.trim().length > 20))) return false
   if (value.targetType !== 'external-link') return true
   try {
     const url = new URL(value.targetId)
@@ -536,6 +537,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     .map((bookmark) => ({
       ...bookmark,
       categoryId: typeof bookmark.categoryId === 'string' ? bookmark.categoryId : null,
+      tags: Array.isArray(bookmark.tags) ? [...new Set(bookmark.tags.map((tag) => tag.trim()))] : [],
     }))
   if (legacyDiaries.length !== diariesRaw.length || bookmarks.length !== bookmarksRaw.length) {
     throw new Error('备份内容损坏：存在无法识别的日记或收藏')

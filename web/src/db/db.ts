@@ -297,6 +297,12 @@ export class HabitatDb extends Dexie {
         if (item.progress === undefined) item.progress = []
         if (item.status !== 'done' && item.completedAt !== null) item.completedAt = null
       }))
+    // v17：收藏增加多维标签；标签不是索引，旧收藏统一补空数组。
+    this.version(17)
+      .stores({ bookmarks: 'id, targetType, targetId, createdAt, categoryId, &[targetType+targetId]' })
+      .upgrade((tx) => tx.table('bookmarks').toCollection().modify((bookmark: Bookmark) => {
+        if (bookmark.tags === undefined) bookmark.tags = []
+      }))
     // 刻意没有 .upgrade()：搬迁不在版本变化时做，而在每次启动时做（见上方注释与 legacy-upload.ts）。
     // 也不在这里声明 diaries / moments —— 声明了也删不掉它们，省掉能少一份「以为删了」的误解。
   }

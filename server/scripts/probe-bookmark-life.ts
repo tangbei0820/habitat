@@ -30,17 +30,21 @@ const created = await request('/api/life/events/bookmark', { method: 'POST', hea
 check('收藏创建事实可写入', created.status === 201)
 const moved = await request('/api/life/events/bookmark', { method: 'POST', headers, body: JSON.stringify({ eventType: 'bookmark.category.updated', ...common, categoryId: 'probe-category', categoryName: '重要' }) })
 check('收藏分类变化事实可写入', moved.status === 201)
+const tagged = await request('/api/life/events/bookmark', { method: 'POST', headers, body: JSON.stringify({ eventType: 'bookmark.tags.updated', ...common, tags: ['重要', '回看'] }) })
+check('收藏标签变化事实可写入', tagged.status === 201)
 const removed = await request('/api/life/events/bookmark', { method: 'POST', headers, body: JSON.stringify({ eventType: 'bookmark.deleted', ...common }) })
 check('收藏删除事实可写入', removed.status === 201)
 
 const day = await request(`/api/life/day/${today}`)
 const timeline = record(day.body).timeline as Array<Record<string, unknown>> | undefined
-check('日期时间线包含收藏操作且没有对象直出', day.status === 200 && timeline?.filter((item) => typeof item.eventType === 'string' && item.eventType.startsWith('bookmark.')).length === 3 && timeline?.every((item) => typeof item.title === 'string' && !item.title.includes('[object Object]')) === true)
+check('日期时间线包含收藏操作且没有对象直出', day.status === 200 && timeline?.filter((item) => typeof item.eventType === 'string' && item.eventType.startsWith('bookmark.')).length === 4 && timeline?.some((item) => item.eventType === 'bookmark.tags.updated' && String(item.detail).includes('#重要')) === true && timeline?.every((item) => typeof item.title === 'string' && !item.title.includes('[object Object]')) === true)
 const monthView = await request(`/api/life/month?month=${month}`)
 const daySummary = (record(monthView.body).days as Array<Record<string, unknown>> | undefined)?.find((item) => item.dayKey === today)
-check('月历汇总收藏活动次数', monthView.status === 200 && daySummary?.bookmarkActivityCount === 3)
+check('月历汇总收藏活动次数', monthView.status === 200 && daySummary?.bookmarkActivityCount === 4)
 const bad = await request('/api/life/events/bookmark', { method: 'POST', headers, body: JSON.stringify({ eventType: 'bookmark.created', ...common, targetType: 'unknown' }) })
 check('拒绝非法收藏对象类型', bad.status === 400)
+const badTags = await request('/api/life/events/bookmark', { method: 'POST', headers, body: JSON.stringify({ eventType: 'bookmark.tags.updated', ...common, tags: Array.from({ length: 13 }, (_, index) => `tag-${index}`) }) })
+check('拒绝超出数量的收藏标签', badTags.status === 400)
 
 console.log(`\nBookmark → Life probe: ${passed} passed, ${failed} failed`)
 if (failed > 0) process.exitCode = 1

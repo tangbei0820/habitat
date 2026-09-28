@@ -17,6 +17,8 @@ import {
   deleteBookmarkCategory,
   listBookmarkCategories,
   listBookmarks,
+  updateBookmarkTags,
+  normalizeBookmarkTags,
   renameBookmarkCategory,
   setBookmarkCategory,
 } from '../../db/home'
@@ -49,6 +51,10 @@ export function BookmarksModule() {
   const [href, setHref] = useState('')
   const [note, setNote] = useState('')
   const [search, setSearch] = useState('')
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
+  const [tagDrafts, setTagDrafts] = useState<Record<string, string>>({})
+  const [editingTags, setEditingTags] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
   const [sheet, setSheet] = useState<SheetTarget | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -145,21 +151,39 @@ export function BookmarksModule() {
     showToast(moved === 0 ? '已删除分类' : `已删除分类，${moved} 条回到未分类`)
   }
 
+  async function saveTags(bookmark: Bookmark): Promise<void> {
+    try {
+      const tags = normalizeBookmarkTags(tagDrafts[bookmark.id] ?? bookmark.tags.join(', '))
+      const updated = await updateBookmarkTags(bookmark.id, tags)
+      if (updated !== null) emitBookmarkLifeEvent({ eventType: 'bookmark.tags.updated', bookmarkId: updated.id, targetType: updated.targetType, title: updated.title, tags: updated.tags })
+      setEditingTags(null)
+      await refresh()
+      showToast(tags.length === 0 ? '已清空标签' : `已保存 ${tags.length} 个标签`)
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
+  }
+
   const counts = useMemo(
     () => countByCategory(items, categories, (item) => item.categoryId),
     [items, categories],
   )
+  const allTags = useMemo(() => [...new Set(items.flatMap((item) => item.tags))].sort((a, b) => a.localeCompare(b)), [items])
+  useEffect(() => { if (selectedTag !== null && !allTags.includes(selectedTag)) setSelectedTag(null) }, [allTags, selectedTag])
   const visible = useMemo(
     () => filterByCategory(items, selection, categories, (item) => item.categoryId).filter((item) => {
       const query = search.trim().toLocaleLowerCase()
-      if (query === '') return true
+      if (selectedTag !== null && !item.tags.includes(selectedTag)) return false
       const sourceMetadata = Object.entries(item.metadata ?? {})
         .filter(([key]) => key.startsWith('source'))
         .map(([, value]) => typeof value === 'string' || typeof value === 'number' ? String(value) : '')
-      return [item.title, item.note ?? '', item.targetId, ...sourceMetadata].join('\n').toLocaleLowerCase().includes(query)
+      return query === '' || [item.title, item.note ?? '', item.targetId, ...item.tags, ...sourceMetadata].join('\n').toLocaleLowerCase().includes(query)
     }),
-    [items, selection, categories, search],
+    [items, selection, categories, search, selectedTag],
   )
+  const pageSize = 20
+  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize))
+  useEffect(() => { setPage((current) => Math.min(current, pageCount)) }, [pageCount])
+  useEffect(() => { setPage(1) }, [selection, search, selectedTag])
+  const paged = visible.slice((page - 1) * pageSize, page * pageSize)
 
   const sheetActions = useMemo<SheetAction[] | null>(() => {
     if (sheet === null) return null
@@ -179,6 +203,7 @@ export function BookmarksModule() {
     return [
       { id: 'move', label: '移入分类' },
       ...(bookmark.categoryId === null ? [] : [{ id: 'unassign', label: '移出分类' }]),
+      { id: 'tags', label: '编辑标签' },
       { id: 'delete', label: '删除收藏', danger: true },
     ]
   }, [sheet, items, categories])
@@ -208,6 +233,10 @@ export function BookmarksModule() {
       }
       if (actionId === 'move') setSheet({ kind: 'move', id: target.id })
       else if (actionId === 'unassign') await applyMove(target.id, null)
+      else if (actionId === 'tags') {
+        const bookmark = items.find((item) => item.id === target.id)
+        if (bookmark !== undefined) { setTagDrafts((current) => ({ ...current, [bookmark.id]: bookmark.tags.join(', ') })); setEditingTags(bookmark.id) }
+      }
       else if (actionId === 'delete') askRemove(target.id)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
@@ -259,6 +288,8 @@ export function BookmarksModule() {
         {search !== '' && <button type="button" onClick={() => setSearch('')} className="text-xs" style={{ color: 'var(--text-secondary)' }}>清除</button>}
       </div>
 
+      {allTags.length > 0 && <div className="flex items-center gap-2 overflow-x-auto pb-1" data-testid="bookmark-tag-filter"><button type="button" data-testid="bookmark-tag-all" onClick={() => setSelectedTag(null)} className="shrink-0 rounded-full border px-3 py-1 text-xs" style={selectedTag === null ? { backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' } : { borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>全部标签</button>{allTags.map((tag) => <button type="button" key={tag} data-testid={`bookmark-tag-${tag}`} onClick={() => setSelectedTag(tag)} className="shrink-0 rounded-full border px-3 py-1 text-xs" style={selectedTag === tag ? { backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' } : { borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>#{tag}</button>)}</div>}
+
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在整理收藏……</p>
       ) : items.length === 0 ? (
@@ -266,8 +297,9 @@ export function BookmarksModule() {
       ) : filteredOut ? (
         <p data-testid="bookmark-filter-empty" className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>{search === '' ? '这个筛选下还没有收藏。' : '没有找到匹配的收藏。'}</p>
       ) : (
+        <>
         <ul className="space-y-2">
-          {visible.map((item) => (
+          {paged.map((item) => (
             <li key={item.id} data-testid={`bookmark-row-${item.id}`} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
               {item.targetType === 'external-link' ? (
                 <a href={item.targetId} target="_blank" rel="noreferrer" className="font-medium underline decoration-1 underline-offset-4" style={{ color: 'var(--accent-strong)' }}>{item.title}</a>
@@ -276,6 +308,7 @@ export function BookmarksModule() {
                 <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>留言原文快照</p>
               ) : <p className="mt-1 break-all text-xs" style={{ color: 'var(--text-secondary)' }}>{item.targetId}</p>}
               {item.note !== null && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{item.note}</p>}
+              {editingTags === item.id ? <div className="mt-2 flex gap-2"><input data-testid={`bookmark-tags-input-${item.id}`} aria-label="编辑标签" value={tagDrafts[item.id] ?? ''} onChange={(event) => setTagDrafts((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="用逗号分隔标签" className="min-w-0 flex-1 rounded border bg-transparent px-2 py-1 text-xs"/><button type="button" data-testid={`bookmark-tags-save-${item.id}`} className="rounded border px-2 py-1 text-xs" onClick={() => void saveTags(item)}>保存</button><button type="button" className="text-xs" onClick={() => setEditingTags(null)}>取消</button></div> : item.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{item.tags.map((tag) => <span key={tag} className="rounded-full px-2 py-0.5 text-xs" style={{ backgroundColor: 'var(--bg-subtle)', color: 'var(--text-secondary)' }}>#{tag}</span>)}</div>}
               <ContentSourceLink item={item} />
               <div className="mt-3 flex justify-end">
                 {confirmingId === item.id ? (
@@ -304,6 +337,8 @@ export function BookmarksModule() {
             </li>
           ))}
         </ul>
+        {pageCount > 1 && <div className="flex items-center justify-center gap-3 text-xs" data-testid="bookmark-pagination"><button type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} className="rounded border px-3 py-1 disabled:opacity-40">上一页</button><span style={{ color: 'var(--text-secondary)' }}>{page} / {pageCount}</span><button type="button" disabled={page >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} className="rounded border px-3 py-1 disabled:opacity-40">下一页</button></div>}
+        </>
       )}
 
       {toast !== null && (

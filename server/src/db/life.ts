@@ -262,9 +262,11 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
     }
     if (row.eventType === 'bookmark.created') title = `收藏了「${bookmarkTitle}」`
     else if (row.eventType === 'bookmark.deleted') title = `移除了收藏「${bookmarkTitle}」`
+    else if (row.eventType === 'bookmark.tags.updated') title = `调整了收藏「${bookmarkTitle}」的标签`
     else title = `调整了收藏「${bookmarkTitle}」的分类`
     const categoryName = metricText(metrics, 'categoryName')
-    detail = [targetType ? `来源 ${targetLabel[targetType] ?? targetType}` : null, categoryName ? `归入「${categoryName}」` : '未分类'].filter(Boolean).join(' · ')
+    const tags = Array.isArray(metrics.tags) ? metrics.tags.filter((tag): tag is string => typeof tag === 'string') : []
+    detail = [targetType ? `来源 ${targetLabel[targetType] ?? targetType}` : null, row.eventType === 'bookmark.tags.updated' ? (tags.length > 0 ? `标签 ${tags.map((tag) => `#${tag}`).join(' ')}` : '已清空标签') : (categoryName ? `归入「${categoryName}」` : '未分类')].filter(Boolean).join(' · ')
   } else if (row.eventType.startsWith('wishlist.')) {
     source = '愿望'
     const wishlistTitle = metricText(metrics, 'title') ?? '一个愿望'

@@ -280,6 +280,22 @@ export async function listBookmarks(): Promise<Bookmark[]> {
   return db.bookmarks.orderBy('createdAt').reverse().toArray()
 }
 
+export const BOOKMARK_TAG_MAX = 20
+export const BOOKMARK_TAGS_MAX = 12
+
+export function normalizeBookmarkTags(value: string | string[]): string[] {
+  const source = Array.isArray(value) ? value : value.split(/[,，\n]/)
+  const result: string[] = []
+  for (const raw of source) {
+    const tag = raw.trim()
+    if (tag === '') continue
+    if (tag.length > BOOKMARK_TAG_MAX) throw new Error(`标签不能超过 ${BOOKMARK_TAG_MAX} 字`)
+    if (!result.includes(tag)) result.push(tag)
+    if (result.length > BOOKMARK_TAGS_MAX) throw new Error(`最多添加 ${BOOKMARK_TAGS_MAX} 个标签`)
+  }
+  return result
+}
+
 function normalizeExternalUrl(value: string): string {
   const normalized = value.trim()
   let url: URL
@@ -307,6 +323,7 @@ export async function createExternalBookmark(title: string, href: string, note: 
     title: requiredText(title, '收藏名称'),
     note: note.trim() === '' ? null : note.trim(),
     categoryId: null,
+    tags: [],
     createdAt: at,
     updatedAt: at,
   }
@@ -386,6 +403,7 @@ export async function createMessageBookmark(message: ChatMessage): Promise<Bookm
     title: chatEntryTitle(message, snapshot),
     note: snapshot,
     categoryId: null,
+    tags: [],
     sourceId: message.id,
     sessionId: message.sessionId,
     metadata: chatSourceMetadata(message),
@@ -415,6 +433,7 @@ export async function createMomentBookmark(moment: Moment): Promise<Bookmark> {
     title: `${authorLabel}的留言`,
     note: moment.content,
     categoryId: null,
+    tags: [],
     sourceId: moment.id,
     metadata: {
       sourceModule: 'home-board',
@@ -438,6 +457,14 @@ export async function createMomentBookmark(moment: Moment): Promise<Bookmark> {
 
 export async function deleteBookmark(id: string): Promise<void> {
   await db.bookmarks.delete(id)
+}
+
+export async function updateBookmarkTags(id: string, tags: string | string[]): Promise<Bookmark | null> {
+  const bookmark = await db.bookmarks.get(id)
+  if (bookmark === undefined) return null
+  const next: Bookmark = { ...bookmark, tags: normalizeBookmarkTags(tags), updatedAt: Date.now() }
+  await db.bookmarks.put(next)
+  return next
 }
 
 /* ------------------------------------------------------------------ *

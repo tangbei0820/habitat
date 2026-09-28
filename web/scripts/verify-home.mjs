@@ -1154,7 +1154,7 @@ const backupCheck = await evaluate(`(async () => {
     legacyV7BookmarkCategoryId: legacyV7Bookmark === undefined ? 'no-row' : legacyV7Bookmark.categoryId,
   }
 })()`)
-check('备份 v14 覆盖本地 Home 数据并可整体恢复（日记 / 留言板已归服务端）', backupCheck.version === 14 && backupCheck.exportedHome >= 7 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
+check('备份 v15 覆盖本地 Home 数据并可整体恢复（日记 / 留言板已归服务端）', backupCheck.version === 15 && backupCheck.exportedHome >= 7 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
 check(
   '备份 v7 带走会话分组与归属（含折叠状态）',
   backupCheck.exportedGroups === 1 &&
@@ -1305,7 +1305,7 @@ const dbShape = await evaluate(`(async () => {
   db.close()
   return value
 })()`)
-check('Dexie 已升到 v16：愿望字段与 v15 倒数日迁移', dbShape.version === 160 && ['wishlist', 'countdowns', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets', 'legacyUploads', 'listenSessions', 'studyTasks', 'studyCards', 'stickers'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
+check('Dexie 已升到 v17：收藏标签与 v16 愿望迁移', dbShape.version === 170 && ['wishlist', 'countdowns', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets', 'legacyUploads', 'listenSessions', 'studyTasks', 'studyCards', 'stickers'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
 // 旧表壳**删不掉**（Dexie 的 stores() 跨版本累加，省略 ≠ 删除，见 db.ts 类注释 v11 条），
 // 所以这里验的是「搬走了」而不是「表没了」：旧表清空 + 中转表清空。
 // 两者都为 0 才有意义 —— 中转表清空的前置是「服务端已确认」（见 legacy-upload.ts 的三条纪律）。

@@ -3159,3 +3159,21 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 公网验收 | 首页已引用 `index-Bb8fGyFZ.js`；远端 `server/src/routes/life.ts` SHA-256 与本地一致；愿望事件非法状态返回 400，合法事件返回 201；探针测试事件已从部署前备份恢复清理。 |
 
 **阶段边界**：本阶段到此停止；下一阶段再处理收藏标签 / 分页、日记富文本 / 图片、留言板分组、愿望 Runtime 自主写入、愿望 Widget 或其它 Living Apps。
+
+### T-104 · 2026-09-28 · V2-A Home 基础模块第六阶段：收藏标签与分页 —— **完成（本地）**
+
+**范围**：在现有 `Bookmark + BookmarkCategory` 上补齐多维标签、标签筛选与分页浏览，并将标签变化投影到 Life；不改变分类单归属，不新建标签表或后端收藏副本。
+
+| 交付 | 说明 |
+| --- | --- |
+| 数据与迁移 | `Bookmark.tags[]` 支持最多 12 个、单标签最多 20 字；Dexie 升 v17，旧收藏补空数组；备份升 v15，旧备份导入补标签。 |
+| 页面交互 | 收藏中心支持标签编辑、标签筛选、搜索命中标签；条目超过 20 条时分页，保留既有分类筛选、来源回链与删除确认。 |
+| Life 事实 | `bookmark.tags.updated` 写入结构化标签摘要；时间线显示标签变化，不复制收藏正文。 |
+| 参考取舍 | 延续 [Journal](https://github.com/BomBomLab/Journal) 的结构化事件投影与 [shared-page](https://github.com/KKarsyline/shared-page) 的来源可追溯思路；不引入独立标签表、分页后端或第三方 UI。 |
+| 验收 | `probe:bookmark-life` **8/8**（含标签事件与非法数量）；两端 typecheck、前端 build、`git diff --check` 通过。 |
+
+**明确延期**：服务端收藏分页、标签重命名 / 合并、AI 自主收藏、复杂排序与批量编辑；继续复用本地 Bookmark，等真实规模再演进。
+
+### T-105 · 2026-09-28 · V2-A Home 基础模块第六阶段部署 VPS —— **待执行**
+
+**范围**：部署 T-104 的 Bookmark 标签、Dexie v17 / 备份 v15 与 Life 标签事件到 `https://habitat.beiyan.cc`，保留生产 `.env` 与 SQLite，完成健康、静态资源、标签 Life 路由和服务状态验收。
