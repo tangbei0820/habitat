@@ -579,8 +579,8 @@ export interface Photo extends BaseObject {
 
 export type ReadingStatus = 'want' | 'reading' | 'finished'
 
-/** 阅读器第一切片：保存在既有 ReadingNote.metadata.reader 下，不另造平行书库表。 */
-export type ReadingFormat = 'txt'
+/** 阅读器正文格式：导入后统一保存为段落文本，仍保存在既有 ReadingNote.metadata.reader 下。 */
+export type ReadingFormat = 'txt' | 'pdf' | 'epub'
 
 export type ReadingTheme = 'paper' | 'sepia' | 'night'
 export type ReadingFontSize = 'small' | 'medium' | 'large'

@@ -3556,3 +3556,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；服务端路由已接入统一 Provider / 用量记账。未部署 VPS，未冒充 PDF / EPUB 或 MCP 完整共读。
 
 **明确延期**：PDF / EPUB 导入与原版分页、书架全文 MCP（list/read/highlight/annotate）、AI 翻页 / 生词工具、批注收藏与跨设备同步继续留在后续共读阶段。
+
+### T-131 · 2026-09-28 · V2-D · PDF / EPUB 本地导入 —— **完成（本地，未部署）**
+
+**范围**：把共读从“只有 TXT”扩展到 PDF / EPUB 的本机文字阅读；继续复用已有段落阅读器与 `ReadingNote.metadata.reader`，不引入独立文件服务器。
+
+| 交付 | 说明 |
+| --- | --- |
+| PDF | 使用 `pdfjs-dist` 在浏览器本机提取每页文字，以页间段落进入现有阅读器；worker 作为前端构建资源，不把文件发给 Habitat 服务端。 |
+| EPUB | 使用 `fflate` 解包，读取 `META-INF/container.xml` 与 OPF manifest / spine，按书籍声明顺序提取 XHTML / HTML 段落；无 spine 时才退回文件名排序。 |
+| 复用 | `ReadingFormat` 扩展为 `txt / pdf / epub`；进度、书签、正文搜索、用户 / 小栖批注、生词、Life 与备份继续沿用原逻辑，未升 Dexie / 备份版本。 |
+| 失败反馈 | 空正文、损坏格式、超 2,000,000 字与不支持扩展名均在书架显示可读错误，不创建半本书。 |
+| 参考取舍 | 借鉴 Tasogare 的“格式解析后统一进入段落锚点模型”；不搬入其独立文件存储、账号系统或原版 PDF 页面模式。 |
+
+**验收**：两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；构建产物包含独立 PDF worker / parser chunk。现有 TXT 浏览器回归路径保持不变；未部署 VPS，未冒充扫描件 OCR 或原版分页完成。
+
+**明确延期**：PDF 原版页面渲染与页书签、扫描件 OCR、EPUB 图片 / CSS 精确排版、书架全文 MCP、AI 翻页 / 生词工具、批注收藏与跨设备同步继续留在后续共读阶段。

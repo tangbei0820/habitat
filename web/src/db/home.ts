@@ -991,13 +991,13 @@ export function getReadingBook(item: ReadingNote): ReadingBookState | null {
   const vocabulary = raw.vocabulary
   const theme: ReadingTheme = raw.theme === 'sepia' || raw.theme === 'night' ? raw.theme : 'paper'
   const fontSize: ReadingFontSize = raw.fontSize === 'small' || raw.fontSize === 'large' ? raw.fontSize : 'medium'
-  if (raw.format !== 'txt' || typeof raw.content !== 'string' || raw.content.length > MAX_READING_TEXT_CHARS ||
+  if ((raw.format !== 'txt' && raw.format !== 'pdf' && raw.format !== 'epub') || typeof raw.content !== 'string' || raw.content.length > MAX_READING_TEXT_CHARS ||
     typeof currentParagraph !== 'number' || !Number.isInteger(currentParagraph) || currentParagraph < 0 ||
     !(bookmarkParagraph === null || (typeof bookmarkParagraph === 'number' && Number.isInteger(bookmarkParagraph) && bookmarkParagraph >= 0)) ||
     typeof readingSeconds !== 'number' || !Number.isInteger(readingSeconds) || readingSeconds < 0 || !Array.isArray(annotations) ||
     !annotations.every(isReadingAnnotation) || (vocabulary !== undefined && (!Array.isArray(vocabulary) || !vocabulary.every(isReadingVocabulary)))) return null
   return {
-    format: 'txt',
+    format: raw.format,
     content: raw.content,
     currentParagraph,
     bookmarkParagraph,
@@ -1037,14 +1037,14 @@ export async function deleteReadingNote(id: string): Promise<void> {
   await db.readingNotes.delete(id)
 }
 
-export async function createReadingBook(bookTitle: string, author: string, content: string): Promise<ReadingNote> {
+export async function createReadingBook(bookTitle: string, author: string, content: string, format: ReadingBookState['format'] = 'txt'): Promise<ReadingNote> {
   const title = requiredText(bookTitle, '书名')
   const normalized = content.replace(/\r\n?/g, '\n')
   if (normalized.trim() === '') throw new Error('书籍内容不能为空')
-  if (normalized.length > MAX_READING_TEXT_CHARS) throw new Error('TXT 文件过大，请先拆分到 2,000,000 字以内')
+  if (normalized.length > MAX_READING_TEXT_CHARS) throw new Error('书籍正文过大，请先拆分到 2,000,000 字以内')
   const at = Date.now()
   const reader: ReadingBookState = {
-    format: 'txt', content: normalized, currentParagraph: 0, bookmarkParagraph: null, readingSeconds: 0, annotations: [],
+    format, content: normalized, currentParagraph: 0, bookmarkParagraph: null, readingSeconds: 0, annotations: [],
     theme: 'paper', fontSize: 'medium', vocabulary: [],
   }
   const item: ReadingNote = {

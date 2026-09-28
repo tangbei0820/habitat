@@ -415,3 +415,5 @@ habitat/
 - 本批之后再进入 Provider 深化（Codex 生命周期、密钥保护与能力路由）或 Living Apps，不要把模型下拉 / Headers 编辑当成这些大阶段已经完成。
 - ✅ **T-130 共读 AI 参与与 Companion 批注**：TXT 阅读器每段可请求小栖回应；回应复用 `ReadingAnnotation` 的 `author=companion` 锚点、追加 Life `reading.annotation` 与 `reading-companion` 用量记录；两端 typecheck 与前端 build 通过，未部署 VPS。
 - 共读仍明确缺 PDF / EPUB 解析与分页、Tasogare 风格阅读 MCP、AI 翻页 / 生词工具、批注收藏和跨设备同步；下一轮若继续共读，先做格式与服务边界，不把本地 TXT 回应误称为完整共读。
+- ✅ **T-131 共读 PDF / EPUB 本地导入**：浏览器本机用 pdf.js / fflate 提取 PDF / EPUB 段落，按 OPF spine 保留 EPUB 顺序，复用既有阅读器 / 批注 / Life / 备份，不升 Dexie，未部署 VPS。
+- 共读仍明确缺 PDF 原版分页与扫描 OCR、EPUB 精确排版 / 图片、Tasogare 风格阅读 MCP、AI 翻页 / 生词工具、批注收藏和跨设备同步。

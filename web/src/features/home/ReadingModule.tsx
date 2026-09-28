@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
-import type { ReadingFontSize, ReadingNote, ReadingStatus, ReadingTheme } from '@shared/types'
+import type { ReadingFontSize, ReadingFormat, ReadingNote, ReadingStatus, ReadingTheme } from '@shared/types'
 import {
   addReadingAnnotation,
   addReadingVocabulary,
@@ -10,12 +10,12 @@ import {
   deleteReadingNote,
   getReadingBook,
   listReadingNotes,
-  MAX_READING_TEXT_CHARS,
   updateReadingBookState,
   updateReadingNote,
 } from '../../db/home'
 import { appendReadingLifeEvent, type ReadingLifeEvent } from '../life/api'
 import { fetchJson } from '../../lib/api'
+import { importReadingDocument } from '../../lib/reading-import'
 
 const STATUS_LABELS: Record<ReadingStatus, string> = { want: '想读', reading: '在读', finished: '读完' }
 
@@ -33,6 +33,7 @@ function formatReadingTime(seconds: number): string {
 
 const READING_THEME_LABELS: Record<ReadingTheme, string> = { paper: '纸张', sepia: '暖页', night: '夜间' }
 const READING_FONT_LABELS: Record<ReadingFontSize, string> = { small: '小字', medium: '标准', large: '大字' }
+const READING_FORMAT_LABELS: Record<ReadingFormat, string> = { txt: 'TXT', pdf: 'PDF', epub: 'EPUB' }
 const READING_THEME_STYLE: Record<ReadingTheme, { surface: string; paragraph: string; text: string; muted: string }> = {
   paper: { surface: 'var(--bg-surface-solid)', paragraph: 'var(--bg-surface-solid)', text: 'var(--text-primary)', muted: 'var(--text-secondary)' },
   sepia: { surface: '#f4ead8', paragraph: '#fbf4e8', text: '#44382c', muted: '#806d58' },
@@ -125,15 +126,13 @@ export function ReadingModule() {
     catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
   }
 
-  async function importText(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+  async function importDocument(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (file === undefined) return
     try {
-      if (!file.name.toLocaleLowerCase().endsWith('.txt') && file.type !== 'text/plain') throw new Error('第一批只支持 TXT 文本文件')
-      const content = await file.text()
-      if (content.length > MAX_READING_TEXT_CHARS) throw new Error('TXT 文件过大，请先拆分到 2,000,000 字以内')
-      const item = await createReadingBook(file.name.replace(/\.txt$/i, '') || '未命名的书', '', content)
+      const imported = await importReadingDocument(file)
+      const item = await createReadingBook(imported.title, '', imported.content, imported.format)
       setItems((previous) => [item, ...previous]); openBook(item)
     } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
   }
@@ -222,7 +221,7 @@ export function ReadingModule() {
     return <div data-testid="reading-reader" className="space-y-4" style={{ color: palette.text }}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button type="button" onClick={() => { setView('shelf'); setSearch(''); setAnnotationTarget(null); setVocabularyTarget(null) }} className="rounded-full border px-3 py-1.5 text-sm" style={{ borderColor: 'var(--border-soft)' }}>← 回到书架</button>
-        <span className="text-xs" style={{ color: palette.muted }}>TXT 阅读器 · 内容只保存在本机</span>
+        <span className="text-xs" style={{ color: palette.muted }}>{READING_FORMAT_LABELS[selectedBook.format]} 阅读器 · 内容只保存在本机</span>
       </div>
       <section data-testid="reading-reader-surface" className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: palette.surface }}>
         <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">{selected.bookTitle}</h2>{selected.author !== null && <p className="mt-1 text-xs" style={{ color: palette.muted }}>{selected.author}</p>}</div><div className="text-right text-xs" style={{ color: palette.muted }}><div>{progressLabel(currentParagraph, paragraphs.length)}</div><div>已读 {formatReadingTime(selectedBook.readingSeconds)}</div></div></div>
@@ -253,9 +252,9 @@ export function ReadingModule() {
   const books = items.filter((item) => getReadingBook(item) !== null)
   const notes = items.filter((item) => getReadingBook(item) === null)
   return <div data-testid="reading-shelf" className="space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">共读书架</h2><p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>先从一本 TXT 开始，把阅读进度和批注留在同一页。</p></div><div className="flex gap-2"><label className="cursor-pointer rounded-full px-3 py-1.5 text-sm" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}><input data-testid="reading-import" type="file" accept=".txt,text/plain" onChange={(event) => void importText(event)} className="sr-only" />导入 TXT</label><button type="button" onClick={() => setView('shelf')} className="rounded-full border px-3 py-1.5 text-sm" style={{ borderColor: 'var(--border-soft)' }}>书架</button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">共读书架</h2><p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>导入 TXT、PDF 或 EPUB，阅读进度与批注都会留在同一本书里。</p></div><div className="flex gap-2"><label className="cursor-pointer rounded-full px-3 py-1.5 text-sm" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}><input data-testid="reading-import" type="file" accept=".txt,.pdf,.epub,text/plain,application/pdf,application/epub+zip" onChange={(event) => void importDocument(event)} className="sr-only" />导入书籍</label><button type="button" onClick={() => setView('shelf')} className="rounded-full border px-3 py-1.5 text-sm" style={{ borderColor: 'var(--border-soft)' }}>书架</button></div></div>
     {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-    {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在翻书……</p> : books.length === 0 ? <p className="rounded-lg border p-5 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>书架还是空的。导入一本 TXT，开始真正阅读吧。</p> : <ul className="space-y-3">{books.map((item) => { const reader = getReadingBook(item); if (reader === null) return null; const total = splitParagraphs(reader.content).length; const current = Math.min(reader.currentParagraph, Math.max(0, total - 1)); return <li key={item.id} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}><div className="flex items-start justify-between gap-3"><div><h3 className="font-medium">{item.bookTitle}</h3>{item.author !== null && <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{item.author}</p>}<p className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>TXT · {progressLabel(current, total)} · 已读 {formatReadingTime(reader.readingSeconds)}</p></div><span className="rounded-full border px-2 py-0.5 text-xs" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>在读</span></div><div className="mt-3 flex justify-end gap-3 text-xs"><button type="button" onClick={() => openBook(item)} style={{ color: 'var(--accent-strong)' }}>继续阅读</button><button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deletingId === item.id ? '确认删除？' : '移出书架'}</button></div></li> })}</ul>}
+    {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在翻书……</p> : books.length === 0 ? <p className="rounded-lg border p-5 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>书架还是空的。导入一本 TXT、PDF 或 EPUB，开始真正阅读吧。</p> : <ul className="space-y-3">{books.map((item) => { const reader = getReadingBook(item); if (reader === null) return null; const total = splitParagraphs(reader.content).length; const current = Math.min(reader.currentParagraph, Math.max(0, total - 1)); return <li key={item.id} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}><div className="flex items-start justify-between gap-3"><div><h3 className="font-medium">{item.bookTitle}</h3>{item.author !== null && <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{item.author}</p>}<p className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>{READING_FORMAT_LABELS[reader.format]} · {progressLabel(current, total)} · 已读 {formatReadingTime(reader.readingSeconds)}</p></div><span className="rounded-full border px-2 py-0.5 text-xs" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>在读</span></div><div className="mt-3 flex justify-end gap-3 text-xs"><button type="button" onClick={() => openBook(item)} style={{ color: 'var(--accent-strong)' }}>继续阅读</button><button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deletingId === item.id ? '确认删除？' : '移出书架'}</button></div></li> })}</ul>}
 
     <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
       <div className="flex items-center justify-between"><h2 className="text-sm font-semibold">{editingId === null ? '记一页阅读' : '编辑读书笔记'}</h2>{editingId !== null && <button type="button" onClick={reset} className="text-xs" style={{ color: 'var(--text-secondary)' }}>取消编辑</button>}</div>

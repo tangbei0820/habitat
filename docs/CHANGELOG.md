@@ -3,6 +3,14 @@
 > 本文件记「改了什么」（面向版本，按 Phase 组织）。
 > 「做到哪、还欠什么」在 `docs/TASKS.md`。
 
+## 2026-09-28 · V2-D · 共读格式扩展
+
+### T-131 · PDF / EPUB 本地导入
+
+- 共读书架支持导入 PDF、EPUB；PDF 通过 pdf.js 提取文字，EPUB 按 OPF spine 顺序解包 XHTML，统一转为现有段落阅读器。
+- 继续复用 `ReadingNote.metadata.reader`、进度 / 书签 / 搜索 / 批注 / 生词与备份语义，不上传原始书籍，也不新增平行书库表。
+- PDF 原版页面渲染、复杂排版、扫描件 OCR 与 Tasogare MCP 翻页仍未在本批完成。
+
 ## 2026-09-28 · V2-D · 共读 AI 参与
 
 ### T-130 · TXT 段落回应与 Companion 批注
