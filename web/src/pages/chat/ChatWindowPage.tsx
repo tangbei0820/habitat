@@ -4,7 +4,7 @@ import type { ChatToolCallPayload } from '@shared/events'
 import type { LlmChatMessage } from '@shared/providers'
 import type { ChatContextSummary, ChatMessage, ChatSession, MessageBlock, MessageStatus, Sticker, ToolResultBlock } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
-import { IconChevronLeft, IconSearch, IconSetting, IconToolbox } from '../../components/qixi/Icons'
+import { IconChevronLeft, IconMic, IconSearch, IconSetting, IconToolbox } from '../../components/qixi/Icons'
 import { useChatDisplay } from '../../app/useChatDisplay'
 import {
   ChatBubble,
@@ -18,6 +18,7 @@ import { Composer } from '../../features/chat/Composer'
 import { MessageAvatar } from '../../features/chat/MessageAvatar'
 import { MiniTerminal } from '../../features/chat/MiniTerminal'
 import { ChatHistoryPanel } from '../../features/chat/ChatHistoryPanel'
+import { CallPanel } from '../../features/chat/CallPanel'
 import {
   createMessageArtwork,
   createMessageBookmark,
@@ -218,6 +219,7 @@ export function ChatWindowPage() {
   const [contextCharacterCount, setContextCharacterCount] = useState(0)
   const [contextCompacting, setContextCompacting] = useState(false)
   const [mediaBusy, setMediaBusy] = useState(false)
+  const [callOpen, setCallOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [stickers, setStickers] = useState<Sticker[]>([])
 
@@ -271,6 +273,7 @@ export function ChatWindowPage() {
     setSelectedIds(new Set())
     setPendingConfirm(null)
     setSettingsOpen(false)
+    setCallOpen(false)
     setContextMessageCount(0)
     setContextCharacterCount(0)
     setHistoryOpen(false)
@@ -375,8 +378,8 @@ export function ChatWindowPage() {
     history: LlmChatMessage[],
     targetId: string | null,
     options: { webSearchQuery?: string } = {},
-  ): Promise<void> {
-    if (sessionId === undefined) return
+  ): Promise<string> {
+    if (sessionId === undefined) return ''
     const controller = new AbortController()
     abortRef.current = controller
     setSending(true)
@@ -509,6 +512,7 @@ export function ChatWindowPage() {
     abortRef.current = null
     setSending(false)
     setErrorText(failure)
+    return content
   }
 
   function currentContextSummary(): ChatContextSummary | null {
@@ -538,8 +542,8 @@ export function ChatWindowPage() {
     webSearchQuery?: string
     /** 「只发送」时给用户的确认语；语音条有自己的一句 */
     toast?: string
-  }): Promise<void> {
-    if (sessionId === undefined) return
+  }): Promise<string | null> {
+    if (sessionId === undefined) return null
 
     // 1. 用户消息先落库（本地权威，§6.2），不等模型
     const userMessage = newMessage({
@@ -563,11 +567,11 @@ export function ChatWindowPage() {
 
     if (!input.requestReply) {
       if (input.toast !== undefined) showToast(input.toast)
-      return
+      return null
     }
 
     // 3. 历史由前端组装随请求送出（服务端不存聊天记录）
-    await runGeneration(
+    return runGeneration(
       await buildHistoryThrough(userMessage.id, [...messagesRef.current, userMessage]),
       null,
       input.webSearchQuery === undefined ? {} : { webSearchQuery: input.webSearchQuery },
@@ -636,6 +640,30 @@ export function ChatWindowPage() {
       requestReply: true,
     })
     if (transcriptionFailed) showToast('语音已发送，但未转写；原音仍可播放')
+  }
+
+  /** 通话模式的一轮：沿用普通语音消息与聊天生成链路，回复正文交给 CallPanel 朗读。 */
+  async function callTurn(dataUrl: string, durationMs: number): Promise<string> {
+    if (sessionId === undefined) throw new Error('当前会话还没有准备好')
+    if (sending || mediaBusy) throw new Error('当前正在处理上一轮，请稍候')
+    setMediaBusy(true)
+    setErrorText(null)
+    try {
+      let transcript: string
+      try {
+        transcript = (await transcribeAudio(dataUrl)).text.trim()
+      } catch (error) {
+        throw new Error(`通话转写失败：${error instanceof Error ? error.message : String(error)}`)
+      }
+      if (transcript === '') throw new Error('没有识别到清晰的语音，请再试一次')
+      return await submitUserMessage({
+        text: '',
+        blocks: [{ kind: 'audio', payload: { url: dataUrl, durationMs, transcript }, order: 0 }],
+        requestReply: true,
+      }) ?? ''
+    } finally {
+      setMediaBusy(false)
+    }
   }
 
   async function sendImage(dataUrl: string): Promise<void> {
@@ -1277,6 +1305,16 @@ export function ChatWindowPage() {
         </button>
         <button
           type="button"
+          data-testid="chat-call-open"
+          aria-label="开始通话"
+          disabled={!online || session === undefined || session === null || sending || mediaBusy}
+          onClick={() => setCallOpen(true)}
+          className="icon-btn disabled:opacity-40"
+        >
+          <IconMic size={19} />
+        </button>
+        <button
+          type="button"
           data-testid="chat-settings-open"
           aria-label="聊天设置"
           disabled={session === undefined || session === null}
@@ -1459,6 +1497,14 @@ export function ChatWindowPage() {
           onSetSummaryActive={(summaryId) => void setSummaryActive(summaryId)}
         />
       )}
+
+      <CallPanel
+        open={callOpen}
+        disabled={!online || session === undefined || session === null || sending || mediaBusy}
+        onClose={() => setCallOpen(false)}
+        onTurn={callTurn}
+        onError={setErrorText}
+      />
 
       <ActionSheet
         actions={sheetActions}

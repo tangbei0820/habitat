@@ -2865,3 +2865,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:elevenlabs` **6/6**；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-072，本批未部署。 |
 
 **参考取舍**：按 [ElevenLabs Create speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert) 的 streaming endpoint 与官方响应语义实现；不引入 WebSocket、MediaSource 或伪实时轮询。
+
+### T-084 · 2026-09-28 · V2-A 后续：聊天内通话模式—— **完成（本地）**
+
+**边界**：完成聊天页内可用的逐轮通话模式；不把轮询伪装成实时双工，不接 PSTN / 手机来电 / CallKit，也不新增独立通话数据库。真正的实时双工协议仍需单独的 WebRTC / WebSocket、打断与会话生命周期设计。
+
+| 交付 | 说明 |
+| --- | --- |
+| 入口与状态 | 聊天顶栏新增麦克风入口；面板明确区分待机、录音、转写 / 生成、播放、失败与结束，支持挂断、结束本轮录音、停止播放。 |
+| 逐轮链路 | 浏览器录音 → `/api/media/transcriptions` → 复用现有 `submitUserMessage` / `streamChat` → `/api/media/speech/stream` → 播放回复；用户语音与转写作为普通 audio 消息留在当前会话，可搜索、回放、导出。 |
+| 安全与失败 | 仅在用户显式打开并点击开始后申请麦克风；录音最长 60 秒、过短拒绝；权限、转写、模型、TTS、播放失败均可见，不伪造“已接通”。服务端仍是 Provider 唯一出口。 |
+| 数据边界 | 不新增 schema；沿用 `AudioBlock` 的 data URL、时长和 transcript。通话结束后普通聊天行为不受影响。 |
+| 参考取舍 | 实查 [Callhome](https://github.com/Cheiineeey/callhome)：借鉴软挂断、状态可见与通话记录应可追溯的交互；不复制其电话 / 实时基础设施，改用 Habitat 已有服务端 ASR、聊天流和 TTS。 |
+| 验收 | `npm run typecheck`、`npm run build`、`npm --prefix server run probe:elevenlabs` **6/6**、`git diff --check` 通过。浏览器真机录音仍需在 HTTPS 部署环境手动验收；生产仍停在 T-072，本批未部署。 |
+
+**待实现（后续独立任务）**：全双工低延迟 WebRTC / WebSocket、实时打断、来电通知、通话时长与 Life 事件统计、移动端锁屏 / 系统电话能力。
