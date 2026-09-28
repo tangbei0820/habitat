@@ -69,6 +69,7 @@ export interface LegacyUpload {
  *     搬到启动期则每次启动都会收敛。两个真后果：旧表壳永久存在（空壳，别去"清理"它），
  *     以及 `db.diaries` 这类入口在类型层面刻意不再暴露。
  * v14：本地表情图库（T-077）。新增 `stickers` 表；消息内保存发送时快照，图库条目删除不影响历史消息。
+ * v15：倒数日补分类 / 每年重复 / 提醒字段（T-100）；不新增索引，upgrade 为老记录补默认值。
  */
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
@@ -276,6 +277,15 @@ export class HabitatDb extends Dexie {
     this.version(14).stores({
       stickers: 'id, category, createdAt, updatedAt',
     })
+    // v15：倒数日从单纯的标题 / 日期升级为可分类、每年重复、可提醒的生活事实。
+    // 新字段不是索引，仍保留原有排序索引；upgrade 只为老记录补默认值。
+    this.version(15)
+      .stores({ countdowns: 'id, targetDate, createdAt' })
+      .upgrade((tx) => tx.table('countdowns').toCollection().modify((countdown: CountdownDay) => {
+        if (countdown.category === undefined) countdown.category = 'other'
+        if (countdown.repeat === undefined) countdown.repeat = 'none'
+        if (countdown.reminder === undefined) countdown.reminder = 'none'
+      }))
     // 刻意没有 .upgrade()：搬迁不在版本变化时做，而在每次启动时做（见上方注释与 legacy-upload.ts）。
     // 也不在这里声明 diaries / moments —— 声明了也删不掉它们，省掉能少一份「以为删了」的误解。
   }

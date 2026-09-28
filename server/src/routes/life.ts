@@ -210,6 +210,12 @@ function countdownEventBody(value: unknown): {
   const title = boundedText(body, 'title', 120)
   const targetDate = boundedText(body, 'targetDate', 10)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) throw new RequestError(ErrorCodes.BadRequest, 'targetDate 必须是 YYYY-MM-DD')
+  const category = body.category
+  if (category !== undefined && category !== 'anniversary' && category !== 'event' && category !== 'deadline' && category !== 'other') throw new RequestError(ErrorCodes.BadRequest, 'category 不合法')
+  const repeat = body.repeat
+  if (repeat !== undefined && repeat !== 'none' && repeat !== 'yearly') throw new RequestError(ErrorCodes.BadRequest, 'repeat 不合法')
+  const reminder = body.reminder
+  if (reminder !== undefined && reminder !== 'none' && reminder !== 'on-day' && reminder !== 'one-day-before') throw new RequestError(ErrorCodes.BadRequest, 'reminder 不合法')
   const action = body.action
   if (eventType === 'countdown.widget.updated' && action !== 'pinned' && action !== 'unpinned') throw new RequestError(ErrorCodes.BadRequest, '倒数日 Widget 事件需要 pinned / unpinned')
   return {
@@ -218,6 +224,9 @@ function countdownEventBody(value: unknown): {
     at: optionalTimestamp(body),
     metrics: {
       source: 'countdown', title, targetDate,
+      ...(category === undefined ? {} : { category }),
+      ...(repeat === undefined ? {} : { repeat }),
+      ...(reminder === undefined ? {} : { reminder }),
       ...(action === undefined ? {} : { action }),
     },
   }

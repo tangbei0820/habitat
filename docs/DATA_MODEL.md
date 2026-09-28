@@ -174,7 +174,7 @@ interface SessionGroup extends BaseObject {
 | 实体 | 表 | 关键字段 |
 |---|---|---|
 | `WishlistItem` | `wishlist` | `title`, `status: 'open' \| 'done'`, `completedAt` |
-| `CountdownDay` | `countdowns` | `title`, `targetDate`（本地 `YYYY-MM-DD`） |
+| `CountdownDay` | `countdowns` | `title`, `targetDate`（本地 `YYYY-MM-DD`）, `category`, `repeat`, `reminder` |
 | `Bookmark` | `bookmarks` | `targetType`, `targetId`, `title`, `note`, `categoryId` |
 | `Artwork` | `artworks` | `title`, `category`, `description`, `externalUrl` |
 | `Photo` | `photos` | `title`, `caption`, `imageDataUrl`, `mimeType`, `sizeBytes`, `takenAt`, `collectionId` |
@@ -251,6 +251,7 @@ interface SessionGroup extends BaseObject {
 | v12 | 120 | 新增 `listenSessions` / `studyTasks`（一起听时长与学习今日任务，T-046）；纯新增表，不需要 `upgrade()` 回调 |
 | v13 | 130 | 新增 `studyCards`（AI 伴学卡片与本地复习状态，T-063）；生成走服务端 `/api/study/cards/generate`，纯新增表，不需要 `upgrade()` 回调 |
 | v14 | 140 | 新增 `stickers`（本地表情图库，T-077）；消息块保存发送时快照，纯新增表，不需要 `upgrade()` 回调 |
+| v15 | 150 | `CountdownDay` 补 `category` / `repeat` / `reminder`（T-100）；保留原日期索引，upgrade 为老记录补 `other` / `none` / `none` |
 
 Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画版本（`verify-chat.mjs`）。
 **每次升版都要在 `db.ts` 的版本注释里写清「为什么」**；只写「加了张表」等于没写。
@@ -293,6 +294,7 @@ Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画
 | v10 | + 一起听时长 `listenSessions` / 学习任务 `studyTasks`（T-046，随 Dexie v12 补进备份白名单）；旧版导入时两张表按空处理 —— 那时这两个功能还不存在 |
 | v11 | + AI 伴学卡片 `studyCards`（本地复习状态；生成调用走服务端 `/api/study/cards/generate`）；旧版导入时按空处理 |
 | v12 | + 本地表情图库 `stickers`；旧版导入时按空处理，历史消息不依赖图库条目 |
+| v13 | 倒数日补分类、每年重复与提醒字段；旧版导入时为缺失字段补默认值 |
 > ⚠️ v7 导入时**必须按 `kind` 去重**：`&kind` 是唯一索引，手改过的备份（例如两条 `board`）会让
 > `bulkAdd` 抛 `ConstraintError`，导致**整份备份一个字都导不进去**。保留 `createdAt` 最早的那条，
 > 与「先上主屏的在前」的排序语义一致。

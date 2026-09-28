@@ -258,10 +258,20 @@ export interface WishlistItem extends BaseObject {
 }
 
 /** `targetDate` 固定为本地日期 `YYYY-MM-DD`，避免纯日期被时区偏移。 */
+export type CountdownCategory = 'anniversary' | 'event' | 'deadline' | 'other'
+export type CountdownRepeat = 'none' | 'yearly'
+export type CountdownReminder = 'none' | 'on-day' | 'one-day-before'
+
 export interface CountdownDay extends BaseObject {
   type: 'countdown-day'
   title: string
   targetDate: string
+  /** 语义分类只影响展示与筛选，不改变倒数事实本身。 */
+  category: CountdownCategory
+  /** 首批支持每年重复，足够覆盖纪念日；更复杂的规则另行演进。 */
+  repeat: CountdownRepeat
+  /** 提醒写入现有通知收件箱；不在本地对象里保存“已提醒”状态。 */
+  reminder: CountdownReminder
 }
 
 /** 主屏 Widget 的形态（SPEC §5.2 首批两种） */

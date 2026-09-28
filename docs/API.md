@@ -788,6 +788,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | 接口 | 说明 |
 |---|---|
 | `GET /api/notifications?limit=` | 主动唤醒先进入服务端通知收件箱，不伪造前端 Dexie 聊天消息 |
+| `POST /api/notifications/countdown-reminder` | 倒数日打开应用时写入通知收件箱；请求带 `reminderKey` 幂等，Push 失败不回滚站内通知 |
 | `PATCH /api/notifications/:id/read` | 标记通知已读 |
 | `PATCH /api/notifications/read-all` | 原子标记全部未读通知为已读，返回 `updated` 数量 |
 | `GET /api/notifications/preferences` | 返回总开关、分类开关与 Quiet Hours；不改变通知收件箱 |
@@ -814,7 +815,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | `GET /api/life/day/:dayKey` | 日期下钻；返回共同生活 `timeline` 投影、原始 EventLog 与 UsageRecord，不反查聊天库 |
 | `POST /api/life/events/reading` | 共读行为投影：打开、进度 / 阅读时长、书签、批注、生词；写入 EventLog，失败不影响本地阅读 |
 | `POST /api/life/events/study` | 学习行为投影：生成卡片、复习卡片、保存学习记录、完成今日任务；写入 EventLog，失败不影响本地学习 |
-| `POST /api/life/events/countdown` | 倒数日行为投影：创建、编辑、删除、上 / 撤下主屏 Widget；写入 EventLog，失败不影响本地倒数日 |
+| `POST /api/life/events/countdown` | 倒数日行为投影：创建、编辑、删除、上 / 撤下主屏 Widget；可带 `category / repeat / reminder` 摘要，写入 EventLog，失败不影响本地倒数日 |
 | `POST /api/life/events/bookmark` | 收藏行为投影：新增、删除、分类变化；写入 EventLog，失败不影响本地收藏 |
 | `GET /api/life/ledger?month=YYYY-MM` | 用量总计、按服务 / 模型聚合、价格快照、钱包与最近流水 |
 | `GET /api/life/runtime` | 聚合 server、Eventide、MCP、当前状态、主动策略 / 运行态 / 最近任务 |
@@ -831,7 +832,7 @@ API / Token / 费用记录属于次级系统统计，前端默认收起，不与
 聊天完成后会追加一条 `chat.turn.completed` 事实，只含会话回链、上下文条数、工具轮次和 `usageRecordId`，不写入聊天正文。
 一起听播放同步会追加 `listening.track.started` 与 `listening.progress` 事实；进度事实只保存曲目快照和秒数增量，日期时间线按曲目合并，月历汇总读取真实增量。
 学习模块会追加 `study.cards.generated`、`study.card.reviewed`、`study.record.created` 与 `study.task.completed`；事件只保留主题、评分、间隔、时长等摘要，不上传卡片正文或学习笔记，月历统计展示学习活动次数。
-倒数日会追加 `countdown.created`、`countdown.deleted` 与 `countdown.widget.updated`；事件只保留标题、目标日期与主屏动作，月历统计展示倒数日活动次数。
+倒数日会追加 `countdown.created`、`countdown.updated`、`countdown.deleted` 与 `countdown.widget.updated`；事件只保留标题、目标日期、分类 / 重复 / 提醒摘要与主屏动作，月历统计展示倒数日活动次数。提醒沿用通知事实源，不新增提醒表；客户端打开应用时检查到期项并以 `reminderKey` 去重写入。
 收藏会追加 `bookmark.created`、`bookmark.deleted` 与 `bookmark.category.updated`；事件只保留收藏对象类型、标题与分类摘要，不复制收藏正文，月历统计展示收藏活动次数。
 
 价格单位是**分 / 百万 Token**。每条 UsageRecord 在写入时绑定当时适用的最新快照，费用按分向上取整；

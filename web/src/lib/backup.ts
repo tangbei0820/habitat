@@ -11,7 +11,10 @@ import type {
   BookmarkCategory,
   ChatMessage,
   ChatSession,
+  CountdownCategory,
   CountdownDay,
+  CountdownReminder,
+  CountdownRepeat,
   HomeWidget,
   ListenSession,
   MusicTrack,
@@ -41,7 +44,7 @@ export const BACKUP_FORMAT = 'habitat-backup'
  * ⚠️ 但**旧备份（v2–v8）里带着它们**，导入时不能丢：走 `legacyUploads` 转存到服务端，
  * 详见 `importAll` 与 `db/legacy-upload.ts`。
  */
-export const BACKUP_VERSION = 12
+export const BACKUP_VERSION = 13
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -254,8 +257,15 @@ function looksLikeWishlistItem(value: unknown): value is WishlistItem {
   return isRecord(value) && typeof value.id === 'string' && value.type === 'wishlist-item' && typeof value.title === 'string'
 }
 
+const COUNTDOWN_CATEGORIES: CountdownCategory[] = ['anniversary', 'event', 'deadline', 'other']
+const COUNTDOWN_REPEATS: CountdownRepeat[] = ['none', 'yearly']
+const COUNTDOWN_REMINDERS: CountdownReminder[] = ['none', 'on-day', 'one-day-before']
+
 function looksLikeCountdown(value: unknown): value is CountdownDay {
-  return isRecord(value) && typeof value.id === 'string' && value.type === 'countdown-day' && typeof value.targetDate === 'string'
+  if (!isRecord(value) || typeof value.id !== 'string' || value.type !== 'countdown-day' || typeof value.targetDate !== 'string') return false
+  return (value.category === undefined || COUNTDOWN_CATEGORIES.includes(value.category as CountdownCategory))
+    && (value.repeat === undefined || COUNTDOWN_REPEATS.includes(value.repeat as CountdownRepeat))
+    && (value.reminder === undefined || COUNTDOWN_REMINDERS.includes(value.reminder as CountdownReminder))
 }
 
 function looksLikeLegacyDiary(value: unknown): value is { id: string } {
@@ -467,7 +477,12 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   // 旧留言不落 Dexie，转存到服务端（见下面的 legacyUploads）
   const legacyMoments = momentsRaw.filter(looksLikeLegacyMoment)
   const wishlist = wishlistRaw.filter(looksLikeWishlistItem)
-  const countdowns = countdownsRaw.filter(looksLikeCountdown)
+  const countdowns = countdownsRaw.filter(looksLikeCountdown).map((countdown) => ({
+    ...countdown,
+    category: countdown.category ?? 'other',
+    repeat: countdown.repeat ?? 'none',
+    reminder: countdown.reminder ?? 'none',
+  }))
   if (legacyMoments.length !== momentsRaw.length || wishlist.length !== wishlistRaw.length || countdowns.length !== countdownsRaw.length) {
     throw new Error('备份内容损坏：存在无法识别的 Home 记录')
   }

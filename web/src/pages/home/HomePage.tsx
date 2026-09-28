@@ -22,7 +22,8 @@ import {
   listMoments,
   listMusicTracks,
 } from '../../db/home'
-import { dayDistance } from '../../features/home/countdownDays'
+import { dayDistance, nextOccurrenceDate } from '../../features/home/countdownDays'
+import { checkCountdownReminders } from '../../features/home/countdownReminders'
 
 /**
  * 家 = 6 格 Bento + 一行全入口（UI_DESIGN.md §5 已拍板）。
@@ -65,8 +66,9 @@ export function HomePage() {
       .catch(() => setLatestNote(null))
     listCountdowns()
       .then((days) => {
+        void checkCountdownReminders(days)
         const upcoming = days
-          .map((d) => ({ title: d.title, days: dayDistance(d.targetDate) }))
+          .map((d) => ({ title: d.title, days: dayDistance(nextOccurrenceDate(d)) }))
           .sort((a, b) => a.days - b.days)
         setNearestDay(upcoming[0] ?? null)
       })

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { IconChevronRight, IconMail, IconTimer } from '../../components/qixi/Icons'
 import { listHomeWidgetViews, type HomeWidgetView } from '../../db/home'
-import { dayDistance, distanceLabel } from './countdownDays'
+import { dayDistance, distanceLabel, nextOccurrenceDate } from './countdownDays'
 
 type BoardView = Extract<HomeWidgetView, { kind: 'board' }>
 type CountdownView = Extract<HomeWidgetView, { kind: 'countdown' }>
@@ -51,13 +51,14 @@ function BoardWidget({ view }: { view: BoardView }) {
 
 /** 倒数日 Widget：整张卡片都是入口，点进模块页（SPEC §3.3.2「快捷进入详情」） */
 function CountdownWidget({ view }: { view: CountdownView }) {
-  const days = dayDistance(view.day.targetDate)
+  const occurrenceDate = nextOccurrenceDate(view.day)
+  const days = dayDistance(occurrenceDate)
   return (
     <Link to="/home/countdown" data-testid="home-widget-countdown" className="flex items-center gap-3 rounded-xl border p-4" style={cardStyle()}>
       <IconTimer size={20} style={{ color: 'var(--accent-strong)' }} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{view.day.title}</span>
-        <span className="mt-1 block text-xs" style={{ color: 'var(--text-secondary)' }}>{view.day.targetDate}</span>
+        <span className="mt-1 block text-xs" style={{ color: 'var(--text-secondary)' }}>{occurrenceDate}</span>
       </span>
       <strong className="shrink-0 text-sm" style={{ color: days < 0 ? 'var(--text-secondary)' : 'var(--accent-strong)' }}>
         {distanceLabel(days)}

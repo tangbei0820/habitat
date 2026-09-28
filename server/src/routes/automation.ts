@@ -12,6 +12,7 @@ import {
 } from '../db/automation.js'
 import { getSurfFeeds, setSurfFeeds } from '../db/surf.js'
 import {
+  createNotification,
   listEventLogs,
   listNotifications,
   listSolitudeEntries,
@@ -30,6 +31,14 @@ function record(value: unknown): Record<string, unknown> {
     throw new RequestError(ErrorCodes.BadRequest, '请求体必须是 JSON 对象')
   }
   return value as Record<string, unknown>
+}
+
+function boundedText(body: Record<string, unknown>, key: string, max: number): string {
+  const value = body[key]
+  if (typeof value !== 'string' || value.trim() === '' || value.length > max) {
+    throw new RequestError(ErrorCodes.BadRequest, `${key} 必须是 1..${max} 字符`)
+  }
+  return value.trim()
 }
 
 function limitOf(value: unknown, fallback: number, max: number): number {
@@ -186,6 +195,41 @@ export function registerAutomationRoutes(app: FastifyInstance, service: Automati
   app.get('/api/notifications', async (request) => ({
     notifications: listNotifications(limitOf((request.query as Record<string, unknown>).limit, 50, 200)),
   }))
+  /**
+   * 倒数日仍由浏览器 Dexie 持有；打开应用时由前端检查到期，再把提醒写入
+   * 现有通知事实源。reminderKey 让重试幂等，不另造一张「提醒」表。
+   */
+  app.post('/api/notifications/countdown-reminder', async (request, reply) => {
+    const body = record(request.body)
+    const countdownId = boundedText(body, 'countdownId', 160)
+    const title = boundedText(body, 'title', 120)
+    const occurrenceDate = boundedText(body, 'occurrenceDate', 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(occurrenceDate)) throw new RequestError(ErrorCodes.BadRequest, 'occurrenceDate 必须是 YYYY-MM-DD')
+    const reminder = body.reminder
+    if (reminder !== 'on-day' && reminder !== 'one-day-before') throw new RequestError(ErrorCodes.BadRequest, 'reminder 必须是 on-day / one-day-before')
+    const reminderKey = boundedText(body, 'reminderKey', 240)
+    const duplicate = listNotifications(200).find((item) => item.metadata.reminderKey === reminderKey)
+    if (duplicate !== undefined) return reply.send({ notification: duplicate, duplicate: true })
+    const notification = createNotification(
+      'system',
+      reminder === 'on-day' ? `今天是「${title}」` : `明天是「${title}」`,
+      reminder === 'on-day' ? `${occurrenceDate}，记得留一点时间给这件值得期待的事。` : `${occurrenceDate} 就到了，提前和小栖记下这件事。`,
+      {
+        category: 'countdown',
+        route: '/home/countdown',
+        countdownId,
+        occurrenceDate,
+        reminder,
+        reminderKey,
+      },
+    )
+    try {
+      await sendWebPush(notification)
+    } catch {
+      // 站内通知已经是事实源；Push 失败不能让倒数日提醒丢失。
+    }
+    return reply.status(201).send({ notification, duplicate: false })
+  })
   app.patch('/api/notifications/read-all', async () => ({ updated: markAllNotificationsRead() }))
   app.patch('/api/notifications/:id/read', async (request) => {
     const { id } = request.params as { id: string }

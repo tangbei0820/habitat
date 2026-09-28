@@ -5,7 +5,10 @@ import {
   type Bookmark,
   type BookmarkCategory,
   type ChatMessage,
+  type CountdownCategory,
   type CountdownDay,
+  type CountdownReminder,
+  type CountdownRepeat,
   type DiaryView,
   type HomeWidget,
   type HomeWidgetKind,
@@ -116,7 +119,13 @@ export async function listCountdowns(): Promise<CountdownDay[]> {
   return db.countdowns.orderBy('targetDate').toArray()
 }
 
-export async function createCountdown(title: string, targetDate: string): Promise<CountdownDay> {
+export async function createCountdown(
+  title: string,
+  targetDate: string,
+  category: CountdownCategory = 'other',
+  repeat: CountdownRepeat = 'none',
+  reminder: CountdownReminder = 'none',
+): Promise<CountdownDay> {
   const normalizedDate = targetDate.trim()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) throw new Error('请选择有效日期')
   const at = Date.now()
@@ -125,6 +134,9 @@ export async function createCountdown(title: string, targetDate: string): Promis
     type: 'countdown-day',
     title: requiredText(title, '倒数日名称'),
     targetDate: normalizedDate,
+    category,
+    repeat,
+    reminder,
     createdAt: at,
     updatedAt: at,
   }
@@ -132,13 +144,23 @@ export async function createCountdown(title: string, targetDate: string): Promis
   return item
 }
 
-export async function updateCountdown(id: string, title: string, targetDate: string): Promise<CountdownDay | null> {
+export async function updateCountdown(
+  id: string,
+  title: string,
+  targetDate: string,
+  category?: CountdownCategory,
+  repeat?: CountdownRepeat,
+  reminder?: CountdownReminder,
+): Promise<CountdownDay | null> {
   const existing = await db.countdowns.get(id)
   if (existing === undefined) return null
   const next: CountdownDay = {
     ...existing,
     title: requiredText(title, '倒数日名称'),
     targetDate: requiredDate(targetDate),
+    category: category ?? existing.category,
+    repeat: repeat ?? existing.repeat,
+    reminder: reminder ?? existing.reminder,
     updatedAt: Date.now(),
   }
   await db.countdowns.put(next)

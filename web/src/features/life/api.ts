@@ -1,4 +1,7 @@
 import type {
+  CountdownCategory,
+  CountdownReminder,
+  CountdownRepeat,
   LifeLedgerView,
   LifeMonthSummary,
   LifeRuntimeView,
@@ -91,6 +94,9 @@ export type CountdownLifeEvent = {
   countdownId: string
   title: string
   targetDate: string
+  category?: CountdownCategory
+  repeat?: CountdownRepeat
+  reminder?: CountdownReminder
   action?: 'pinned' | 'unpinned'
   at?: number
 }
@@ -125,6 +131,21 @@ export function loadLifeLedger(month: string): Promise<LifeLedgerView> {
 export function loadNotifications(): Promise<NotificationRecord[]> {
   return fetchJson<{ notifications: NotificationRecord[] }>('/api/notifications?limit=200')
     .then((result) => result.notifications)
+}
+
+export type CountdownReminderEvent = {
+  countdownId: string
+  title: string
+  occurrenceDate: string
+  reminder: 'on-day' | 'one-day-before'
+  reminderKey: string
+}
+
+/** 倒数日提醒写入站内通知；重复提交由服务端 reminderKey 去重。 */
+export function emitCountdownReminder(event: CountdownReminderEvent): Promise<void> {
+  return fetchJson('/api/notifications/countdown-reminder', {
+    method: 'POST', headers: jsonHeaders, body: JSON.stringify(event),
+  }).then(() => undefined)
 }
 
 export function markNotificationRead(id: string): Promise<void> {

@@ -25,7 +25,7 @@ const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year
 const month = today.slice(0, 7)
 console.log(`\n=== Countdown → Life probe (${base}) ===`)
 
-const common = { countdownId: `probe-countdown-${process.pid}`, title: '探针纪念日', targetDate: '2026-10-01' }
+const common = { countdownId: `probe-countdown-${process.pid}`, title: '探针纪念日', targetDate: '2026-10-01', category: 'anniversary', repeat: 'yearly', reminder: 'on-day' }
 const created = await request('/api/life/events/countdown', { method: 'POST', headers, body: JSON.stringify({ eventType: 'countdown.created', ...common }) })
 check('倒数日创建事实可写入', created.status === 201)
 const pinned = await request('/api/life/events/countdown', { method: 'POST', headers, body: JSON.stringify({ eventType: 'countdown.widget.updated', ...common, action: 'pinned' }) })
@@ -43,6 +43,11 @@ const daySummary = (record(monthView.body).days as Array<Record<string, unknown>
 check('月历汇总倒数日活动次数', monthView.status === 200 && daySummary?.countdownActivityCount === 4)
 const bad = await request('/api/life/events/countdown', { method: 'POST', headers, body: JSON.stringify({ eventType: 'countdown.widget.updated', ...common, action: 'unknown' }) })
 check('拒绝非法 Widget 动作', bad.status === 400)
+const reminderKey = `probe-countdown-reminder-${process.pid}`
+const reminder = await request('/api/notifications/countdown-reminder', { method: 'POST', headers, body: JSON.stringify({ countdownId: common.countdownId, title: common.title, occurrenceDate: today, reminder: 'on-day', reminderKey }) })
+check('倒数日到期提醒可写入通知收件箱', reminder.status === 201 && record(record(reminder.body).notification).metadata !== undefined)
+const duplicateReminder = await request('/api/notifications/countdown-reminder', { method: 'POST', headers, body: JSON.stringify({ countdownId: common.countdownId, title: common.title, occurrenceDate: today, reminder: 'on-day', reminderKey }) })
+check('相同 reminderKey 重试不会重复写通知', duplicateReminder.status === 200 && record(duplicateReminder.body).duplicate === true)
 
 console.log(`\nCountdown → Life probe: ${passed} passed, ${failed} failed`)
 if (failed > 0) process.exitCode = 1
