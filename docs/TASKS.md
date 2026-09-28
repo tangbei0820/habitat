@@ -2983,3 +2983,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:listening` **7/7** 覆盖开始播放、连续同步、暂停累计与曲目合并；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-088，本批未部署。 |
 
 **待优化（后续功能）**：一起听历史归档、共同评论、AI 选歌 / 评论、网易云 / MCP 与多端实时冲突处理另起任务。
+
+### T-092 · 2026-09-28 · V2-A 后续：学习事实进入 Life—— **完成（本地）**
+
+**边界**：只把现有学习模块中的卡片生成、卡片复习、学习记录与今日任务完成投影到服务端 EventLog；不上传卡片正文 / 学习笔记，不引入资料上传、测验、苏格拉底对话或新的学习数据库。
+
+| 交付 | 说明 |
+| --- | --- |
+| 事实写入 | 新增 `POST /api/life/events/study`，严格白名单四类 `study.*` 事件；前端本地学习动作成功后尽力追加事实，Life 不可用不阻断学习。历史学习记录按本地日期中午回写，避免录入昨天却落在今天。 |
+| 时间线 | Life 将学习事件投影为“生成卡片 / 复习卡片 / 记录学习 / 完成学习小事”，只展示主题、评分、间隔与时长等摘要，普通 UI 不渲染对象。 |
+| 月历 | `LifeDaySummary` 新增 `studyActivityCount`，月历新增“学习活动”摘要卡；统计仍只读服务端 EventLog。 |
+| 数据边界 | 无 SQLite / Dexie schema 变化；事件不含卡片 front/back、学习笔记正文或模型提示词。 |
+| 参考取舍 | 实查 [StudyIndex](https://github.com/ethanhunt1011/studyindex) README 的“主题 → 闪卡 → 间隔复习 → 进度”闭环；只借复习行为可追踪语义，不采用其账号、Firebase、RAG、积分与云端资料依赖。 |
+| 验收 | `probe:study-life` **7/7**；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-088，本批未部署。 |
+
+**待优化（后续功能）**：学习资料上传 / 链接解析、测验与苏格拉底对话、AI 根据历史表现排课、学习事件更细的时长与连续学习统计另起任务。

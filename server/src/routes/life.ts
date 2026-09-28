@@ -63,6 +63,13 @@ const READING_EVENT_TYPES = new Set([
   'reading.vocabulary',
 ])
 
+const STUDY_EVENT_TYPES = new Set([
+  'study.cards.generated',
+  'study.card.reviewed',
+  'study.record.created',
+  'study.task.completed',
+])
+
 function optionalNonnegativeInteger(body: Record<string, unknown>, key: string, max = 1_000_000_000): number | undefined {
   if (body[key] === undefined) return undefined
   const value = body[key]
@@ -115,6 +122,64 @@ function readingEventBody(value: unknown): {
   }
 }
 
+function optionalTimestamp(body: Record<string, unknown>): number | undefined {
+  if (body.at === undefined) return undefined
+  if (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || (body.at as number) > Date.now() + 86_400_000) {
+    throw new RequestError(ErrorCodes.BadRequest, 'at 必须是有效的时间戳，且不能晚于明天')
+  }
+  return body.at as number
+}
+
+function optionalStudyText(body: Record<string, unknown>, key: string, max: number): string | undefined {
+  if (body[key] === undefined) return undefined
+  return boundedText(body, key, max)
+}
+
+function studyEventBody(value: unknown): {
+  eventType: string
+  metrics: Record<string, unknown>
+  refId: string | null
+  at: number | undefined
+} {
+  const body = objectBody(value)
+  const eventType = boundedText(body, 'eventType', 40)
+  if (!STUDY_EVENT_TYPES.has(eventType)) throw new RequestError(ErrorCodes.BadRequest, '不支持的学习事件类型')
+  const subject = optionalStudyText(body, 'subject', 120)
+  const label = optionalStudyText(body, 'label', 160)
+  const cardId = optionalStudyText(body, 'cardId', 160)
+  const studiedOn = optionalStudyText(body, 'studiedOn', 10)
+  const dayKey = optionalStudyText(body, 'dayKey', 10)
+  if (studiedOn !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(studiedOn)) throw new RequestError(ErrorCodes.BadRequest, 'studiedOn 必须是 YYYY-MM-DD')
+  if (dayKey !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) throw new RequestError(ErrorCodes.BadRequest, 'dayKey 必须是 YYYY-MM-DD')
+  const count = body.count === undefined ? undefined : nonnegativeInteger(body, 'count')
+  const durationMinutes = body.durationMinutes === undefined ? undefined : nonnegativeInteger(body, 'durationMinutes')
+  const repetitions = body.repetitions === undefined ? undefined : nonnegativeInteger(body, 'repetitions')
+  const intervalDays = body.intervalDays === undefined ? undefined : nonnegativeInteger(body, 'intervalDays')
+  const grade = body.grade === undefined ? undefined : body.grade
+  if (grade !== undefined && grade !== 'again' && grade !== 'good' && grade !== 'easy') throw new RequestError(ErrorCodes.BadRequest, 'grade 必须是 again / good / easy')
+  if (eventType === 'study.cards.generated' && (subject === undefined || count === undefined || count < 1 || count > 100)) throw new RequestError(ErrorCodes.BadRequest, '生成卡片事件需要 1..100 张卡片与主题')
+  if (eventType === 'study.card.reviewed' && (subject === undefined || grade === undefined)) throw new RequestError(ErrorCodes.BadRequest, '复习事件需要主题与 grade')
+  if (eventType === 'study.record.created' && (subject === undefined || durationMinutes === undefined || durationMinutes < 1 || studiedOn === undefined)) throw new RequestError(ErrorCodes.BadRequest, '学习记录事件需要主题、时长与日期')
+  if (eventType === 'study.task.completed' && (label === undefined || dayKey === undefined)) throw new RequestError(ErrorCodes.BadRequest, '任务完成事件需要内容与日期')
+  return {
+    eventType,
+    refId: cardId ?? null,
+    at: optionalTimestamp(body),
+    metrics: {
+      source: 'study',
+      ...(subject === undefined ? {} : { subject }),
+      ...(count === undefined ? {} : { count }),
+      ...(grade === undefined ? {} : { grade }),
+      ...(repetitions === undefined ? {} : { repetitions }),
+      ...(intervalDays === undefined ? {} : { intervalDays }),
+      ...(durationMinutes === undefined ? {} : { durationMinutes }),
+      ...(studiedOn === undefined ? {} : { studiedOn }),
+      ...(label === undefined ? {} : { label }),
+      ...(dayKey === undefined ? {} : { dayKey }),
+    },
+  }
+}
+
 export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, state: StateProvider | null): void {
   app.get('/api/life/month', async (request) => {
     const query = request.query as Record<string, unknown>
@@ -134,6 +199,12 @@ export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, st
     const input = readingEventBody(request.body)
     const at = Date.now()
     const id = appendEventLog(input.eventType, input.metrics, input.bookId, at)
+    return reply.status(201).send({ ok: true, id, dayKey: dayKeyOf(at), at })
+  })
+  app.post('/api/life/events/study', async (request, reply) => {
+    const input = studyEventBody(request.body)
+    const at = input.at ?? Date.now()
+    const id = appendEventLog(input.eventType, input.metrics, input.refId, at)
     return reply.status(201).send({ ok: true, id, dayKey: dayKeyOf(at), at })
   })
   app.get('/api/life/ledger', async (request) => {

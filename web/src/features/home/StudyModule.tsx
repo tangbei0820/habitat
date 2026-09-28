@@ -5,8 +5,19 @@ import { IconCalendar, IconCheck } from '../../components/qixi/Icons'
 import { createStudyRecord, deleteStudyRecord, listStudyRecords, updateStudyRecord } from '../../db/home'
 import { deleteStudyCard, filterStudyCards, generateStudyCards, listStudyCards, reviewStudyCard, summarizeStudyCards, type StudyCardFilter } from '../../db/studyCards'
 import { createTask, deleteTask, listTodayTasks, toggleTask } from '../../db/studyTasks'
+import { appendStudyLifeEvent } from '../life/api'
 
 function todayKey(): string { const now = new Date(); const pad = (value: number) => String(value).padStart(2, '0'); return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` }
+
+function emitStudyLifeEvent(event: Parameters<typeof appendStudyLifeEvent>[0]): void {
+  /* Life 是跨模块投影；后端暂时不可用时，本地学习动作仍然必须完成。 */
+  void appendStudyLifeEvent(event).catch(() => undefined)
+}
+
+function studyDayAt(dayKey: string): number | undefined {
+  const at = new Date(`${dayKey}T12:00:00`).getTime()
+  return Number.isFinite(at) ? at : undefined
+}
 
 /**
  * 今日任务卡（第 6 批「学习伴学」）：「今天的三件小事」，真实存 Dexie（studyTasks，按天归组）。
@@ -38,7 +49,7 @@ function TodayTasks() {
         <div style={{ width: `${tasks.length === 0 ? 0 : (doneCount / tasks.length) * 100}%`, height: '100%', borderRadius: 2, background: 'var(--accent-strong)', transition: 'width var(--dur-card) var(--ease-out)' }} />
       </div>
       {tasks.map((task) => (
-        <div key={task.id} className="task-row pressable" onClick={() => void toggleTask(task.id).then(refresh)} role="checkbox" aria-checked={task.done} data-testid={`study-task-${task.id}`}>
+        <div key={task.id} className="task-row pressable" onClick={() => void toggleTask(task.id).then(() => { if (!task.done) emitStudyLifeEvent({ eventType: 'study.task.completed', label: task.label, dayKey: task.dayKey }); refresh() })} role="checkbox" aria-checked={task.done} data-testid={`study-task-${task.id}`}>
           <span className={`task-check${task.done ? ' is-done' : ''}`}>{task.done && <IconCheck size={13} sw={2.2} />}</span>
           <div className="min-w-0 flex-1">
             <div style={{ fontSize: 14, color: task.done ? 'var(--text-tertiary)' : 'var(--text-primary)', textDecorationLine: task.done ? 'line-through' : 'none', textDecorationColor: 'var(--text-tertiary)' }}>{task.label}</div>
@@ -154,7 +165,8 @@ function AiStudyCards() {
     setError(null)
     setNotice(null)
     try {
-      await generateStudyCards({ subject, goal, level, count: Number(count) })
+      const generated = await generateStudyCards({ subject, goal, level, count: Number(count) })
+      emitStudyLifeEvent({ eventType: 'study.cards.generated', subject, count: generated.length })
       await refresh()
       setNotice('小栖给你放好了新卡片，先翻一张看看。')
     } catch (err: unknown) {
@@ -170,6 +182,7 @@ function AiStudyCards() {
     setError(null)
     try {
       const updated = await reviewStudyCard(current.id, value)
+      emitStudyLifeEvent({ eventType: 'study.card.reviewed', cardId: current.id, subject: current.subject, grade: value, repetitions: updated.repetitions, intervalDays: updated.intervalDays })
       setAllCards((existing) => existing.map((card) => card.id === updated.id ? updated : card))
       setDismissedIds((existing) => new Set(existing).add(current.id))
       setIndex(0)
@@ -272,8 +285,10 @@ export function StudyModule() {
     event.preventDefault()
     try {
       const minutes = Number(duration)
-      if (editingId === null) await createStudyRecord(subject, note, studiedOn, minutes)
-      else await updateStudyRecord(editingId, subject, note, studiedOn, minutes)
+      if (editingId === null) {
+        await createStudyRecord(subject, note, studiedOn, minutes)
+        emitStudyLifeEvent({ eventType: 'study.record.created', subject, durationMinutes: minutes, studiedOn, ...(studyDayAt(studiedOn) === undefined ? {} : { at: studyDayAt(studiedOn) }) })
+      } else await updateStudyRecord(editingId, subject, note, studiedOn, minutes)
       reset(); setError(null); await refresh()
     } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
   }

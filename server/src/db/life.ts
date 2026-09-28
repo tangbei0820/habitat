@@ -26,6 +26,7 @@ function emptyDay(dayKey: string): LifeDaySummary {
     pricedCostCents: 0,
     unpricedCalls: 0,
     listeningDurationMs: 0,
+    studyActivityCount: 0,
   }
 }
 
@@ -47,6 +48,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     if (row.eventType.endsWith('.failed')) day.failedEventCount += 1
     if (row.eventType === 'call.ended' && typeof row.metricsJson.durationMs === 'number') day.callDurationMs += Math.max(0, row.metricsJson.durationMs)
     if (row.eventType === 'listening.progress' && typeof row.metricsJson.deltaSeconds === 'number') day.listeningDurationMs += Math.max(0, row.metricsJson.deltaSeconds * 1000)
+    if (row.eventType.startsWith('study.')) day.studyActivityCount += 1
     days.set(row.dayKey, day)
   }
   for (const row of db.select().from(usageRecord).where(and(gte(usageRecord.dayKey, `${month}-01`), lt(usageRecord.dayKey, `${end}-01`))).all()) {
@@ -65,6 +67,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     totals.totalTokens += day.totalTokens
     totals.callDurationMs += day.callDurationMs
     totals.listeningDurationMs += day.listeningDurationMs
+    totals.studyActivityCount += day.studyActivityCount
     totals.pricedCostCents += day.pricedCostCents
     totals.unpricedCalls += day.unpricedCalls
   }
@@ -203,6 +206,27 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
     const trackTitle = metricText(metrics, 'title') ?? '这首歌'
     title = row.eventType === 'listening.track.started' ? `开始一起听《${trackTitle}》` : `一起听《${trackTitle}》`
     detail = row.eventType === 'listening.progress' ? null : metricText(metrics, 'artist')
+  } else if (row.eventType.startsWith('study.')) {
+    source = '学习'
+    const subject = metricText(metrics, 'subject')
+    const label = metricText(metrics, 'label')
+    if (row.eventType === 'study.cards.generated') {
+      const count = metricText(metrics, 'count')
+      title = `生成了${count ?? '几'}张${subject ?? ''}学习卡片`
+      detail = '小栖为今天准备的复习内容'
+    } else if (row.eventType === 'study.card.reviewed') {
+      title = `复习了一张${subject ?? ''}卡片`
+      const grade = metricText(metrics, 'grade')
+      const interval = metricText(metrics, 'intervalDays')
+      detail = [grade ? `自评 ${grade}` : null, interval ? `下次间隔 ${interval} 天` : null].filter(Boolean).join(' · ') || null
+    } else if (row.eventType === 'study.record.created') {
+      title = `记录学习 · ${subject ?? '学习'}`
+      const minutes = metricText(metrics, 'durationMinutes')
+      detail = minutes ? `${minutes} 分钟` : null
+    } else {
+      title = '完成了一件学习小事'
+      detail = label
+    }
   } else if (row.eventType === 'capability.diary.create' || row.eventType === 'capability.diary.update') {
     source = '日记'; title = row.eventType.endsWith('.create') ? '写下了一篇日记' : '更新了一篇日记'; detail = metricTitle
   } else if (row.eventType === 'capability.messageboard.write' || row.eventType === 'capability.messageboard.update') {

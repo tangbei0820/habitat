@@ -64,6 +64,28 @@ export function appendReadingLifeEvent(event: ReadingLifeEvent): Promise<void> {
   }).then(() => undefined)
 }
 
+export type StudyLifeEvent = {
+  eventType: 'study.cards.generated' | 'study.card.reviewed' | 'study.record.created' | 'study.task.completed'
+  subject?: string
+  count?: number
+  grade?: 'again' | 'good' | 'easy'
+  repetitions?: number
+  intervalDays?: number
+  durationMinutes?: number
+  studiedOn?: string
+  label?: string
+  dayKey?: string
+  cardId?: string
+  at?: number
+}
+
+/** 学习事实是 Life 的跨模块投影；网络失败不应阻断本地卡片 / 记录操作。 */
+export function appendStudyLifeEvent(event: StudyLifeEvent): Promise<void> {
+  return fetchJson('/api/life/events/study', {
+    method: 'POST', headers: jsonHeaders, body: JSON.stringify(event),
+  }).then(() => undefined)
+}
+
 export function loadLifeLedger(month: string): Promise<LifeLedgerView> {
   return fetchJson(`/api/life/ledger?month=${encodeURIComponent(month)}`)
 }
