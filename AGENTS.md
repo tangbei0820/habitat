@@ -403,3 +403,8 @@ habitat/
 - 施工记录与待优化 → `docs/TASKS.md`
 - 版本历史 → `docs/CHANGELOG.md`
 - 本地启动与验收命令 → `README.md`（含 Node 版本双轨约束、端口隔离等前置条件）
+
+### 2026-09-28 当前续建收口
+
+- ✅ **T-127 Provider Center 草稿配置收口**：四张能力卡在拉取模型后提供可见下拉选择，并保留手填；自定义 Headers 提供键值编辑器与 JSON 兼容入口。未新增 schema / API，未部署 VPS。
+- 本批之后再进入 Provider 深化（Codex 生命周期、密钥保护与能力路由）或 Living Apps，不要把模型下拉 / Headers 编辑当成这些大阶段已经完成。

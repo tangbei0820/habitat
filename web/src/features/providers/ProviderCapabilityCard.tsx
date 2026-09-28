@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from 'react'
+import { useMemo, useRef, useState, type ChangeEvent } from 'react'
 import type {
   ApiProfileModelMap,
   ApiProfilePublic,
@@ -49,6 +49,12 @@ function parseHeaders(raw: string): Record<string, string> | undefined {
   return result
 }
 
+interface HeaderRow {
+  id: number
+  key: string
+  value: string
+}
+
 interface Props {
   capability: ProviderCapability
   profiles: ApiProfilePublic[]
@@ -70,6 +76,8 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
   const [baseUrl, setBaseUrl] = useState(initialProfile?.baseUrl ?? '')
   const [apiKey, setApiKey] = useState('')
   const [headersText, setHeadersText] = useState('')
+  const [headerRows, setHeaderRows] = useState<HeaderRow[]>([])
+  const nextHeaderId = useRef(1)
   const [model, setModel] = useState(binding?.model ?? '')
   const [secondaryModel, setSecondaryModel] = useState(binding?.secondaryModel ?? '')
   const [voiceId, setVoiceId] = useState(capability === 'voice' ? initialProfile?.modelMap.voice ?? '' : '')
@@ -135,6 +143,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     setConnectionName('')
     setApiKey('')
     setHeadersText('')
+    setHeaderRows([])
     setModels([])
     setModelResult(null)
     setVoices([])
@@ -268,6 +277,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     setConnectionName('')
     setApiKey('')
     setHeadersText('')
+    setHeaderRows([])
     setVoices([])
     setVoiceResult(null)
     setTestResult(null)
@@ -281,6 +291,37 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     const reader = new FileReader()
     reader.onload = () => setTestImage(typeof reader.result === 'string' ? reader.result : undefined)
     reader.readAsDataURL(file)
+  }
+
+  function syncHeaderRows(next: HeaderRow[]): void {
+    setHeaderRows(next)
+    const headers = Object.fromEntries(next
+      .map((row) => [row.key.trim(), row.value])
+      .filter(([key]) => key !== ''))
+    setHeadersText(Object.keys(headers).length === 0 ? '' : JSON.stringify(headers, null, 2))
+  }
+
+  function addHeaderRow(): void {
+    const id = nextHeaderId.current++
+    syncHeaderRows([...headerRows, { id, key: '', value: '' }])
+  }
+
+  function updateHeaderRow(id: number, field: 'key' | 'value', value: string): void {
+    syncHeaderRows(headerRows.map((row) => row.id === id ? { ...row, [field]: value } : row))
+  }
+
+  function removeHeaderRow(id: number): void {
+    syncHeaderRows(headerRows.filter((row) => row.id !== id))
+  }
+
+  function applyHeadersJson(): void {
+    try {
+      const parsed = parseHeaders(headersText) ?? {}
+      syncHeaderRows(Object.entries(parsed).map(([key, value]) => ({ id: nextHeaderId.current++, key, value })))
+      setError(null)
+    } catch (cause) {
+      setError(toMessage(cause))
+    }
   }
 
   return (
@@ -312,8 +353,27 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
         {profileId === '__new__' && <label className="text-xs">连接名称<input className={INPUT} style={INPUT_STYLE} value={connectionName} onChange={(event) => setConnectionName(event.target.value)} placeholder="例如：OpenAI 语音" /></label>}
         <label className="text-xs">Base URL<input className={INPUT} style={INPUT_STYLE} value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder={providerKind === 'elevenlabs' ? 'https://api.elevenlabs.io/v1' : providerKind === 'codex-subscription' ? 'codex://local' : 'https://api.openai.com/v1'} /></label>
         <label className="text-xs">API Key<input className={INPUT} style={INPUT_STYLE} type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={selected?.hasKey === true ? '已保存；留空沿用' : '粘贴密钥（本地服务可留空）'} /></label>
-        <label className="text-xs sm:col-span-2">自定义 Headers（JSON，可选）<textarea className={INPUT} style={INPUT_STYLE} value={headersText} onChange={(event) => setHeadersText(event.target.value)} placeholder={selected?.headerNames.length ? `已保存：${selected.headerNames.join('、')}；留空沿用` : '{"X-Header":"value"}'} rows={2} /></label>
-        <label className="text-xs">{meta.model}<input className={INPUT} style={INPUT_STYLE} list={`models-${capability}`} value={model} onChange={(event) => setModel(event.target.value)} placeholder="可拉取，也可手填模型 ID" /><datalist id={`models-${capability}`}>{models.map((item) => <option key={item} value={item} />)}</datalist></label>
+        <div className="text-xs sm:col-span-2" data-testid={`provider-headers-${capability}`}>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span>自定义 Headers（可选）</span>
+            <button type="button" className="rounded border px-2 py-1 text-xs" onClick={addHeaderRow}>添加 Header</button>
+          </div>
+          {selected?.headerNames.length ? <p className="mb-2 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>已保存：{selected.headerNames.join('、')}；新增或覆盖时只需填写同名 Header。</p> : null}
+          <div className="flex flex-col gap-2" data-testid={`provider-header-editor-${capability}`}>
+            {headerRows.length === 0 && <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>暂无草稿 Header，可直接添加；已有 Header 不会在页面上回显密钥值。</p>}
+            {headerRows.map((row, index) => <div className="flex items-center gap-2" key={row.id}>
+              <input className={`${INPUT} min-w-0 flex-1`} style={INPUT_STYLE} value={row.key} onChange={(event) => updateHeaderRow(row.id, 'key', event.target.value)} placeholder="Header 名称" aria-label={`Header 名称 ${index + 1}`} />
+              <input className={`${INPUT} min-w-0 flex-1`} style={INPUT_STYLE} value={row.value} onChange={(event) => updateHeaderRow(row.id, 'value', event.target.value)} placeholder="Header 值" aria-label={`Header 值 ${index + 1}`} />
+              <button type="button" className="rounded border px-2 py-2 text-xs" onClick={() => removeHeaderRow(row.id)} aria-label={`删除 Header ${index + 1}`}>删除</button>
+            </div>)}
+          </div>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[11px]" style={{ color: 'var(--text-secondary)' }}>高级 JSON（兼容已有配置）</summary>
+            <textarea className={`${INPUT} mt-1`} style={INPUT_STYLE} value={headersText} onChange={(event) => setHeadersText(event.target.value)} placeholder={selected?.headerNames.length ? '留空沿用已保存值' : '{"X-Header":"value"}'} rows={2} />
+            <button type="button" className="mt-1 rounded border px-2 py-1 text-[11px]" onClick={applyHeadersJson}>应用到键值编辑器</button>
+          </details>
+        </div>
+        <label className="text-xs">{meta.model}<input className={INPUT} style={INPUT_STYLE} list={`models-${capability}`} value={model} onChange={(event) => setModel(event.target.value)} placeholder="可拉取，也可手填模型 ID" /><datalist id={`models-${capability}`}>{models.map((item) => <option key={item} value={item} />)}</datalist>{models.length > 0 && <select className={`${INPUT} mt-2`} style={INPUT_STYLE} data-testid={`provider-model-select-${capability}`} value={models.includes(model) ? model : ''} onChange={(event) => { if (event.target.value !== '') setModel(event.target.value) }} aria-label="已拉取模型"><option value="">从已拉取列表选择</option>{models.map((item) => <option key={item} value={item}>{item}</option>)}</select>}</label>
         {capability === 'voice' && providerKind === 'elevenlabs' && <label className="text-xs">Voice ID<input className={INPUT} style={INPUT_STYLE} value={voiceId} onChange={(event) => setVoiceId(event.target.value)} placeholder="例如：21m00Tcm4TlvDq8ikWAM" />{voices.length > 0 && <select className={INPUT} style={INPUT_STYLE} value={voiceId} onChange={(event) => setVoiceId(event.target.value)} aria-label="已拉取音色"><option value="">从已拉取音色中选择</option>{voices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name} · {voice.id}{voice.category === null ? '' : ` · ${voice.category}`}</option>)}</select>}</label>}
         {capability === 'voice' && providerKind === 'elevenlabs' && <>
           <label className="text-xs">稳定性（0–1）<input className={INPUT} style={INPUT_STYLE} type="number" min="0" max="1" step="0.05" value={voiceStability} onChange={(event) => setVoiceStability(event.target.value)} /></label>

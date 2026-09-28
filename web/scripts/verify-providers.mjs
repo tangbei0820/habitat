@@ -242,6 +242,13 @@ const cardActions = await evaluate(`['chat','voice','vision','image'].every((id)
 })`)
 check('每张卡都有拉模型 / 测试 / 保存 / 恢复', cardActions)
 
+const cardDraftControls = await evaluate(`['chat','voice','vision','image'].every((id) => {
+  const card = document.querySelector('[data-testid="provider-card-' + id + '"]')
+  return card?.querySelector('[data-testid="provider-header-editor-' + id + '"]') !== null
+    && card?.innerText.includes('添加 Header')
+})`)
+check('每张卡都有键值 Header 编辑入口', cardDraftControls)
+
 async function clickCardButton(capability, label) {
   await expandCard(capability)
   const result = await evaluate(`(() => {
@@ -257,6 +264,7 @@ async function clickCardButton(capability, label) {
 await clickCardButton('chat', '拉取模型')
 await waitFor(`document.querySelector('[data-testid="provider-card-chat"]')?.innerText.includes('已拉取')`, '草稿模型列表回填')
 check('主聊天卡可用未保存草稿拉取模型', true)
+check('拉取模型后出现可选下拉', (await evaluate(`document.querySelector('[data-testid="provider-model-select-chat"] option:nth-child(2)') !== null`)) === true)
 await clickCardButton('chat', '测试连接')
 await waitFor(`document.querySelector('[data-testid="provider-test-chat"]')?.innerText.includes('真实调用通过')`, '主聊天真实调用通过', 30000)
 check('主聊天卡执行真实流式测试', true)

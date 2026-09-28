@@ -24,6 +24,16 @@
 - 更新 Home / Chat / Export 验收脚本的 Dexie / 备份版本断言；两端 typecheck、前端 build、脚本语法与 diff 检查通过。生产部署未执行。
 - 本批不引入复杂拖拽、主题包 / 字体背景资源导入、离线发送队列、Blob / OPFS 迁移或下一阶段 Living Apps / Provider 深化。
 
+## 2026-09-28 · V2-A · Provider Center 草稿配置收口
+
+### T-127 · 模型目录选择与自定义 Headers 编辑
+
+- 四张能力卡在成功拉取模型后提供明确的下拉选择，同时保留模型 ID 手填与浏览器 datalist；拉取失败不会覆盖手填值。
+- 自定义 Headers 增加可增删键值行与高级 JSON 兼容入口；空键行不会进入请求，已保存 Header 只展示名称，不回显敏感值。
+- 不改数据库、Provider API 或能力绑定语义；继续复用未保存草稿、真实能力测试与测试指纹门禁。
+- 参考取舍：借鉴 OmniRouter 的 Provider / 模型分层与状态反馈、VCPToolBox 的显式配置诊断；不引入复杂路由或第二套 Agent Runtime。
+- 验收：两端 `typecheck`、前端 `build`、Provider 验收脚本语法检查与 `git diff --check` 通过；未启动浏览器 CDP，生产未部署。
+
 ## 2026-09-28 · V2-A · P0 收口
 
 ### T-124 · Provider / Runtime / Chat 正确性
