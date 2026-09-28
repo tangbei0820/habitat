@@ -3,6 +3,8 @@ import { IconClose, IconMic, IconStop } from '../../components/qixi/Icons'
 import { formatDuration } from '../../lib/format'
 import { log } from '../../lib/log'
 import { synthesizeSpeech } from '../../lib/media'
+import { appendCallTurn, answerCall, createCall, hangupCall, loadCall, subscribeCallEvents } from '../../lib/calls'
+import type { CallEvent } from '@shared/types'
 
 const MAX_CALL_TURN_MS = 60_000
 const MIN_CALL_TURN_MS = 400
@@ -52,9 +54,11 @@ function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null 
 export interface CallPanelProps {
   open: boolean
   disabled: boolean
+  chatSessionId: string
+  incomingCallId?: string | null
   onClose: () => void
   /** 落库并生成一轮回复；返回正文供通话模式朗读。 */
-  onTurn: (dataUrl: string, durationMs: number) => Promise<string>
+  onTurn: (dataUrl: string, durationMs: number) => Promise<{ reply: string; transcript: string }>
   /** 浏览器原生连续识别的最终句子；与普通聊天共用同一会话。 */
   onTurnText: (text: string) => Promise<string>
   onError: (text: string) => void
@@ -66,7 +70,7 @@ export interface CallPanelProps {
  * 这是可取消边界清晰的 in-app call，不伪装成 WebSocket 全双工或手机来电。
  * 每一轮都作为普通语音消息落在当前会话里，用户随时可以挂断。
  */
-export function CallPanel({ open, disabled, onClose, onTurn, onTurnText, onError }: CallPanelProps) {
+export function CallPanel({ open, disabled, chatSessionId, incomingCallId = null, onClose, onTurn, onTurnText, onError }: CallPanelProps) {
   const [status, setStatus] = useState<CallStatus>('idle')
   const [elapsedMs, setElapsedMs] = useState(0)
   const [errorText, setErrorText] = useState<string | null>(null)
@@ -85,6 +89,8 @@ export function CallPanel({ open, disabled, onClose, onTurn, onTurnText, onError
   const timerRef = useRef<number | null>(null)
   const audioRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null)
   const playbackResolveRef = useRef<(() => void) | null>(null)
+  const callIdRef = useRef<string | null>(null)
+  const callUnsubscribeRef = useRef<(() => void) | null>(null)
 
   function clearCallTimer(): void {
     if (callTimerRef.current !== null) {
@@ -106,6 +112,39 @@ export function CallPanel({ open, disabled, onClose, onTurn, onTurnText, onError
     }
     setInterimText('')
     clearCallTimer()
+  }
+
+  async function ensureServerCall(): Promise<string> {
+    if (callIdRef.current !== null) return callIdRef.current
+    let call = incomingCallId === null
+      ? await createCall(chatSessionId)
+      : (await loadCall(incomingCallId)).call
+    if (call.status === 'ringing') call = await answerCall(call.id)
+    callIdRef.current = call.id
+    callUnsubscribeRef.current?.()
+    callUnsubscribeRef.current = subscribeCallEvents(call.id, (event: CallEvent) => {
+      if (event.type !== 'state' || event.call.id !== call.id) return
+      if (event.call.status === 'ended' || event.call.status === 'rejected' || event.call.status === 'missed' || event.call.status === 'cancelled') {
+        nativeActiveRef.current = false
+        setStatus('idle')
+        setErrorText('通话已结束')
+      }
+    })
+    return call.id
+  }
+
+  function recordTurn(speaker: 'user' | 'companion', text: string): void {
+    const activeCallId = callIdRef.current
+    if (activeCallId === null || text.trim() === '') return
+    void appendCallTurn(activeCallId, speaker, text.trim()).catch((error: unknown) => log.warn('通话逐句记录失败', error))
+  }
+
+  function endServerCall(): void {
+    const activeCallId = callIdRef.current
+    callIdRef.current = null
+    callUnsubscribeRef.current?.()
+    callUnsubscribeRef.current = null
+    if (activeCallId !== null) void hangupCall(activeCallId).catch((error: unknown) => log.warn('结束通话记录失败', error))
   }
 
   function resumeNativeListening(): void {
@@ -155,6 +194,9 @@ export function CallPanel({ open, disabled, onClose, onTurn, onTurnText, onError
     stopNativeCall()
     releaseRecorder()
     stopPlayback()
+    endServerCall()
+    callUnsubscribeRef.current?.()
+    callUnsubscribeRef.current = null
   }, [])
 
   useEffect(() => {
@@ -253,7 +295,11 @@ export function CallPanel({ open, disabled, onClose, onTurn, onTurnText, onError
       setErrorText(null)
       setStatus('processing')
       void onTurn(dataUrl, durationMs)
-        .then((reply) => playReply(reply))
+        .then(({ reply, transcript }) => {
+          recordTurn('user', transcript)
+          recordTurn('companion', reply)
+          return playReply(reply)
+        })
         .catch((error: unknown) => {
           log.error('通话这一轮失败', error)
           fail(error instanceof Error ? error.message : String(error))
@@ -269,8 +315,10 @@ export function CallPanel({ open, disabled, onClose, onTurn, onTurnText, onError
     nativeProcessingRef.current = true
     setInterimText('')
     setStatus('processing')
+    recordTurn('user', normalized)
     try {
       const reply = await onTurnText(normalized)
+      recordTurn('companion', reply)
       if (!closedRef.current && reply.trim() !== '') {
         await playReply(reply)
       }
@@ -287,10 +335,17 @@ export function CallPanel({ open, disabled, onClose, onTurn, onTurnText, onError
     }
   }
 
-  function startNativeCall(): void {
+  async function startNativeCall(): Promise<void> {
+    if (disabled) return
+    try {
+      await ensureServerCall()
+    } catch (error) {
+      fail(`无法接通通话：${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
     const Constructor = getSpeechRecognitionConstructor()
     if (Constructor === null) {
-      void startRecording()
+      await startRecording()
       return
     }
     closedRef.current = false
@@ -366,6 +421,10 @@ export function CallPanel({ open, disabled, onClose, onTurn, onTurnText, onError
       fail('当前环境不支持通话录音：需要 https / localhost 且浏览器提供录音能力')
       return
     }
+    try { await ensureServerCall() } catch (error) {
+      fail(`无法接通通话：${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
     try {
       stopPlayback()
       discardRef.current = false
@@ -396,6 +455,8 @@ export function CallPanel({ open, disabled, onClose, onTurn, onTurnText, onError
       }, 250)
     } catch (error) {
       releaseRecorder()
+      // 已经创建的服务端会话不能悬空；麦克风权限 / 设备失败时立即结束它。
+      endServerCall()
       log.error('开始通话录音失败', error)
       fail(`无法开始通话：${error instanceof Error ? error.message : String(error)}`)
     }
@@ -415,6 +476,7 @@ export function CallPanel({ open, disabled, onClose, onTurn, onTurnText, onError
     if (recorder !== null && recorder.state !== 'inactive') recorder.stop()
     else releaseRecorder()
     stopPlayback()
+    endServerCall()
     onClose()
   }
 
@@ -476,7 +538,7 @@ export function CallPanel({ open, disabled, onClose, onTurn, onTurnText, onError
           ) : (
             <button type="button" className="btn-pill btn-strong" data-testid="call-start-recording" disabled={disabled || status === 'processing'} onClick={startNativeCall}>
               <IconMic size={16} />
-              {status === 'processing' ? '处理中…' : '开始通话'}
+              {status === 'processing' ? '处理中…' : incomingCallId !== null ? '接听来电' : '开始通话'}
             </button>
           )}
           <button type="button" className="btn-pill btn-ghost" data-testid="call-hangup" onClick={close}>结束通话</button>

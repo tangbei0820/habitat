@@ -210,6 +210,29 @@ CREATE TABLE IF NOT EXISTS event_log (
 );
 CREATE INDEX IF NOT EXISTS idx_event_log_day ON event_log (day_key, id);
 CREATE INDEX IF NOT EXISTS idx_event_log_type ON event_log (event_type, id);
+CREATE TABLE IF NOT EXISTS call_session (
+  id TEXT PRIMARY KEY,
+  chat_session_id TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('user', 'companion')),
+  status TEXT NOT NULL CHECK (status IN ('ringing', 'active', 'ended', 'rejected', 'missed', 'cancelled')),
+  created_at INTEGER NOT NULL,
+  answered_at INTEGER,
+  ended_at INTEGER,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_call_session_chat ON call_session (chat_session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_call_session_inbox ON call_session (status, direction, created_at DESC);
+CREATE TABLE IF NOT EXISTS call_turn (
+  id TEXT PRIMARY KEY,
+  call_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  speaker TEXT NOT NULL CHECK (speaker IN ('user', 'companion')),
+  text TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  UNIQUE (call_id, sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_call_turn_call ON call_turn (call_id, sequence);
 CREATE TABLE IF NOT EXISTS notification (
   id TEXT PRIMARY KEY,
   kind TEXT NOT NULL,

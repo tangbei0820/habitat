@@ -1082,6 +1082,36 @@ export interface EventLogRecord {
   at: number
 }
 
+export type CallDirection = 'user' | 'companion'
+export type CallStatus = 'ringing' | 'active' | 'ended' | 'rejected' | 'missed' | 'cancelled'
+export type CallSpeaker = 'user' | 'companion'
+
+/** 服务端电话事实源；正文仍与当前聊天会话保持同一上下文。 */
+export interface CallSessionRecord {
+  id: string
+  chatSessionId: string
+  direction: CallDirection
+  status: CallStatus
+  createdAt: number
+  answeredAt: number | null
+  endedAt: number | null
+  durationMs: number
+  updatedAt: number
+}
+
+export interface CallTurnRecord {
+  id: string
+  callId: string
+  sequence: number
+  speaker: CallSpeaker
+  text: string
+  at: number
+}
+
+export type CallEvent =
+  | { type: 'state'; call: CallSessionRecord }
+  | { type: 'turn'; callId: string; turn: CallTurnRecord }
+
 export interface WalletSummary {
   balance: number
   updatedAt: number
@@ -1117,6 +1147,7 @@ export interface LifeDaySummary {
   promptTokens: number
   completionTokens: number
   totalTokens: number
+  callDurationMs: number
   pricedCostCents: number
   unpricedCalls: number
 }

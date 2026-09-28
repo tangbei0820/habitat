@@ -996,3 +996,8 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - **Solitude Surf v1**：零依赖 RSS/Atom 解析 + 只读网页取回（协议白名单 / 内网黑名单 / 10s / 1MB）；feeds 存 app_kv（默认少数派+36kr，`GET/PUT /api/surf/feeds`）；并行拉源 → 有界候选 → 模型只选一篇 → 取正文 → 带完整来源的私人记录；URL 指纹近 14 天去重；**任何环节失败都降级普通整理**；订阅源与网页内容一律视为不可信数据（包标记 + prompt 明示）。
 - **审计**：`/api/automation/runs` 按 run 聚合返回行动级审计（`actions[]`）。
 - 验收：决策契约 **35/35**（`probe-decision-contract.ts` + mock `/__script` 脚本队列）；Phase 3B 21/21、Phase 4 16/16、P0 50/50、事件收件箱 57/57；前端全量流水线 16 支全过零失败；两端 typecheck 过。
+### 2026-09-28 · T-086 · V2-A 完整应用内电话系统（本地）
+
+- 新增服务端 `call_session` / `call_turn` 事实源与通话生命周期 API：创建、来电邀请、接听、拒绝、挂断、逐句记录与 SSE 状态流。
+- 聊天页支持连续半双工通话、全局来电提示、历史逐句回放 / 朗读；AI 可在绑定会话中调用 `call_ring` 发起邀请。
+- 通话结束写入 Life EventLog，月历汇总通话时长；不宣称 WebRTC 全双工、PSTN、CallKit 或系统锁屏电话。

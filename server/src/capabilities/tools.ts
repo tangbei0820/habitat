@@ -20,7 +20,9 @@ import type { LlmToolCall, MemoryProvider, StateProvider } from '@shared/provide
 import { describeState } from '@shared/state-summary.js'
 import { getCompanionDiaryView, listCompanionDiaryViews, createCompanionDiary, setDiaryFragmentVisibility, updateCompanionDiary } from '../db/diary.js'
 import { createCompanionMoment, updateCompanionMoment } from '../db/moment.js'
-import { appendEventLog } from '../db/activity.js'
+import { appendEventLog, createNotification } from '../db/activity.js'
+import { createCall } from '../db/calls.js'
+import { publishCallEvent } from '../services/call-events.js'
 import { dayKeyOf } from '../db/usage.js'
 import { decideEvent, requestToolConfirm } from '../services/event-inbox.js'
 import { searchWeb } from '../lib/web-fetch.js'
@@ -141,6 +143,8 @@ export interface ToolRuntime {
   stickerCatalog?: readonly ChatStickerCatalogItem[]
   /** 本次聊天请求已发送的表情；防止模型在多轮工具循环里重复发图。 */
   stickerSentId?: string
+  /** 当前聊天会话 id；仅用于将 AI 发起的来电绑定到原会话。 */
+  chatSessionId?: string
 }
 
 type ParsedArgs = { ok: true; value: Record<string, unknown> } | { ok: false; error: string }
@@ -422,6 +426,20 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
           summary: `发送了表情包《${sticker.name}》`,
           detail: `${sticker.name}（${sticker.id}）`,
           stickerId: sticker.id,
+        }
+      }
+      case 'call.ring': {
+        const chatSessionId = runtime.chatSessionId?.trim() ?? ''
+        if (chatSessionId === '') return failure(tool, '当前轮没有绑定聊天会话，无法发起通话')
+        const call = createCall(chatSessionId, 'companion')
+        publishCallEvent({ type: 'state', call })
+        createNotification('proactive', '小栖来电', '小栖正在邀请你接听通话', { callId: call.id, chatSessionId })
+        appendEventLog('call.ring', { callId: call.id, chatSessionId }, call.id)
+        return {
+          ok: true,
+          text: `通话邀请已发出（callId: ${call.id}）。对方可以在应用内接听或拒绝，不要重复发起。`,
+          summary: '已发出通话邀请',
+          detail: '等待北北接听或拒绝',
         }
       }
 

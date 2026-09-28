@@ -62,6 +62,8 @@ export type CapabilityId =
   /* —— 聊天表情包（图库来自本轮前端，不把图片原文塞进模型上下文） —— */
   | 'sticker.search'
   | 'sticker.send'
+  /* —— 应用内电话 —— */
+  | 'call.ring'
   /* —— 联网检索（仅在用户明确授权的本轮暴露） —— */
   | 'web.search'
   /* —— 自我认知 —— */
@@ -436,6 +438,19 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
         required: ['stickerId'],
         additionalProperties: false,
       },
+    },
+  },
+  {
+    id: 'call.ring',
+    module: 'tools',
+    label: '发起通话',
+    summary: '向北北发起一次应用内语音通话邀请',
+    modelHint: '当文字不足以表达、或你明确想和北北说几句时，可以发起一次应用内通话邀请；不要为了每次回复都拨打。对方可以接听或拒绝。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'call_ring',
+      description: '向北北发起一次应用内通话邀请。只在确实需要语音交流时调用；对方可以稍后接听或拒绝。',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
     },
   },
   {

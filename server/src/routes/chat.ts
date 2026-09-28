@@ -140,6 +140,7 @@ function parseBody(raw: unknown): ChatStreamRequest {
   if (record === null) throw new ProviderError(ErrorCodes.BadRequest, '请求体必须是 JSON 对象')
 
   const profileId = typeof record.profileId === 'string' && record.profileId !== '' ? record.profileId : undefined
+  const sessionId = typeof record.sessionId === 'string' && record.sessionId !== '' ? record.sessionId : undefined
   const model = typeof record.model === 'string' && record.model !== '' ? record.model : undefined
   const temperature = parseNumber(record.temperature, 'temperature')
   const maxTokens = parseNumber(record.maxTokens, 'maxTokens')
@@ -156,6 +157,7 @@ function parseBody(raw: unknown): ChatStreamRequest {
 
   return {
     ...(profileId === undefined ? {} : { profileId }),
+    ...(sessionId === undefined ? {} : { sessionId }),
     ...(model === undefined ? {} : { model }),
     messages: parseMessages(record.messages),
     ...(temperature === undefined ? {} : { temperature }),
@@ -326,10 +328,14 @@ export function registerChatRoutes(
     const capabilitySnapshot = body.webSearch === undefined
       ? allCapabilities.filter((item) => item.id !== 'web.search')
       : allCapabilities.map((item) => item.id === 'web.search' ? { ...item, autonomy: 'autonomous' as const } : item)
+    // 来电必须绑定原聊天会话；独处 / Wake 的后台决策没有可安全回链的会话时，不把它伪装成可用工具。
+    const sessionBoundSnapshot = body.sessionId === undefined
+      ? capabilitySnapshot.filter((item) => item.id !== 'call.ring')
+      : capabilitySnapshot
     const stickerReady = (body.stickerCatalog?.length ?? 0) > 0
     const filteredCapabilitySnapshot = stickerReady
-      ? capabilitySnapshot
-      : capabilitySnapshot.filter((item) => item.id !== 'sticker.search' && item.id !== 'sticker.send')
+      ? sessionBoundSnapshot
+      : sessionBoundSnapshot.filter((item) => item.id !== 'sticker.search' && item.id !== 'sticker.send')
     const context = await assembleChatContext(body.messages, state, filteredCapabilitySnapshot, counterpartAt, {
       lastCounterpartMessageAt: counterpartAt,
       counterpartText: latestUserText,
@@ -361,6 +367,7 @@ export function registerChatRoutes(
       capabilities,
       ...(body.webSearch === undefined ? {} : { webSearchQuery: body.webSearch.query }),
       stickerCatalog: body.stickerCatalog ?? [],
+      ...(body.sessionId === undefined ? {} : { chatSessionId: body.sessionId }),
     }
 
     // —— 关键一步：**先取第一个 chunk 再写响应头** ——

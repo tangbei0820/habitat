@@ -833,12 +833,24 @@ Web Push 仅是站内通知的尽力而为副本：VAPID 环境变量不完整�
 | `POST /api/media/speech/stream` | `{ text, voice?, profileId? }`；优先以 Provider 原生音频流转发，暂不支持流式的 Provider 回退为完整音频并标记 `x-habitat-tts-mode: fallback`；正文最多 4,000 字 |
 | `POST /api/media/vision` | `{ dataUrl, prompt?, profileId? }`；只收白名单前端产生的 `image/*`，解码后最大 3 MB |
 | `POST /api/media/images` | `{ prompt, profileId? }`；要求上游返回 `b64_json`，服务端转成可本地保存的 PNG data URL |
+| `POST /api/calls` | `{ chatSessionId }`；创建用户发起的应用内通话，返回 `ringing` 会话 |
+| `POST /api/calls/ring` | `{ chatSessionId }`；Runtime / Wake 发起小栖来电，并写入通知收件箱 |
+| `GET /api/calls?chatSessionId=` | 当前聊天的通话记录摘要 |
+| `GET /api/calls/inbox` | 当前待接听的小栖来电 |
+| `GET /api/calls/:id` | 通话状态与逐句记录 |
+| `GET /api/calls/events` / `GET /api/calls/:id/events` | 全局 / 单通电话 SSE 状态与逐句事件；断线由浏览器按 `retry` 自动重连 |
+| `POST /api/calls/:id/answer` | 接听响铃中的通话 |
+| `POST /api/calls/:id/reject` | 拒绝响铃中的通话 |
+| `POST /api/calls/:id/hangup` | `{ status?: ended|cancelled|missed }`；结束、取消或标记未接 |
+| `POST /api/calls/:id/turns` | `{ speaker: user|companion, text }`；追加一条已完成的通话句子 |
 | `GET /api/tools` | 从当前 ready 的 MCP Server 聚合脱敏工具描述与 `inputSchema` |
 | `POST /api/tools/call` | `{ serverId, name, args }`；用户在 Mini Terminal 显式确认后调用 |
 
 `modelMap` 对应槽位为 `transcription / tts / vision / image`。未配置返回
 `400 PROVIDER_NOT_CONFIGURED`；上游鉴权 / 网络 / 非 2xx 继续使用统一 Provider 错误码。
 媒体路由的 Fastify 总体请求上限是 12 MB（容纳 base64 膨胀），端点内部再按上述解码后大小收紧。
+
+应用内电话的通话事实保存在服务端 SQLite，聊天正文仍归浏览器本地会话库；每次结束会追加 `call.ended` EventLog，Life 月历汇总通话时长。前端全局监听来电 SSE，并在接听后跳入原聊天会话；断线时 EventSource 按服务端 `retry` 自动重连，已结束状态不会继续收音。系统锁屏 / CallKit、PSTN 与实时 WebRTC 全双工仍不在当前范围。
 
 ## 待实现（按阶段）
 

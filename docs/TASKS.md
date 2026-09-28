@@ -2895,4 +2895,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 参考取舍 | 实查 [Ariakitty/ai-voice-call](https://github.com/Ariakitty/ai-voice-call)：借鉴连续识别、interim 文本、AI 播放时停麦、播放完恢复、同一会话与明确挂断；不采用其电话推送、原生来电横幅、独立 Node 电话服务和声纹验证。 |
 | 验收 | `npm run typecheck`、`npm run build`、`npm --prefix server run probe:elevenlabs` **6/6**、`git diff --check` 通过；真实浏览器连续识别需在 HTTPS 部署环境手动验收。生产仍停在 T-072，本批未部署。 |
 
-**后续独立任务**：把每通电话作为可回放的 call 记录 / Life 事件、句级 TTS 队列与断线送达账、主动来电邀请；这些需要先确定数据模型与通知策略。
+**后续独立任务**：可回放 call 记录、Life 事件、主动来电邀请已由 T-086 完成；句级 TTS 队列、断线送达账与系统级电话能力仍按 T-086 的延期边界保留。
+
+### T-086 · 2026-09-28 · V2-A 后续：完整应用内电话系统—— **完成（本地）**
+
+**边界**：把 T-085 的连续半双工能力补成有事实源、有生命周期、可接听的应用内电话；不做 WebRTC 全双工、系统锁屏 / CallKit、PSTN 或原生电话权限。
+
+| 交付 | 说明 |
+| --- | --- |
+| 会话事实源 | 服务端 SQLite 新增 `call_session` / `call_turn`；状态覆盖响铃、进行中、结束、拒绝、未接、取消，逐句记录带 speaker / sequence。 |
+| 生命周期 API | 新增创建、Runtime / Wake 来电、接听、拒绝、挂断、逐句追加、当前会话历史与全局 / 单通 SSE；结束时写 `call.ended` EventLog。 |
+| 前端电话 | 聊天内拨出 / 接听、全局来电提示、挂断与停止听取；AI 通过 `call_ring` 工具也能发起邀请，但用户始终可以拒绝。 |
+| 记录与 Life | 聊天顶栏提供通话记录，展开可回看逐句并朗读小栖回复；Life 月历新增通话时长汇总与事件明细。 |
+| 失败与重连 | EventSource 使用服务端 retry 自动重连；结束态停止收音；来电 API / 逐句落库失败会显示或记录，不伪造已接通。 |
+| 参考取舍 | 实查 [Ariakitty/ai-voice-call](https://github.com/Ariakitty/ai-voice-call)：借连续识别、interim、播放时停麦 / 播放后恢复和明确挂断；不复制其原生来电 / 电话网 / 声纹方案。 |
+| 验收 | `npm run typecheck`、`npm run build`、HTTP 冒烟（创建 → 接听 → 逐句 → 挂断、来电 → 拒绝）、`git diff --check`；浏览器麦克风与 HTTPS 来电提示仍需部署环境人工验收。 |
+
+**待优化（明确延期）**：WebRTC / WebSocket 全双工、实时打断、句级 TTS 队列、锁屏 / CallKit、PSTN、后台系统来电与通话转写搜索；这些不在本批继续施工。

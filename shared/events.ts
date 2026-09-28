@@ -39,6 +39,8 @@ export interface SseEnvelope<T = unknown> {
  * 也从同一组装入口加入，本请求形态不变。
  */
 export interface ChatStreamRequest {
+  /** 当前会话的本地 id；仅用于把 AI 发起的来电绑定到原聊天，不由服务端保存聊天正文。 */
+  sessionId?: string
   /** 不传则用注册表里的当前启用方案 */
   profileId?: string
   /** 不传则用方案的 modelMap.chat */

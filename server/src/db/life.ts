@@ -22,6 +22,7 @@ function emptyDay(dayKey: string): LifeDaySummary {
     promptTokens: 0,
     completionTokens: 0,
     totalTokens: 0,
+    callDurationMs: 0,
     pricedCostCents: 0,
     unpricedCalls: 0,
   }
@@ -43,6 +44,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     const day = days.get(row.dayKey) ?? emptyDay(row.dayKey)
     day.eventCount += 1
     if (row.eventType.endsWith('.failed')) day.failedEventCount += 1
+    if (row.eventType === 'call.ended' && typeof row.metricsJson.durationMs === 'number') day.callDurationMs += Math.max(0, row.metricsJson.durationMs)
     days.set(row.dayKey, day)
   }
   for (const row of db.select().from(usageRecord).where(and(gte(usageRecord.dayKey, `${month}-01`), lt(usageRecord.dayKey, `${end}-01`))).all()) {
@@ -59,6 +61,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     totals.promptTokens += day.promptTokens
     totals.completionTokens += day.completionTokens
     totals.totalTokens += day.totalTokens
+    totals.callDurationMs += day.callDurationMs
     totals.pricedCostCents += day.pricedCostCents
     totals.unpricedCalls += day.unpricedCalls
   }

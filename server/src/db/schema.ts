@@ -12,6 +12,9 @@ import type {
   RuntimeEventDecider,
   RuntimeEventKind,
   RuntimeEventStatus,
+  CallDirection,
+  CallStatus,
+  CallSpeaker,
 } from '@shared/types'
 import { integer, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
 
@@ -246,6 +249,32 @@ export const eventLog = sqliteTable('event_log', {
   refId: text('ref_id'),
   at: integer('at').notNull(),
 })
+
+/** 应用内电话事实源：状态与逐句文字记录绑定原聊天会话，不另起 AI 上下文。 */
+export const callSession = sqliteTable('call_session', {
+  id: text('id').primaryKey(),
+  chatSessionId: text('chat_session_id').notNull(),
+  direction: text('direction', { enum: ['user', 'companion'] }).$type<CallDirection>().notNull(),
+  status: text('status', { enum: ['ringing', 'active', 'ended', 'rejected', 'missed', 'cancelled'] }).$type<CallStatus>().notNull(),
+  createdAt: integer('created_at').notNull(),
+  answeredAt: integer('answered_at'),
+  endedAt: integer('ended_at'),
+  durationMs: integer('duration_ms').notNull().default(0),
+  updatedAt: integer('updated_at').notNull(),
+})
+export type CallSessionRow = typeof callSession.$inferSelect
+
+export const callTurn = sqliteTable('call_turn', {
+  id: text('id').primaryKey(),
+  callId: text('call_id').notNull(),
+  sequence: integer('sequence').notNull(),
+  speaker: text('speaker', { enum: ['user', 'companion'] }).$type<CallSpeaker>().notNull(),
+  text: text('text').notNull(),
+  at: integer('at').notNull(),
+}, (table) => ({
+  callSequence: unique('call_turn_call_sequence').on(table.callId, table.sequence),
+}))
+export type CallTurnRow = typeof callTurn.$inferSelect
 
 /** 主动消息先落服务端收件箱；Phase 4 再负责 UI 与 Web Push。 */
 export const notification = sqliteTable('notification', {

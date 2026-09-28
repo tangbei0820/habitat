@@ -3,6 +3,7 @@ import { OfflineBanner } from '../features/offline/OfflineBanner'
 import { UpdatePrompt } from '../features/pwa/UpdatePrompt'
 import { BottomNav } from './BottomNav'
 import { WELCOME_PATH } from './entry'
+import { IncomingCallPrompt } from '../features/chat/IncomingCallPrompt'
 
 /**
  * 会话窗口是**沉浸式**的：自持滚动容器（虚拟列表要自己控制 scrollTop），
@@ -32,6 +33,7 @@ export function AppShell() {
       <UpdatePrompt />
       {/* 离线横幅同理；两条都只在「有事」时才占位 */}
       <OfflineBanner />
+      <IncomingCallPrompt />
       <main
         // `overflow-x-clip`：子页面进场是「从右侧滑入」，动画期间会横向溢出。
         // 用 clip 而不是 hidden —— 它不创建滚动容器，不会顺带改掉 fixed/sticky 的行为。

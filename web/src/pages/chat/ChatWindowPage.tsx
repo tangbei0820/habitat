@@ -4,7 +4,7 @@ import type { ChatToolCallPayload } from '@shared/events'
 import type { LlmChatMessage } from '@shared/providers'
 import type { ChatContextSummary, ChatMessage, ChatSession, MessageBlock, MessageStatus, Sticker, ToolResultBlock } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
-import { IconChevronLeft, IconMic, IconSearch, IconSetting, IconToolbox } from '../../components/qixi/Icons'
+import { IconChevronLeft, IconClock, IconMic, IconSearch, IconSetting, IconToolbox } from '../../components/qixi/Icons'
 import { useChatDisplay } from '../../app/useChatDisplay'
 import {
   ChatBubble,
@@ -19,6 +19,7 @@ import { MessageAvatar } from '../../features/chat/MessageAvatar'
 import { MiniTerminal } from '../../features/chat/MiniTerminal'
 import { ChatHistoryPanel } from '../../features/chat/ChatHistoryPanel'
 import { CallPanel } from '../../features/chat/CallPanel'
+import { CallHistoryPanel } from '../../features/chat/CallHistoryPanel'
 import {
   createMessageArtwork,
   createMessageBookmark,
@@ -180,6 +181,7 @@ export function ChatWindowPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const focusMessageId = searchParams.get('focus')
+  const incomingCallId = searchParams.get('call')
   const [session, setSession] = useState<ChatSession | null | undefined>(undefined)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [sending, setSending] = useState(false)
@@ -220,6 +222,7 @@ export function ChatWindowPage() {
   const [contextCompacting, setContextCompacting] = useState(false)
   const [mediaBusy, setMediaBusy] = useState(false)
   const [callOpen, setCallOpen] = useState(false)
+  const [callHistoryOpen, setCallHistoryOpen] = useState(false)
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [stickers, setStickers] = useState<Sticker[]>([])
 
@@ -274,6 +277,7 @@ export function ChatWindowPage() {
     setPendingConfirm(null)
     setSettingsOpen(false)
     setCallOpen(false)
+    setCallHistoryOpen(false)
     setContextMessageCount(0)
     setContextCharacterCount(0)
     setHistoryOpen(false)
@@ -334,6 +338,10 @@ export function ChatWindowPage() {
       cancelled = true
     }
   }, [sessionId, focusMessageId])
+
+  useEffect(() => {
+    if (incomingCallId !== null && session?.id === sessionId) setCallOpen(true)
+  }, [incomingCallId, session?.id, sessionId])
 
   // 离开页面即中止在跑的流，避免白烧 token
   useEffect(
@@ -429,6 +437,7 @@ export function ChatWindowPage() {
         : stickers
       await streamChat(
         {
+          ...(sessionId === undefined ? {} : { sessionId }),
           messages: history,
           ...(options.webSearchQuery === undefined ? {} : { webSearch: { query: options.webSearchQuery } }),
           ...(stickerCatalog.length === 0 ? {} : {
@@ -643,7 +652,7 @@ export function ChatWindowPage() {
   }
 
   /** 通话模式的一轮：沿用普通语音消息与聊天生成链路，回复正文交给 CallPanel 朗读。 */
-  async function callTurn(dataUrl: string, durationMs: number): Promise<string> {
+  async function callTurn(dataUrl: string, durationMs: number): Promise<{ reply: string; transcript: string }> {
     if (sessionId === undefined) throw new Error('当前会话还没有准备好')
     if (sending || mediaBusy) throw new Error('当前正在处理上一轮，请稍候')
     setMediaBusy(true)
@@ -656,11 +665,12 @@ export function ChatWindowPage() {
         throw new Error(`通话转写失败：${error instanceof Error ? error.message : String(error)}`)
       }
       if (transcript === '') throw new Error('没有识别到清晰的语音，请再试一次')
-      return await submitUserMessage({
+      const reply = await submitUserMessage({
         text: '',
         blocks: [{ kind: 'audio', payload: { url: dataUrl, durationMs, transcript }, order: 0 }],
         requestReply: true,
-      }) ?? ''
+      })
+      return { reply: reply ?? '', transcript }
     } finally {
       setMediaBusy(false)
     }
@@ -754,8 +764,7 @@ export function ChatWindowPage() {
     } finally { setMediaBusy(false) }
   }
 
-  async function speakMessage(message: ChatMessage): Promise<void> {
-    const text = messageText(message)
+  async function speakText(text: string): Promise<void> {
     if (text === '') return
     if (speechRef.current !== null) {
       speechRef.current.audio.pause(); URL.revokeObjectURL(speechRef.current.url); speechRef.current = null
@@ -775,6 +784,10 @@ export function ChatWindowPage() {
       }
       setErrorText(err instanceof Error ? err.message : String(err))
     } finally { setMediaBusy(false) }
+  }
+
+  async function speakMessage(message: ChatMessage): Promise<void> {
+    await speakText(messageText(message))
   }
 
   function stopSpeaking(): void {
@@ -1330,6 +1343,16 @@ export function ChatWindowPage() {
         </button>
         <button
           type="button"
+          data-testid="chat-call-history-open"
+          aria-label="通话记录"
+          disabled={session === undefined || session === null}
+          onClick={() => setCallHistoryOpen(true)}
+          className="icon-btn disabled:opacity-40"
+        >
+          <IconClock size={18} />
+        </button>
+        <button
+          type="button"
           data-testid="chat-settings-open"
           aria-label="聊天设置"
           disabled={session === undefined || session === null}
@@ -1347,6 +1370,10 @@ export function ChatWindowPage() {
           onClose={() => setHistoryOpen(false)}
           onNavigate={navigateHistory}
         />
+      )}
+
+      {callHistoryOpen && sessionId !== undefined && (
+        <CallHistoryPanel chatSessionId={sessionId} onClose={() => setCallHistoryOpen(false)} onPlayText={(text) => void speakText(text)} />
       )}
 
       <div
@@ -1516,7 +1543,16 @@ export function ChatWindowPage() {
       <CallPanel
         open={callOpen}
         disabled={!online || session === undefined || session === null || sending || mediaBusy}
-        onClose={() => setCallOpen(false)}
+        chatSessionId={sessionId ?? ''}
+        incomingCallId={incomingCallId}
+        onClose={() => {
+          setCallOpen(false)
+          if (incomingCallId !== null) {
+            const next = new URLSearchParams(searchParams)
+            next.delete('call')
+            setSearchParams(next, { replace: true })
+          }
+        }}
         onTurn={callTurn}
         onTurnText={callTurnText}
         onError={setErrorText}

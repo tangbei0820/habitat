@@ -17,6 +17,7 @@ import { NOCTURNE_TOOLS, NocturneMemoryProvider } from './providers/nocturne-mem
 import { loadEventideStateProvider } from './providers/eventide-state.js'
 import { registerCapabilityRoutes } from './routes/capabilities.js'
 import { registerChatRoutes } from './routes/chat.js'
+import { registerCallRoutes } from './routes/calls.js'
 import { registerDiagnosticRoutes } from './routes/diagnostics.js'
 import { registerDiaryRoutes } from './routes/diary.js'
 import { registerInboxRoutes } from './routes/inbox.js'
@@ -119,6 +120,7 @@ registerProviderRoutes(app, llmRegistry)
 registerMcpRoutes(app, gateway)
 registerNocturneDashboardRoutes(app)
 registerChatRoutes(app, llmRegistry, stateProvider, memoryProvider, capabilityService)
+registerCallRoutes(app)
 registerMediaRoutes(app, llmRegistry)
 registerStudyRoutes(app, llmRegistry)
 registerListeningRoutes(app)
