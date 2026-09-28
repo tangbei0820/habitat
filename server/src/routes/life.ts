@@ -72,6 +72,7 @@ const STUDY_EVENT_TYPES = new Set([
 
 const COUNTDOWN_EVENT_TYPES = new Set([
   'countdown.created',
+  'countdown.updated',
   'countdown.deleted',
   'countdown.widget.updated',
 ])

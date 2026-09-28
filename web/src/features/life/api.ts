@@ -87,7 +87,7 @@ export function appendStudyLifeEvent(event: StudyLifeEvent): Promise<void> {
 }
 
 export type CountdownLifeEvent = {
-  eventType: 'countdown.created' | 'countdown.deleted' | 'countdown.widget.updated'
+  eventType: 'countdown.created' | 'countdown.updated' | 'countdown.deleted' | 'countdown.widget.updated'
   countdownId: string
   title: string
   targetDate: string

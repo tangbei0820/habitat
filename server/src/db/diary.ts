@@ -70,13 +70,33 @@ export function toDiaryView(row: DiaryRow): DiaryView {
   }
 }
 
-export function listDiaryViews(): DiaryView[] {
+export interface DiaryListFilter {
+  query?: string
+  from?: string
+  to?: string
+}
+
+/**
+ * 用户侧检索只在经过权限过滤的视图上做：AI 私密正文不会因为搜索命中而泄露。
+ * 标题与日期仍可用于定位封面，正文只使用 `DiaryView.content` / 已开放片段。
+ */
+export function listDiaryViews(filter: DiaryListFilter = {}): DiaryView[] {
+  const query = filter.query?.trim().toLocaleLowerCase() ?? ''
   return db
     .select()
     .from(diary)
     .orderBy(desc(diary.entryDate), desc(diary.createdAt))
     .all()
     .map(toDiaryView)
+    .filter((item) => {
+      if (filter.from !== undefined && item.entryDate < filter.from) return false
+      if (filter.to !== undefined && item.entryDate > filter.to) return false
+      if (query === '') return true
+      const visibleText = [item.title, item.content ?? '', ...item.fragments.map((fragment) => fragment.content ?? '')]
+        .join('\n')
+        .toLocaleLowerCase()
+      return visibleText.includes(query)
+    })
 }
 
 export function getDiaryView(id: string): DiaryView | null {

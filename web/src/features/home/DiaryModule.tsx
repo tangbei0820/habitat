@@ -33,6 +33,7 @@ export function DiaryModule() {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [entryDate, setEntryDate] = useState(todayKey)
+  const [search, setSearch] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [requestedIds, setRequestedIds] = useState<ReadonlySet<string>>(new Set())
@@ -40,10 +41,10 @@ export function DiaryModule() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  async function refresh(): Promise<void> {
+  async function refresh(query = search): Promise<void> {
     // 日记与「待小栖决定的请求」一起拉：少了后者，用户点完按钮看不出任何变化
     const [diaries, pending] = await Promise.all([
-      listDiaries(),
+      listDiaries(query),
       listEvents({ decider: 'companion', status: 'pending' }),
     ])
     setItems(diaries)
@@ -56,10 +57,14 @@ export function DiaryModule() {
   }
 
   useEffect(() => {
-    refresh()
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false))
-  }, [])
+    setLoading(true)
+    const timer = window.setTimeout(() => {
+      refresh(search)
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+        .finally(() => setLoading(false))
+    }, 180)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
   function resetForm(): void {
     setTitle('')
@@ -155,8 +160,13 @@ export function DiaryModule() {
       </form>
 
       {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+      <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
+        <label htmlFor="diary-search" className="sr-only">搜索日记</label>
+        <input id="diary-search" value={search} onChange={(event) => setSearch(event.target.value)} maxLength={120} placeholder="搜索标题或已开放内容" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+        {search !== '' && <button type="button" onClick={() => setSearch('')} className="text-xs" style={{ color: 'var(--text-secondary)' }}>清除</button>}
+      </div>
       {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在翻开日记……</p> : items.length === 0 ? (
-        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>还没有日记。今天可以成为第一页。</p>
+        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>{search === '' ? '还没有日记。今天可以成为第一页。' : '没有找到匹配的日记。私密正文不会参与搜索。'}</p>
       ) : (
         <ul className="space-y-3">
           {items.map((item) => {

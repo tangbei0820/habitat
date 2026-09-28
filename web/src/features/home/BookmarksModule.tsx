@@ -48,6 +48,7 @@ export function BookmarksModule() {
   const [title, setTitle] = useState('')
   const [href, setHref] = useState('')
   const [note, setNote] = useState('')
+  const [search, setSearch] = useState('')
   const [sheet, setSheet] = useState<SheetTarget | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -149,8 +150,12 @@ export function BookmarksModule() {
     [items, categories],
   )
   const visible = useMemo(
-    () => filterByCategory(items, selection, categories, (item) => item.categoryId),
-    [items, selection, categories],
+    () => filterByCategory(items, selection, categories, (item) => item.categoryId).filter((item) => {
+      const query = search.trim().toLocaleLowerCase()
+      if (query === '') return true
+      return [item.title, item.note ?? '', item.targetId].join('\n').toLocaleLowerCase().includes(query)
+    }),
+    [items, selection, categories, search],
   )
 
   const sheetActions = useMemo<SheetAction[] | null>(() => {
@@ -245,12 +250,18 @@ export function BookmarksModule() {
         onDelete={removeCategory}
       />
 
+      <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
+        <label htmlFor="bookmark-search" className="sr-only">搜索收藏</label>
+        <input id="bookmark-search" value={search} onChange={(event) => setSearch(event.target.value)} maxLength={120} placeholder="搜索标题、备注或来源" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+        {search !== '' && <button type="button" onClick={() => setSearch('')} className="text-xs" style={{ color: 'var(--text-secondary)' }}>清除</button>}
+      </div>
+
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在整理收藏……</p>
       ) : items.length === 0 ? (
         <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>还没有收藏。遇到想再回来的地方，就放在这里。</p>
       ) : filteredOut ? (
-        <p data-testid="bookmark-filter-empty" className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>这个筛选下还没有收藏。</p>
+        <p data-testid="bookmark-filter-empty" className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>{search === '' ? '这个筛选下还没有收藏。' : '没有找到匹配的收藏。'}</p>
       ) : (
         <ul className="space-y-2">
           {visible.map((item) => (

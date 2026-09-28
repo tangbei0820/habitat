@@ -235,11 +235,12 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
     }
   } else if (row.eventType.startsWith('countdown.')) {
     source = '倒数日'
-    let title = metricText(metrics, 'title') ?? '一个重要日子'
+    const countdownTitle = metricText(metrics, 'title') ?? '一个重要日子'
     const targetDate = metricText(metrics, 'targetDate')
-    if (row.eventType === 'countdown.created') title = `记下了「${title}」`
-    else if (row.eventType === 'countdown.deleted') title = `移除了「${title}」`
-    else title = `${metricText(metrics, 'action') === 'pinned' ? '把' : '从主屏撤下'}「${title}」`
+    if (row.eventType === 'countdown.created') title = `记下了「${countdownTitle}」`
+    else if (row.eventType === 'countdown.updated') title = `更新了「${countdownTitle}」`
+    else if (row.eventType === 'countdown.deleted') title = `移除了「${countdownTitle}」`
+    else title = `${metricText(metrics, 'action') === 'pinned' ? '把' : '从主屏撤下'}「${countdownTitle}」`
     detail = targetDate ? `日期 ${targetDate}` : null
   } else if (row.eventType.startsWith('bookmark.')) {
     source = '收藏'

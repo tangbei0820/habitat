@@ -92,7 +92,24 @@ function importItem(raw: unknown): ImportItem {
 }
 
 export function registerDiaryRoutes(app: FastifyInstance): void {
-  app.get('/api/diary', async () => ({ items: listDiaryViews() }))
+  app.get('/api/diary', async (request) => {
+    const query = (request.query ?? {}) as Record<string, unknown>
+    const read = (key: string): string | undefined => {
+      const value = query[key]
+      if (value === undefined) return undefined
+      if (typeof value !== 'string') throw new RequestError(ErrorCodes.BadRequest, `${key} 必须是字符串`)
+      const trimmed = value.trim()
+      if (trimmed === '') return undefined
+      if (trimmed.length > (key === 'q' ? 120 : 10)) throw new RequestError(ErrorCodes.BadRequest, `${key} 参数过长`)
+      return trimmed
+    }
+    const from = read('from')
+    const to = read('to')
+    if (from !== undefined) dayKey(from, 'from')
+    if (to !== undefined) dayKey(to, 'to')
+    if (from !== undefined && to !== undefined && from > to) throw new RequestError(ErrorCodes.BadRequest, 'from 不能晚于 to')
+    return { items: listDiaryViews({ query: read('q'), from, to }) }
+  })
 
   app.get<{ Params: { id: string } }>('/api/diary/:id', async (request) => {
     const view = getDiaryView(request.params.id)

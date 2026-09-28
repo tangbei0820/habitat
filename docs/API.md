@@ -500,6 +500,8 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
 
 列表**包含** AI 的私密日记 —— 用户看得到「有几篇、都是哪天」（封面可见，SPEC §3.4.2）。
 `content` 在整篇或所有片段都不可见时为 `null`；`fragments` 始终返回段落 id / 状态，未开放段落的 `content` 为 `null`。
+可选查询参数：`q`（最多 120 字，匹配标题与用户当前有权看到的正文 / 片段）、`from` / `to`（`YYYY-MM-DD` 日期范围）。
+搜索始终在权限过滤后的视图上执行，不能用关键字探测 AI 私密正文。
 
 ### `GET /api/diary/:id`
 
@@ -556,6 +558,8 @@ AI 通过现有 `diary_allow_access` / `diary_deny_access` 工具处理：允许
 AI 修改自己的留言不走 HTTP，而由 Runtime 的 `messageboard_update` 工具执行并写入审计事件。
 留言收藏在浏览器统一收藏库中保存 `targetType='moment'`、`sourceId=moment.id` 与稳定正文快照，
 来源链接回到 `/home/board#<moment-id>`。
+`GET /api/moments` 可选 `q`（最多 120 字，匹配留言正文）与 `author=user|companion`；`limit=N` 仍用于主屏 Widget，
+过滤先发生在服务端，再应用 limit。
 
 ### `POST /api/study/cards/generate` —— 生成 AI 伴学卡片
 
@@ -788,6 +792,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | `PATCH /api/notifications/read-all` | 原子标记全部未读通知为已读，返回 `updated` 数量 |
 | `GET /api/notifications/preferences` | 返回总开关、分类开关与 Quiet Hours；不改变通知收件箱 |
 | `PATCH /api/notifications/preferences` | 局部更新 `{ enabled?, quietHoursEnabled?, quietStart?, quietEnd?, categories? }`；时间为 `HH:mm` |
+| 日记授权结果 | AI 处理 `diary_access_request` 后写入 `category=diary` 的站内通知，并按现有偏好尽力发送 Web Push；通知 metadata 带 `diaryId / fragmentId / route` |
 | `GET /api/solitude?limit=` | AI 私有的独处记录；梦卡以 `metadata.kind="dream"` 区分 |
 
 调度器默认每分钟检查。Eventide 状态即使主动总开关关闭也可推进；真正的 wake / solitude / dream
@@ -809,7 +814,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | `GET /api/life/day/:dayKey` | 日期下钻；返回共同生活 `timeline` 投影、原始 EventLog 与 UsageRecord，不反查聊天库 |
 | `POST /api/life/events/reading` | 共读行为投影：打开、进度 / 阅读时长、书签、批注、生词；写入 EventLog，失败不影响本地阅读 |
 | `POST /api/life/events/study` | 学习行为投影：生成卡片、复习卡片、保存学习记录、完成今日任务；写入 EventLog，失败不影响本地学习 |
-| `POST /api/life/events/countdown` | 倒数日行为投影：创建、删除、上 / 撤下主屏 Widget；写入 EventLog，失败不影响本地倒数日 |
+| `POST /api/life/events/countdown` | 倒数日行为投影：创建、编辑、删除、上 / 撤下主屏 Widget；写入 EventLog，失败不影响本地倒数日 |
 | `POST /api/life/events/bookmark` | 收藏行为投影：新增、删除、分类变化；写入 EventLog，失败不影响本地收藏 |
 | `GET /api/life/ledger?month=YYYY-MM` | 用量总计、按服务 / 模型聚合、价格快照、钱包与最近流水 |
 | `GET /api/life/runtime` | 聚合 server、Eventide、MCP、当前状态、主动策略 / 运行态 / 最近任务 |

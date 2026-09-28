@@ -7,6 +7,7 @@ import {
   listHomeWidgets,
   putHomeWidget,
   removeHomeWidget,
+  updateCountdown,
 } from '../../db/home'
 import { dayDistance, distanceLabel } from './countdownDays'
 import { IconCheck } from '../../components/qixi/Icons'
@@ -21,6 +22,7 @@ export function CountdownModule() {
   const [items, setItems] = useState<CountdownDay[]>([])
   const [title, setTitle] = useState('')
   const [targetDate, setTargetDate] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -41,15 +43,32 @@ export function CountdownModule() {
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
     try {
-      const created = await createCountdown(title, targetDate)
-      emitCountdownLifeEvent({ eventType: 'countdown.created', countdownId: created.id, title: created.title, targetDate: created.targetDate, at: created.createdAt })
+      const item = editingId === null
+        ? await createCountdown(title, targetDate)
+        : await updateCountdown(editingId, title, targetDate)
+      if (item === null) throw new Error('这个倒数日已经不存在了')
+      emitCountdownLifeEvent({ eventType: editingId === null ? 'countdown.created' : 'countdown.updated', countdownId: item.id, title: item.title, targetDate: item.targetDate, at: item.updatedAt })
       setTitle('')
       setTargetDate('')
+      setEditingId(null)
       setError(null)
       await refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     }
+  }
+
+  function startEditing(item: CountdownDay): void {
+    setEditingId(item.id)
+    setTitle(item.title)
+    setTargetDate(item.targetDate)
+    setError(null)
+  }
+
+  function cancelEditing(): void {
+    setEditingId(null)
+    setTitle('')
+    setTargetDate('')
   }
 
   async function remove(id: string): Promise<void> {
@@ -60,6 +79,7 @@ export function CountdownModule() {
     const item = items.find((candidate) => candidate.id === id)
     await deleteCountdown(id)
     if (item !== undefined) emitCountdownLifeEvent({ eventType: 'countdown.deleted', countdownId: item.id, title: item.title, targetDate: item.targetDate })
+    if (editingId === id) cancelEditing()
     setDeleting(null)
     await refresh()
   }
@@ -84,10 +104,13 @@ export function CountdownModule() {
   return (
     <div className="space-y-4">
       <form onSubmit={(event) => void submit(event)} className="grid gap-2 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
-        <label htmlFor="countdown-title" className="text-sm font-medium">新倒数日</label>
+        <div className="flex items-center justify-between gap-3">
+          <label htmlFor="countdown-title" className="text-sm font-medium">{editingId === null ? '新倒数日' : '编辑倒数日'}</label>
+          {editingId !== null && <button type="button" onClick={cancelEditing} className="text-xs" style={{ color: 'var(--text-secondary)' }}>取消编辑</button>}
+        </div>
         <input id="countdown-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={80} placeholder="例如：相识纪念日" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
         <input aria-label="目标日期" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} />
-        <button type="submit" disabled={title.trim() === '' || targetDate === ''} className="mt-1 justify-self-end rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>添加</button>
+        <button type="submit" disabled={title.trim() === '' || targetDate === ''} className="mt-1 justify-self-end rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>{editingId === null ? '添加' : '保存修改'}</button>
       </form>
       {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
       {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在读取倒数日…</p> : items.length === 0 ? (
@@ -123,6 +146,7 @@ export function CountdownModule() {
                       {isOnHome ? '已在主屏' : '上主屏'}
                     </span>
                   </button>
+                  <button type="button" onClick={() => startEditing(item)} className="shrink-0" style={{ color: 'var(--text-secondary)' }}>编辑</button>
                   <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} className="shrink-0" style={{ color: deleting === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deleting === item.id ? '确认？' : '删除'}</button>
                 </div>
               </li>

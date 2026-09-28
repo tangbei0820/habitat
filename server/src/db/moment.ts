@@ -21,8 +21,18 @@ function toMoment(row: MomentRow): Moment {
   }
 }
 
-export function listMoments(): Moment[] {
-  return db.select().from(moment).orderBy(desc(moment.createdAt)).all().map(toMoment)
+export interface MomentListFilter {
+  query?: string
+  author?: 'user' | 'companion'
+}
+
+/** 检索发生在服务端权威留言对象上，避免主屏 / 多设备各自维护一份过滤逻辑。 */
+export function listMoments(filter: MomentListFilter = {}): Moment[] {
+  const query = filter.query?.trim().toLocaleLowerCase() ?? ''
+  return db.select().from(moment).orderBy(desc(moment.createdAt)).all().map(toMoment).filter((item) => {
+    if (filter.author !== undefined && item.author !== filter.author) return false
+    return query === '' || item.content.toLocaleLowerCase().includes(query)
+  })
 }
 
 export function getMoment(id: string): Moment | null {

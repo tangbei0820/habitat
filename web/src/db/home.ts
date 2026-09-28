@@ -49,8 +49,10 @@ function requiredText(value: string, label: string): string {
  * 「小栖主动留言」就只能由前端伪造 —— 那是 SPEC §6.3 明令禁止的假数据。
  * 前端 Dexie 不再有 `moments` 表（v11 起）。
  */
-export async function listMoments(): Promise<Moment[]> {
-  const data = await fetchJson<{ items: Moment[] }>('/api/moments')
+export async function listMoments(query?: string): Promise<Moment[]> {
+  const normalized = query?.trim() ?? ''
+  const suffix = normalized === '' ? '' : `?q=${encodeURIComponent(normalized)}`
+  const data = await fetchJson<{ items: Moment[] }>(`/api/moments${suffix}`)
   return data.items
 }
 
@@ -130,6 +132,19 @@ export async function createCountdown(title: string, targetDate: string): Promis
   return item
 }
 
+export async function updateCountdown(id: string, title: string, targetDate: string): Promise<CountdownDay | null> {
+  const existing = await db.countdowns.get(id)
+  if (existing === undefined) return null
+  const next: CountdownDay = {
+    ...existing,
+    title: requiredText(title, '倒数日名称'),
+    targetDate: requiredDate(targetDate),
+    updatedAt: Date.now(),
+  }
+  await db.countdowns.put(next)
+  return next
+}
+
 /**
  * 删倒数日时**必须顺手清掉指向它的主屏 Widget**（SPEC §1.4 / §3.3.2）：
  * 否则主屏上会留一张写着不存在日子的卡片。放在同一个事务里，
@@ -159,8 +174,10 @@ function requiredDate(value: string): string {
  * 要读正文得先请求）。用 `readable` / `editable` 显式表达，页面就不必去猜
  * 「content 为空是没权限还是还没写」—— 那是两种完全不同的情况。
  */
-export async function listDiaries(): Promise<DiaryView[]> {
-  const data = await fetchJson<{ items: DiaryView[] }>('/api/diary')
+export async function listDiaries(query?: string): Promise<DiaryView[]> {
+  const normalized = query?.trim() ?? ''
+  const suffix = normalized === '' ? '' : `?q=${encodeURIComponent(normalized)}`
+  const data = await fetchJson<{ items: DiaryView[] }>(`/api/diary${suffix}`)
   return data.items
 }
 

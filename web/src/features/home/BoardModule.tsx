@@ -36,21 +36,26 @@ export function BoardModule() {
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
   const [favoritingId, setFavoritingId] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'user' | 'companion'>('all')
+  const [search, setSearch] = useState('')
   /** 留言板 Widget 是否在主屏上（不同 kind 的 Widget 互不影响，各管各的） */
   const [onHome, setOnHome] = useState(false)
 
-  async function refresh(): Promise<void> {
-    const [nextItems, widgets, bookmarks] = await Promise.all([listMoments(), listHomeWidgets(), listBookmarks()])
+  async function refresh(query = search): Promise<void> {
+    const [nextItems, widgets, bookmarks] = await Promise.all([listMoments(query), listHomeWidgets(), listBookmarks()])
     setItems(nextItems)
     setOnHome(widgets.some((widget) => widget.kind === 'board'))
     setFavoriteIds(new Set(bookmarks.filter((item) => item.targetType === 'moment').map((item) => item.targetId)))
   }
 
   useEffect(() => {
-    refresh()
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false))
-  }, [])
+    setLoading(true)
+    const timer = window.setTimeout(() => {
+      refresh(search)
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+        .finally(() => setLoading(false))
+    }, 180)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
@@ -182,8 +187,13 @@ export function BoardModule() {
       </div>
 
       {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+      <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
+        <label htmlFor="board-search" className="sr-only">搜索留言</label>
+        <input id="board-search" value={search} onChange={(event) => setSearch(event.target.value)} maxLength={120} placeholder="搜索留言内容" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+        {search !== '' && <button type="button" onClick={() => setSearch('')} className="text-xs" style={{ color: 'var(--text-secondary)' }}>清除</button>}
+      </div>
       {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在读取留言…</p> : items.length === 0 ? (
-        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>还没有留言。第一条就从今天开始。</p>
+        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>{search === '' ? '还没有留言。第一条就从今天开始。' : '没有找到匹配的留言。'}</p>
       ) : visibleItems.length === 0 ? (
         <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>这一栏还没有留言。</p>
       ) : (

@@ -3042,3 +3042,22 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 公网验收 | `https://habitat.beiyan.cc/api/health` 返回 `ok: true`；`/api/life/day/2026-09-28` 返回 `timeline`；公网首页已引用新构建资产。 |
 
 **待优化（后续功能）**：下一批进入 Home 基础模块的通知、搜索、历史与完整应用能力；本批不扩展朋友圈、完整一起听 / 共读 / 学习第二阶段。
+
+### T-096 · 2026-09-28 · V2-A Home 基础模块第二阶段：检索、编辑与授权结果通知 —— **完成（本地）**
+
+**范围**：在不改数据模型的前提下，把日记、留言板、收藏、倒数日四个基础模块从“可用 CRUD”推进到可持续使用的检索 / 编辑 / 反馈闭环；不扩展朋友圈、完整应用重做或下一批 Home 能力。
+
+| 交付 | 说明 |
+| --- | --- |
+| 日记检索 | `GET /api/diary` 支持标题 / 已开放内容关键词与日期范围；服务端先按原文筛选再转安全视图，私密正文不会被搜索反查；前端提供防抖搜索与诚实空态。 |
+| 留言板检索 | `GET /api/moments` 支持内容 / 作者筛选，过滤在服务端完成后再应用 limit；前端复用作者筛选并补搜索入口。 |
+| 收藏检索 | 收藏中心按标题、备注、来源本地筛选，不改 Bookmark 结构。 |
+| 倒数日编辑 | 复用既有 CountdownDay，补标题 / 日期编辑、取消与校验；成功后写 `countdown.updated` Life EventLog，时间线标题来自结构化字段。 |
+| 日记授权反馈 | Event Inbox 结算日记查看申请后写入站内通知，并按既有分类 / Quiet Hours / Push 偏好尽力推送；不另建通知事实源。 |
+| 数据边界 | 无 SQLite / Dexie / 备份版本变化；继续复用 Diary / Moment / Bookmark / Countdown 与 EventLog 仓储。 |
+
+**参考取舍**：借鉴 [Journal](https://github.com/BomBomLab/Journal) 的“结构化事件再渲染”层次，以及 [shared-page](https://github.com/KKarsyline/shared-page) 的来源可追溯 / 人机共用数据思路；不引入其独立后端、UI 或平行模型。
+
+**验收**：`npm run typecheck`、`npm run build`、`git diff --check` 通过；`probe:diary` **47/47**、`probe:countdown-life` **7/7**（隔离 DB）；本地搜索与 `countdown.updated` 时间线烟测通过。
+
+**待优化（后续任务）**：日记富文本 / 图片、申请历史与更细通知 UI；留言板分组 / 历史 / AI 自主收藏；收藏标签、统一深链与服务端分页；倒数日分类 / 重复 / 到期提醒；愿望清单编辑与 Life 事实。以上均不在本批继续施工。

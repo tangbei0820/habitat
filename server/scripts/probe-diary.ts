@@ -111,6 +111,13 @@ check('单篇接口同样不给正文', secretDetail.content === null && secretD
 check('单篇接口仍要求它存在（200 而非 404）', (await req('/api/diary/probe-secret')).status === 200)
 check('author 原样告知「这是小栖写的」', secretDetail.author === 'companion')
 
+const titleSearch = await req('/api/diary?q=小栖的私密')
+const titleSearchItems = (titleSearch.body as { items?: DiaryView[] }).items ?? []
+check('日记搜索能命中标题', titleSearch.status === 200 && titleSearchItems.some((item) => item.id === 'probe-secret'))
+check('日记标题搜索仍不泄露私密正文', titleSearchItems.find((item) => item.id === 'probe-secret')?.content === null)
+const privateTextSearch = await req('/api/diary?q=用户不该看到')
+check('日记搜索不会用私密正文反查出条目', privateTextSearch.status === 200 && ((privateTextSearch.body as { items?: DiaryView[] }).items ?? []).every((item) => item.id !== 'probe-secret'))
+
 const patchSecret = await req('/api/diary/probe-secret', {
   method: 'PATCH',
   body: JSON.stringify({ title: '篡改', content: '篡改', entryDate: '2026-09-22' }),
@@ -170,6 +177,8 @@ const moments = ((await req('/api/moments')).body as { items: MomentView[] }).it
 const aiMoment = moments.find((item) => item.id === 'probe-moment-ai')
 check('列表含 AI 的留言', aiMoment !== undefined && aiMoment.author === 'companion')
 check('留言板不做可见性过滤（写出来就是给人看的）', aiMoment?.content === '小栖的留言')
+const momentSearch = await req('/api/moments?q=小栖的留言')
+check('留言搜索由服务端按内容过滤', momentSearch.status === 200 && ((momentSearch.body as { items?: MomentView[] }).items ?? []).some((item) => item.id === 'probe-moment-ai'))
 
 const editedMoment = await req(`/api/moments/${moment.id}`, { method: 'PATCH', body: JSON.stringify({ content: '验收留言·已编辑' }) })
 check('用户能编辑自己的留言', editedMoment.status === 200 && (editedMoment.body as MomentView).content === '验收留言·已编辑')

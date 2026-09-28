@@ -27,7 +27,9 @@ import {
   updateCompanionDiary,
 } from '../db/diary.js'
 import { createCompanionMoment } from '../db/moment.js'
+import { createNotification } from '../db/activity.js'
 import { dayKeyOf } from '../db/usage.js'
+import { sendWebPush } from './push.js'
 
 /* ---------------------------------------------------------------- 参数校验
  *
@@ -371,6 +373,22 @@ export async function decideEvent(eventId: string, decider: 'user' | 'companion'
   if (settled === null) {
     // 并发：两次决策挤在同一条上，后到的这次没改到任何行
     return { ok: false, error: '这条事件已经被处理过了' }
+  }
+  if (event.kind === 'diary_access_request') {
+    const notice = createNotification(
+      'system',
+      settled.status === 'approved' ? '小栖开放了一段日记' : settled.status === 'denied' ? '小栖暂时没有开放日记' : '日记查看请求处理失败',
+      settled.result ?? '日记查看请求已经有结果。',
+      {
+        category: 'diary',
+        eventId: event.id,
+        diaryId: event.targetId,
+        fragmentId: event.targetFragmentId,
+        status: settled.status,
+        route: '/home/diary',
+      },
+    )
+    void sendWebPush(notice).catch(() => undefined)
   }
   return { ok: true, event: settled }
 }

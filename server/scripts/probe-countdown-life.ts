@@ -30,15 +30,17 @@ const created = await request('/api/life/events/countdown', { method: 'POST', he
 check('倒数日创建事实可写入', created.status === 201)
 const pinned = await request('/api/life/events/countdown', { method: 'POST', headers, body: JSON.stringify({ eventType: 'countdown.widget.updated', ...common, action: 'pinned' }) })
 check('倒数日上主屏事实可写入', pinned.status === 201)
+const updated = await request('/api/life/events/countdown', { method: 'POST', headers, body: JSON.stringify({ eventType: 'countdown.updated', ...common, title: '更新后的纪念日', targetDate: '2026-10-02' }) })
+check('倒数日编辑事实可写入', updated.status === 201)
 const deleted = await request('/api/life/events/countdown', { method: 'POST', headers, body: JSON.stringify({ eventType: 'countdown.deleted', ...common }) })
 check('倒数日删除事实可写入', deleted.status === 201)
 
 const day = await request(`/api/life/day/${today}`)
 const timeline = record(day.body).timeline as Array<Record<string, unknown>> | undefined
-check('日期时间线包含倒数日操作且没有对象直出', day.status === 200 && timeline?.filter((item) => typeof item.eventType === 'string' && item.eventType.startsWith('countdown.')).length === 3 && timeline?.every((item) => typeof item.title === 'string' && !item.title.includes('[object Object]')) === true)
+check('日期时间线包含倒数日操作且没有对象直出', day.status === 200 && timeline?.filter((item) => typeof item.eventType === 'string' && item.eventType.startsWith('countdown.')).length === 4 && timeline?.every((item) => typeof item.title === 'string' && !item.title.includes('[object Object]')) === true)
 const monthView = await request(`/api/life/month?month=${month}`)
 const daySummary = (record(monthView.body).days as Array<Record<string, unknown>> | undefined)?.find((item) => item.dayKey === today)
-check('月历汇总倒数日活动次数', monthView.status === 200 && daySummary?.countdownActivityCount === 3)
+check('月历汇总倒数日活动次数', monthView.status === 200 && daySummary?.countdownActivityCount === 4)
 const bad = await request('/api/life/events/countdown', { method: 'POST', headers, body: JSON.stringify({ eventType: 'countdown.widget.updated', ...common, action: 'unknown' }) })
 check('拒绝非法 Widget 动作', bad.status === 400)
 

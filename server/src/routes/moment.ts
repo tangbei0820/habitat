@@ -57,7 +57,16 @@ export function registerMomentRoutes(app: FastifyInstance): void {
    * 但那是「现在数据少」碰巧掩盖的，不是设计。
    */
   app.get<{ Querystring: { limit?: unknown } }>('/api/moments', async (request) => {
-    const items = listMoments()
+    const query = request.query as Record<string, unknown>
+    const rawQuery = query.q
+    const rawAuthor = query.author
+    if (rawQuery !== undefined && typeof rawQuery !== 'string') throw new RequestError(ErrorCodes.BadRequest, 'q 必须是字符串')
+    if (typeof rawQuery === 'string' && rawQuery.length > 120) throw new RequestError(ErrorCodes.BadRequest, 'q 最长 120 字')
+    if (rawAuthor !== undefined && rawAuthor !== 'user' && rawAuthor !== 'companion') throw new RequestError(ErrorCodes.BadRequest, 'author 只能是 user 或 companion')
+    const items = listMoments({
+      ...(typeof rawQuery === 'string' && rawQuery.trim() !== '' ? { query: rawQuery } : {}),
+      ...(rawAuthor === 'user' || rawAuthor === 'companion' ? { author: rawAuthor } : {}),
+    })
     const raw = request.query.limit
     if (raw === undefined) return { items }
     const limit = Number(Array.isArray(raw) ? raw[0] : raw)
