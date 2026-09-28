@@ -218,6 +218,11 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
     const trackTitle = metricText(metrics, 'title') ?? '这首歌'
     title = row.eventType === 'listening.track.started' ? `开始一起听《${trackTitle}》` : `一起听《${trackTitle}》`
     detail = row.eventType === 'listening.progress' ? null : metricText(metrics, 'artist')
+  } else if (row.eventType === 'moment.feed.created' || row.eventType === 'moment.feed.comment.created') {
+    source = '朋友圈'
+    const author = metricText(metrics, 'author') === 'companion' ? '小栖' : '你'
+    title = row.eventType === 'moment.feed.created' ? `${author}发布了一条动态` : `${author}回应了一条动态`
+    detail = metricText(metrics, 'momentId') === null ? null : `动态 ${metricText(metrics, 'momentId')}`
   } else if (row.eventType.startsWith('study.')) {
     source = '学习'
     const subject = metricText(metrics, 'subject')

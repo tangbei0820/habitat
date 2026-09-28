@@ -21,11 +21,18 @@ import {
   updateMomentGroup,
   updateUserMoment,
 } from '../db/moment.js'
+import {
+  createUserMomentComment,
+  deleteUserMomentComment,
+  listMomentComments,
+  updateUserMomentComment,
+} from '../db/moment-comments.js'
 import { RequestError } from '../lib/errors.js'
 
 const CONTENT_MAX = 500
 const IMPORT_MAX = 5_000
 const GROUP_NAME_MAX = 30
+const COMMENT_MAX = 500
 
 function content(raw: unknown): string {
   if (typeof raw !== 'string') throw new RequestError(ErrorCodes.BadRequest, 'content 必须是字符串')
@@ -40,6 +47,25 @@ function groupName(raw: unknown): string {
   const value = raw.trim()
   if (value === '' || value.length > GROUP_NAME_MAX) throw new RequestError(ErrorCodes.BadRequest, `分组名称为 1-${GROUP_NAME_MAX} 字`)
   return value
+}
+
+function commentContent(raw: unknown): string {
+  if (typeof raw !== 'string') throw new RequestError(ErrorCodes.BadRequest, '评论内容必须是字符串')
+  const value = raw.trim()
+  if (value === '' || value.length > COMMENT_MAX) throw new RequestError(ErrorCodes.BadRequest, `评论内容为 1-${COMMENT_MAX} 字`)
+  return value
+}
+
+function optionalParentId(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null
+  if (typeof raw !== 'string' || raw.trim() === '') throw new RequestError(ErrorCodes.BadRequest, 'parentId 必须是评论 id 或 null')
+  return raw.trim()
+}
+
+function requireFeedMoment(id: string): void {
+  const item = getMoment(id)
+  if (item === null) throw new RequestError(ErrorCodes.NotFound, '这条动态不存在')
+  if (item.channel !== 'feed') throw new RequestError(ErrorCodes.BadRequest, '只有朋友圈动态支持回应')
 }
 
 interface ImportItem {
@@ -117,6 +143,36 @@ export function registerMomentRoutes(app: FastifyInstance): void {
     if (created === null) throw new RequestError(ErrorCodes.BadRequest, '已经有同名留言分组')
     reply.code(201)
     return created
+  })
+
+  app.get<{ Params: { id: string } }>('/api/moments/:id/comments', async (request) => {
+    requireFeedMoment(request.params.id)
+    return { items: listMomentComments(request.params.id) }
+  })
+
+  app.post<{ Params: { id: string } }>('/api/moments/:id/comments', async (request, reply) => {
+    requireFeedMoment(request.params.id)
+    const body = typeof request.body === 'object' && request.body !== null
+      ? (request.body as Record<string, unknown>)
+      : {}
+    const created = createUserMomentComment(request.params.id, commentContent(body.content), optionalParentId(body.parentId))
+    if (created === null) throw new RequestError(ErrorCodes.NotFound, '动态不存在，或回复的父评论不属于这条动态')
+    reply.code(201)
+    return created
+  })
+
+  app.patch<{ Params: { id: string } }>('/api/moment-comments/:id', async (request) => {
+    const body = typeof request.body === 'object' && request.body !== null
+      ? (request.body as Record<string, unknown>)
+      : {}
+    const updated = updateUserMomentComment(request.params.id, commentContent(body.content))
+    if (updated === null) throw new RequestError(ErrorCodes.NotFound, '评论不存在，或不是你写的')
+    return updated
+  })
+
+  app.delete<{ Params: { id: string } }>('/api/moment-comments/:id', async (request, reply) => {
+    if (!deleteUserMomentComment(request.params.id)) throw new RequestError(ErrorCodes.NotFound, '评论不存在，或不是你写的')
+    return reply.code(204).send()
   })
 
   app.patch<{ Params: { id: string } }>('/api/moment-groups/:id', async (request) => {

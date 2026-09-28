@@ -226,6 +226,8 @@ await clickTestId('music-play') // 暂停（onPause 也会 flush）
 await waitFor(`document.querySelector('[data-testid="music-play"]')?.getAttribute('aria-label') === '播放'`, '暂停落盘')
 await waitFor(`document.querySelector('[data-testid="music-shared-session"]')?.innerText.includes('验收主题曲') ?? false`, '共享曲目同步')
 check('播放 / 暂停会把当前曲目同步到服务端会话', true)
+await waitFor(`document.querySelector('[data-testid="music-history"]')?.innerText.includes('验收主题曲') ?? false`, '一起听历史落地')
+check('一起听页面展示服务端聚合的历史与时长', (await evaluate(`document.querySelector('[data-testid="music-history"]')?.innerText.includes('播放 1 次') ?? false`)) === true)
 await go('/life')
 await waitFor(`document.querySelector('[data-testid="life-view-switch"]') !== null`, '生活页')
 const musicCell = await evaluate(`(() => {

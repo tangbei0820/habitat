@@ -11,11 +11,11 @@
  *  - 下方的「收下一首歌」表单与歌单列表继续复用本地 MusicTrack；网易云搜索 / 歌词 / AI 选歌留给后续 MCP 切片。
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import type { ListeningSessionView, MusicTrack } from '@shared/types'
+import type { ListeningHistoryItem, ListeningSessionView, MusicTrack } from '@shared/types'
 import { IconNote, IconPause, IconPlay, IconSkipBack, IconSkipForward } from '../../components/qixi/Icons'
 import { createMusicTrack, deleteMusicTrack, listMusicTracks, updateMusicTrack } from '../../db/home'
 import { addListenSeconds } from '../../db/listen'
-import { getListeningSession, updateListeningSession } from '../../lib/listening'
+import { getListeningSession, listListeningHistory, updateListeningSession } from '../../lib/listening'
 
 function mm(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -39,6 +39,7 @@ export function MusicModule() {
   const [pos, setPos] = useState(0)
   const [duration, setDuration] = useState(0)
   const [sharedSession, setSharedSession] = useState<ListeningSessionView | null>(null)
+  const [history, setHistory] = useState<ListeningHistoryItem[]>([])
   const audioRef = useRef<HTMLAudioElement | null>(null)
   /** 还没落盘的收听秒数；攒够 15 秒（或暂停 / 切歌 / 卸载）就写进 listenSessions */
   const pendingRef = useRef(0)
@@ -54,7 +55,16 @@ export function MusicModule() {
   }, [])
 
   async function refresh(): Promise<void> { setItems(await listMusicTracks()) }
-  useEffect(() => { refresh().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err))).finally(() => setLoading(false)) }, [])
+  useEffect(() => {
+    Promise.all([refresh(), listListeningHistory()])
+      .then(([, nextHistory]) => setHistory(nextHistory))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const refreshHistory = useCallback((): void => {
+    void listListeningHistory().then(setHistory).catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -108,7 +118,7 @@ export function MusicModule() {
     if (item === null) return
     lastSharedSyncRef.current = Date.now()
     void updateListeningSession({ track: snapshot(item), state, positionSeconds })
-      .then((next) => { sharedUpdatedAtRef.current = next.updatedAt; setSharedSession(next) })
+      .then((next) => { sharedUpdatedAtRef.current = next.updatedAt; setSharedSession(next); refreshHistory() })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
 
@@ -298,6 +308,11 @@ export function MusicModule() {
           <span className="shrink-0 text-xs" style={{ color: 'var(--text-secondary)' }}>{sharedSession.state === 'playing' ? '播放中' : '已暂停'} · {mm(sharedSession.positionSeconds)}</span>
         </div>
       )}
+    </section>
+
+    <section className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }} data-testid="music-history">
+      <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">一起听过</h2><p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>从服务端播放事实聚合，不复制音频；每首歌保留共同听过的次数和时长。</p></div><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{history.length} 首</span></div>
+      {history.length === 0 ? <p className="mt-3 text-sm" style={{ color: 'var(--text-tertiary)' }}>还没有共同听歌记录。</p> : <ul className="mt-3 space-y-2">{history.map((item) => <li key={item.trackId} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-soft)' }}><div className="min-w-0"><p className="truncate text-sm">{item.title}</p><p className="mt-1 truncate text-xs" style={{ color: 'var(--text-secondary)' }}>{item.artist ?? '未知音乐人'} · 播放 {item.playCount} 次</p></div><span className="shrink-0 text-xs" style={{ color: 'var(--text-secondary)' }}>{mm(item.totalSeconds)}</span></li>)}</ul>}
     </section>
 
     {/* ---------- 收歌单（Phase 2 原能力，字段与文案一个没动：验收依赖） ---------- */}

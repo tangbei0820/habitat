@@ -9,6 +9,8 @@ import { desc, eq } from 'drizzle-orm'
 import type { Moment, MomentChannel, MomentGroup } from '@shared/types'
 import { db } from './index.js'
 import { moment, momentGroup, type MomentGroupRow, type MomentRow } from './schema.js'
+import { deleteMomentComments } from './moment-comments.js'
+import { appendEventLog } from './activity.js'
 
 function toMoment(row: MomentRow): Moment {
   return {
@@ -115,6 +117,7 @@ export function createUserMoment(content: string, groupId: string | null = null,
     updatedAt: at,
   }
   db.insert(moment).values(row).run()
+  if (channel === 'feed') appendEventLog('moment.feed.created', { author: row.author }, row.id, at)
   return toMoment(row)
 }
 
@@ -131,6 +134,7 @@ export function updateUserMoment(id: string, content: string): Moment | null {
 export function deleteUserMoment(id: string): boolean {
   const existing = db.select().from(moment).where(eq(moment.id, id)).get()
   if (existing === undefined || existing.author !== 'user') return false
+  deleteMomentComments(id)
   db.delete(moment).where(eq(moment.id, id)).run()
   return true
 }
@@ -156,6 +160,7 @@ export function createCompanionMoment(content: string, channel: MomentChannel = 
     updatedAt: at,
   }
   db.insert(moment).values(row).run()
+  if (channel === 'feed') appendEventLog('moment.feed.created', { author: row.author }, row.id, at)
   return toMoment(row)
 }
 

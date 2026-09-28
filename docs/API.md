@@ -569,8 +569,14 @@ AI 修改自己的留言不走 HTTP，而由 Runtime 的 `messageboard_update` �
 ### 朋友圈第一阶段：文字动态
 
 朋友圈与留言板共用 `moment` 事实源，但前端入口固定请求 `channel=feed`，不共享留言分组或留言板 Widget。
-当前支持用户发布、编辑、删除、按作者筛选、收藏与来源回链；小栖动态可由服务端事实源展示，但本批不新增 AI 自主发布工具。
-图片 / 音乐 / 作品引用、评论回应、互动通知与朋友圈 Widget 留在后续任务。
+当前支持用户发布、编辑、删除、按作者筛选、收藏与来源回链；服务端为动态创建追加 `moment.feed.created` Life 事实。
+
+`GET /api/moments/:id/comments` 返回该动态的回应树（按创建顺序，`parentId` 保留嵌套关系）；
+`POST /api/moments/:id/comments` 创建用户回应，支持可选 `parentId`；
+`PATCH/DELETE /api/moment-comments/:id` 只允许用户操作自己的回应。删除父回应会连带清理子回复，
+动态删除会清理全部回应。每次新增回应追加 `moment.feed.comment.created` Life 事实。
+
+图片 / 音乐 / 作品引用、互动通知、朋友圈 Widget 与小栖自主发布工具留在后续任务，不能由文字回应这批冒充完整朋友圈。
 
 ### 留言板分组：`GET/POST /api/moment-groups`、`PATCH/DELETE /api/moment-groups/:id`、`PUT /api/moments/:id/group`
 
@@ -593,6 +599,9 @@ AI 修改自己的留言不走 HTTP，而由 Runtime 的 `messageboard_update` �
 播放位置与更新时间；浏览器仍负责 `<audio>` 的实际播放，不把服务器上的 mpv 当成手机音源。
 `PUT` 请求体为 `{ track, state, positionSeconds }`，`track` 为复用 `MusicTrack` 的最小快照或 `null`（清空会话）。
 服务端只接受 `http(s)` 音频地址，不保存 Cookie / Provider 密钥。
+
+`GET /api/listening/history?limit=N` 从 `listening.track.started` / `listening.progress` 事实聚合共同听歌历史，
+返回曲目、播放次数、累计秒数与最近时间；不复制浏览器曲库或音频。音乐页以此展示“共同听过”，Life 月历仍读取原始增量事实。
 
 `GET /api/moments?limit=N` 供主屏 Widget 取最近 N 条 ——
 不然每次渲染主屏都要把全表拉过来再切片。`limit` 非正整数 → 400。

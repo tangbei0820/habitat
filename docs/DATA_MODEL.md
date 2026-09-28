@@ -181,6 +181,7 @@ interface SessionGroup extends BaseObject {
 | `DailyReadingEntry` | `dailyReadings` | `sourceBookId`, `paragraphIndex`, `bookTitle`, `author`, `text`；每日品读历史只保存片段快照与原书锚点，批注继续写回 `ReadingBookState.annotations`；主屏 `daily-reading` Widget 只引用其 `id` |
 | `MusicTrack` | `musicTracks` | `title`, `artist`, `note`, `externalUrl` |
 | `ListeningSessionView` | 服务端 `app_kv:listening.session.main` | 当前曲目最小快照、`state`, `positionSeconds`, `startedAt`, `listeners`；不复制音乐库 |
+| `ListeningHistoryItem` | 服务端 `event_log` 的播放事实投影 | `trackId`, `title`, `artist`, `totalSeconds`, `playCount`, `lastPlayedAt`；按轨道聚合，不复制音乐库 |
 | `StudyRecord` | `studyRecords` | `subject`, `note`, `studiedOn`, `durationMinutes` |
 | `StudyCard` | `studyCards` | `subject`, `front`, `back`, `example`, `hint`, `dueOn`, `intervalDays`, `ease`, `repetitions`；默认按 `dueOn <= 本地今天` 进入到期队列 |
 | `StudyMaterial` | `studyMaterials` | `subject`, `title`, `kind=text|link`；文字资料保存受限正文，链接只保存安全的 `http(s)` 地址，卡片生成可选择文字资料作为上下文 |
@@ -375,6 +376,7 @@ Life 月历与账本是查询模型，不复制事实表：月历按 `event_log.
 | `diary` | `id` / `title` / `content` / `entry_date` / `author` / `visibility` / `fragment_visibility_json` / `created_at` / `updated_at` | `author` **就是权限位**：`user` 的日记用户可自由读写删；`companion` 默认私密。`fragment_visibility_json` 只保存 `fragment-N -> open/locked` 覆盖，缺省继承整篇权限；**正文过滤只走 `db/diary.ts` 的 `toDiaryView()` 这一个出口** |
 | `moment` | `id` / `content` / `author` / `channel` / `group_id` / `created_at` / `updated_at` | 无可见性概念（写出来就是给人看的），只有「谁能删」：用户只能删自己的；`channel=board|feed` 分离留言板与朋友圈；`group_id` 只对留言板有意义 |
 | `moment_group` | `id` / `name` / `created_at` / `updated_at` | 名称唯一；只是整理容器，删除分组只把留言移回未分组，不删除留言或收藏快照 |
+| `moment_comment` | `id` / `moment_id` / `parent_id` / `content` / `author` / `created_at` / `updated_at` | 只允许挂在 `channel=feed` 的动态上；用户可改 / 删自己的回应，删除父回应级联删除子回应；创建追加 Life 事实 |
 
 字段约定：
 
@@ -402,7 +404,8 @@ AI 的日记只能由 AI 侧写入（P1 的工具层，`db/diary.ts` 的 `create
 留言板的历史视图按 `moment.created_at` 在前端分成「今天 / 昨天 / 某年某月某日」，不复制时间线数据；
 服务端 `GET /api/moments?channel=board&groupId=` 负责留言板分组筛选，`none` 代表未分组。
 朋友圈复用同一事实表但固定使用 `channel=feed`，因此不会混入留言板 Widget / 分组；分组整理不会改变 `updated_at`，
-这样移动留言不会把它伪装成刚刚发生的生活事件。当前朋友圈第一阶段只开放文字动态与用户自有 CRUD，图片 / 音乐 / 作品引用、评论回应和 AI 自主发布另行接入。
+这样移动留言不会把它伪装成刚刚发生的生活事件。当前朋友圈 P1 开放文字动态、回应树与用户自有 CRUD；动态 / 回应创建追加 Life 事实。
+图片 / 音乐 / 作品引用、互动通知与 AI 自主发布另行接入。
 
 ---
 

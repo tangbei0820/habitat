@@ -53,7 +53,8 @@
 
 > **本轮大板块规则（2026-09-28）**：用户要求按 P0 → P1 → P2 连续推进，不再按小切片停顿。当前 P0 只收 Provider / Runtime / Chat 的核心正确性与可用性（Codex Subscription 适配、Provider 失败回退、确认事件生命周期、工具卡顺序、候选与分组整理）；P1 收 Home Living Apps 的真实共同生活能力；P2 收 Appearance / Widget / 离线 / 移动端与工程债。每个 P 内仍需在 `docs/TASKS.md` 留记录，但只在整个 P 完成、验收、提交后停止；明确延期或上游实验性能力必须记录原因，不得伪称完成。
 
-> **P0 当前结果（2026-09-28）**：T-124 已完成本地实现与验收，尚未部署 VPS。Codex Subscription 是实验性 app-server 适配；回退通过 `HABITAT_CHAT_FALLBACK_PROFILE_ID` 配置；P1 开工前先等用户确认部署 / 继续。
+> **P0 当前结果（2026-09-28）**：T-124 已完成本地实现与验收，尚未部署 VPS。Codex Subscription 是实验性 app-server 适配；回退通过 `HABITAT_CHAT_FALLBACK_PROFILE_ID` 配置。
+> **Post-v1 P1 当前结果（2026-09-28）**：T-125 已完成本地实现与验收，尚未部署 VPS；朋友圈回应树 / Life 事实与一起听历史已落地。P2 尚未开始。
 
 > **T-108 / T-109 施工边界**：留言板 Widget 只保存 `boardScope` 引用（recent / group / moment），服务端单条读取用于失效检测与原留言回链；不复制正文、不做 Widget 拖拽编排，不顺带进入日记富媒体或其它 Living Apps。
 
@@ -200,9 +201,11 @@ habitat/
     两个例外：输入框的**表情选择器**（用户内容）、代码注释里的 ⚠️
 
 **UX 收口横切（依 `PRODUCT_SPEC` §7）**：**P0 ✅ 全部收口（14 项）** —— 消息对象操作 + 跨模块内容流转 + 会话置顶 / 聊天设置 + 会话分组（T-015~T-018）
-**P1（6 项）**：输入区快捷栏 ✅ + 请求回复拆开 ✅（T-019）｜留言板 Widget ✅ + 倒数日 Widget ✅（T-020，**Dexie 升 v9 / 备份升 v7**）｜收藏分类 ✅ + 相册分类 ✅（T-021，**Dexie 升 v10 / 备份升 v8**）｜**P1 全部完成**｜P2 未开始
+**历史 UX P1（6 项）**：输入区快捷栏 ✅ + 请求回复拆开 ✅（T-019）｜留言板 Widget ✅ + 倒数日 Widget ✅（T-020，**Dexie 升 v9 / 备份升 v7**）｜收藏分类 ✅ + 相册分类 ✅（T-021，**Dexie 升 v10 / 备份升 v8**）。**Post-v1 P1 共同生活核心**（T-125：朋友圈回应 / 一起听历史）已完成；P2 未开始。
 
 ### 当前施工点
+
+**T-125 已完成（本地）**：朋友圈文字回应树支持嵌套、编辑、删除与整棵子树级联清理，动态 / 回应进入 Life 事实；一起听从真实播放事实聚合历史并在 Home 展示。两端 typecheck、前端 build、服务端 feed / listening / moment-group 探针通过；浏览器新增回应与一起听历史断言通过，既有 Home 回归仍有倒数日刷新、音乐空态与学习卡片旧断言失败；未部署 VPS。附件动态、互动通知、AI 自主发布、NetEase 搜索 / AI 评论、PDF / EPUB 与 Widget 拖拽保留后续 P2。
 
 **T-121 已完成（生产）**：每日品读第一阶段已部署至 `https://habitat.beiyan.cc`；生产 SQLite 重启前备份为 `habitat.db.bak-20260928-fd72eb9`，`habitat-server` active，服务器本机与服务器自检公网 `/api/health` 均返回 `{"ok":true}`，正确 JSON 的 `reading.daily.swapped` 请求返回 201，临时探针事件已清理，生产 bundle `assets/index-X9zoWOm1.js` 含 `每日品读`、`daily-reading`、`dailyReadings`、`reading.daily.swapped` 与 `reading-excerpt` 标记。
 

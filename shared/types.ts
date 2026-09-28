@@ -256,6 +256,15 @@ export interface Moment extends BaseObject {
   groupId: string | null
 }
 
+/** 朋友圈 / 留言板的回应。评论是独立内容对象，保留作者与父评论关系。 */
+export interface MomentComment extends BaseObject {
+  type: 'moment-comment'
+  momentId: string
+  parentId: string | null
+  content: string
+  author: ContentAuthor
+}
+
 /** 留言板分组。分组只负责整理展示，不改变留言的作者与生命周期。 */
 export interface MomentGroup extends BaseObject {
   type: 'moment-group'
@@ -623,6 +632,16 @@ export interface ListeningSessionView {
   startedAt: number | null
   updatedAt: number
   listeners: { user: boolean; companion: boolean }
+}
+
+/** 服务端由播放事实聚合出的共同听歌历史；不复制音频或本地曲库。 */
+export interface ListeningHistoryItem {
+  trackId: string
+  title: string
+  artist: string | null
+  totalSeconds: number
+  playCount: number
+  lastPlayedAt: number
 }
 
 /** `studiedOn` 是本地日期；时长统一存分钟，避免展示层反复换算。 */

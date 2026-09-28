@@ -299,6 +299,17 @@ CREATE TABLE IF NOT EXISTS moment_group (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_moment_group_order ON moment_group (updated_at DESC, created_at DESC);
+CREATE TABLE IF NOT EXISTS moment_comment (
+  id TEXT PRIMARY KEY,
+  moment_id TEXT NOT NULL,
+  parent_id TEXT,
+  content TEXT NOT NULL,
+  author TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_moment_comment_moment ON moment_comment (moment_id, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_moment_comment_parent ON moment_comment (parent_id, created_at ASC);
 `)
 
 // 分组与留言归属是后续追加的列；老库的留言统一落到“未分组”，不需要回填数据。

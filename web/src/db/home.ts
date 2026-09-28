@@ -15,6 +15,7 @@ import {
   type HomeWidget,
   type HomeWidgetKind,
   type Moment,
+  type MomentComment,
   type MomentChannel,
   type MomentGroup,
   type Photo,
@@ -130,6 +131,31 @@ export async function updateMoment(id: string, content: string): Promise<Moment>
 
 export async function deleteMoment(id: string): Promise<void> {
   await fetchVoid(`/api/moments/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function listMomentComments(momentId: string): Promise<MomentComment[]> {
+  const data = await fetchJson<{ items: MomentComment[] }>(`/api/moments/${encodeURIComponent(momentId)}/comments`)
+  return data.items
+}
+
+export async function createMomentComment(momentId: string, content: string, parentId: string | null = null): Promise<MomentComment> {
+  return fetchJson<MomentComment>(`/api/moments/${encodeURIComponent(momentId)}/comments`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ content: requiredText(content, '评论'), parentId }),
+  })
+}
+
+export async function updateMomentComment(id: string, content: string): Promise<MomentComment> {
+  return fetchJson<MomentComment>(`/api/moment-comments/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ content: requiredText(content, '评论') }),
+  })
+}
+
+export async function deleteMomentComment(id: string): Promise<void> {
+  await fetchVoid(`/api/moment-comments/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 export async function listWishlist(): Promise<WishlistItem[]> {

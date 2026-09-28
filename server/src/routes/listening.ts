@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors.js'
 import type { ListeningPlaybackState, ListeningSessionView, MusicTrack } from '@shared/types.js'
 import { RequestError } from '../lib/errors.js'
-import { getListeningSession, updateListeningSession, type ListeningSessionPatch } from '../db/listening.js'
+import { getListeningSession, listListeningHistory, updateListeningSession, type ListeningSessionPatch } from '../db/listening.js'
 
 type TrackSnapshot = Pick<MusicTrack, 'id' | 'title' | 'artist' | 'externalUrl'>
 
@@ -41,5 +41,11 @@ function patchOf(raw: unknown): ListeningSessionPatch {
 
 export function registerListeningRoutes(app: FastifyInstance): void {
   app.get('/api/listening/session', async (): Promise<ListeningSessionView> => getListeningSession())
+  app.get('/api/listening/history', async (request) => {
+    const raw = (request.query as Record<string, unknown>).limit
+    const limit = raw === undefined ? 50 : Number(Array.isArray(raw) ? raw[0] : raw)
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new RequestError(ErrorCodes.BadRequest, 'limit 必须是 1–200 的整数')
+    return { items: listListeningHistory(limit) }
+  })
   app.put('/api/listening/session', async (request): Promise<ListeningSessionView> => updateListeningSession(patchOf(request.body)))
 }

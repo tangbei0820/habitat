@@ -3,6 +3,16 @@
 > 本文件记「改了什么」（面向版本，按 Phase 组织）。
 > 「做到哪、还欠什么」在 `docs/TASKS.md`。
 
+## 2026-09-28 · V2-A · P1 Home Living Apps 共同生活核心
+
+### T-125 · 朋友圈回应与一起听历史
+
+- 朋友圈新增服务端 `moment_comment` 事实源，前端支持文字回应、嵌套回复、用户编辑 / 删除；父回应删除级联清理子回复，留言板动态不会误开放回应接口。
+- 动态 / 回应创建追加 `moment.feed.created` / `moment.feed.comment.created`，Life 月历与时间线可追溯来源。
+- 一起听新增 `GET /api/listening/history?limit=N`，从真实播放事实聚合曲目累计秒数、播放次数与最近播放时间；页面新增「一起听过」历史区，继续复用浏览器播放与共享会话。
+- 验收：服务端 `probe:feed` 17/17（含三级回应级联）、`probe:listening` 8/8、`probe:moment-groups` 13/13；两端 typecheck、前端 build、脚本语法检查与 diff 检查通过。浏览器新增回应 / 一起听历史断言通过；整支既有 Home 回归仍有倒数日刷新、音乐空态与学习卡片旧断言失败，未命中本批路径。生产部署未执行。
+- 本批不包含朋友圈附件 / 通知 / AI 自主发布、NetEase 搜索与 AI 评论、PDF / EPUB 共读器或 Widget 拖拽编排。
+
 ## 2026-09-28 · V2-A · P0 收口
 
 ### T-124 · Provider / Runtime / Chat 正确性

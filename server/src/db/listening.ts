@@ -1,7 +1,10 @@
 /** 一起听当前会话：只保存共享播放状态，不复制本地音乐库。 */
-import type { ListeningPlaybackState, ListeningSessionView, MusicTrack } from '@shared/types.js'
+import type { ListeningHistoryItem, ListeningPlaybackState, ListeningSessionView, MusicTrack } from '@shared/types.js'
+import { desc, eq, or } from 'drizzle-orm'
 import { getKv, setKv } from './kv.js'
 import { appendEventLog } from './activity.js'
+import { db } from './index.js'
+import { eventLog } from './schema.js'
 
 const KEY = 'listening.session.main'
 
@@ -102,4 +105,38 @@ export function updateListeningSession(patch: ListeningSessionPatch): ListeningS
     }, patch.track.id, now)
   }
   return next
+}
+
+/** 从播放事实聚合历史，不把本地曲库或音频复制进服务端。 */
+export function listListeningHistory(limit = 50): ListeningHistoryItem[] {
+  const rows = db.select().from(eventLog)
+    .where(or(eq(eventLog.eventType, 'listening.track.started'), eq(eventLog.eventType, 'listening.progress')))
+    .orderBy(desc(eventLog.at))
+    .limit(5_000)
+    .all()
+  const grouped = new Map<string, ListeningHistoryItem>()
+  for (const row of rows) {
+    const metrics = row.metricsJson
+    const trackId = typeof metrics.trackId === 'string' ? metrics.trackId : row.refId
+    if (trackId === null || trackId === undefined || trackId === '') continue
+    const current = grouped.get(trackId) ?? {
+      trackId,
+      title: typeof metrics.title === 'string' && metrics.title !== '' ? metrics.title : '未命名曲目',
+      artist: typeof metrics.artist === 'string' ? metrics.artist : null,
+      totalSeconds: 0,
+      playCount: 0,
+      lastPlayedAt: row.at,
+    }
+    current.lastPlayedAt = Math.max(current.lastPlayedAt, row.at)
+    if (typeof metrics.title === 'string' && metrics.title !== '') current.title = metrics.title
+    if (typeof metrics.artist === 'string') current.artist = metrics.artist
+    if (row.eventType === 'listening.track.started') current.playCount += 1
+    if (row.eventType === 'listening.progress' && typeof metrics.deltaSeconds === 'number' && Number.isFinite(metrics.deltaSeconds)) {
+      current.totalSeconds += Math.max(0, metrics.deltaSeconds)
+    }
+    grouped.set(trackId, current)
+  }
+  return [...grouped.values()]
+    .sort((a, b) => b.lastPlayedAt - a.lastPlayedAt)
+    .slice(0, Math.max(1, Math.min(limit, 200)))
 }

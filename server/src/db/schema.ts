@@ -368,6 +368,21 @@ export const momentGroup = sqliteTable('moment_group', {
 
 export type MomentRow = typeof moment.$inferSelect
 export type NewMoment = typeof moment.$inferInsert
+
+/** 朋友圈回应（P1）。评论本身也是可追溯的共同生活内容，不把回复拼进 moment.content。 */
+export const momentComment = sqliteTable('moment_comment', {
+  id: text('id').primaryKey(),
+  momentId: text('moment_id').notNull(),
+  parentId: text('parent_id'),
+  content: text('content').notNull(),
+  author: text('author', { enum: ['user', 'companion'] }).$type<ContentAuthor>().notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+export type MomentCommentRow = typeof momentComment.$inferSelect
+export type NewMomentComment = typeof momentComment.$inferInsert
+
 export type MomentGroupRow = typeof momentGroup.$inferSelect
 
 /**

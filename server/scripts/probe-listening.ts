@@ -33,6 +33,10 @@ check('刷新读取仍保留曲目与播放位置', persisted.status === 200 && 
 
 await request('/api/listening/session', { method: 'PUT', headers, body: JSON.stringify({ track, state: 'playing', positionSeconds: 22.5 }) })
 await request('/api/listening/session', { method: 'PUT', headers, body: JSON.stringify({ track, state: 'paused', positionSeconds: 25.5 }) })
+const history = await request('/api/listening/history?limit=10')
+const historyItems = (record(history.body).items as Array<Record<string, unknown>> | undefined) ?? []
+const historyTrack = historyItems.find((item) => item.trackId === track.id)
+check('共同听历史聚合播放次数与真实时长', history.status === 200 && historyTrack?.title === track.title && historyTrack?.playCount === 1 && historyTrack?.totalSeconds === 13)
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 const month = today.slice(0, 7)
 const lifeDay = await request(`/api/life/day/${today}`)
