@@ -61,6 +61,8 @@ const READING_EVENT_TYPES = new Set([
   'reading.bookmark',
   'reading.annotation',
   'reading.vocabulary',
+  'reading.daily.swapped',
+  'reading.daily.annotation',
 ])
 
 const STUDY_EVENT_TYPES = new Set([
@@ -93,7 +95,7 @@ const WISHLIST_EVENT_TYPES = new Set([
 ])
 
 const BOOKMARK_TARGET_TYPES = new Set([
-  'external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'music-track', 'study-record',
+  'external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'reading-excerpt', 'music-track', 'study-record',
 ])
 
 function optionalNonnegativeInteger(body: Record<string, unknown>, key: string, max = 1_000_000_000): number | undefined {
@@ -132,6 +134,8 @@ function readingEventBody(value: unknown): {
   if (enabled !== undefined && typeof enabled !== 'boolean') {
     throw new RequestError(ErrorCodes.BadRequest, 'enabled 必须是布尔值')
   }
+  const mode = body.mode === undefined ? undefined : body.mode
+  if (mode !== undefined && mode !== 'reader' && mode !== 'daily') throw new RequestError(ErrorCodes.BadRequest, 'mode 必须是 reader 或 daily')
   return {
     eventType,
     bookId,
@@ -144,6 +148,7 @@ function readingEventBody(value: unknown): {
       ...(readingSecondsTotal === undefined ? {} : { readingSecondsTotal }),
       ...(progressPercent === undefined ? {} : { progressPercent }),
       ...(enabled === undefined ? {} : { enabled }),
+      ...(mode === undefined ? {} : { mode }),
     },
   }
 }

@@ -15,6 +15,7 @@ import type {
   CountdownDay,
   CountdownReminder,
   CountdownRepeat,
+  DailyReadingEntry,
   HomeWidget,
   BoardWidgetScope,
   ListenSession,
@@ -49,7 +50,7 @@ export const BACKUP_FORMAT = 'habitat-backup'
  * ⚠️ 但**旧备份（v2–v8）里带着它们**，导入时不能丢：走 `legacyUploads` 转存到服务端，
  * 详见 `importAll` 与 `db/legacy-upload.ts`。
  */
-export const BACKUP_VERSION = 17
+export const BACKUP_VERSION = 18
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -66,6 +67,7 @@ export interface HabitatBackup {
   photos: Photo[]
   photoCollections: PhotoCollection[]
   readingNotes: ReadingNote[]
+  dailyReadings: DailyReadingEntry[]
   musicTracks: MusicTrack[]
   studyRecords: StudyRecord[]
   studyCards: StudyCard[]
@@ -88,6 +90,7 @@ export interface BackupCounts {
   photos: number
   photoCollections: number
   readingNotes: number
+  dailyReadings: number
   musicTracks: number
   studyRecords: number
   studyCards: number
@@ -102,7 +105,7 @@ export interface BackupCounts {
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, sessionGroups, messages, wishlist, countdowns, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, musicTracks, studyRecords, studyCards, studyMaterials, homeWidgets, listenSessions, studyTasks, stickers] = await Promise.all([
+  const [sessions, sessionGroups, messages, wishlist, countdowns, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, dailyReadings, musicTracks, studyRecords, studyCards, studyMaterials, homeWidgets, listenSessions, studyTasks, stickers] = await Promise.all([
     db.sessions.toArray(),
     db.sessionGroups.toArray(),
     db.messages.toArray(),
@@ -114,6 +117,7 @@ export async function exportAll(): Promise<HabitatBackup> {
     db.photos.toArray(),
     db.photoCollections.toArray(),
     db.readingNotes.toArray(),
+    db.dailyReadings.toArray(),
     db.musicTracks.toArray(),
     db.studyRecords.toArray(),
     db.studyCards.toArray(),
@@ -138,6 +142,7 @@ export async function exportAll(): Promise<HabitatBackup> {
     photos,
     photoCollections,
     readingNotes,
+    dailyReadings,
     musicTracks,
     studyRecords,
     studyCards,
@@ -324,7 +329,7 @@ function looksLikeBookmark(value: unknown): value is Bookmark {
     typeof value.title !== 'string' ||
     (value.note !== null && typeof value.note !== 'string')
   ) return false
-  const targetTypes = ['external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'music-track', 'study-record']
+  const targetTypes = ['external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'reading-excerpt', 'music-track', 'study-record']
   if (!targetTypes.includes(value.targetType)) return false
   if (value.tags !== undefined && (!Array.isArray(value.tags) || value.tags.length > 12 || value.tags.some((tag) => typeof tag !== 'string' || tag.trim() === '' || tag.trim().length > 20))) return false
   if (value.targetType !== 'external-link') return true
@@ -433,6 +438,16 @@ function looksLikeStudyRecord(value: unknown): value is StudyRecord {
     typeof value.subject === 'string' && typeof value.note === 'string' && typeof value.studiedOn === 'string' &&
     /^\d{4}-\d{2}-\d{2}$/.test(value.studiedOn) && Number.isInteger(value.durationMinutes) &&
     (value.durationMinutes as number) >= 1 && (value.durationMinutes as number) <= 1440
+  )
+}
+
+function looksLikeDailyReading(value: unknown): value is DailyReadingEntry {
+  return (
+    isRecord(value) && typeof value.id === 'string' && value.type === 'daily-reading' &&
+    typeof value.sourceBookId === 'string' && value.sourceBookId !== '' &&
+    Number.isInteger(value.paragraphIndex) && (value.paragraphIndex as number) >= 0 &&
+    typeof value.bookTitle === 'string' && (value.author === null || typeof value.author === 'string') &&
+    typeof value.text === 'string' && value.text.trim() !== '' && Number.isFinite(value.createdAt) && Number.isFinite(value.updatedAt)
   )
 }
 
@@ -606,9 +621,12 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     throw new Error('备份内容损坏：readingNotes / musicTracks / studyRecords 必须是数组')
   }
   const readingNotes = readingNotesRaw.filter(looksLikeReadingNote)
+  const dailyReadingsRaw = version >= 18 ? raw.dailyReadings : []
+  if (!Array.isArray(dailyReadingsRaw)) throw new Error('备份内容损坏：dailyReadings 必须是数组')
+  const dailyReadings = dailyReadingsRaw.filter(looksLikeDailyReading)
   const musicTracks = musicTracksRaw.filter(looksLikeMusicTrack)
   const studyRecords = studyRecordsRaw.filter(looksLikeStudyRecord)
-  if (readingNotes.length !== readingNotesRaw.length || musicTracks.length !== musicTracksRaw.length || studyRecords.length !== studyRecordsRaw.length) {
+  if (readingNotes.length !== readingNotesRaw.length || dailyReadings.length !== dailyReadingsRaw.length || musicTracks.length !== musicTracksRaw.length || studyRecords.length !== studyRecordsRaw.length) {
     throw new Error('备份内容损坏：存在无法识别的读书、音乐或学习记录')
   }
 
@@ -700,7 +718,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     })),
   ]
 
-  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.wishlist, db.countdowns, db.bookmarks, db.bookmarkCategories, db.artworks, db.photos, db.photoCollections, db.readingNotes, db.musicTracks, db.studyRecords, db.studyCards, db.studyMaterials, db.homeWidgets, db.listenSessions, db.studyTasks, db.stickers, db.legacyUploads], async () => {
+  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.wishlist, db.countdowns, db.bookmarks, db.bookmarkCategories, db.artworks, db.photos, db.photoCollections, db.readingNotes, db.dailyReadings, db.musicTracks, db.studyRecords, db.studyCards, db.studyMaterials, db.homeWidgets, db.listenSessions, db.studyTasks, db.stickers, db.legacyUploads], async () => {
     await db.sessions.clear()
     await db.sessionGroups.clear()
     await db.messages.clear()
@@ -712,6 +730,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.photos.clear()
     await db.photoCollections.clear()
     await db.readingNotes.clear()
+    await db.dailyReadings.clear()
     await db.musicTracks.clear()
     await db.studyRecords.clear()
     await db.studyCards.clear()
@@ -732,6 +751,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.photos.bulkAdd(photos)
     await db.photoCollections.bulkAdd(photoCollections)
     await db.readingNotes.bulkAdd(readingNotes)
+    await db.dailyReadings.bulkAdd(dailyReadings)
     await db.musicTracks.bulkAdd(musicTracks)
     await db.studyRecords.bulkAdd(studyRecords)
     await db.studyCards.bulkAdd(studyCards)
@@ -753,6 +773,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     photos: photos.length,
     photoCollections: photoCollections.length,
     readingNotes: readingNotes.length,
+    dailyReadings: dailyReadings.length,
     musicTracks: musicTracks.length,
     studyRecords: studyRecords.length,
     studyCards: studyCards.length,

@@ -830,7 +830,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 |---|---|
 | `GET /api/life/month?month=YYYY-MM` | 用户时区月历摘要：事件 / 失败 / 调用 / Token / 一起听时长 / 学习活动数 / 倒数日活动数 / 收藏活动数 / 愿望活动数 / 已定价费用 / 未定价数 |
 | `GET /api/life/day/:dayKey` | 日期下钻；返回共同生活 `timeline` 投影、原始 EventLog 与 UsageRecord，不反查聊天库 |
-| `POST /api/life/events/reading` | 共读行为投影：打开、进度 / 阅读时长、书签、批注、生词；写入 EventLog，失败不影响本地阅读 |
+| `POST /api/life/events/reading` | 共读 / 每日品读行为投影：打开、进度 / 阅读时长、书签、批注、生词，以及 `reading.daily.swapped` / `reading.daily.annotation`（`mode=daily`）；写入 EventLog，失败不影响本地阅读 |
 | `POST /api/life/events/study` | 学习行为投影：生成卡片、复习卡片、保存学习记录、完成今日任务；写入 EventLog，失败不影响本地学习 |
 | `POST /api/life/events/countdown` | 倒数日行为投影：创建、编辑、删除、上 / 撤下主屏 Widget；可带 `category / repeat / reminder` 摘要，写入 EventLog，失败不影响本地倒数日 |
 | `POST /api/life/events/bookmark` | 收藏行为投影：新增、删除、分类变化、标签变化；写入 EventLog，失败不影响本地收藏 |

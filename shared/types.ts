@@ -469,6 +469,7 @@ export type BookmarkTargetType =
   | 'artwork'
   | 'photo'
   | 'reading-note'
+  | 'reading-excerpt'
   | 'music-track'
   | 'study-record'
 
@@ -582,6 +583,16 @@ export interface ReadingNote extends BaseObject {
   author: string | null
   status: ReadingStatus
   note: string
+}
+
+/** 每日品读只保存一次片段选择的事实，正文来自当时的书架段落快照。 */
+export interface DailyReadingEntry extends BaseObject {
+  type: 'daily-reading'
+  sourceBookId: string
+  paragraphIndex: number
+  bookTitle: string
+  author: string | null
+  text: string
 }
 
 export interface MusicTrack extends BaseObject {

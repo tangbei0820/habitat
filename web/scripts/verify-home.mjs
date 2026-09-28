@@ -139,7 +139,7 @@ await navigate('/home', '留言板')
 await evaluate(`(async () => {
   const stores = ['sessions', 'sessionGroups', 'messages', 'wishlist', 'countdowns',
     'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections',
-    'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets', 'legacyUploads']
+    'readingNotes', 'dailyReadings', 'musicTracks', 'studyRecords', 'studyCards', 'studyMaterials', 'homeWidgets', 'legacyUploads']
   const db = await new Promise((resolve, reject) => {
     const request = indexedDB.open('habitat-db')
     request.onsuccess = () => resolve(request.result)
@@ -162,7 +162,7 @@ await sleep(800)
 
 await navigate('/home', '留言板')
 const homeText = await evaluate('document.body.innerText')
-check('首页十一个生活入口全部可见', ['留言板', '朋友圈', '愿望清单', '倒数日', '日记', '收藏', '作品', '相册', '读书', '音乐', '学习'].every((text) => homeText.includes(text)))
+check('首页十二个生活入口全部可见', ['留言板', '朋友圈', '愿望清单', '倒数日', '日记', '收藏', '作品', '相册', '读书', '每日品读', '音乐', '学习'].every((text) => homeText.includes(text)))
 
 await navigate('/home/board', '留下一句话')
 await setValue('#board-draft', '第一条生活留言')
@@ -365,6 +365,20 @@ await setValue('[data-testid="reading-annotation"]', '这句让我想到我们�
 await clickButton('保存批注')
 await waitFor(`document.body.innerText.includes('你的划线') && document.body.innerText.includes('这句让我想到我们最近的对话。')`, '批注落盘')
 check('用户可在正文锚点上划线并批注', true)
+await navigate('/home/daily-reading', '每日品读')
+await waitFor(`document.querySelector('[data-testid="daily-reading-excerpt"]') !== null`, '每日品读片段')
+check('每日品读从共读书架生成有来源片段', (await evaluate(`document.body.innerText.includes('《验收共读》') && document.body.innerText.includes('第 2 段')`)) === true)
+await clickButton('收藏片段')
+await waitFor(`document.body.innerText.includes('已收藏')`, '每日品读收藏')
+check('每日品读片段可从原位收藏', true)
+await clickButton('写下批注')
+await setValue('[data-testid="daily-reading-annotation"]', '这段文字值得和小栖慢慢讨论。')
+await clickButton('保存批注')
+await waitFor(`document.body.innerText.includes('这段文字值得和小栖慢慢讨论。')`, '每日品读批注')
+check('每日品读复用原书文本锚点写批注', true)
+await clickButton('换一段')
+await waitFor(`document.querySelector('[data-testid="daily-reading-history"]')?.innerText.includes('2 段')`, '每日品读历史')
+check('每日品读支持换一段并保留历史', true)
 await waitFor(`(async () => { const month = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit' }).format(new Date()); const summary = await fetch('/api/life/month?month=' + month).then((response) => response.ok ? response.json() : null); if (!summary) return false; for (const day of summary.days) { if (!day.eventCount) continue; const detail = await fetch('/api/life/day/' + day.dayKey).then((response) => response.ok ? response.json() : null); if (detail?.events?.some((event) => event.eventType === 'reading.opened' && event.metricsJson.bookTitle === '验收共读')) return true; } return false; })()`, '共读行为投影到 Life')
 check('阅读打开行为进入 Life 日期明细', true)
 await clickButton('← 回到书架')
@@ -1111,7 +1125,7 @@ const backupCheck = await evaluate(`(async () => {
       targetId: 'https://example.com/legacy', title: 'v7 时期的收藏', note: null,
       createdAt: Date.now(), updatedAt: Date.now(),
     }],
-    artworks: [], photos: [], readingNotes: [], musicTracks: [], studyRecords: [], homeWidgets: [],
+    artworks: [], photos: [], readingNotes: [], dailyReadings: [], musicTracks: [], studyRecords: [], homeWidgets: [],
   })
   const legacyV7Bookmark = await readBack('bookmarks', 'legacy-v7-bookmark')
 
@@ -1128,7 +1142,7 @@ const backupCheck = await evaluate(`(async () => {
       createdAt: Date.now(), updatedAt: Date.now(),
     }],
     messages: [], moments: [], wishlist: [], countdowns: [], diaries: [], bookmarks: [],
-    artworks: [], photos: [], readingNotes: [], musicTracks: [], studyRecords: [],
+    artworks: [], photos: [], readingNotes: [], dailyReadings: [], musicTracks: [], studyRecords: [],
   })
   const legacyV5Session = await readBack('sessions', 'legacy-v5-session')
   const legacyV4 = await backupModule.importAll({
@@ -1160,8 +1174,8 @@ const backupCheck = await evaluate(`(async () => {
   })
   return {
     version: backup.version,
-    exportedHome: backup.wishlist.length + backup.countdowns.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.musicTracks.length + backup.studyRecords.length,
-    restoredHome: restored.wishlist + restored.countdowns + restored.bookmarks + restored.artworks + restored.photos + restored.readingNotes + restored.musicTracks + restored.studyRecords,
+    exportedHome: backup.wishlist.length + backup.countdowns.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.dailyReadings.length + backup.musicTracks.length + backup.studyRecords.length,
+    restoredHome: restored.wishlist + restored.countdowns + restored.bookmarks + restored.artworks + restored.photos + restored.readingNotes + restored.dailyReadings + restored.musicTracks + restored.studyRecords,
     unsafeBookmarkRejected,
     unsafePhotoRejected,
     unsafeMusicRejected,
@@ -1354,7 +1368,7 @@ const dbShape = await evaluate(`(async () => {
   db.close()
   return value
 })()`)
-check('Dexie 已升到 v19：学习资料与留言 Widget 范围迁移', dbShape.version === 190 && ['wishlist', 'countdowns', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'musicTracks', 'studyRecords', 'studyMaterials', 'homeWidgets', 'legacyUploads', 'listenSessions', 'studyTasks', 'studyCards', 'stickers'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
+check('Dexie 已升到 v20：每日品读与学习资料迁移', dbShape.version === 200 && ['wishlist', 'countdowns', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'dailyReadings', 'musicTracks', 'studyRecords', 'studyMaterials', 'homeWidgets', 'legacyUploads', 'listenSessions', 'studyTasks', 'studyCards', 'stickers'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
 // 旧表壳**删不掉**（Dexie 的 stores() 跨版本累加，省略 ≠ 删除，见 db.ts 类注释 v11 条），
 // 所以这里验的是「搬走了」而不是「表没了」：旧表清空 + 中转表清空。
 // 两者都为 0 才有意义 —— 中转表清空的前置是「服务端已确认」（见 legacy-upload.ts 的三条纪律）。

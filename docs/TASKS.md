@@ -3387,3 +3387,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 客户端提示 | 本轮未启动浏览器 CDP；线上 bundle / 服务端自检通过，不冒充本机浏览器回归通过。 |
 
 **阶段边界**：本阶段到此停止；图片 / 音乐 / 作品引用、评论 / 回复、互动通知、AI 自主发朋友圈工具、朋友圈 Widget 与跨设备实时订阅留在后续任务。
+
+### T-120 · 2026-09-28 · V2-D 每日品读第一阶段：共读片段闭环 —— **完成（本地）**
+
+**范围**：把产品规格中的“每日品读”补成可使用入口；复用现有 TXT 共读书架、`ReadingBookState.annotations` 与 Life 阅读事件，不在本批引入 PDF / EPUB 解析、独立文学内容库或 AI 自动评论。
+
+| 交付 | 说明 |
+| --- | --- |
+| 片段来源 | 从已有 TXT 书架的非空段落随机选取，保存书名、作者、原书 id、段落索引与受限正文快照；最近 8 次暂时去重，无书架时诚实空态。 |
+| 页面交互 | 新增 `/home/daily-reading`“每日品读”入口；支持换一段、历史回看、打开原书、今天 / 来源信息与稳定 `data-testid`。 |
+| 批注与收藏 | 批注直接写回原书 `ReadingBookState.annotations`，不建平行批注表；品读片段使用 `reading-excerpt` 收藏类型，保留来源元数据并可回链。 |
+| Life | 新增 `reading.daily.swapped` / `reading.daily.annotation`，沿用 `/api/life/events/reading`，`mode=daily`，服务端时间线显示为每日品读。 |
+| 数据主权 | Dexie 升 v20，新增 `dailyReadings`；备份格式升 v18，旧备份按空历史兼容。 |
+| 参考取舍 | 实查 [Tasogare](https://github.com/EnhydrInk/tasogare)：借鉴作品 / 作者 / 段落锚点与行为投影；不引入其独立 server、MCP 或 PDF / EPUB 解析链。 |
+| 验收 | `probe:reading-life` **12/12**；两端 `npm run typecheck`、前端 `npm run build`、verify-home / verify-export 语法检查、`git diff --check` 通过。浏览器 CDP 未启动，未冒充浏览器回归通过。 |
+
+**明确延期**：PDF / EPUB / 网络文学来源、AI 主动批注 / 回复、每日品读 Widget、历史搜索 / 删除、跨设备同步；继续留在后续任务。

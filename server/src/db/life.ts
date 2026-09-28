@@ -186,10 +186,12 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
   const error = metricText(metrics, 'error')
 
   if (row.eventType.startsWith('reading.')) {
-    source = '共读'
+    source = metrics.mode === 'daily' ? '每日品读' : '共读'
     const bookTitle = metricText(metrics, 'bookTitle')
     const book = bookTitle ? `《${bookTitle}》` : '书籍'
-    if (row.eventType === 'reading.opened') title = `打开 ${book}`
+    if (row.eventType === 'reading.daily.swapped') title = `换了一段品读 · ${book}`
+    else if (row.eventType === 'reading.daily.annotation') title = `写下品读批注 · ${book}`
+    else if (row.eventType === 'reading.opened') title = `打开 ${book}`
     else if (row.eventType === 'reading.progress') {
       title = `阅读 ${book}`
       const percent = metricText(metrics, 'progressPercent')
@@ -257,6 +259,7 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
       photo: '图片',
       diary: '日记',
       'reading-note': '共读',
+      'reading-excerpt': '每日品读',
       'music-track': '音乐',
       'study-record': '学习记录',
     }

@@ -54,7 +54,7 @@ export function BackupPanel() {
       downloadBackup(backup)
       setLastExportAt(backup.exportedAt)
       setIsError(false)
-      const homeCount = backup.wishlist.length + backup.countdowns.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.musicTracks.length + backup.studyRecords.length
+      const homeCount = backup.wishlist.length + backup.countdowns.length + backup.bookmarks.length + backup.artworks.length + backup.photos.length + backup.readingNotes.length + backup.dailyReadings.length + backup.musicTracks.length + backup.studyRecords.length
       setMessage(`已导出 ${backup.sessions.length} 个会话、${backup.messages.length} 条消息、${homeCount} 条生活记录（日记与留言板在服务端，不在本地备份内）`)
     } catch (err: unknown) {
       log.error('导出备份失败', err)
@@ -96,7 +96,7 @@ export function BackupPanel() {
       } catch (err: unknown) {
         log.warn('旧备份数据上传未完成，下次启动会重试', err)
       }
-      const homeCount = counts.wishlist + counts.countdowns + counts.bookmarks + counts.artworks + counts.photos + counts.readingNotes + counts.musicTracks + counts.studyRecords
+      const homeCount = counts.wishlist + counts.countdowns + counts.bookmarks + counts.artworks + counts.photos + counts.readingNotes + counts.dailyReadings + counts.musicTracks + counts.studyRecords
       setMessage(
         `导入完成：${counts.sessions} 个会话、${counts.messages} 条消息、${homeCount} 条生活记录。` +
           (rescued > 0 ? `另有 ${counts.legacyDiaries} 篇日记、${counts.legacyMoments} 条留言已恢复到服务端。` : '') +

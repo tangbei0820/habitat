@@ -10,6 +10,7 @@ import {
   type CountdownDay,
   type CountdownReminder,
   type CountdownRepeat,
+  type DailyReadingEntry,
   type DiaryView,
   type HomeWidget,
   type HomeWidgetKind,
@@ -1099,6 +1100,62 @@ export async function deleteReadingAnnotation(id: string, annotationId: string):
   }
   await db.readingNotes.put(next)
   return next
+}
+
+const DAILY_READING_RECENT_LIMIT = 8
+const DAILY_READING_TEXT_LIMIT = 1_200
+
+export async function listDailyReadings(): Promise<DailyReadingEntry[]> {
+  return db.dailyReadings.orderBy('createdAt').reverse().toArray()
+}
+
+/** 从现有 TXT 书架抽取片段；最近 8 次已经读过的段落会暂时避开。 */
+export async function pickDailyReading(): Promise<DailyReadingEntry | null> {
+  const books = await listReadingNotes()
+  const candidates: Array<{ book: ReadingNote; paragraphIndex: number; text: string }> = []
+  for (const book of books) {
+    const reader = getReadingBook(book)
+    if (reader === null) continue
+    reader.content.split('\n').forEach((paragraph, paragraphIndex) => {
+      const text = paragraph.trim()
+      if (text !== '') candidates.push({ book, paragraphIndex, text: text.slice(0, DAILY_READING_TEXT_LIMIT) })
+    })
+  }
+  if (candidates.length === 0) return null
+  const recent = await db.dailyReadings.orderBy('createdAt').reverse().limit(DAILY_READING_RECENT_LIMIT).toArray()
+  const recentKeys = new Set(recent.map((item) => `${item.sourceBookId}:${item.paragraphIndex}`))
+  const fresh = candidates.filter((item) => !recentKeys.has(`${item.book.id}:${item.paragraphIndex}`))
+  const pool = fresh.length > 0 ? fresh : candidates
+  const chosen = pool[Math.floor(Math.random() * pool.length)]
+  const at = Date.now()
+  const entry: DailyReadingEntry = {
+    id: nowId('daily-reading'), type: 'daily-reading', sourceBookId: chosen.book.id,
+    paragraphIndex: chosen.paragraphIndex, bookTitle: chosen.book.bookTitle, author: chosen.book.author,
+    text: chosen.text, createdAt: at, updatedAt: at,
+  }
+  await db.dailyReadings.add(entry)
+  return entry
+}
+
+export async function createReadingExcerptBookmark(entry: DailyReadingEntry): Promise<Bookmark> {
+  const existing = await db.bookmarks.where('[targetType+targetId]').equals(['reading-excerpt', entry.id]).first()
+  if (existing !== undefined) throw new Error('这段品读已经收藏过了')
+  const at = Date.now()
+  const item: Bookmark = {
+    id: nowId('bookmark'), type: 'bookmark', targetType: 'reading-excerpt', targetId: entry.id,
+    title: `《${entry.bookTitle}》的品读片段`, note: entry.text, categoryId: null, tags: [], sourceId: entry.id,
+    metadata: {
+      sourceModule: 'home-daily-reading', sourceObjectType: 'daily-reading', sourceBookId: entry.sourceBookId,
+      paragraphIndex: entry.paragraphIndex, bookTitle: entry.bookTitle, author: entry.author, sourceCreatedAt: entry.createdAt,
+    }, createdAt: at, updatedAt: at,
+  }
+  try {
+    await db.bookmarks.add(item)
+  } catch (err) {
+    if (isConstraintError(err)) throw new Error('这段品读已经收藏过了')
+    throw err
+  }
+  return item
 }
 
 export async function listMusicTracks(): Promise<MusicTrack[]> {

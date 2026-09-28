@@ -179,6 +179,7 @@ interface SessionGroup extends BaseObject {
 | `Artwork` | `artworks` | `title`, `category`, `description`, `externalUrl` |
 | `Photo` | `photos` | `title`, `caption`, `imageDataUrl`, `mimeType`, `sizeBytes`, `takenAt`, `collectionId` |
 | `ReadingNote` | `readingNotes` | `bookTitle`, `author`, `status`, `note`；TXT 共读书籍的 `BaseObject.metadata.reader` 保存正文、当前段落、书签、阅读秒数、阅读外观（字体 / 主题）、文本锚点批注与生词（不新增平行书库表） |
+| `DailyReadingEntry` | `dailyReadings` | `sourceBookId`, `paragraphIndex`, `bookTitle`, `author`, `text`；每日品读历史只保存片段快照与原书锚点，批注继续写回 `ReadingBookState.annotations` |
 | `MusicTrack` | `musicTracks` | `title`, `artist`, `note`, `externalUrl` |
 | `ListeningSessionView` | 服务端 `app_kv:listening.session.main` | 当前曲目最小快照、`state`, `positionSeconds`, `startedAt`, `listeners`；不复制音乐库 |
 | `StudyRecord` | `studyRecords` | `subject`, `note`, `studiedOn`, `durationMinutes` |

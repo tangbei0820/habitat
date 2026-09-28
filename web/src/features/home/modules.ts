@@ -24,6 +24,7 @@ export const HOME_MODULES: readonly HomeModule[] = [
   { key: 'works', name: '作品', icon: 'palette' },
   { key: 'album', name: '相册', icon: 'image' },
   { key: 'reading', name: '读书', icon: 'book' },
+  { key: 'daily-reading', name: '每日品读', icon: 'quote' },
   { key: 'music', name: '音乐', icon: 'music' },
   { key: 'study', name: '学习', icon: 'pencil' },
 ]

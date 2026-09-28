@@ -11,6 +11,7 @@ import { BookmarksModule } from '../../features/home/BookmarksModule'
 import { WorksModule } from '../../features/home/WorksModule'
 import { AlbumModule } from '../../features/home/AlbumModule'
 import { ReadingModule } from '../../features/home/ReadingModule'
+import { DailyReadingModule } from '../../features/home/DailyReadingModule'
 import { MusicModule } from '../../features/home/MusicModule'
 import { StudyModule } from '../../features/home/StudyModule'
 
@@ -24,6 +25,7 @@ function moduleContent(module: string | undefined, name: string) {
   if (module === 'works') return <WorksModule />
   if (module === 'album') return <AlbumModule />
   if (module === 'reading') return <ReadingModule />
+  if (module === 'daily-reading') return <DailyReadingModule />
   if (module === 'music') return <MusicModule />
   if (module === 'study') return <StudyModule />
   return (
