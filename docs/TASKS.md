@@ -3373,3 +3373,17 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:feed` **9/9**；两端 `npm run typecheck`、前端 `npm run build`、`node --check web/scripts/verify-home.mjs`、`git diff --check` 通过。浏览器 CDP 未启动，未冒充浏览器回归通过。 |
 
 **明确延期**：图片 / 音乐 / 作品引用、评论 / 回复、互动通知、AI 自主发朋友圈工具、朋友圈 Widget、跨设备实时订阅；本批不顺带进入下一模块。
+
+### T-119 · 2026-09-28 · V2-A Home 基础模块第十三阶段部署 VPS —— **完成（生产）**
+
+**范围**：部署 T-118 朋友圈文字动态到 `https://habitat.beiyan.cc`；保留生产 `.env` / SQLite，不进入朋友圈媒体、评论或其它 Home 模块。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `d281437` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与 `.workbuddy`。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-d281437`；生产 SQLite 与 `.env` 未被部署包覆盖。 |
+| 服务状态 | `habitat-server` active；服务器本机 `127.0.0.1:3000` 与服务器自检公网 `/api/health` 均返回 `{"ok":true}`。 |
+| 公网验收 | `GET /api/moments?channel=feed` 返回 `{"items":[]}`；首页引用 `assets/index-fe1XBMZo.js`，bundle 含 `朋友圈`、`feed-module`、`channel=feed` 与“分享此刻”标记。 |
+| 客户端提示 | 本轮未启动浏览器 CDP；线上 bundle / 服务端自检通过，不冒充本机浏览器回归通过。 |
+
+**阶段边界**：本阶段到此停止；图片 / 音乐 / 作品引用、评论 / 回复、互动通知、AI 自主发朋友圈工具、朋友圈 Widget 与跨设备实时订阅留在后续任务。
