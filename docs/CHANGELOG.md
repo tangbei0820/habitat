@@ -1149,3 +1149,10 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 批注继续写回原书 `ReadingBookState.annotations`；`reading.daily.swapped` / `reading.daily.annotation` 通过既有阅读事件接口进入 Life。
 - Dexie 升 v20，新增 `dailyReadings`；备份格式升 v18，并兼容旧备份；未引入 PDF / EPUB、外部文学内容或 AI 自动评论。
 - `probe:reading-life` 12/12、两端 typecheck、前端 build、验收脚本语法与 diff check 通过；浏览器 CDP 未启动，未冒充浏览器回归通过。
+
+### 2026-09-28 · T-121 · 每日品读第一阶段部署 VPS（生产）
+
+- 本地提交 `fd72eb9` 已部署到 `https://habitat.beiyan.cc`，生产 `.env` / SQLite 未覆盖，重启前备份为 `habitat.db.bak-20260928-fd72eb9`。
+- `habitat-server` active；服务器本机与服务器自检公网 `/api/health` 均返回 `{"ok":true}`；`reading.daily.swapped` 正确 JSON 请求返回 201。
+- 首页切换到 `assets/index-X9zoWOm1.js`；生产 bundle 已检出 `每日品读`、`daily-reading`、`dailyReadings`、`reading.daily.swapped` 与 `reading-excerpt` 标记。
+- 线上临时验收事件已精确清理；本轮未启动浏览器 CDP，以服务端自检与线上 bundle 验收为准。

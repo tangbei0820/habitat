@@ -3403,3 +3403,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:reading-life` **12/12**；两端 `npm run typecheck`、前端 `npm run build`、verify-home / verify-export 语法检查、`git diff --check` 通过。浏览器 CDP 未启动，未冒充浏览器回归通过。 |
 
 **明确延期**：PDF / EPUB / 网络文学来源、AI 主动批注 / 回复、每日品读 Widget、历史搜索 / 删除、跨设备同步；继续留在后续任务。
+
+### T-121 · 2026-09-28 · V2-D 每日品读第一阶段部署 VPS —— **完成（生产）**
+
+**范围**：部署 T-120 每日品读片段闭环到 `https://habitat.beiyan.cc`；保留生产 `.env` / SQLite，不进入 PDF / EPUB、AI 批注或 Widget。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `fd72eb9` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与 `.workbuddy`。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-fd72eb9`；生产 SQLite 与 `.env` 未被部署包覆盖。 |
+| 服务状态 | `habitat-server` active；服务器本机 `127.0.0.1:3000` 与服务器自检公网 `/api/health` 均返回 `{"ok":true}`。 |
+| 公网验收 | 正确 JSON 的 `reading.daily.swapped` 写入返回 201；首页引用 `assets/index-X9zoWOm1.js`，bundle 含 `每日品读`、`daily-reading`、`dailyReadings`、`reading.daily.swapped` 与 `reading-excerpt`。 |
+| 探针清理 | 线上验收产生的 `deploy-probe-2` 事件已按精确 `ref_id` 删除，复查为空；无测试数据残留。 |
+| 客户端提示 | 本轮未启动浏览器 CDP；线上 bundle / 服务端自检通过，不冒充本机浏览器回归通过。 |
+
+**阶段边界**：本阶段到此停止；PDF / EPUB / 网络文学来源、AI 主动批注 / 回复、每日品读 Widget、历史搜索 / 删除、跨设备同步留在后续任务。
