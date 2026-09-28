@@ -7,6 +7,12 @@ function fragmentRequestKey(diaryId: string, fragmentId: string): string {
   return `${diaryId}:${fragmentId}`
 }
 
+function formatEntryDate(value: string): string {
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+}
+
 /**
  * 日记（SPEC §3.4）。
  *
@@ -116,10 +122,11 @@ export function DiaryModule() {
         </div>
       </details>
       {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在翻开日记……</p> : items.length === 0 ? (
-        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>{search === '' ? '还没有日记。今天可以成为第一页。' : '没有找到匹配的日记。私密正文不会参与搜索。'}</p>
+        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>{search === '' ? '小栖还没有写下可见的日记。' : '没有找到匹配的日记。私密正文不会参与搜索。'}</p>
       ) : (
-        <ul className="space-y-3">
-          {items.map((item) => {
+        <div role="list" data-testid="diary-timeline" className="space-y-4">
+          {items.map((item, index) => {
+            const showDate = index === 0 || items[index - 1]?.entryDate !== item.entryDate
             const fragments = item.fragments ?? []
             const openFragments = fragments.filter((fragment) => fragment.readable)
             const renderFragment = (fragment: DiaryFragmentView) => {
@@ -134,7 +141,9 @@ export function DiaryModule() {
                 ))}
               </div>
             }
-            return <li key={item.id} data-testid="diary-item" data-author={item.author} data-readable={item.readable ? 'true' : 'false'} className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
+            return <div key={item.id} data-testid="diary-date-group">
+              {showDate && <div data-testid="diary-date-divider" className="flex items-center gap-3 px-1 text-xs" style={{ color: 'var(--text-secondary)' }}><time dateTime={item.entryDate}>{formatEntryDate(item.entryDate)}</time><span className="h-px flex-1" style={{ backgroundColor: 'var(--border-soft)' }} /><span>小栖的记录</span></div>}
+              <article role="listitem" data-testid="diary-item" data-author={item.author} data-readable={item.readable ? 'true' : 'false'} className="mt-2 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
               <div className="flex items-center justify-between gap-3">
                 <time className="text-xs" style={{ color: 'var(--text-secondary)' }}>{item.entryDate}</time>
                 <span className="text-xs" style={{ color: 'var(--accent-strong)' }}>小栖的日记</span>
@@ -167,9 +176,10 @@ export function DiaryModule() {
                     ))}
                 </div>
               )}
-            </li>
+              </article>
+            </div>
           })}
-        </ul>
+        </div>
       )}
     </div>
   )

@@ -1103,3 +1103,9 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 本地提交 `1265a0c` 已部署到 `https://habitat.beiyan.cc`，生产 `.env` / SQLite 未覆盖，重启前备份为 `habitat.db.bak-20260928-1265a0c`。
 - `habitat-server` active；本地 `127.0.0.1:3000` 与公网 `/api/health` 均返回 `{"ok":true}`；首页切换到 `index-DV3_8HYC.js`。
 - 生产 bundle 已检出 `diary-ai-only` 与“请求查看”入口标记；日记富文本 / 图片与时间线未在本批展开。
+
+### 2026-09-28 · T-114 · AI 日记时间线分段（本地）
+
+- 日记页在既有安全视图上按 `entryDate` 添加日期分隔线，同日条目保持连续阅读；不改变请求查看、片段过滤或 AI-only 语义。
+- 空状态不再暗示用户可创建日记；补充 `role=list` / `role=listitem`、`time[dateTime]` 与稳定验收标记。
+- 参考 [Journal](https://github.com/BomBomLab/Journal) 的展示层分段思路，不引入外部 runtime、数据格式或 schema；typecheck、build、diff check 通过。

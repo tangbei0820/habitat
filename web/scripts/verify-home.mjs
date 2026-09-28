@@ -241,6 +241,7 @@ await evaluate(`(async () => {
 await send('Page.reload')
 await sleep(500)
 await waitFor(`document.querySelector('[data-testid="diary-fragments"]') !== null`, '片段级日记渲染')
+check('AI 日记按日期进入时间线分段', (await evaluate(`document.querySelector('[data-testid="diary-timeline"]') !== null && document.querySelector('[data-testid="diary-date-divider"]') !== null`)) === true)
 const fragmentView = await evaluate(`(() => {
   const item = [...document.querySelectorAll('[data-testid="diary-item"]')]
     .find((node) => node.querySelector('h3')?.textContent?.trim() === '验收·片段开放')

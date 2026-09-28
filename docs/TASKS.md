@@ -3300,3 +3300,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 公网验收 | 首页已引用 `index-DV3_8HYC.js`；生产 bundle 含 `diary-ai-only`、`请求查看` 等新入口标记。 |
 
 **阶段边界**：本阶段到此停止；日记富文本 / 图片 / 时间线、批量授权、Widget 编排与其它 Living Apps 留在后续任务。
+
+### T-114 · 2026-09-28 · V2-A Home 基础模块第十一阶段：AI 日记时间线分段 —— **完成（本地）**
+
+**范围**：在既有 AI 私密日记权限模型之上增加按日期分段的阅读时间线；不新增日记字段、不改变正文过滤、不进入富文本 / 图片编辑。
+
+| 交付 | 说明 |
+| --- | --- |
+| 日期分段 | 日记列表按服务端返回的 `entryDate` 顺序渲染日期分隔线，同一天条目归在同一视觉段落；保留单篇封面、开放状态与请求按钮。 |
+| 空状态 | 无条目时改为“小栖还没有写下可见的日记”，不暗示用户可以创建第一页。 |
+| 可访问性 | 时间线提供 `role=list` / `role=listitem`、稳定 `data-testid` 与 `time[dateTime]`，便于后续接日期跳转。 |
+| 参考取舍 | 借鉴 [Journal](https://github.com/BomBomLab/Journal) 的结构化时间线展示层思路；不引入其 runtime、数据格式或独立存储。 |
+| 数据边界 | 无 Dexie / SQLite / API schema 变化，继续复用 `/api/diary` 的安全视图。 |
+
+**验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；`verify-home` 脚本语法与时间线入口断言已更新。浏览器 CDP 未启动，未冒充浏览器回归通过。
+
+**明确延期**：周 / 月聚合、日期跳转控件、富文本 / 图片块、封面编辑与批量授权留在后续任务。
