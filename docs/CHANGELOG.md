@@ -1045,3 +1045,8 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - `Bookmark` 新增多维 `tags[]`，收藏中心支持标签编辑 / 筛选 / 搜索命中与 20 条分页；分类仍保持单归属，未新建标签表。
 - Dexie 升 v17、备份升 v15，旧收藏与旧备份自动补空标签；新增 `bookmark.tags.updated` Life 事件与结构化标签详情。
 - `probe:bookmark-life` 扩展为 8/8，覆盖标签事实、时间线摘要、月历计数与非法标签数量。
+
+### 2026-09-28 · T-105 · V2-A Home 基础模块第六阶段部署 VPS（生产）
+
+- 本地提交 `8346a21` 已部署至 `https://habitat.beiyan.cc`，保留生产 `.env` / SQLite，并创建备份 `habitat.db.bak-20260928-8346a21`。
+- `habitat-server` 重启后 active；公网健康、首页新静态资源、远端 Life 路由哈希与标签非法请求 400 冒烟通过。

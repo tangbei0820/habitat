@@ -3174,6 +3174,15 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 
 **明确延期**：服务端收藏分页、标签重命名 / 合并、AI 自主收藏、复杂排序与批量编辑；继续复用本地 Bookmark，等真实规模再演进。
 
-### T-105 · 2026-09-28 · V2-A Home 基础模块第六阶段部署 VPS —— **待执行**
+### T-105 · 2026-09-28 · V2-A Home 基础模块第六阶段部署 VPS —— **完成（生产）**
 
 **范围**：部署 T-104 的 Bookmark 标签、Dexie v17 / 备份 v15 与 Life 标签事件到 `https://habitat.beiyan.cc`，保留生产 `.env` 与 SQLite，完成健康、静态资源、标签 Life 路由和服务状态验收。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `8346a21` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与临时目录。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-8346a21`；生产 `.env` 与 SQLite 未被部署包覆盖。 |
+| 服务状态 | `habitat-server` active；服务端与公网 `/api/health` 返回 `ok: true`。 |
+| 公网验收 | 首页已引用 `index-DWhmEBEu.js`；远端 `server/src/routes/life.ts` SHA-256 与本地一致；超出数量的标签请求返回结构化 400。 |
+
+**阶段边界**：本阶段到此停止；下一阶段再处理日记富文本 / 图片、留言板分组、服务端收藏分页或其它 Living Apps。
