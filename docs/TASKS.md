@@ -3316,3 +3316,16 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；`verify-home` 脚本语法与时间线入口断言已更新。浏览器 CDP 未启动，未冒充浏览器回归通过。
 
 **明确延期**：周 / 月聚合、日期跳转控件、富文本 / 图片块、封面编辑与批量授权留在后续任务。
+
+### T-115 · 2026-09-28 · V2-A Home 基础模块第十一阶段部署 VPS —— **完成（生产）**
+
+**范围**：部署 T-114 AI 日记时间线分段到 `https://habitat.beiyan.cc`；保留生产 `.env` / SQLite，不进入周月聚合或富媒体日记。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `4f24705` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与 `.workbuddy`。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-4f24705`；生产 SQLite 与 `.env` 未被部署包覆盖。 |
+| 服务状态 | `habitat-server` active；本地 `127.0.0.1:3000` 与公网 `/api/health` 均返回 `{"ok":true}`。 |
+| 公网验收 | 首页已引用 `index-a7B1ba3Y.js`；生产 bundle 含 `diary-timeline`、`diary-date-divider` 与日期分段文案。 |
+
+**阶段边界**：本阶段到此停止；周 / 月聚合、日期跳转控件、富文本 / 图片块、封面编辑与批量授权留在后续任务。
