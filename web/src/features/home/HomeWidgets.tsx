@@ -11,21 +11,27 @@ function cardStyle() {
   return { borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }
 }
 
-/** 留言板 Widget：最近几条留言 + 进模块页（SPEC §3.2.2 的 v0.1 范围） */
+/** 留言板 Widget：按范围读取留言 + 进模块页（SPEC §3.2.2） */
 function BoardWidget({ view }: { view: BoardView }) {
+  const scopeLabel = view.scope.kind === 'recent'
+    ? '最近留言'
+    : view.scope.kind === 'group'
+      ? '指定分组'
+      : '指定留言'
+  const target = view.scope.kind === 'moment' ? `/home/board#${encodeURIComponent(view.scope.momentId)}` : '/home/board'
   return (
     <section data-testid="home-widget-board" className="rounded-xl border p-4" style={cardStyle()}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-sm font-medium">
           <IconMail size={15} style={{ color: 'var(--accent-strong)' }} />
-          留言板
+          留言板 · {scopeLabel}
         </span>
         <Link
-          to="/home/board"
+          to={target}
           className="flex shrink-0 items-center gap-0.5 text-xs"
           style={{ color: 'var(--accent-strong)' }}
         >
-          查看全部
+          {view.scope.kind === 'moment' ? '查看留言' : '打开留言板'}
           <IconChevronRight size={13} />
         </Link>
       </div>

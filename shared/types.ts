@@ -301,6 +301,12 @@ export interface CountdownDay extends BaseObject {
 /** 主屏 Widget 的形态（SPEC §5.2 首批两种） */
 export type HomeWidgetKind = 'board' | 'countdown'
 
+/** 留言板 Widget 的展示范围；只保存引用语义，不复制留言正文。 */
+export type BoardWidgetScope =
+  | { kind: 'recent' }
+  | { kind: 'group'; groupId: string }
+  | { kind: 'moment'; momentId: string }
+
 /**
  * 主屏 Widget（SPEC §1.4 / §5.2）：**只存引用，不复制被展示的数据** ——
  * 卡片内容始终从 `moments` / `countdowns` 实时读。
@@ -314,8 +320,10 @@ export type HomeWidgetKind = 'board' | 'countdown'
 export interface HomeWidget extends BaseObject {
   type: 'home-widget'
   kind: HomeWidgetKind
-  /** 引用目标：留言板 Widget 不指向单条记录（恒为 `null`），倒数日 Widget 指向 `CountdownDay.id` */
+  /** 引用目标：倒数日 Widget 指向 `CountdownDay.id`；留言板统一为 `null`，范围见 `boardScope` */
   refId: string | null
+  /** 倒数日为 null；老备份 / 老库迁移为留言板最近 3 条。 */
+  boardScope: BoardWidgetScope | null
 }
 
 /**

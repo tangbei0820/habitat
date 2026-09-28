@@ -16,6 +16,7 @@ import type {
   CountdownReminder,
   CountdownRepeat,
   HomeWidget,
+  BoardWidgetScope,
   ListenSession,
   MusicTrack,
   Photo,
@@ -47,7 +48,7 @@ export const BACKUP_FORMAT = 'habitat-backup'
  * ⚠️ 但**旧备份（v2–v8）里带着它们**，导入时不能丢：走 `legacyUploads` 转存到服务端，
  * 详见 `importAll` 与 `db/legacy-upload.ts`。
  */
-export const BACKUP_VERSION = 15
+export const BACKUP_VERSION = 16
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -272,6 +273,17 @@ function looksLikeWishlistItem(value: unknown): value is WishlistItem {
     return false
   }))) return false
   return true
+}
+
+function normalizeBoardWidgetScope(value: unknown, version: number, kind: HomeWidget['kind']): BoardWidgetScope | null {
+  if (kind === 'countdown') return null
+  // v15 及更早的备份没有范围字段；兼容为「最近 3 条」。
+  if (version < 16 || value === undefined) return { kind: 'recent' }
+  if (!isRecord(value) || typeof value.kind !== 'string') throw new Error('备份内容损坏：留言 Widget 范围无效')
+  if (value.kind === 'recent') return { kind: 'recent' }
+  if (value.kind === 'group' && typeof value.groupId === 'string' && value.groupId !== '') return { kind: 'group', groupId: value.groupId }
+  if (value.kind === 'moment' && typeof value.momentId === 'string' && value.momentId !== '') return { kind: 'moment', momentId: value.momentId }
+  throw new Error('备份内容损坏：留言 Widget 范围无效')
 }
 
 const COUNTDOWN_CATEGORIES: CountdownCategory[] = ['anniversary', 'event', 'deadline', 'other']
@@ -605,6 +617,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
       homeWidgetsByKind.set(widget.kind, {
         ...widget,
         refId: typeof widget.refId === 'string' ? widget.refId : null,
+        boardScope: normalizeBoardWidgetScope((widget as HomeWidget & { boardScope?: unknown }).boardScope, version, widget.kind),
       })
     }
   }

@@ -37,6 +37,8 @@ check('重复分组明确失败', duplicate.status === 400)
 
 const createdMoment = await req('/api/moments', { method: 'POST', body: JSON.stringify({ content: '验收·分组留言', groupId }) })
 check('创建带分组留言 201', createdMoment.status === 201 && createdMoment.body?.groupId === groupId)
+const direct = await req(`/api/moments/${encodeURIComponent(createdMoment.body.id)}`)
+check('按 id 读取留言', direct.status === 200 && direct.body?.id === createdMoment.body?.id)
 const grouped = await req(`/api/moments?groupId=${encodeURIComponent(groupId)}`)
 check('按分组筛选', grouped.status === 200 && grouped.body.items.some((item: any) => item.id === createdMoment.body?.id))
 
@@ -56,6 +58,8 @@ check('删除分组不删除留言', afterDelete.status === 200 && afterDelete.b
 
 const invalid = await req('/api/moments', { method: 'POST', body: JSON.stringify({ content: '验收·非法分组', groupId: 'missing-group' }) })
 check('非法分组拒绝写入', invalid.status === 404)
+const missing = await req('/api/moments/missing-moment')
+check('不存在留言返回 404', missing.status === 404)
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`)
 if (failed > 0) process.exitCode = 1

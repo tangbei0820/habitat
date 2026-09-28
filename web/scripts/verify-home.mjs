@@ -796,7 +796,7 @@ const readHomeWidgets = () => evaluate(`(async () => {
     request.onerror = () => reject(request.error)
   })
   db.close()
-  return rows.map((row) => ({ id: row.id, kind: row.kind, refId: row.refId, createdAt: row.createdAt }))
+  return rows.map((row) => ({ id: row.id, kind: row.kind, refId: row.refId, boardScope: row.boardScope ?? null, createdAt: row.createdAt }))
 })()`)
 
 /** 绕过界面直接改库：用来造「导入的备份里带着脏引用」这种只在数据层才出现的状态 */
@@ -900,6 +900,40 @@ const twoWidgets = await evaluate(`(() => {
 check('两张 Widget 按上主屏的先后排列（先倒数日、后留言板）', twoWidgets !== null && twoWidgets.order.join(',') === 'home-widget-countdown,home-widget-board', JSON.stringify(twoWidgets?.order))
 check('留言板 Widget 展示最近留言并带快捷入口', twoWidgets !== null && twoWidgets.boardText.includes('今天也一起吃了饭') && twoWidgets.boardHref === '/home/board', JSON.stringify({ text: twoWidgets?.boardText, href: twoWidgets?.boardHref }))
 
+// 留言板 Widget 的范围引用：指定单条留言与指定分组都只保存引用，不复制正文。
+await navigate('/home/board', '留言板')
+const firstMomentId = await evaluate(`document.querySelector('[data-testid="moment-item"]')?.id ?? null`)
+if (typeof firstMomentId !== 'string' || firstMomentId === '') throw new Error('找不到留言 id，无法验收 Widget 指定留言')
+await setSelect('[data-testid="board-widget-scope"]', `moment:${firstMomentId}`)
+await clickButton('更新范围')
+await navigate('/home', '留言板')
+await waitFor(`document.querySelector('[data-testid="home-widget-board"]')?.innerText.includes('指定留言') === true`, '指定留言 Widget 渲染')
+const momentScopedRows = await readHomeWidgets()
+check('留言板 Widget 可指定单条留言', (await evaluate(`document.querySelector('[data-testid="home-widget-board"]')?.innerText.includes('今天也一起吃了饭') === true`)) === true)
+check('指定留言只保存稳定引用', momentScopedRows.some((row) => row.kind === 'board' && row.boardScope?.kind === 'moment' && row.boardScope.momentId === firstMomentId), JSON.stringify(momentScopedRows))
+
+await navigate('/home/board', '留言板')
+await setValue('input[placeholder="新分组"]', '验收主屏分组')
+await clickButton('添加')
+await waitFor(`document.body.innerText.includes('验收主屏分组')`, '主屏 Widget 验收分组创建')
+const widgetGroupId = await evaluate(`(() => { const option = [...document.querySelectorAll('#board-draft-group option')].find((item) => item.textContent === '验收主屏分组'); return option?.getAttribute('value') ?? null })()`)
+if (typeof widgetGroupId !== 'string' || widgetGroupId === '') throw new Error('找不到主屏 Widget 验收分组 id')
+await setSelect('#board-draft-group', widgetGroupId)
+await setValue('#board-draft', '分组主屏留言')
+await clickButton('留言')
+await waitFor(`document.body.innerText.includes('分组主屏留言')`, '分组留言落地')
+await setSelect('[data-testid="board-widget-scope"]', `group:${widgetGroupId}`)
+await clickButton('更新范围')
+await navigate('/home', '留言板')
+await waitFor(`document.querySelector('[data-testid="home-widget-board"]')?.innerText.includes('指定分组') === true`, '指定分组 Widget 渲染')
+const groupScopedRows = await readHomeWidgets()
+check('留言板 Widget 可指定分组', (await evaluate(`document.querySelector('[data-testid="home-widget-board"]')?.innerText.includes('分组主屏留言') === true`)) === true)
+check('指定分组只保存稳定引用', groupScopedRows.some((row) => row.kind === 'board' && row.boardScope?.kind === 'group' && row.boardScope.groupId === widgetGroupId), JSON.stringify(groupScopedRows))
+
+await navigate('/home/board', '留言板')
+await setSelect('[data-testid="board-widget-scope"]', 'recent')
+await clickButton('更新范围')
+
 await send('Page.reload')
 await sleep(600)
 await waitFor(`document.querySelectorAll('[data-testid="home-widgets"] > *').length === 2`, '刷新后两张 Widget 都在')
@@ -998,6 +1032,7 @@ const backupCheck = await evaluate(`(async () => {
       })
       tx.objectStore('homeWidgets').put({
         id: 'verify-home-widget', type: 'home-widget', kind: 'board', refId: null,
+        boardScope: { kind: 'recent' },
         createdAt: Date.now(), updatedAt: Date.now(),
       })
       tx.oncomplete = () => { db.close(); resolve('ok') }
@@ -1154,7 +1189,7 @@ const backupCheck = await evaluate(`(async () => {
     legacyV7BookmarkCategoryId: legacyV7Bookmark === undefined ? 'no-row' : legacyV7Bookmark.categoryId,
   }
 })()`)
-check('备份 v15 覆盖本地 Home 数据并可整体恢复（日记 / 留言板已归服务端）', backupCheck.version === 15 && backupCheck.exportedHome >= 7 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
+check('备份 v16 覆盖本地 Home 数据并可整体恢复（日记 / 留言板已归服务端）', backupCheck.version === 16 && backupCheck.exportedHome >= 7 && backupCheck.restoredHome === backupCheck.exportedHome, JSON.stringify(backupCheck))
 check(
   '备份 v7 带走会话分组与归属（含折叠状态）',
   backupCheck.exportedGroups === 1 &&
@@ -1305,7 +1340,7 @@ const dbShape = await evaluate(`(async () => {
   db.close()
   return value
 })()`)
-check('Dexie 已升到 v17：收藏标签与 v16 愿望迁移', dbShape.version === 170 && ['wishlist', 'countdowns', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets', 'legacyUploads', 'listenSessions', 'studyTasks', 'studyCards', 'stickers'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
+check('Dexie 已升到 v18：留言 Widget 范围与 v17 收藏标签迁移', dbShape.version === 180 && ['wishlist', 'countdowns', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets', 'legacyUploads', 'listenSessions', 'studyTasks', 'studyCards', 'stickers'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
 // 旧表壳**删不掉**（Dexie 的 stores() 跨版本累加，省略 ≠ 删除，见 db.ts 类注释 v11 条），
 // 所以这里验的是「搬走了」而不是「表没了」：旧表清空 + 中转表清空。
 // 两者都为 0 才有意义 —— 中转表清空的前置是「服务端已确认」（见 legacy-upload.ts 的三条纪律）。

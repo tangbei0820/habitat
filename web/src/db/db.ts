@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie'
 import type {
   Artwork,
+  BoardWidgetScope,
   Bookmark,
   BookmarkCategory,
   ChatMessage,
@@ -70,6 +71,9 @@ export interface LegacyUpload {
  *     以及 `db.diaries` 这类入口在类型层面刻意不再暴露。
  * v14：本地表情图库（T-077）。新增 `stickers` 表；消息内保存发送时快照，图库条目删除不影响历史消息。
  * v15：倒数日补分类 / 每年重复 / 提醒字段（T-100）；不新增索引，upgrade 为老记录补默认值。
+ * v16：愿望清单补作者、目标日、状态与进展（T-102）；upgrade 为老记录补默认值。
+ * v17：收藏增加多维标签（T-104）；upgrade 为老收藏补空数组。
+ * v18：留言板 Widget 补 `boardScope`（T-108）；老 Widget 统一迁移为 recent，倒数日为 null。
  */
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
@@ -302,6 +306,13 @@ export class HabitatDb extends Dexie {
       .stores({ bookmarks: 'id, targetType, targetId, createdAt, categoryId, &[targetType+targetId]' })
       .upgrade((tx) => tx.table('bookmarks').toCollection().modify((bookmark: Bookmark) => {
         if (bookmark.tags === undefined) bookmark.tags = []
+      }))
+    // v18：留言板 Widget 不再只有“最近 3 条”，需要明确区分最近 / 分组 / 单条引用。
+    // 这是展示层引用迁移：老数据保留同一张卡，范围安全地落为 recent；倒数日不受影响。
+    this.version(18)
+      .stores({ homeWidgets: 'id, &kind, createdAt' })
+      .upgrade((tx) => tx.table('homeWidgets').toCollection().modify((widget: HomeWidget) => {
+        if (widget.boardScope === undefined) widget.boardScope = widget.kind === 'board' ? { kind: 'recent' } satisfies BoardWidgetScope : null
       }))
     // 刻意没有 .upgrade()：搬迁不在版本变化时做，而在每次启动时做（见上方注释与 legacy-upload.ts）。
     // 也不在这里声明 diaries / moments —— 声明了也删不掉它们，省掉能少一份「以为删了」的误解。

@@ -13,6 +13,7 @@ import {
   deleteMomentGroup,
   deleteUserMoment,
   getMomentGroup,
+  getMoment,
   importMomentIfAbsent,
   listMomentGroups,
   listMoments,
@@ -143,6 +144,12 @@ export function registerMomentRoutes(app: FastifyInstance): void {
     if (groupId !== null && getMomentGroup(groupId) === null) throw new RequestError(ErrorCodes.NotFound, '留言分组不存在')
     reply.code(201)
     return createUserMoment(content(body.content), groupId)
+  })
+
+  app.get<{ Params: { id: string } }>('/api/moments/:id', async (request) => {
+    const item = getMoment(request.params.id)
+    if (item === null) throw new RequestError(ErrorCodes.NotFound, '这条留言不存在')
+    return item
   })
 
   app.patch<{ Params: { id: string } }>('/api/moments/:id', async (request) => {

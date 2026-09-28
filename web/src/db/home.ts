@@ -1,5 +1,6 @@
 import {
   MAX_PHOTO_BYTES,
+  type BoardWidgetScope,
   type Artwork,
   type ArtworkCategory,
   type Bookmark,
@@ -65,6 +66,14 @@ export async function listMoments(query?: string, groupId?: string | null): Prom
   const suffix = params.toString() === '' ? '' : `?${params.toString()}`
   const data = await fetchJson<{ items: Moment[] }>(`/api/moments${suffix}`)
   return data.items
+}
+
+export async function getMoment(id: string): Promise<Moment | null> {
+  try {
+    return await fetchJson<Moment>(`/api/moments/${encodeURIComponent(id)}`)
+  } catch {
+    return null
+  }
 }
 
 export async function listMomentGroups(): Promise<MomentGroup[]> {
@@ -1143,12 +1152,24 @@ export const HOME_WIDGET_BOARD_LIMIT = 3
  * 「倒数日已被删除」，漏一处主屏上就会冒出一张空白卡片。
  */
 export type HomeWidgetView =
-  | { kind: 'board'; id: string; createdAt: number; notes: Moment[] }
+  | { kind: 'board'; id: string; createdAt: number; scope: BoardWidgetScope; notes: Moment[] }
   | { kind: 'countdown'; id: string; createdAt: number; day: CountdownDay }
 
 /** 主屏 Widget 用的「最近 N 条」（由服务端切片，不把整表拉回来）；留言板模块页用全量 `listMoments()` */
 async function recentMoments(limit: number): Promise<Moment[]> {
   const data = await fetchJson<{ items: Moment[] }>(`/api/moments?limit=${String(limit)}`)
+  return data.items
+}
+
+async function scopedBoardMoments(scope: BoardWidgetScope): Promise<Moment[] | null> {
+  if (scope.kind === 'recent') return recentMoments(HOME_WIDGET_BOARD_LIMIT)
+  if (scope.kind === 'moment') {
+    const item = await getMoment(scope.momentId)
+    return item === null ? null : [item]
+  }
+  const groups = await listMomentGroups()
+  if (!groups.some((group) => group.id === scope.groupId)) return null
+  const data = await fetchJson<{ items: Moment[] }>(`/api/moments?groupId=${encodeURIComponent(scope.groupId)}&limit=${String(HOME_WIDGET_BOARD_LIMIT)}`)
   return data.items
 }
 
@@ -1162,18 +1183,22 @@ export async function listHomeWidgets(): Promise<HomeWidget[]> {
  * - 倒数日 Widget 的 `refId` 为 `null`（脏数据）
  * - `refId` 指向的倒数日已经不存在（删除路径已清，但导入的备份可能带来脏引用，§1.4）
  *
- * 留言板 Widget 天然不会失效 —— 它引用的是「留言」这一类，不是某一条。
+ * 留言板 Widget 的分组 / 单条范围失效时整张卡不渲染；最近范围天然不会失效。
  */
 export async function listHomeWidgetViews(): Promise<HomeWidgetView[]> {
   const widgets = await listHomeWidgets()
   const views: HomeWidgetView[] = []
   for (const widget of widgets) {
     if (widget.kind === 'board') {
+      const scope = widget.boardScope ?? { kind: 'recent' }
+      const notes = await scopedBoardMoments(scope)
+      if (notes === null) continue
       views.push({
         kind: 'board',
         id: widget.id,
         createdAt: widget.createdAt,
-        notes: await recentMoments(HOME_WIDGET_BOARD_LIMIT),
+        scope,
+        notes,
       })
       continue
     }
@@ -1194,7 +1219,7 @@ export async function listHomeWidgetViews(): Promise<HomeWidgetView[]> {
  * ⚠️ 改 `refId` 时**不动 `createdAt`**：位置语义是「这张卡片在主屏上的位置」，
  *    换一个倒数日来展示不该让它跳到队尾。
  */
-export async function putHomeWidget(kind: HomeWidgetKind, refId: string | null): Promise<void> {
+export async function putHomeWidget(kind: HomeWidgetKind, refId: string | null, boardScope: BoardWidgetScope | null = kind === 'board' ? { kind: 'recent' } : null): Promise<void> {
   const existing = await db.homeWidgets.where('kind').equals(kind).first()
   if (existing === undefined) {
     const at = Date.now()
@@ -1203,14 +1228,15 @@ export async function putHomeWidget(kind: HomeWidgetKind, refId: string | null):
       type: 'home-widget',
       kind,
       refId,
+      boardScope,
       createdAt: at,
       updatedAt: at,
     })
     return
   }
   // 引用没变就一个字都不写：否则每次进页面顺手点一下都会刷新 `updatedAt`
-  if (existing.refId === refId) return
-  await db.homeWidgets.update(existing.id, { refId, updatedAt: Date.now() })
+  if (existing.refId === refId && JSON.stringify(existing.boardScope ?? null) === JSON.stringify(boardScope)) return
+  await db.homeWidgets.update(existing.id, { refId, boardScope, updatedAt: Date.now() })
 }
 
 export async function removeHomeWidget(kind: HomeWidgetKind): Promise<void> {

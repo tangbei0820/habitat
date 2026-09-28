@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { Moment } from '@shared/types'
+import type { BoardWidgetScope, Moment } from '@shared/types'
 import { IconCheck } from '../../components/qixi/Icons'
 import {
   createMoment,
@@ -51,13 +51,16 @@ export function BoardModule() {
   const [movingId, setMovingId] = useState<string | null>(null)
   /** 留言板 Widget 是否在主屏上（不同 kind 的 Widget 互不影响，各管各的） */
   const [onHome, setOnHome] = useState(false)
+  const [widgetScope, setWidgetScope] = useState<BoardWidgetScope>({ kind: 'recent' })
 
   async function refresh(query = search, selectedGroup = groupFilter): Promise<void> {
     const apiGroup = selectedGroup === 'all' ? undefined : selectedGroup === 'none' ? null : selectedGroup
     const [nextItems, nextGroups, widgets, bookmarks] = await Promise.all([listMoments(query, apiGroup), listMomentGroups(), listHomeWidgets(), listBookmarks()])
     setItems(nextItems)
     setGroups(nextGroups)
-    setOnHome(widgets.some((widget) => widget.kind === 'board'))
+    const boardWidget = widgets.find((widget) => widget.kind === 'board')
+    setOnHome(boardWidget !== undefined)
+    if (boardWidget?.boardScope !== null && boardWidget?.boardScope !== undefined && boardWidget?.boardScope.kind !== undefined) setWidgetScope(boardWidget.boardScope)
     setFavoriteIds(new Set(bookmarks.filter((item) => item.targetType === 'moment').map((item) => item.targetId)))
   }
 
@@ -191,16 +194,38 @@ export function BoardModule() {
     }
   }
 
-  /** 上主屏 = 放一张引用卡片；留言板 Widget 不指向某一条留言（SPEC §3.2.2） */
+  /** 上主屏 = 放一张范围引用卡片；正文仍从留言服务端实时读取。 */
   async function toggleHome(): Promise<void> {
     try {
       if (onHome) await removeHomeWidget('board')
-      else await putHomeWidget('board', null)
+      else await putHomeWidget('board', null, widgetScope)
       setError(null)
       await refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     }
+  }
+
+  async function updateHomeScope(): Promise<void> {
+    try {
+      await putHomeWidget('board', null, widgetScope)
+      setError(null)
+      await refresh()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  function scopeValue(scope: BoardWidgetScope): string {
+    if (scope.kind === 'recent') return 'recent'
+    if (scope.kind === 'group') return `group:${scope.groupId}`
+    return `moment:${scope.momentId}`
+  }
+
+  function scopeFromValue(value: string): BoardWidgetScope {
+    if (value === 'recent') return { kind: 'recent' }
+    if (value.startsWith('group:')) return { kind: 'group', groupId: value.slice('group:'.length) }
+    return { kind: 'moment', momentId: value.slice('moment:'.length) }
   }
 
   const visibleItems = filter === 'all' ? items : items.filter((item) => item.author === filter)
@@ -265,22 +290,34 @@ export function BoardModule() {
       </section>
 
       <div className="flex items-center justify-between gap-3 text-xs">
-        <span style={{ color: 'var(--text-secondary)' }}>主屏 Widget：展示最近 3 条留言</span>
-        <button
-          type="button"
-          data-testid="board-home-toggle"
-          data-on-home={onHome ? 'true' : 'false'}
-          aria-pressed={onHome}
-          title={onHome ? '点击从主屏移除' : '把留言板放到主屏'}
-          onClick={() => void toggleHome()}
-          className="shrink-0"
-          style={{ color: onHome ? 'var(--accent-strong)' : 'var(--text-secondary)' }}
-        >
-          <span className="flex items-center gap-1">
-            {onHome && <IconCheck size={13} />}
-            {onHome ? '已在主屏' : '放到主屏'}
-          </span>
-        </button>
+        <span className="flex min-w-0 items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+          <span className="shrink-0">主屏 Widget</span>
+          <label className="min-w-0">
+            <span className="sr-only">留言 Widget 展示范围</span>
+            <select data-testid="board-widget-scope" value={scopeValue(widgetScope)} onChange={(event) => setWidgetScope(scopeFromValue(event.target.value))} className="max-w-44 rounded border bg-transparent px-2 py-1 text-xs" style={{ borderColor: 'var(--border-soft)' }}>
+              <option value="recent">最近 3 条留言</option>
+              {groups.map((group) => <option key={`widget-group-${group.id}`} value={`group:${group.id}`}>分组：{group.name}</option>)}
+              {items.map((item) => <option key={`widget-moment-${item.id}`} value={`moment:${item.id}`}>留言：{item.content.slice(0, 18)}</option>)}
+            </select>
+          </label>
+        </span>
+        <span className="flex shrink-0 items-center gap-3">
+          {onHome && <button type="button" data-testid="board-widget-apply" onClick={() => void updateHomeScope()} style={{ color: 'var(--accent-strong)' }}>更新范围</button>}
+          <button
+            type="button"
+            data-testid="board-home-toggle"
+            data-on-home={onHome ? 'true' : 'false'}
+            aria-pressed={onHome}
+            title={onHome ? '点击从主屏移除' : '把留言板放到主屏'}
+            onClick={() => void toggleHome()}
+            style={{ color: onHome ? 'var(--accent-strong)' : 'var(--text-secondary)' }}
+          >
+            <span className="flex items-center gap-1">
+              {onHome && <IconCheck size={13} />}
+              {onHome ? '已在主屏' : '放到主屏'}
+            </span>
+          </button>
+        </span>
       </div>
 
       <div className="flex items-center gap-2 border-b pb-2" style={{ borderColor: 'var(--border-soft)' }} data-testid="board-filter">

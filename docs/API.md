@@ -560,6 +560,7 @@ AI 修改自己的留言不走 HTTP，而由 Runtime 的 `messageboard_update` �
 来源链接回到 `/home/board#<moment-id>`。
 `GET /api/moments` 可选 `q`（最多 120 字，匹配留言正文）与 `author=user|companion`；`limit=N` 仍用于主屏 Widget，
 过滤先发生在服务端，再应用 limit。分组筛选使用 `groupId=<id>`；`groupId=none` 只返回未分组留言。
+`GET /api/moments/:id` 按稳定留言 id 读取单条留言，供指定留言 Widget 与来源回链确认引用仍然有效；不存在返回 404。
 
 ### 留言板分组：`GET/POST /api/moment-groups`、`PATCH/DELETE /api/moment-groups/:id`、`PUT /api/moments/:id/group`
 

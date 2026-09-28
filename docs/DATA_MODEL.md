@@ -215,7 +215,7 @@ interface SessionGroup extends BaseObject {
 | 留言收藏 → 原留言 | `Bookmark.targetType='moment'` + `sourceId` + `metadata.source*` | 保存作者、创建时间与正文快照；编辑原留言不回写既有收藏；来源链接回 `/home/board#<id>` |
 | 作品 → 来源内容 | `BaseObject.sourceId` / `sessionId` | 本体尽量**引用原始对象**，必要时存稳定快照（SPEC §3.6.3） |
 | 相册 → 来源消息 | `BaseObject.sourceId` / `sessionId` | 保留原图 + 来源 + 时间 + 发送方 / 生成方（SPEC §4.4） |
-| 主屏 Widget → 被展示内容 | `HomeWidget.kind` + `refId`（本地表 `homeWidgets`） | **只存引用、不复制数据**（SPEC §1.4）；唯一索引 `&kind` 从数据层保证**每种 Widget 至多一条**；`refId` 失效时渲染层不渲染，删实体时同事务清引用 |
+| 主屏 Widget → 被展示内容 | `HomeWidget.kind` + `refId` / `boardScope`（本地表 `homeWidgets`） | **只存引用、不复制数据**（SPEC §1.4）；留言板 `boardScope` 可指向 recent / group / moment；唯一索引 `&kind` 从数据层保证**每种 Widget 至多一条**；引用失效时渲染层不渲染，删实体时同事务清引用 |
 | 收藏 → 分类 | `Bookmark.categoryId`（本地表 `bookmarkCategories`） | 单归属；删分类**不删收藏**，同事务把类内 `categoryId` 置 `null`（SPEC §3.5.4） |
 | 照片 → 相册 | `Photo.collectionId`（本地表 `photoCollections`） | 单归属；删相册**不删照片**，同事务把册内 `collectionId` 置 `null`（SPEC §3.7.3）。⚠️ 「移出相册」只置空归属，与「删除照片」是两件事 |
 
@@ -254,6 +254,7 @@ interface SessionGroup extends BaseObject {
 | v15 | 150 | `CountdownDay` 补 `category` / `repeat` / `reminder`（T-100）；保留原日期索引，upgrade 为老记录补 `other` / `none` / `none` |
 | v16 | 160 | `WishlistItem` 补作者、目标日期、暂停 / 放弃状态、状态原因与嵌套进展（T-102）；upgrade 为老记录补默认值 |
 | v17 | 170 | `Bookmark` 补 `tags[]` 多维标签（T-104）；upgrade 为老收藏补空数组，不新增索引 |
+| v18 | 180 | `HomeWidget` 补 `boardScope`（T-108）；老留言板 Widget 迁移为 `{kind:'recent'}`，倒数日明确写 `null` |
 
 Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画版本（`verify-chat.mjs`）。
 **每次升版都要在 `db.ts` 的版本注释里写清「为什么」**；只写「加了张表」等于没写。
