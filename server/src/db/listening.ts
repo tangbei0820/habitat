@@ -9,7 +9,7 @@ import { eventLog } from './schema.js'
 const KEY = 'listening.session.main'
 const QUEUE_KEY = 'listening.queue.main'
 
-type TrackSnapshot = Pick<MusicTrack, 'id' | 'title' | 'artist' | 'externalUrl'>
+export type TrackSnapshot = Pick<MusicTrack, 'id' | 'title' | 'artist' | 'externalUrl'>
 
 function emptySession(queue: ListeningQueueItem[] = []): ListeningSessionView {
   return {

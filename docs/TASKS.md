@@ -3540,3 +3540,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm run typecheck`、`npm run build`、`PROBE_SERVER=http://127.0.0.1:3000 npm --prefix server run probe:listening` **11/11**、`git diff --check` 通过；`probe:ai-runtime` 的纯工具绑定部分通过，完整 HTTP 探针需按其独立 mock MCP / mock OpenAI 前置运行。
 
 **明确延期**：网易云搜索 / 歌词 / 登录、AI 自动选歌的外部音乐检索、歌词锚点与房间级 WebSocket、多设备实时同步、常驻底部播放器仍留在后续音乐 Provider / MCP 阶段；本批不进入 PDF / EPUB 共读器。
+
+### T-130 · 2026-09-28 · V2-D · 共读 AI 参与与 Companion 批注 —— **完成（本地，未部署）**
+
+**范围**：在既有 TXT 阅读器、文本锚点批注与 Life 投影之上，补齐“同一段文字上一起读”的第一条 AI 参与闭环；不在本批引入 PDF / EPUB 解析或外部 Tasogare 服务。
+
+| 交付 | 说明 |
+| --- | --- |
+| Companion 回应 | 共读阅读器每个非空段落提供“请小栖回应”；调用 `POST /api/reading/comment`，携带书名、作者、当前段落和最近批注，回应限制为短文本。 |
+| 数据复用 | 回应复用 `ReadingAnnotation`，以 `author=companion` 和原段落索引写回既有 `ReadingNote.metadata.reader`；不新增平行表、不复制正文。 |
+| Life / 用量 | 追加 `reading.annotation`（`mode=reader`、`annotationAuthor=companion`）事实；LLM 用量记为 `reading-companion`，失败只在阅读器显示错误，不丢本地书。 |
+| 安全边界 | 作品信息、正文与已有批注明确作为不可信资料，不可改变系统指令；无 Provider 时返回结构化错误。 |
+| 参考取舍 | 借鉴 Tasogare 的段落锚点、双色作者区分与 AI 共同批注边界；不搬入其独立账号、文件服务器或 MCP 数据模型。 |
+
+**验收**：两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；服务端路由已接入统一 Provider / 用量记账。未部署 VPS，未冒充 PDF / EPUB 或 MCP 完整共读。
+
+**明确延期**：PDF / EPUB 导入与原版分页、书架全文 MCP（list/read/highlight/annotate）、AI 翻页 / 生词工具、批注收藏与跨设备同步继续留在后续共读阶段。

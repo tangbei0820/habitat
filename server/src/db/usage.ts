@@ -21,6 +21,7 @@ export type UsageService =
   | 'dream'
   | 'study'
   | 'reading-daily'
+  | 'reading-companion'
 
 export interface UsageInput {
   profileId: string

@@ -3,6 +3,15 @@
 > 本文件记「改了什么」（面向版本，按 Phase 组织）。
 > 「做到哪、还欠什么」在 `docs/TASKS.md`。
 
+## 2026-09-28 · V2-D · 共读 AI 参与
+
+### T-130 · TXT 段落回应与 Companion 批注
+
+- 共读阅读器新增“请小栖回应”，可针对当前任意 TXT 段落请求服务端主聊天 Provider 生成短回应。
+- 回应沿用既有 `ReadingAnnotation` 文本锚点，以 `author=companion` 写回本地书架，并进入 Life `reading.annotation` 事实；不复制书籍正文或新增平行书库。
+- 新增 `POST /api/reading/comment`，原文 / 批注按不可信阅读资料处理，调用统一后台 LLM 用量记账。
+- PDF / EPUB 解析、翻页 MCP 与跨设备同步仍未在本批冒充完成。
+
 ## 2026-09-28 · V2-D · Together Listening 共同生活增强
 
 ### T-129 · 共享队列、逐曲回忆与 Runtime 参与

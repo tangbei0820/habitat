@@ -895,6 +895,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | `GET /api/life/day/:dayKey` | 日期下钻；返回共同生活 `timeline` 投影、原始 EventLog 与 UsageRecord，不反查聊天库 |
 | `POST /api/life/events/reading` | 共读 / 每日品读行为投影：打开、进度 / 阅读时长、书签、批注、生词，以及 `reading.daily.swapped` / `reading.daily.annotation` / `reading.daily.comment`（`mode=daily`）；写入 EventLog，失败不影响本地阅读 |
 | `POST /api/reading/daily/comment` | 服务端调用当前主聊天 Provider，为指定作品片段和已有锚点批注生成小栖短回应；原文只作为不可信阅读资料，不进入 MCP；未配置 Provider 时明确返回错误 |
+| `POST /api/reading/comment` | 服务端调用当前主聊天 Provider，为 TXT 共读书架的指定段落生成小栖回应；前端把回应作为 `companion` 锚点批注写回原书，并将用量记为 `reading-companion`；原文只作为不可信阅读资料 |
 | `POST /api/life/events/study` | 学习行为投影：生成卡片、复习卡片、保存学习记录、完成今日任务；写入 EventLog，失败不影响本地学习 |
 | `POST /api/life/events/countdown` | 倒数日行为投影：创建、编辑、删除、上 / 撤下主屏 Widget；可带 `category / repeat / reminder` 摘要，写入 EventLog，失败不影响本地倒数日 |
 | `POST /api/life/events/bookmark` | 收藏行为投影：新增、删除、分类变化、标签变化；写入 EventLog，失败不影响本地收藏 |

@@ -413,3 +413,5 @@ habitat/
 - ✅ **T-127 Provider Center 草稿配置收口**：四张能力卡在拉取模型后提供可见下拉选择，并保留手填；自定义 Headers 提供键值编辑器与 JSON 兼容入口。未新增 schema / API，未部署 VPS。
 - ✅ **T-128 Chat 关系互动收口**：服务端关系状态 / 恢复申请事实源、聊天状态条、拍一拍、暂停与双向恢复决定、自动到期恢复及 Runtime 工具均已落地；`probe:relationship` 15/15，两端 typecheck 通过，未部署 VPS。
 - 本批之后再进入 Provider 深化（Codex 生命周期、密钥保护与能力路由）或 Living Apps，不要把模型下拉 / Headers 编辑当成这些大阶段已经完成。
+- ✅ **T-130 共读 AI 参与与 Companion 批注**：TXT 阅读器每段可请求小栖回应；回应复用 `ReadingAnnotation` 的 `author=companion` 锚点、追加 Life `reading.annotation` 与 `reading-companion` 用量记录；两端 typecheck 与前端 build 通过，未部署 VPS。
+- 共读仍明确缺 PDF / EPUB 解析与分页、Tasogare 风格阅读 MCP、AI 翻页 / 生词工具、批注收藏和跨设备同步；下一轮若继续共读，先做格式与服务边界，不把本地 TXT 回应误称为完整共读。

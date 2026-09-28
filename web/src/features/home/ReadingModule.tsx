@@ -15,6 +15,7 @@ import {
   updateReadingNote,
 } from '../../db/home'
 import { appendReadingLifeEvent, type ReadingLifeEvent } from '../life/api'
+import { fetchJson } from '../../lib/api'
 
 const STATUS_LABELS: Record<ReadingStatus, string> = { want: '想读', reading: '在读', finished: '读完' }
 
@@ -54,6 +55,7 @@ export function ReadingModule() {
   const [note, setNote] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [companionBusy, setCompanionBusy] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -174,6 +176,29 @@ export function ReadingModule() {
     catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
   }
 
+  async function requestCompanionComment(paragraphIndex: number): Promise<void> {
+    if (selectedId === null || selected === null || selectedBook === null) return
+    const excerpt = paragraphs[paragraphIndex]?.trim()
+    if (excerpt === undefined || excerpt === '') return
+    setCompanionBusy(paragraphIndex); setError(null)
+    try {
+      const result = await fetchJson<{ comment: string }>('/api/reading/comment', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          bookTitle: selected.bookTitle,
+          author: selected.author,
+          excerpt,
+          paragraphIndex,
+          annotations: selectedBook.annotations.map((item) => ({ author: item.author, note: item.note, text: item.text })),
+        }),
+      })
+      const next = await addReadingAnnotation(selectedId, paragraphIndex, excerpt, result.comment, 'companion')
+      replaceItem(next)
+      emitReadingEvent({ eventType: 'reading.annotation', bookId: selectedId, bookTitle: selected.bookTitle, paragraphIndex, mode: 'reader', annotationAuthor: 'companion', readingSecondsTotal: getReadingBook(next)?.readingSeconds ?? selectedBook.readingSeconds })
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { setCompanionBusy(null) }
+  }
+
   async function saveVocabulary(): Promise<void> {
     if (selectedId === null || selectedBook === null || vocabularyTarget === null) return
     try {
@@ -213,10 +238,10 @@ export function ReadingModule() {
           const isMatch = matchingParagraphs.includes(index)
           return <article key={`${selected.id}-${index}`} data-testid={`reading-paragraph-${index}`} className="rounded-lg border p-4 transition" style={{ borderColor: isCurrent ? 'var(--accent-strong)' : 'var(--border-soft)', backgroundColor: isMatch ? 'color-mix(in srgb, var(--accent-soft) 45%, transparent)' : palette.paragraph, color: palette.text, fontSize: selectedBook.fontSize === 'small' ? 14 : selectedBook.fontSize === 'large' ? 19 : 16, opacity: paragraph === '' ? 0.55 : 1 }} onClick={() => void setParagraph(index)}>
             <p className="whitespace-pre-wrap break-words leading-7">{paragraph === '' ? ' ' : paragraph}</p>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><button type="button" onClick={(event) => { event.stopPropagation(); setAnnotationTarget(index); setAnnotationDraft('') }} style={{ color: 'var(--accent-strong)' }}>划线 / 批注</button><button type="button" onClick={(event) => { event.stopPropagation(); setVocabularyTarget(index); setVocabularyTerm(''); setVocabularyNote('') }} style={{ color: 'var(--accent-strong)' }}>加入生词</button>{isCurrent && <span style={{ color: palette.muted }}>正在这里</span>}</div>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><button type="button" onClick={(event) => { event.stopPropagation(); setAnnotationTarget(index); setAnnotationDraft('') }} style={{ color: 'var(--accent-strong)' }}>划线 / 批注</button><button type="button" data-testid="reading-companion-comment" onClick={(event) => { event.stopPropagation(); void requestCompanionComment(index) }} disabled={companionBusy !== null || paragraph.trim() === ''} style={{ color: 'var(--accent-strong)' }}>{companionBusy === index ? '小栖正在回应……' : '请小栖回应'}</button><button type="button" onClick={(event) => { event.stopPropagation(); setVocabularyTarget(index); setVocabularyTerm(''); setVocabularyNote('') }} style={{ color: 'var(--accent-strong)' }}>加入生词</button>{isCurrent && <span style={{ color: palette.muted }}>正在这里</span>}</div>
             {annotationTarget === index && <div className="mt-3 rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)' }} onClick={(event) => event.stopPropagation()}><label htmlFor={`reading-annotation-${index}`} className="sr-only">批注内容</label><textarea id={`reading-annotation-${index}`} data-testid="reading-annotation" value={annotationDraft} onChange={(event) => setAnnotationDraft(event.target.value)} maxLength={2000} rows={3} placeholder="写下你想和小栖分享的想法……" className="w-full resize-y rounded-lg border bg-transparent p-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setAnnotationTarget(null)} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>取消</button><button type="button" onClick={() => void saveAnnotation()} className="rounded-full px-3 py-1.5 text-xs" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>保存批注</button></div></div>}
             {vocabularyTarget === index && <div className="mt-3 rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)' }} onClick={(event) => event.stopPropagation()}><label htmlFor={`reading-vocabulary-${index}`} className="sr-only">生词</label><input id={`reading-vocabulary-${index}`} data-testid="reading-vocabulary" value={vocabularyTerm} onChange={(event) => setVocabularyTerm(event.target.value)} maxLength={120} placeholder="生词" className="w-full rounded-lg border bg-transparent p-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><input value={vocabularyNote} onChange={(event) => setVocabularyNote(event.target.value)} maxLength={1000} placeholder="词义或提醒（可选）" className="mt-2 w-full rounded-lg border bg-transparent p-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setVocabularyTarget(null)} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>取消</button><button type="button" onClick={() => void saveVocabulary()} className="rounded-full px-3 py-1.5 text-xs" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>保存生词</button></div></div>}
-            {paragraphAnnotations.map((annotation) => <div key={annotation.id} className="mt-3 rounded-lg border-l-2 pl-3 text-xs" style={{ borderColor: 'var(--accent-strong)', color: palette.muted }}><div>你的划线 · {annotation.note || '暂未写批注'}</div><button type="button" onClick={(event) => { event.stopPropagation(); void removeAnnotation(annotation.id) }} className="mt-1" style={{ color: 'var(--danger)' }}>删除这条批注</button></div>)}
+            {paragraphAnnotations.map((annotation) => <div key={annotation.id} className="mt-3 rounded-lg border-l-2 pl-3 text-xs" style={{ borderColor: annotation.author === 'companion' ? 'var(--accent-soft)' : 'var(--accent-strong)', color: palette.muted }}><div>{annotation.author === 'companion' ? '小栖的回应' : '你的划线'} · {annotation.note || '暂未写批注'}</div><button type="button" onClick={(event) => { event.stopPropagation(); void removeAnnotation(annotation.id) }} className="mt-1" style={{ color: 'var(--danger)' }}>删除这条批注</button></div>)}
             {paragraphVocabulary.map((word) => <div key={word.id} className="mt-3 rounded-lg border-l-2 pl-3 text-xs" style={{ borderColor: 'var(--accent-strong)', color: palette.muted }}><div>生词 · <strong style={{ color: palette.text }}>{word.term}</strong>{word.note === '' ? '' : ` · ${word.note}`}</div><button type="button" onClick={(event) => { event.stopPropagation(); void removeVocabulary(word.id) }} className="mt-1" style={{ color: 'var(--danger)' }}>移除生词</button></div>)}
           </article>
         })}
