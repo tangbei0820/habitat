@@ -196,6 +196,8 @@ habitat/
 
 ### 当前施工点
 
+**T-097 已完成（生产）**：T-096 Home 基础模块第二阶段已部署到 `https://habitat.beiyan.cc`，服务 active、公网 health 200、Life 接口可用；生产 `.env` 与 SQLite 已保留并完成备份。下一步仅在确认后进入其它 Home 能力，超出当前批次的功能先记入 `docs/TASKS.md`。
+
 **T-096 已完成（本地）**：Home 基础模块第二阶段已收口：日记 / 留言板服务端检索、收藏检索、倒数日编辑并进入 Life、日记授权结果站内通知与 Push 门控；无 schema 变化。下一步仅在确认后进入其它 Home 能力，超出当前批次的功能先记入 `docs/TASKS.md`。
 
 **T-095 已完成**：T-089～T-094 已部署到 `https://habitat.beiyan.cc` 并完成公网健康 / Life 接口验收；下一步按完整用户功能推进 Home 基础模块，超出当前批次的功能先记入 `docs/TASKS.md`。

@@ -3061,3 +3061,16 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm run typecheck`、`npm run build`、`git diff --check` 通过；`probe:diary` **47/47**、`probe:countdown-life` **7/7**（隔离 DB）；本地搜索与 `countdown.updated` 时间线烟测通过。
 
 **待优化（后续任务）**：日记富文本 / 图片、申请历史与更细通知 UI；留言板分组 / 历史 / AI 自主收藏；收藏标签、统一深链与服务端分页；倒数日分类 / 重复 / 到期提醒；愿望清单编辑与 Life 事实。以上均不在本批继续施工。
+
+### T-097 · 2026-09-28 · V2-A Home 基础模块第二阶段部署 VPS —— **完成（生产）**
+
+**范围**：将 T-096 的检索、倒数日编辑 / Life 投影与日记授权结果通知部署到 `https://habitat.beiyan.cc`；不覆盖生产 `.env`、SQLite 或 nginx 配置。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `c66952b` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与临时目录。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-c66952b`；生产 `.env` 与 SQLite 未覆盖。 |
+| 服务状态 | `habitat-server` active，Node 20；本机与公网 health 均返回 `ok: true`。 |
+| 公网验收 | `https://habitat.beiyan.cc/api/life/day/2026-09-28` 返回 `timeline`；远端 `server/src/routes/life.ts` SHA-256 与本地一致。 |
+
+**阶段边界**：本阶段到此停止；日记富文本 / 申请历史、留言板分组、收藏标签 / 深链、倒数日分类 / 重复 / 到期提醒等继续留在 T-096 的待优化清单，不提前施工。
