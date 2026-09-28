@@ -830,6 +830,7 @@ Web Push 仅是站内通知的尽力而为副本：VAPID 环境变量不完整�
 |---|---|
 | `POST /api/media/transcriptions` | `{ dataUrl, profileId? }`；只收 `audio/*` base64 data URL，解码后最大 8 MB |
 | `POST /api/media/speech` | `{ text, voice?, profileId? }`；返回音频二进制，正文最多 4,000 字 |
+| `POST /api/media/speech/stream` | `{ text, voice?, profileId? }`；优先以 Provider 原生音频流转发，暂不支持流式的 Provider 回退为完整音频并标记 `x-habitat-tts-mode: fallback`；正文最多 4,000 字 |
 | `POST /api/media/vision` | `{ dataUrl, prompt?, profileId? }`；只收白名单前端产生的 `image/*`，解码后最大 3 MB |
 | `POST /api/media/images` | `{ prompt, profileId? }`；要求上游返回 `b64_json`，服务端转成可本地保存的 PNG data URL |
 | `GET /api/tools` | 从当前 ready 的 MCP Server 聚合脱敏工具描述与 `inputSchema` |

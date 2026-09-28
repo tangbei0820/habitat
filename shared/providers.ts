@@ -211,6 +211,14 @@ export interface TTSProvider {
   synthesize(text: string, voice?: string): Promise<{ audio: Uint8Array; mimeType: string; model: string }>
 }
 
+export interface TTSStreamingProvider {
+  streamSynthesize(text: string, voice?: string): Promise<{
+    stream: AsyncIterable<Uint8Array>
+    mimeType: string
+    model: string
+  }>
+}
+
 export interface VoiceCatalogProvider {
   listVoices(opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<import('./types').ElevenLabsVoiceOption[]>
 }

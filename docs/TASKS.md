@@ -2852,3 +2852,16 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe-elevenlabs` **5/5**；两端 typecheck / web build / diff 检查通过。 |
 
 **待优化（后续功能）**：音色收藏 / 分类、Streaming TTS、通话模式与 Provider 自动故障切换另起任务。本批未部署生产。
+
+### T-083 · 2026-09-28 · V2-A 后续：Streaming TTS 传输—— **完成（本地）**
+
+**边界**：只把 ElevenLabs 原生 `/stream` 音频流接入 Habitat 的语音读取链路；OpenAI-compatible 与其它不支持流式的 Provider 仍走现有完整音频回退，并通过响应头明确标记。浏览器仍等到可解码 Blob 完整后再播放，不把分块传输伪装成渐进式播放；通话模式另由 T-084 负责。
+
+| 交付 | 说明 |
+| --- | --- |
+| 服务端通道 | 新增 `POST /api/media/speech/stream`；ElevenLabs 走原生 `/v1/text-to-speech/:voice_id/stream`，按背压转发字节块、结束后再记 UsageRecord；非流式 Provider 返回 `x-habitat-tts-mode: fallback`。 |
+| 客户端复用 | `synthesizeSpeech()` 改为消费响应体流后生成音频 Blob；现有消息朗读无需另开链路，密钥仍只在服务端。 |
+| 失败语义 | 上游中途断流直接销毁响应，不留下成功用量记录；配置 / 鉴权错误继续沿用统一 API 错误。 |
+| 验收 | `probe:elevenlabs` **6/6**；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-072，本批未部署。 |
+
+**参考取舍**：按 [ElevenLabs Create speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert) 的 streaming endpoint 与官方响应语义实现；不引入 WebSocket、MediaSource 或伪实时轮询。

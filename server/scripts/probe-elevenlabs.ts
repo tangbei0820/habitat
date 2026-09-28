@@ -1,4 +1,4 @@
-/** T-082：ElevenLabs 原生 Provider 的模型 / 音色目录 / 声音参数纯逻辑验收。 */
+/** T-083：ElevenLabs 原生 Provider 的模型 / 音色目录 / 声音参数 / 流式 TTS 纯逻辑验收。 */
 import { ElevenLabsProvider } from '../src/providers/elevenlabs.js'
 
 const requests: Array<{ url: string; method: string; headers: Headers; body: string }> = []
@@ -41,6 +41,13 @@ check('TTS 请求使用 xi-api-key 与原生路径', speech.audio.byteLength ===
 const payload = speechRequest === undefined ? null : JSON.parse(speechRequest.body) as Record<string, unknown>
 const voiceSettings = payload?.voice_settings as Record<string, unknown> | undefined
 check('TTS 请求携带 model_id、文本与声音参数', payload?.model_id === 'eleven_multilingual_v2' && payload?.text === '你好，栖息地。' && voiceSettings?.stability === 0.5 && voiceSettings?.similarity_boost === 0.75 && voiceSettings?.style === 0.4 && voiceSettings?.use_speaker_boost === false && voiceSettings?.speed === 1.1)
+
+const streamed = await provider.streamSynthesize('流式你好。')
+const streamChunks: Uint8Array[] = []
+for await (const chunk of streamed.stream) streamChunks.push(chunk)
+const streamRequest = requests.find((request) => request.url.endsWith('/v1/text-to-speech/voice-123/stream'))
+const streamPayload = streamRequest === undefined ? null : JSON.parse(streamRequest.body) as Record<string, unknown>
+check('原生流式 TTS 使用 /stream 路径并完整转发音频块', streamed.mimeType === 'audio/mpeg' && new Uint8Array(streamChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)).byteLength === 3 && streamRequest?.headers.get('xi-api-key') === 'xi-test' && streamPayload?.text === '流式你好。')
 
 const noVoice = new ElevenLabsProvider({
   id: 'missing-voice', name: 'Missing voice', provider: 'elevenlabs', baseUrl: 'https://api.elevenlabs.io/v1', keyRef: '',

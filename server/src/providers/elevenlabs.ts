@@ -11,6 +11,7 @@ import type {
   LlmStreamChunk,
   StreamChatOptions,
   TTSProvider,
+  TTSStreamingProvider,
   TranscriptionProvider,
   VoiceCatalogProvider,
 } from '@shared/providers.js'
@@ -27,6 +28,19 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
 
+async function* readChunks(body: ReadableStream<Uint8Array>): AsyncIterable<Uint8Array> {
+  const reader = body.getReader()
+  try {
+    for (;;) {
+      const next = await reader.read()
+      if (next.done) return
+      if (next.value !== undefined && next.value.byteLength > 0) yield next.value
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 async function responseSnippet(response: Response): Promise<string | null> {
   try {
     const text = (await response.text()).trim()
@@ -36,7 +50,7 @@ async function responseSnippet(response: Response): Promise<string | null> {
   }
 }
 
-export class ElevenLabsProvider implements LLMProvider, TTSProvider, TranscriptionProvider, ImageProvider, VoiceCatalogProvider {
+export class ElevenLabsProvider implements LLMProvider, TTSProvider, TTSStreamingProvider, TranscriptionProvider, ImageProvider, VoiceCatalogProvider {
   constructor(
     private readonly profile: ApiProfile,
     private readonly key: string | null,
@@ -101,24 +115,50 @@ export class ElevenLabsProvider implements LLMProvider, TTSProvider, Transcripti
     }
     const response = await this.request(`/text-to-speech/${encodeURIComponent(voiceId.trim())}`, {
       method: 'POST',
-      body: {
-        text,
-        model_id: model,
-        ...(this.profile.modelMap.voiceSettings === undefined ? {} : {
-          voice_settings: {
-            ...(this.profile.modelMap.voiceSettings.stability === undefined ? {} : { stability: this.profile.modelMap.voiceSettings.stability }),
-            ...(this.profile.modelMap.voiceSettings.similarityBoost === undefined ? {} : { similarity_boost: this.profile.modelMap.voiceSettings.similarityBoost }),
-            ...(this.profile.modelMap.voiceSettings.style === undefined ? {} : { style: this.profile.modelMap.voiceSettings.style }),
-            ...(this.profile.modelMap.voiceSettings.useSpeakerBoost === undefined ? {} : { use_speaker_boost: this.profile.modelMap.voiceSettings.useSpeakerBoost }),
-            ...(this.profile.modelMap.voiceSettings.speed === undefined ? {} : { speed: this.profile.modelMap.voiceSettings.speed }),
-          },
-        }),
-      },
+      body: this.speechBody(text, model),
     })
     return {
       audio: new Uint8Array(await response.arrayBuffer()),
       mimeType: response.headers.get('content-type')?.split(';')[0] || 'audio/mpeg',
       model,
+    }
+  }
+
+  async streamSynthesize(text: string, voice?: string): Promise<{ stream: AsyncIterable<Uint8Array>; mimeType: string; model: string }> {
+    const model = this.profile.modelMap.tts
+    const voiceId = voice?.trim() || this.profile.modelMap.voice
+    if (model === undefined || model.trim() === '') {
+      throw new ProviderError(ErrorCodes.ProviderNotConfigured, `方案 '${this.profile.id}' 未配置 ElevenLabs 语音模型`)
+    }
+    if (voiceId === undefined || voiceId.trim() === '') {
+      throw new ProviderError(ErrorCodes.ProviderNotConfigured, `方案 '${this.profile.id}' 未配置 ElevenLabs voice ID`)
+    }
+    const response = await this.request(`/text-to-speech/${encodeURIComponent(voiceId.trim())}/stream`, {
+      method: 'POST',
+      body: this.speechBody(text, model),
+    })
+    if (response.body === null) throw new ProviderError(ErrorCodes.ProviderUpstreamError, 'ElevenLabs 没有返回可读取的流式音频')
+    return {
+      stream: readChunks(response.body),
+      mimeType: response.headers.get('content-type')?.split(';')[0] || 'audio/mpeg',
+      model,
+    }
+  }
+
+  private speechBody(text: string, model: string): Record<string, unknown> {
+    const settings = this.profile.modelMap.voiceSettings
+    return {
+      text,
+      model_id: model,
+      ...(settings === undefined ? {} : {
+        voice_settings: {
+          ...(settings.stability === undefined ? {} : { stability: settings.stability }),
+          ...(settings.similarityBoost === undefined ? {} : { similarity_boost: settings.similarityBoost }),
+          ...(settings.style === undefined ? {} : { style: settings.style }),
+          ...(settings.useSpeakerBoost === undefined ? {} : { use_speaker_boost: settings.useSpeakerBoost }),
+          ...(settings.speed === undefined ? {} : { speed: settings.speed }),
+        },
+      }),
     }
   }
 

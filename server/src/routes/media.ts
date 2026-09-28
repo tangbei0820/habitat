@@ -87,4 +87,37 @@ export function registerMediaRoutes(app: FastifyInstance, registry: LlmRegistry)
     recordUsage({ profileId: profile.id, service: 'tts', model: result.model })
     reply.header('content-type', result.mimeType).header('cache-control', 'no-store').send(Buffer.from(result.audio))
   })
+
+  app.post('/api/media/speech/stream', async (request, reply): Promise<void> => {
+    const body = record(request.body)
+    const { profile, provider } = active(registry, 'voice', body.profileId)
+    const speechText = text(body.text, 'text', MAX_SPEECH_CHARS)
+    const voice = typeof body.voice === 'string' && body.voice.trim() !== '' ? body.voice.trim() : undefined
+    if (!('streamSynthesize' in provider)) {
+      const result = await provider.synthesize(speechText, voice)
+      recordUsage({ profileId: profile.id, service: 'tts', model: result.model })
+      reply.header('content-type', result.mimeType).header('cache-control', 'no-store').header('x-habitat-tts-mode', 'fallback').send(Buffer.from(result.audio))
+      return
+    }
+
+    const result = await provider.streamSynthesize(speechText, voice)
+    reply.hijack()
+    const response = reply.raw
+    response.writeHead(200, {
+      'content-type': result.mimeType,
+      'cache-control': 'no-store, no-transform',
+      'x-habitat-tts-mode': 'native-stream',
+      'x-accel-buffering': 'no',
+    })
+    try {
+      for await (const chunk of result.stream) {
+        if (!response.write(chunk)) await new Promise<void>((resolve) => response.once('drain', resolve))
+      }
+      recordUsage({ profileId: profile.id, service: 'tts', model: result.model })
+      response.end()
+    } catch (error) {
+      request.log.warn({ error, profileId: profile.id }, '流式 TTS 在音频中途失败')
+      response.destroy(error instanceof Error ? error : undefined)
+    }
+  })
 }

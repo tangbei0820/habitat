@@ -22,7 +22,7 @@ export function generateImage(prompt: string): Promise<MediaImageResult> {
 
 export async function synthesizeSpeech(text: string): Promise<Blob> {
   assertOnline()
-  const res = await fetch('/api/media/speech', {
+  const res = await fetch('/api/media/speech/stream', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }),
   })
   if (!res.ok) {
@@ -34,5 +34,27 @@ export async function synthesizeSpeech(text: string): Promise<Blob> {
       body?.error?.detail,
     )
   }
-  return res.blob()
+  // Keep the transport streaming even though the browser starts playback after
+  // a complete decodable Blob is available. This lets the server forward
+  // provider chunks immediately without pretending that a Blob is progressive
+  // playback; call mode can therefore show an honest “receiving audio” state.
+  if (res.body === null) return res.blob()
+  const reader = res.body.getReader()
+  const chunks: ArrayBuffer[] = []
+  try {
+    for (;;) {
+      const next = await reader.read()
+      if (next.done) break
+      if (next.value !== undefined && next.value.byteLength > 0) {
+        // Copy into a plain ArrayBuffer: TS 5.7's BlobPart excludes
+        // SharedArrayBuffer-backed Uint8Array values from ReadableStream.
+        const bytes = new Uint8Array(next.value.byteLength)
+        bytes.set(next.value)
+        chunks.push(bytes.buffer)
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  return new Blob(chunks, { type: res.headers.get('content-type')?.split(';')[0] || 'audio/mpeg' })
 }
