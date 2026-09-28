@@ -24,6 +24,7 @@ import type {
   ProviderDraftTestInput,
   ProviderDraftTestResult,
   ProviderScheme,
+  ElevenLabsVoiceSettings,
 } from '@shared/types'
 import {
   activateProviderScheme,
@@ -81,6 +82,26 @@ function parseProvider(raw: unknown): 'openai-compat' | 'elevenlabs' {
   if (raw === undefined || raw === 'openai-compat') return 'openai-compat'
   if (raw === 'elevenlabs') return 'elevenlabs'
   throw new ProviderError(ErrorCodes.BadRequest, 'provider 必须是 openai-compat 或 elevenlabs')
+}
+
+function parseVoiceSettings(raw: unknown): ElevenLabsVoiceSettings | undefined {
+  if (raw === undefined) return undefined
+  const record = asRecord(raw)
+  if (record === null) throw new ProviderError(ErrorCodes.BadRequest, 'voiceSettings 必须是对象')
+  const settings: ElevenLabsVoiceSettings = {}
+  const number = (key: string, min: number, max: number): void => {
+    if (record[key] === undefined) return
+    if (typeof record[key] !== 'number' || !Number.isFinite(record[key]) || record[key] < min || record[key] > max) {
+      throw new ProviderError(ErrorCodes.BadRequest, `voiceSettings.${key} 必须在 ${min}–${max} 之间`)
+    }
+    if (key === 'stability') settings.stability = record[key] as number
+    else if (key === 'similarityBoost') settings.similarityBoost = record[key] as number
+    else settings.speed = record[key] as number
+  }
+  number('stability', 0, 1)
+  number('similarityBoost', 0, 1)
+  number('speed', 0.7, 1.2)
+  return Object.keys(settings).length === 0 ? undefined : settings
 }
 
 /** 只接受 http/https；顺手去掉结尾斜杠，否则会拼出 `//chat/completions` */
@@ -250,6 +271,8 @@ function draftProfile(raw: unknown, registry: LlmRegistry, capability?: Provider
         const voiceId = typeof record.voiceId === 'string' ? record.voiceId.trim() : ''
         if (voiceId === '') throw new ProviderError(ErrorCodes.BadRequest, 'ElevenLabs voiceId 必填')
         modelMap.voice = voiceId
+        const voiceSettings = parseVoiceSettings(record.voiceSettings)
+        if (voiceSettings !== undefined) modelMap.voiceSettings = voiceSettings
       }
       if (record.secondaryModel !== undefined && String(record.secondaryModel).trim() !== '') {
         modelMap.transcription = parseRequiredModel(record.secondaryModel, 'secondaryModel')

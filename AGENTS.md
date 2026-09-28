@@ -46,7 +46,7 @@
 | 后端   | Fastify(Node 20, TS strict) + better-sqlite3 + Drizzle + 官方 `@modelcontextprotocol/sdk`       |
 | 外部件  | Nocturne（记忆，MCP，**已部署**）、Eventide（状态，Python 库 + sidecar，Phase 3B）、MCP Gateway 聚合              |
 | 部署   | 阿里云单机：**宿主 nginx 1.18.0** + habitat-server + Nocturne / Ombre Brain（容器 nginx）+ eventide-sidecar；Caddy 仅为早期方案记录                      |
-| 当前阶段 | **Habitat v2 已开工**：生产已更新至 **T-072 / https://habitat.beiyan.cc**；T-057 完成蓝图回归，T-058 完成 **V2-A 第一切片 Provider Center 四通道**，T-059 完成 **MCP Manager 基础切片**，T-060 完成 **Nocturne 原生 Dashboard 受保护入口**，T-061 完成当前代码全量 VPS 部署与公网实测，T-062 完成 **Provider Center 单列折叠布局**，T-063～T-071 的 Home / 一起听 / 共读 / 日记权限 / 留言板 / AI 伴学改动已在本轮随当前提交统一部署；T-072 完成生产备份、重启与公网健康 / 静态资源验收；T-073 完成 **V2-B 聊天历史搜索与日期导航（本地，未部署）**；T-074 完成 **V2-B 思绪三路协议（本地，未部署）**；T-075 完成 **V2-B 上下文压缩基础闭环（本地，未部署）**；T-076 完成 **V2-B 显式联网搜索（本地，未部署）**；T-077 完成 **V2-B 本地表情图库与手动表情消息（本地，未部署）**；T-078 完成 **V2-B 表情包 AI 自主搜索 / 发送（本地，未部署）**；T-079 完成 **V2-A ElevenLabs 原生 TTS Provider（本地，未部署）**。历史 Phase 7A / 7B / 7C 只表示旧切片完成，**不等同于模块完整**；后续统一编号 **V2-A~V2-F**。下一步按完整用户功能推进，遇到产品语义分歧再停下确认。 |
+| 当前阶段 | **Habitat v2 已开工**：生产已更新至 **T-072 / https://habitat.beiyan.cc**；T-057 完成蓝图回归，T-058 完成 **V2-A 第一切片 Provider Center 四通道**，T-059 完成 **MCP Manager 基础切片**，T-060 完成 **Nocturne 原生 Dashboard 受保护入口**，T-061 完成当前代码全量 VPS 部署与公网实测，T-062 完成 **Provider Center 单列折叠布局**，T-063～T-071 的 Home / 一起听 / 共读 / 日记权限 / 留言板 / AI 伴学改动已在本轮随当前提交统一部署；T-072 完成生产备份、重启与公网健康 / 静态资源验收；T-073 完成 **V2-B 聊天历史搜索与日期导航（本地，未部署）**；T-074 完成 **V2-B 思绪三路协议（本地，未部署）**；T-075 完成 **V2-B 上下文压缩基础闭环（本地，未部署）**；T-076 完成 **V2-B 显式联网搜索（本地，未部署）**；T-077 完成 **V2-B 本地表情图库与手动表情消息（本地，未部署）**；T-078 完成 **V2-B 表情包 AI 自主搜索 / 发送（本地，未部署）**；T-079 完成 **V2-A ElevenLabs 原生 TTS Provider（本地，未部署）**；T-080 完成 **V2-A ElevenLabs 声音参数（本地，未部署）**。历史 Phase 7A / 7B / 7C 只表示旧切片完成，**不等同于模块完整**；后续统一编号 **V2-A~V2-F**。下一步按完整用户功能推进，遇到产品语义分歧再停下确认。 |
 | 关键判断 | **必须有常驻后端** —— 唤醒、独处时光、通知、账本、MCP 聚合在纯前端做不了                                                    |
 
 **阶段路线**：P0 基座可视化 → **P1 Chat MVP（最优先）** → P2 Home 生活模块 → P3A 记忆（Nocturne）→ P3B 状态（Eventide）→ P4 Life → P5 高级能力 → P6 打磨
@@ -293,13 +293,15 @@ habitat/
 
 ### 下一步
 
+0. ✅ **T-080 本地 V2-A 后续：ElevenLabs 声音参数已完成**：语音卡增加稳定性、相似度、语速并做前后端范围校验，TTS 请求映射到 per-request `voice_settings`。`probe:elevenlabs` 4/4；生产仍停在 T-072，本批未部署。
+
 0. ✅ **T-079 本地 V2-A 后续：ElevenLabs 原生 TTS Provider 已完成**：Provider Center 语音卡可选择原生类型、填写 Voice ID、拉模型并真实试听；服务端使用 `xi-api-key` 调用原生 TTS，非语音能力明确拒绝。`probe:elevenlabs` 4/4；生产仍停在 T-072，本批未部署。
 
 0. ✅ **T-078 本地 V2-B 第六切片：表情包 AI 自主搜索 / 发送已完成**：每轮只把本地图库轻量元数据送入服务端，空图库不绑定工具；成功回传 `stickerId` 后由浏览器解析本地快照落独立消息，失败不伪造成功，且同一请求不会重复发送第二张。`probe:sticker-tools` 4/4；生产仍停在 T-072，本批未部署。
 
 0. ✅ **T-077 本地 V2-B 第五切片：表情图库与手动表情消息已完成**：本地导入 / 搜索 / 去重图库、独立 `sticker` 消息块、发送时图片快照与备份 v12 / Dexie v14 已落地；AI 自主工具已由 T-078 接上。生产仍停在 T-072，本批未部署。
 
-1. ✅ **V2-A 第一至第三切片（T-058 / T-059 / T-060）**：Provider Center 四通道、MCP Manager 基础闭环、Nocturne 原生 Dashboard 受保护入口已独立验收；MCP 连接配置与 Dashboard 目标均由服务端持有，浏览器不接触 MCP token。Nocturne 原生页面仍由上游负责认证与权限，Habitat 只提供受保护入口与 iframe / 新窗口回退；ElevenLabs 原生 Provider、Codex Subscription、原始工具自主绑定属后续独立切片，未冒充完成。
+1. ✅ **V2-A Provider 基座（T-058 / T-059 / T-060 / T-079 / T-080）**：Provider Center 四通道、MCP Manager 基础闭环、Nocturne 原生 Dashboard 受保护入口与 ElevenLabs 原生 TTS / 声音参数已独立验收；MCP 连接配置与 Dashboard 目标均由服务端持有，浏览器不接触 MCP token。Nocturne 原生页面仍由上游负责认证与权限，Habitat 只提供受保护入口与 iframe / 新窗口回退；Codex Subscription 与原始工具自主绑定仍属后续独立切片，未冒充完成。
 
 1. ✅ **T-076 本地 V2-B 第四切片：聊天显式联网搜索已完成**：更多功能入口以 `webSearch.query` 逐次授权，服务端只读公开搜索结果并回灌同轮模型，工具卡 / 失败状态 / 原问题均留痕。生产仍停在 T-072，本批未部署。
 2. ✅ **T-075 本地 V2-B 第三切片：上下文压缩基础闭环已完成**：聊天设置支持显式压缩较早消息、编辑 / 停用 / 恢复摘要版本；摘要存会话元数据，原消息不删，后续请求明确注入摘要与最近原文。生产仍停在 T-072，本批未部署。

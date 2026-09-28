@@ -16,7 +16,7 @@ globalThis.fetch = async (input, init) => {
 
 const provider = new ElevenLabsProvider({
   id: 'voice-probe', name: 'Voice probe', provider: 'elevenlabs', baseUrl: 'https://api.elevenlabs.io/v1', keyRef: '',
-  modelMap: { tts: 'eleven_multilingual_v2', voice: 'voice-123' }, isActive: false,
+  modelMap: { tts: 'eleven_multilingual_v2', voice: 'voice-123', voiceSettings: { stability: 0.5, similarityBoost: 0.75, speed: 1.1 } }, isActive: false,
 }, 'xi-test')
 
 let passed = 0
@@ -33,7 +33,8 @@ const speechRequest = requests.find((request) => request.method === 'POST')
 check('TTS 请求使用 xi-api-key 与原生路径', speech.audio.byteLength === 3 && speech.mimeType === 'audio/mpeg' && speechRequest?.url.endsWith('/v1/text-to-speech/voice-123') === true && speechRequest.headers.get('xi-api-key') === 'xi-test')
 
 const payload = speechRequest === undefined ? null : JSON.parse(speechRequest.body) as Record<string, unknown>
-check('TTS 请求携带 model_id 与文本', payload?.model_id === 'eleven_multilingual_v2' && payload?.text === '你好，栖息地。')
+const voiceSettings = payload?.voice_settings as Record<string, unknown> | undefined
+check('TTS 请求携带 model_id、文本与声音参数', payload?.model_id === 'eleven_multilingual_v2' && payload?.text === '你好，栖息地。' && voiceSettings?.stability === 0.5 && voiceSettings?.similarity_boost === 0.75 && voiceSettings?.speed === 1.1)
 
 const noVoice = new ElevenLabsProvider({
   id: 'missing-voice', name: 'Missing voice', provider: 'elevenlabs', baseUrl: 'https://api.elevenlabs.io/v1', keyRef: '',

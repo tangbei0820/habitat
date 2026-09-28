@@ -17,6 +17,7 @@ import type {
   ApiProfile,
   ApiProfileModelMap,
   ApiProfilePublic,
+  ElevenLabsVoiceSettings,
   ProviderCapability,
   ProviderCapabilityBinding,
 } from '@shared/types.js'
@@ -36,6 +37,18 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
 
+function parseVoiceSettings(value: unknown): ElevenLabsVoiceSettings | undefined {
+  if (!isRecord(value)) return undefined
+  const settings: ElevenLabsVoiceSettings = {}
+  const stability = value.stability
+  const similarityBoost = value.similarityBoost
+  const speed = value.speed
+  if (typeof stability === 'number' && Number.isFinite(stability) && stability >= 0 && stability <= 1) settings.stability = stability
+  if (typeof similarityBoost === 'number' && Number.isFinite(similarityBoost) && similarityBoost >= 0 && similarityBoost <= 1) settings.similarityBoost = similarityBoost
+  if (typeof speed === 'number' && Number.isFinite(speed) && speed >= 0.7 && speed <= 1.2) settings.speed = speed
+  return Object.keys(settings).length === 0 ? undefined : settings
+}
+
 /** 只认已知的模型槽位；未知键忽略而不是报错，方便以后加槽位不破坏旧配置 */
 function parseModelMap(value: unknown): ApiProfileModelMap {
   const source = isRecord(value) ? value : {}
@@ -43,6 +56,7 @@ function parseModelMap(value: unknown): ApiProfileModelMap {
   const chat = asString(source.chat)
   const tts = asString(source.tts)
   const voice = asString(source.voice)
+  const voiceSettings = parseVoiceSettings(source.voiceSettings)
   const transcription = asString(source.transcription)
   const vision = asString(source.vision)
   const image = asString(source.image)
@@ -50,6 +64,7 @@ function parseModelMap(value: unknown): ApiProfileModelMap {
   if (chat !== undefined && chat !== '') map.chat = chat
   if (tts !== undefined && tts !== '') map.tts = tts
   if (voice !== undefined && voice !== '') map.voice = voice
+  if (voiceSettings !== undefined) map.voiceSettings = voiceSettings
   if (transcription !== undefined && transcription !== '') map.transcription = transcription
   if (vision !== undefined && vision !== '') map.vision = vision
   if (image !== undefined && image !== '') map.image = image

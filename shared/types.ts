@@ -674,6 +674,7 @@ export interface ProviderDraftInput {
   apiKey?: string
   headers?: Record<string, string>
   streamOptions?: boolean
+  voiceSettings?: ElevenLabsVoiceSettings
 }
 
 export interface ProviderDraftModelsResult {
@@ -713,6 +714,8 @@ export interface ApiProfileModelMap {
   tts?: string
   /** ElevenLabs voice id；仅 voice 能力使用，不是模型名。 */
   voice?: string
+  /** ElevenLabs 每次请求覆盖的声音参数；仅原生 voice Provider 使用。 */
+  voiceSettings?: ElevenLabsVoiceSettings
   transcription?: string
   vision?: string
   image?: string
@@ -858,6 +861,12 @@ export interface McpServerHealth {
   toolCount: number
   lastError: string | null
   lastCheckedAt: number | null
+}
+
+export interface ElevenLabsVoiceSettings {
+  stability?: number
+  similarityBoost?: number
+  speed?: number
 }
 
 export interface ServerHealth {

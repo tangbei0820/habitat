@@ -127,13 +127,14 @@ Provider Profile 仍由 `/api/providers` 管理；以下接口只管理“哪个
 
 ### `POST /api/providers/draft/test`
 
-请求体在上述草稿上增加 `capability`、`model`、可选 `secondaryModel`、ElevenLabs 语音用 `voiceId` 与识图测试用 `dataUrl`。
+请求体在上述草稿上增加 `capability`、`model`、可选 `secondaryModel`、ElevenLabs 语音用 `voiceId / voiceSettings` 与识图测试用 `dataUrl`。
 测试不是 `/models` 冒充：`chat` 发最小流式请求、`voice` 真合成一段音频、`vision` 真识图、`image` 真生图。
 成功时语音 / 生图返回 `previewDataUrl`，识图返回 `description`；密钥永不出现在响应中。
 
 当 `provider` 为 `elevenlabs` 时，只允许 `capability: "voice"`；`model` 写 ElevenLabs 模型 ID（如
 `eleven_multilingual_v2`），`voiceId` 写 voice ID。服务端使用 `xi-api-key` 调用
-`/v1/text-to-speech/:voice_id`，不会把 ElevenLabs 连接伪装成聊天 / 识图 / 生图 Provider。
+`/v1/text-to-speech/:voice_id`；`voiceSettings` 可覆盖 `stability`、`similarityBoost` 与 `speed`，
+服务端转换为上游的 `voice_settings`。不会把 ElevenLabs 连接伪装成聊天 / 识图 / 生图 Provider。
 
 ### `PUT /api/provider-center/bindings`
 

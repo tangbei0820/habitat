@@ -74,7 +74,17 @@ export class ElevenLabsProvider implements LLMProvider, TTSProvider, Transcripti
     }
     const response = await this.request(`/text-to-speech/${encodeURIComponent(voiceId.trim())}`, {
       method: 'POST',
-      body: { text, model_id: model },
+      body: {
+        text,
+        model_id: model,
+        ...(this.profile.modelMap.voiceSettings === undefined ? {} : {
+          voice_settings: {
+            ...(this.profile.modelMap.voiceSettings.stability === undefined ? {} : { stability: this.profile.modelMap.voiceSettings.stability }),
+            ...(this.profile.modelMap.voiceSettings.similarityBoost === undefined ? {} : { similarity_boost: this.profile.modelMap.voiceSettings.similarityBoost }),
+            ...(this.profile.modelMap.voiceSettings.speed === undefined ? {} : { speed: this.profile.modelMap.voiceSettings.speed }),
+          },
+        }),
+      },
     })
     return {
       audio: new Uint8Array(await response.arrayBuffer()),

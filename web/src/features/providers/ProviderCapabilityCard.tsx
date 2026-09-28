@@ -8,6 +8,7 @@ import type {
   ProviderDraftModelsResult,
   ProviderDraftTestResult,
   LlmProviderKind,
+  ElevenLabsVoiceSettings,
 } from '@shared/types'
 import { ApiRequestError } from '../../lib/api'
 import { IconChevronDown } from '../../components/qixi/Icons'
@@ -27,9 +28,9 @@ function toMessage(error: unknown): string {
   return error instanceof ApiRequestError ? error.message : error instanceof Error ? error.message : String(error)
 }
 
-function modelMap(capability: ProviderCapability, model: string, secondaryModel: string, voiceId: string): ApiProfileModelMap {
+function modelMap(capability: ProviderCapability, model: string, secondaryModel: string, voiceId: string, voiceSettings?: ElevenLabsVoiceSettings): ApiProfileModelMap {
   if (capability === 'chat') return { chat: model }
-  if (capability === 'voice') return { tts: model, ...(voiceId === '' ? {} : { voice: voiceId }), ...(secondaryModel === '' ? {} : { transcription: secondaryModel }) }
+  if (capability === 'voice') return { tts: model, ...(voiceId === '' ? {} : { voice: voiceId }), ...(voiceSettings === undefined ? {} : { voiceSettings }), ...(secondaryModel === '' ? {} : { transcription: secondaryModel }) }
   if (capability === 'vision') return { vision: model }
   return { image: model }
 }
@@ -66,6 +67,9 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
   const [model, setModel] = useState(binding?.model ?? '')
   const [secondaryModel, setSecondaryModel] = useState(binding?.secondaryModel ?? '')
   const [voiceId, setVoiceId] = useState(capability === 'voice' ? initialProfile?.modelMap.voice ?? '' : '')
+  const [voiceStability, setVoiceStability] = useState(String(initialProfile?.modelMap.voiceSettings?.stability ?? 0.5))
+  const [voiceSimilarity, setVoiceSimilarity] = useState(String(initialProfile?.modelMap.voiceSettings?.similarityBoost ?? 0.75))
+  const [voiceSpeed, setVoiceSpeed] = useState(String(initialProfile?.modelMap.voiceSettings?.speed ?? 1))
   const [models, setModels] = useState<string[]>([])
   const [modelResult, setModelResult] = useState<ProviderDraftModelsResult | null>(null)
   const [testResult, setTestResult] = useState<ProviderDraftTestResult | null>(null)
@@ -86,8 +90,22 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     ...(headersText.trim() === '' ? {} : { headers: (() => { try { return parseHeaders(headersText) } catch { return undefined } })() }),
   }), [apiKey, baseUrl, headersText, profileId, providerKind])
 
-  const fingerprint = JSON.stringify({ draft, capability, model: model.trim(), secondaryModel: secondaryModel.trim(), voiceId: voiceId.trim(), testImage })
-  const canSave = testResult?.ok === true && testedFingerprint === fingerprint && model.trim() !== '' && baseUrl.trim() !== '' && (capability !== 'voice' || providerKind !== 'elevenlabs' || voiceId.trim() !== '')
+  function currentVoiceSettings(): ElevenLabsVoiceSettings | undefined {
+    if (capability !== 'voice' || providerKind !== 'elevenlabs') return undefined
+    return { stability: Number(voiceStability), similarityBoost: Number(voiceSimilarity), speed: Number(voiceSpeed) }
+  }
+
+  function voiceSettingsValid(): boolean {
+    const settings = currentVoiceSettings()
+    return settings === undefined || (
+      settings.stability !== undefined && settings.stability >= 0 && settings.stability <= 1 &&
+      settings.similarityBoost !== undefined && settings.similarityBoost >= 0 && settings.similarityBoost <= 1 &&
+      settings.speed !== undefined && settings.speed >= 0.7 && settings.speed <= 1.2
+    )
+  }
+
+  const fingerprint = JSON.stringify({ draft, capability, model: model.trim(), secondaryModel: secondaryModel.trim(), voiceId: voiceId.trim(), voiceSettings: currentVoiceSettings(), testImage })
+  const canSave = testResult?.ok === true && testedFingerprint === fingerprint && model.trim() !== '' && baseUrl.trim() !== '' && voiceSettingsValid() && (capability !== 'voice' || providerKind !== 'elevenlabs' || voiceId.trim() !== '')
 
   function selectProfile(next: string): void {
     setProfileId(next)
@@ -97,6 +115,9 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     setModel(capability === 'voice' ? profile?.modelMap.tts ?? '' : profile?.modelMap[capability] ?? '')
     setSecondaryModel(capability === 'voice' ? profile?.modelMap.transcription ?? '' : '')
     setVoiceId(capability === 'voice' ? profile?.modelMap.voice ?? '' : '')
+    setVoiceStability(String(profile?.modelMap.voiceSettings?.stability ?? 0.5))
+    setVoiceSimilarity(String(profile?.modelMap.voiceSettings?.similarityBoost ?? 0.75))
+    setVoiceSpeed(String(profile?.modelMap.voiceSettings?.speed ?? 1))
     setConnectionName('')
     setApiKey('')
     setHeadersText('')
@@ -142,6 +163,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
       ...strictDraft(), capability, model: model.trim(),
         ...(secondaryModel.trim() === '' ? {} : { secondaryModel: secondaryModel.trim() }),
         ...(voiceId.trim() === '' ? {} : { voiceId: voiceId.trim() }),
+        ...(currentVoiceSettings() === undefined ? {} : { voiceSettings: currentVoiceSettings() }),
         ...(testImage === undefined ? {} : { dataUrl: testImage }),
       })
       setTestResult(result)
@@ -164,7 +186,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
       if (profileId === '__new__') {
         if (connectionName.trim() === '') throw new Error('新连接需要填写名称')
         const created = await api.createProvider({
-          name: connectionName.trim(), provider: providerKind, baseUrl: baseUrl.trim(), modelMap: modelMap(capability, model.trim(), secondaryModel.trim(), voiceId.trim()),
+          name: connectionName.trim(), provider: providerKind, baseUrl: baseUrl.trim(), modelMap: modelMap(capability, model.trim(), secondaryModel.trim(), voiceId.trim(), currentVoiceSettings()),
           ...(headers === undefined ? {} : { headers }),
         })
         targetId = created.id
@@ -174,7 +196,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
         if (current.provider !== providerKind) throw new Error('不能在已有连接上切换 Provider 类型，请新建连接')
         await api.updateProvider(profileId, {
           baseUrl: baseUrl.trim(),
-          modelMap: { ...current.modelMap, ...modelMap(capability, model.trim(), secondaryModel.trim(), voiceId.trim()) },
+          modelMap: { ...current.modelMap, ...modelMap(capability, model.trim(), secondaryModel.trim(), voiceId.trim(), currentVoiceSettings()) },
           ...(headers === undefined ? {} : { headers }),
         })
       }
@@ -206,6 +228,9 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
     setModel(binding?.model ?? '')
     setSecondaryModel(binding?.secondaryModel ?? '')
     setVoiceId(capability === 'voice' ? profile?.modelMap.voice ?? '' : '')
+    setVoiceStability(String(profile?.modelMap.voiceSettings?.stability ?? 0.5))
+    setVoiceSimilarity(String(profile?.modelMap.voiceSettings?.similarityBoost ?? 0.75))
+    setVoiceSpeed(String(profile?.modelMap.voiceSettings?.speed ?? 1))
     setConnectionName('')
     setApiKey('')
     setHeadersText('')
@@ -246,7 +271,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
 
       {expanded && <div id={panelId} data-testid={`provider-card-panel-${capability}`}>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="text-xs">Provider 类型{capability === 'voice' ? <select className={INPUT} style={INPUT_STYLE} value={providerKind} onChange={(event) => { const next = event.target.value as LlmProviderKind; setProviderKind(next); if (next === 'elevenlabs' && baseUrl.trim() === '') setBaseUrl('https://api.elevenlabs.io/v1'); if (next === 'elevenlabs' && model.trim() === '') setModel('eleven_multilingual_v2'); setTestResult(null); setTestedFingerprint(null) }}><option value="openai-compat">OpenAI-compatible</option><option value="elevenlabs">ElevenLabs（原生 TTS）</option></select> : <input className={INPUT} style={INPUT_STYLE} value="OpenAI-compatible" disabled />}</label>
+        <label className="text-xs">Provider 类型{capability === 'voice' ? <select className={INPUT} style={INPUT_STYLE} value={providerKind} onChange={(event) => { const next = event.target.value as LlmProviderKind; setProviderKind(next); if (next === 'elevenlabs') { setBaseUrl('https://api.elevenlabs.io/v1'); setModel('eleven_multilingual_v2'); setVoiceStability('0.5'); setVoiceSimilarity('0.75'); setVoiceSpeed('1') } setTestResult(null); setTestedFingerprint(null) }}><option value="openai-compat">OpenAI-compatible</option><option value="elevenlabs">ElevenLabs（原生 TTS）</option></select> : <input className={INPUT} style={INPUT_STYLE} value="OpenAI-compatible" disabled />}</label>
         <label className="text-xs">连接<select className={INPUT} style={INPUT_STYLE} value={profileId} onChange={(event) => selectProfile(event.target.value)}><option value="__new__">+ 新建连接</option>{availableProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
         {profileId === '__new__' && <label className="text-xs">连接名称<input className={INPUT} style={INPUT_STYLE} value={connectionName} onChange={(event) => setConnectionName(event.target.value)} placeholder="例如：OpenAI 语音" /></label>}
         <label className="text-xs">Base URL<input className={INPUT} style={INPUT_STYLE} value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder={providerKind === 'elevenlabs' ? 'https://api.elevenlabs.io/v1' : 'https://api.openai.com/v1'} /></label>
@@ -254,6 +279,11 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
         <label className="text-xs sm:col-span-2">自定义 Headers（JSON，可选）<textarea className={INPUT} style={INPUT_STYLE} value={headersText} onChange={(event) => setHeadersText(event.target.value)} placeholder={selected?.headerNames.length ? `已保存：${selected.headerNames.join('、')}；留空沿用` : '{"X-Header":"value"}'} rows={2} /></label>
         <label className="text-xs">{meta.model}<input className={INPUT} style={INPUT_STYLE} list={`models-${capability}`} value={model} onChange={(event) => setModel(event.target.value)} placeholder="可拉取，也可手填模型 ID" /><datalist id={`models-${capability}`}>{models.map((item) => <option key={item} value={item} />)}</datalist></label>
         {capability === 'voice' && providerKind === 'elevenlabs' && <label className="text-xs">Voice ID<input className={INPUT} style={INPUT_STYLE} value={voiceId} onChange={(event) => setVoiceId(event.target.value)} placeholder="例如：21m00Tcm4TlvDq8ikWAM" /></label>}
+        {capability === 'voice' && providerKind === 'elevenlabs' && <>
+          <label className="text-xs">稳定性（0–1）<input className={INPUT} style={INPUT_STYLE} type="number" min="0" max="1" step="0.05" value={voiceStability} onChange={(event) => setVoiceStability(event.target.value)} /></label>
+          <label className="text-xs">相似度（0–1）<input className={INPUT} style={INPUT_STYLE} type="number" min="0" max="1" step="0.05" value={voiceSimilarity} onChange={(event) => setVoiceSimilarity(event.target.value)} /></label>
+          <label className="text-xs">语速（0.7–1.2）<input className={INPUT} style={INPUT_STYLE} type="number" min="0.7" max="1.2" step="0.05" value={voiceSpeed} onChange={(event) => setVoiceSpeed(event.target.value)} /></label>
+        </>}
         {capability === 'voice' && <label className="text-xs">语音转写模型（可选）<input className={INPUT} style={INPUT_STYLE} value={secondaryModel} onChange={(event) => setSecondaryModel(event.target.value)} placeholder="例如 whisper-1" /></label>}
         {capability === 'vision' && <label className="text-xs sm:col-span-2">测试图片（可选）<input className="mt-1 block text-xs" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => void readTestImage(event)} /></label>}
       </div>

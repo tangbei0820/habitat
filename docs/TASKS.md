@@ -2809,3 +2809,17 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:elevenlabs` **4/4**；两端 typecheck / web build / diff 检查通过。 |
 
 **待优化（后续功能）**：voice 列表 / 试听管理、稳定性 / 速率限制提示、Streaming TTS、通话模式与 Provider 自动故障切换另起任务。本批未部署生产。
+
+### T-080 · 2026-09-28 · V2-A 后续：ElevenLabs 声音参数—— **完成（本地）**
+
+**边界**：只补原生 ElevenLabs 语音卡与同步 TTS 的 per-request 声音参数；不改 OpenAI-compatible 语音，不接实时流式或通话。
+
+| 交付 | 说明 |
+| --- | --- |
+| 设置入口 | ElevenLabs 语音卡新增稳定性（0–1）、相似度（0–1）与语速（0.7–1.2）；切换连接 / 恢复保存时会回填已保存值。 |
+| 请求映射 | 参数保存在现有 `modelMap.voiceSettings` JSON 中，TTS 请求映射为 ElevenLabs `voice_settings.stability / similarity_boost / speed`。 |
+| 校验与失败 | 前后端都校验范围；空值 / 越界不能绕过真实测试保存；非 ElevenLabs 连接不会携带这些字段。 |
+| 参考取舍 | 按 [ElevenLabs voice settings 文档](https://elevenlabs.io/docs/api-reference/voices/settings/get) 采用官方范围与字段语义；不在本批调用“修改云端 voice 默认值”接口，设置只作用于 Habitat 每次请求。 |
+| 验收 | `probe:elevenlabs` **4/4**；两端 typecheck / web build / diff 检查通过。 |
+
+**待优化（后续功能）**：style / speaker boost、voice 列表与试听选择、Streaming TTS、通话模式与 Provider 自动故障切换另起任务。本批未部署生产。
