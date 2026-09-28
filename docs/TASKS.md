@@ -3202,3 +3202,16 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`probe:moment-groups` **11/11**（分组 CRUD、重复名、留言归属、筛选、移出、删组回退、非法归属）；两端 `npm run typecheck`、`npm run build`、`git diff --check` 通过。`verify-home` 因当前机器未启动 CDP 9222 未能执行浏览器回归，脚本静态入口仍可加载，未将其冒充通过。
 
 **待优化（后续任务）**：留言板 Widget 的「指定分组 / 指定留言」范围选择（当前仍是最近 3 条）；留言编辑历史 / 撤回、AI 自主收藏与通知互通；日记富文本 / 图片、服务端收藏分页继续留在后续批次。
+
+### T-107 · 2026-09-28 · V2-A Home 基础模块第七阶段部署 VPS —— **完成（生产）**
+
+**范围**：部署 T-106 留言板分组与历史视图；保留生产 `.env` 与 SQLite 数据，重启前备份数据库，不进入下一项 Home 功能。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `25fa303` 打包上传，排除 `.git`、依赖目录、`server/data`、`server/.env` 与 `.workbuddy`。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-25fa303`；生产 SQLite 未被部署包覆盖，启动时自动补 `moment.group_id` 与 `moment_group`。 |
+| 服务状态 | `habitat-server` 重启后 active；服务端 `/api/health` 与服务器自 curl 公网域名均返回 `ok: true`。 |
+| 公网验收 | 首页已引用 `index-DAkBPArf.js`；`GET /api/moment-groups` 正常返回；非法分组名称返回结构化 400；本地与远端 `server/src/routes/moment.ts` SHA-256 一致。 |
+
+**阶段边界**：本阶段到此停止；留言板 Widget 指定分组 / 指定留言、日记富文本 / 图片、服务端收藏分页与其它 Living Apps 留在后续任务。
