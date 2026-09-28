@@ -3147,6 +3147,15 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 
 **明确延期**：AI 自主创建 / 更新愿望（需要服务端权威愿望仓储与 Runtime capability）、进展关联聊天 / 作品 / 一起听 / 共读的选择器、愿望 Widget 与到期通知；不在本阶段顺带施工。
 
-### T-103 · 2026-09-28 · V2-A Home 基础模块第五阶段部署 VPS —— **待执行**
+### T-103 · 2026-09-28 · V2-A Home 基础模块第五阶段部署 VPS —— **完成（生产）**
 
 **范围**：部署 T-102 代码与 Dexie / 备份兼容更新到 `https://habitat.beiyan.cc`，保留生产 `.env` 与 SQLite，重启前创建数据库备份，完成健康、静态资源、愿望 Life 路由与服务状态验收。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `6449c17` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与临时目录。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-6449c17`；生产 `.env` 与 SQLite 未被部署包覆盖。 |
+| 服务状态 | `habitat-server` active；服务端 `/api/health` 返回 `ok: true`。 |
+| 公网验收 | 首页已引用 `index-Bb8fGyFZ.js`；远端 `server/src/routes/life.ts` SHA-256 与本地一致；愿望事件非法状态返回 400，合法事件返回 201；探针测试事件已从部署前备份恢复清理。 |
+
+**阶段边界**：本阶段到此停止；下一阶段再处理收藏标签 / 分页、日记富文本 / 图片、留言板分组、愿望 Runtime 自主写入、愿望 Widget 或其它 Living Apps。
