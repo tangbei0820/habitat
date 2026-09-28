@@ -3091,3 +3091,16 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm run typecheck`、`npm run build`、`git diff --check` 通过；`probe:diary-fragments` **11/11**（覆盖申请历史与授权结果通知）。
 
 **阶段边界**：本阶段只到“可追溯”。日记富文本 / 图片、留言板分组、收藏标签与服务端分页、倒数日重复提醒、愿望清单扩展仍不施工。
+
+### T-099 · 2026-09-28 · V2-A Home 基础模块第三阶段部署 VPS —— **完成（生产）**
+
+**范围**：将 T-098 的日记申请历史、通知回链与收藏来源增强部署到 `https://habitat.beiyan.cc`；不覆盖生产 `.env`、SQLite 或 nginx 配置。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `eb5354f` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与临时目录。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-eb5354f`；生产 `.env` 与 SQLite 未覆盖。 |
+| 服务状态 | `habitat-server` active，Node 20；本机与公网 health 均返回 `ok: true`。 |
+| 公网验收 | `https://habitat.beiyan.cc/api/life/day/2026-09-28` 正常返回；首页已引用 `index-BBkKQpcJ.js`；远端 `event-inbox.ts` SHA-256 与本地一致。 |
+
+**阶段边界**：本阶段到此停止；下一阶段再处理收藏标签 / 服务端分页、日记富文本 / 图片、留言板分组、倒数日重复 / 到期提醒或愿望清单扩展。
