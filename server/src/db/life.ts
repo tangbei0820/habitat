@@ -29,6 +29,7 @@ function emptyDay(dayKey: string): LifeDaySummary {
     studyActivityCount: 0,
     countdownActivityCount: 0,
     bookmarkActivityCount: 0,
+    wishlistActivityCount: 0,
   }
 }
 
@@ -53,6 +54,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     if (row.eventType.startsWith('study.')) day.studyActivityCount += 1
     if (row.eventType.startsWith('countdown.')) day.countdownActivityCount += 1
     if (row.eventType.startsWith('bookmark.')) day.bookmarkActivityCount += 1
+    if (row.eventType.startsWith('wishlist.')) day.wishlistActivityCount += 1
     days.set(row.dayKey, day)
   }
   for (const row of db.select().from(usageRecord).where(and(gte(usageRecord.dayKey, `${month}-01`), lt(usageRecord.dayKey, `${end}-01`))).all()) {
@@ -74,6 +76,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     totals.studyActivityCount += day.studyActivityCount
     totals.countdownActivityCount += day.countdownActivityCount
     totals.bookmarkActivityCount += day.bookmarkActivityCount
+    totals.wishlistActivityCount += day.wishlistActivityCount
     totals.pricedCostCents += day.pricedCostCents
     totals.unpricedCalls += day.unpricedCalls
   }
@@ -262,6 +265,20 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
     else title = `调整了收藏「${bookmarkTitle}」的分类`
     const categoryName = metricText(metrics, 'categoryName')
     detail = [targetType ? `来源 ${targetLabel[targetType] ?? targetType}` : null, categoryName ? `归入「${categoryName}」` : '未分类'].filter(Boolean).join(' · ')
+  } else if (row.eventType.startsWith('wishlist.')) {
+    source = '愿望'
+    const wishlistTitle = metricText(metrics, 'title') ?? '一个愿望'
+    const status = metricText(metrics, 'status')
+    const statusLabel: Record<string, string> = { open: '进行中', done: '已完成', paused: '已暂停', abandoned: '已放弃' }
+    if (row.eventType === 'wishlist.created') title = `记下了愿望「${wishlistTitle}」`
+    else if (row.eventType === 'wishlist.updated') title = `更新了愿望「${wishlistTitle}」`
+    else if (row.eventType === 'wishlist.status.updated') title = `愿望「${wishlistTitle}」状态变为${statusLabel[status ?? ''] ?? status ?? '未知'}`
+    else if (row.eventType === 'wishlist.progress.added') title = `给愿望「${wishlistTitle}」记了一步进展`
+    else title = `移除了愿望「${wishlistTitle}」`
+    const targetDate = metricText(metrics, 'targetDate')
+    const reason = metricText(metrics, 'reason')
+    const progressNote = metricText(metrics, 'progressNote')
+    detail = [targetDate ? `目标 ${targetDate}` : null, progressNote ?? reason].filter(Boolean).join(' · ') || null
   } else if (row.eventType === 'capability.diary.create' || row.eventType === 'capability.diary.update') {
     source = '日记'; title = row.eventType.endsWith('.create') ? '写下了一篇日记' : '更新了一篇日记'; detail = metricTitle
   } else if (row.eventType === 'capability.messageboard.write' || row.eventType === 'capability.messageboard.update') {

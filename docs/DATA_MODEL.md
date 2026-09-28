@@ -173,7 +173,7 @@ interface SessionGroup extends BaseObject {
 
 | 实体 | 表 | 关键字段 |
 |---|---|---|
-| `WishlistItem` | `wishlist` | `title`, `status: 'open' \| 'done'`, `completedAt` |
+| `WishlistItem` | `wishlist` | `title`, `status: 'open' \| 'done' \| 'paused' \| 'abandoned'`, `completedAt`, `author`, `targetDate`, `statusChangedAt`, `statusReason`, `progress[]` |
 | `CountdownDay` | `countdowns` | `title`, `targetDate`（本地 `YYYY-MM-DD`）, `category`, `repeat`, `reminder` |
 | `Bookmark` | `bookmarks` | `targetType`, `targetId`, `title`, `note`, `categoryId` |
 | `Artwork` | `artworks` | `title`, `category`, `description`, `externalUrl` |
@@ -295,6 +295,7 @@ Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画
 | v11 | + AI 伴学卡片 `studyCards`（本地复习状态；生成调用走服务端 `/api/study/cards/generate`）；旧版导入时按空处理 |
 | v12 | + 本地表情图库 `stickers`；旧版导入时按空处理，历史消息不依赖图库条目 |
 | v13 | 倒数日补分类、每年重复与提醒字段；旧版导入时为缺失字段补默认值 |
+| v14 | 愿望清单补作者、目标日期、暂停 / 放弃状态、状态原因与嵌套进展；旧版导入时补 `author=user`、空目标日 / 原因 / 进展 |
 > ⚠️ v7 导入时**必须按 `kind` 去重**：`&kind` 是唯一索引，手改过的备份（例如两条 `board`）会让
 > `bulkAdd` 抛 `ConstraintError`，导致**整份备份一个字都导不进去**。保留 `createdAt` 最早的那条，
 > 与「先上主屏的在前」的排序语义一致。

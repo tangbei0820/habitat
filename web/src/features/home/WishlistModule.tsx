@@ -1,71 +1,35 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { WishlistItem } from '@shared/types'
-import { createWishlistItem, deleteWishlistItem, listWishlist, toggleWishlistItem } from '../../db/home'
+import type { WishlistItem, WishlistStatus } from '@shared/types'
+import { addWishlistProgress, createWishlistItem, deleteWishlistItem, listWishlist, updateWishlistItem } from '../../db/home'
+import { appendWishlistLifeEvent } from '../life/api'
 import { IconCheck } from '../../components/qixi/Icons'
+
+const statusLabels: Record<WishlistStatus, string> = { open: '进行中', done: '已完成', paused: '已暂停', abandoned: '已放弃' }
+function emit(event: Parameters<typeof appendWishlistLifeEvent>[0]): void { void appendWishlistLifeEvent(event).catch(() => undefined) }
 
 export function WishlistModule() {
   const [items, setItems] = useState<WishlistItem[]>([])
-  const [draft, setDraft] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState<string | null>(null)
-
-  async function refresh(): Promise<void> {
-    setItems(await listWishlist())
-  }
-
-  useEffect(() => {
-    refresh().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err))).finally(() => setLoading(false))
-  }, [])
-
-  async function submit(event: FormEvent): Promise<void> {
-    event.preventDefault()
-    try {
-      await createWishlistItem(draft)
-      setDraft('')
-      setError(null)
-      await refresh()
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  async function toggle(id: string): Promise<void> {
-    await toggleWishlistItem(id)
-    await refresh()
-  }
-
-  async function remove(id: string): Promise<void> {
-    if (deleting !== id) {
-      setDeleting(id)
-      return
-    }
-    await deleteWishlistItem(id)
-    setDeleting(null)
-    await refresh()
-  }
-
-  return (
-    <div className="space-y-4">
-      <form onSubmit={(event) => void submit(event)} className="flex gap-2">
-        <label htmlFor="wishlist-title" className="sr-only">新愿望</label>
-        <input id="wishlist-title" value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={120} placeholder="想一起完成什么？" className="min-w-0 flex-1 rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }} />
-        <button type="submit" disabled={draft.trim() === ''} className="rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>添加</button>
-      </form>
-      {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-      {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在读取愿望…</p> : items.length === 0 ? (
-        <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>愿望清单还是空的。</p>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <li key={item.id} className="flex items-center gap-3 rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
-              <button type="button" aria-label={item.status === 'done' ? '标记为未完成' : '标记为已完成'} onClick={() => void toggle(item.id)} className="grid h-7 w-7 shrink-0 place-items-center rounded-full border" style={{ borderColor: 'var(--accent-strong)', color: 'var(--accent-strong)' }}>{item.status === 'done' ? <IconCheck size={15} /> : null}</button>
-              <span className={`min-w-0 flex-1 break-words text-sm ${item.status === 'done' ? 'line-through opacity-60' : ''}`}>{item.title}</span>
-              <button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeleting(null)} className="shrink-0 text-xs" style={{ color: deleting === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deleting === item.id ? '确认删除？' : '删除'}</button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
+  const [draft, setDraft] = useState(''); const [targetDate, setTargetDate] = useState('')
+  const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [deleting, setDeleting] = useState<string | null>(null)
+  const [editing, setEditing] = useState<string | null>(null); const [editTitle, setEditTitle] = useState(''); const [editDate, setEditDate] = useState('')
+  const [progressDraft, setProgressDraft] = useState<Record<string, string>>({}); const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  async function refresh(): Promise<void> { setItems(await listWishlist()) }
+  useEffect(() => { refresh().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err))).finally(() => setLoading(false)) }, [])
+  async function submit(event: FormEvent): Promise<void> { event.preventDefault(); try { const item = await createWishlistItem(draft, targetDate || null); emit({ eventType: 'wishlist.created', wishlistId: item.id, title: item.title, targetDate: item.targetDate, author: item.author }); setDraft(''); setTargetDate(''); setError(null); await refresh() } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) } }
+  function beginEdit(item: WishlistItem): void { setEditing(item.id); setEditTitle(item.title); setEditDate(item.targetDate ?? '') }
+  async function saveEdit(item: WishlistItem): Promise<void> { try { await updateWishlistItem(item.id, { title: editTitle, targetDate: editDate || null }); emit({ eventType: 'wishlist.updated', wishlistId: item.id, title: editTitle.trim(), targetDate: editDate || null, author: item.author }); setEditing(null); await refresh() } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) } }
+  async function changeStatus(item: WishlistItem, status: WishlistStatus): Promise<void> { const reasonInput = status === 'paused' || status === 'abandoned' ? window.prompt('可以留下原因（可选）') : null; const reason = reasonInput?.trim() || null; try { await updateWishlistItem(item.id, { status, statusReason: reason }); emit({ eventType: 'wishlist.status.updated', wishlistId: item.id, title: item.title, status, reason, targetDate: item.targetDate, author: item.author }); await refresh() } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) } }
+  async function addProgress(item: WishlistItem): Promise<void> { const note = progressDraft[item.id]?.trim() ?? ''; if (note === '') return; try { const progress = await addWishlistProgress(item.id, note); if (progress !== null) emit({ eventType: 'wishlist.progress.added', wishlistId: item.id, title: item.title, progressNote: progress.note, sourceType: progress.sourceType, sourceId: progress.sourceId, author: progress.author }); setProgressDraft((current) => ({ ...current, [item.id]: '' })); await refresh() } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) } }
+  async function remove(item: WishlistItem): Promise<void> { if (deleting !== item.id) { setDeleting(item.id); return } await deleteWishlistItem(item.id); emit({ eventType: 'wishlist.deleted', wishlistId: item.id, title: item.title, author: item.author }); setDeleting(null); await refresh() }
+  return <div className="space-y-4">
+    <form onSubmit={(event) => void submit(event)} className="flex flex-wrap gap-2"><label htmlFor="wishlist-title" className="sr-only">新愿望</label><input id="wishlist-title" value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={120} placeholder="想一起完成什么？" className="min-w-0 flex-1 rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }} /><label htmlFor="wishlist-target-date" className="sr-only">目标日期</label><input id="wishlist-target-date" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><button type="submit" disabled={draft.trim() === ''} className="rounded-full px-4 py-2 text-sm disabled:opacity-40" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>添加</button></form>
+    {error !== null && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+    {loading ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>正在读取愿望…</p> : items.length === 0 ? <p className="rounded-lg border p-6 text-center text-sm" style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}>愿望清单还是空的。</p> : <ul className="space-y-3">{items.map((item) => <li key={item.id} className="rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>
+      {editing === item.id ? <div className="space-y-2"><input aria-label="编辑愿望" value={editTitle} onChange={(event) => setEditTitle(event.target.value)} maxLength={120} className="w-full rounded border bg-transparent px-2 py-1 text-sm"/><input aria-label="编辑目标日期" type="date" value={editDate} onChange={(event) => setEditDate(event.target.value)} className="rounded border bg-transparent px-2 py-1 text-sm"/><div className="flex gap-2"><button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => void saveEdit(item)}>保存</button><button type="button" className="text-xs" onClick={() => setEditing(null)}>取消</button></div></div> : <>
+        <div className="flex items-start gap-3"><button type="button" aria-label={item.status === 'done' ? '标记为未完成' : '标记为已完成'} onClick={() => void changeStatus(item, item.status === 'done' ? 'open' : 'done')} className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border" style={{ borderColor: 'var(--accent-strong)', color: 'var(--accent-strong)' }}>{item.status === 'done' ? <IconCheck size={15} /> : null}</button><div className="min-w-0 flex-1"><p className={`break-words text-sm ${item.status === 'done' ? 'line-through opacity-60' : ''}`}>{item.title}</p><div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}><span>{statusLabels[item.status]}</span><span>{item.author === 'companion' ? '小栖' : '我'}记录</span>{item.targetDate && <span>目标 {item.targetDate}</span>}{item.statusReason && <span>原因：{item.statusReason}</span>}</div></div><div className="flex shrink-0 gap-2 text-xs"><button type="button" onClick={() => beginEdit(item)}>编辑</button><button type="button" onClick={() => void remove(item)} onBlur={() => setDeleting(null)} style={{ color: deleting === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deleting === item.id ? '确认删除？' : '删除'}</button></div></div>
+        <div className="mt-2 flex flex-wrap items-center gap-2"><label className="text-xs" style={{ color: 'var(--text-secondary)' }}>状态</label><select value={item.status} onChange={(event) => void changeStatus(item, event.target.value as WishlistStatus)} className="rounded border bg-transparent px-2 py-1 text-xs"><option value="open">进行中</option><option value="done">已完成</option><option value="paused">已暂停</option><option value="abandoned">已放弃</option></select><button type="button" className="text-xs underline" onClick={() => setExpanded((current) => ({ ...current, [item.id]: !current[item.id] }))}>{expanded[item.id] ? '收起进展' : `进展 ${item.progress.length}`}</button></div>
+        {expanded[item.id] && <div className="mt-2 space-y-2 border-t pt-2" style={{ borderColor: 'var(--border-soft)' }}><div className="space-y-1">{item.progress.map((progress) => <p key={progress.id} className="text-xs"><span style={{ color: 'var(--text-secondary)' }}>{progress.author === 'companion' ? '小栖' : '我'} · {new Date(progress.createdAt).toLocaleString()}</span><br/>{progress.note}</p>)}</div><div className="flex gap-2"><input aria-label="新增进展" value={progressDraft[item.id] ?? ''} onChange={(event) => setProgressDraft((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="记下一步进展…" className="min-w-0 flex-1 rounded border bg-transparent px-2 py-1 text-xs"/><button type="button" className="rounded border px-2 py-1 text-xs" disabled={(progressDraft[item.id] ?? '').trim() === ''} onClick={() => void addProgress(item)}>记录</button></div></div>}
+      </>}
+    </li>)}</ul>}
+  </div>
 }

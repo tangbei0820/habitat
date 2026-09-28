@@ -124,6 +124,27 @@ export function appendBookmarkLifeEvent(event: BookmarkLifeEvent): Promise<void>
   }).then(() => undefined)
 }
 
+export type WishlistLifeEvent = {
+  eventType: 'wishlist.created' | 'wishlist.updated' | 'wishlist.status.updated' | 'wishlist.progress.added' | 'wishlist.deleted'
+  wishlistId: string
+  title: string
+  status?: 'open' | 'done' | 'paused' | 'abandoned'
+  targetDate?: string | null
+  author?: 'user' | 'companion'
+  reason?: string | null
+  progressNote?: string
+  sourceType?: string | null
+  sourceId?: string | null
+  at?: number
+}
+
+/** 愿望是本地长期事实；Life 只记录操作摘要，不复制清单正文。 */
+export function appendWishlistLifeEvent(event: WishlistLifeEvent): Promise<void> {
+  return fetchJson('/api/life/events/wishlist', {
+    method: 'POST', headers: jsonHeaders, body: JSON.stringify(event),
+  }).then(() => undefined)
+}
+
 export function loadLifeLedger(month: string): Promise<LifeLedgerView> {
   return fetchJson(`/api/life/ledger?month=${encodeURIComponent(month)}`)
 }

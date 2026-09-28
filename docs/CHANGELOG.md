@@ -1027,3 +1027,9 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 提交 `087b6c0` 已部署至 `https://habitat.beiyan.cc`，保留生产 `.env` / SQLite，并创建备份 `habitat.db.bak-20260928-087b6c0`。
 - `habitat-server` active；服务器本机与服务器自 curl 公网域名健康检查通过，首页引用 `index-BgtV80yX.js`。
 - 远端 `server/src/routes/automation.ts` SHA-256 与本地一致；通知偏好含 countdown 分类，提醒路由非法请求返回结构化 400。
+
+### 2026-09-28 · T-102 · V2-A Home 基础模块第五阶段：愿望清单生命周期与 Life 投影（本地）
+
+- 愿望清单补齐目标日期、作者、进行中 / 已完成 / 已暂停 / 已放弃四种状态、状态原因与进展记录；旧 Dexie 记录自动迁移，备份格式升 v14。
+- 新增愿望 Life 事件接口与时间线投影，月历增加愿望活动统计；普通 UI 只展示结构化摘要，不直出对象。
+- `probe:wishlist-life` 覆盖创建 / 编辑 / 状态 / 进展 / 删除、月历计数与非法状态；两端 typecheck 通过。

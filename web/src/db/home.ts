@@ -26,6 +26,10 @@ import {
   type MusicTrack,
   type StudyRecord,
   type WishlistItem,
+  type WishlistProgress,
+  type WishlistProgressSourceType,
+  type WishlistStatus,
+  type ContentAuthor,
 } from '@shared/types'
 import { fetchJson, fetchVoid } from '../lib/api'
 import { formatDuration } from '../lib/format'
@@ -81,10 +85,17 @@ export async function deleteMoment(id: string): Promise<void> {
 
 export async function listWishlist(): Promise<WishlistItem[]> {
   const items = await db.wishlist.orderBy('updatedAt').reverse().toArray()
-  return items.sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done'))
+  return items.sort((a, b) => Number(a.status === 'done' || a.status === 'abandoned') - Number(b.status === 'done' || b.status === 'abandoned'))
 }
 
-export async function createWishlistItem(title: string): Promise<WishlistItem> {
+function validDate(value: string | null | undefined): string | null {
+  if (value === undefined || value === null || value.trim() === '') return null
+  const normalized = value.trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) throw new Error('请选择有效日期')
+  return normalized
+}
+
+export async function createWishlistItem(title: string, targetDate?: string | null, author: ContentAuthor = 'user'): Promise<WishlistItem> {
   const at = Date.now()
   const item: WishlistItem = {
     id: nowId('wish'),
@@ -92,11 +103,34 @@ export async function createWishlistItem(title: string): Promise<WishlistItem> {
     title: requiredText(title, '愿望'),
     status: 'open',
     completedAt: null,
+    author,
+    targetDate: validDate(targetDate),
+    statusChangedAt: at,
+    statusReason: null,
+    progress: [],
     createdAt: at,
     updatedAt: at,
   }
   await db.wishlist.add(item)
   return item
+}
+
+export async function updateWishlistItem(id: string, patch: { title?: string; targetDate?: string | null; status?: WishlistStatus; statusReason?: string | null }): Promise<void> {
+  const item = await db.wishlist.get(id)
+  if (item === undefined) return
+  const at = Date.now()
+  const nextStatus = patch.status ?? item.status
+  const statusChanged = nextStatus !== item.status
+  const title = patch.title === undefined ? item.title : requiredText(patch.title, '愿望')
+  const statusReason = patch.statusReason === undefined ? item.statusReason : (patch.statusReason?.trim() || null)
+  await db.wishlist.update(id, {
+    ...(patch.title === undefined ? {} : { title }),
+    ...(patch.targetDate === undefined ? {} : { targetDate: validDate(patch.targetDate) }),
+    ...(patch.status === undefined ? {} : { status: nextStatus, completedAt: nextStatus === 'done' ? (item.completedAt ?? at) : null }),
+    ...(patch.statusReason === undefined ? {} : { statusReason }),
+    ...(statusChanged ? { statusChangedAt: at } : {}),
+    updatedAt: at,
+  })
 }
 
 export async function toggleWishlistItem(id: string): Promise<void> {
@@ -107,8 +141,19 @@ export async function toggleWishlistItem(id: string): Promise<void> {
   await db.wishlist.update(id, {
     status: done ? 'done' : 'open',
     completedAt: done ? at : null,
+    statusChangedAt: at,
+    statusReason: null,
     updatedAt: at,
   })
+}
+
+export async function addWishlistProgress(id: string, note: string, author: ContentAuthor = 'user', sourceType: WishlistProgressSourceType | null = null, sourceId: string | null = null): Promise<WishlistProgress | null> {
+  const item = await db.wishlist.get(id)
+  if (item === undefined) return null
+  const at = Date.now()
+  const progress: WishlistProgress = { id: nowId('wish-progress'), type: 'wishlist-progress', note: requiredText(note, '进展'), author, sourceType, ...(sourceId === null ? {} : { sourceId }), createdAt: at, updatedAt: at }
+  await db.wishlist.update(id, { progress: [...item.progress, progress], updatedAt: at })
+  return progress
 }
 
 export async function deleteWishlistItem(id: string): Promise<void> {

@@ -3132,3 +3132,21 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 公网验收 | 首页已引用 `index-BgtV80yX.js`；通知偏好返回 countdown 分类；提醒路由对非法请求返回结构化 400，远端 `automation.ts` SHA-256 与本地一致。 |
 
 **阶段边界**：本阶段到此停止；下一阶段再处理愿望清单、收藏标签 / 分页、日记富文本 / 图片或留言板分组等其它 Home 缺口。
+
+### T-102 · 2026-09-28 · V2-A Home 基础模块第五阶段：愿望清单生命周期与 Life 投影 —— **完成（本地）**
+
+**范围**：在现有本地 `WishlistItem` 上补齐目标日期、作者、暂停 / 放弃、状态原因与进展记录，并把每次操作投影到 Life；不新增平行任务表，不在本批接入 Runtime 自主写入或主屏 Widget。
+
+| 交付 | 说明 |
+| --- | --- |
+| 数据与迁移 | `WishlistItem` 支持 `open / done / paused / abandoned`、`author`、本地 `targetDate`、`statusChangedAt`、`statusReason` 与嵌套 `progress[]`；Dexie 升 v16，旧记录自动补默认值；备份升 v14 并兼容旧备份。 |
+| 页面交互 | 愿望可设置目标日、编辑标题 / 目标日、切换四种状态、记录暂停 / 放弃原因、展开进展并添加记录；保留原有完成切换与二次确认删除。 |
+| Life 事实 | 新增 `POST /api/life/events/wishlist`；创建、编辑、状态变化、进展、删除均写入摘要事件；时间线不展示 `[object Object]`，月历新增愿望活动数。 |
+| 参考取舍 | 借鉴 [Journal](https://github.com/BomBomLab/Journal) 的结构化时间线投影与 [shared-page](https://github.com/KKarsyline/shared-page) 的作者 / 来源语义；不复制独立后端或平行模型。 |
+| 验收 | `probe:wishlist-life` 覆盖 5 类事实、月历计数与非法状态；两端 typecheck、前端 build、备份 / Dexie 验收与 `git diff --check` 通过。 |
+
+**明确延期**：AI 自主创建 / 更新愿望（需要服务端权威愿望仓储与 Runtime capability）、进展关联聊天 / 作品 / 一起听 / 共读的选择器、愿望 Widget 与到期通知；不在本阶段顺带施工。
+
+### T-103 · 2026-09-28 · V2-A Home 基础模块第五阶段部署 VPS —— **待执行**
+
+**范围**：部署 T-102 代码与 Dexie / 备份兼容更新到 `https://habitat.beiyan.cc`，保留生产 `.env` 与 SQLite，重启前创建数据库备份，完成健康、静态资源、愿望 Life 路由与服务状态验收。

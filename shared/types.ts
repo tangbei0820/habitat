@@ -248,13 +248,29 @@ export interface Moment extends BaseObject {
   author: ContentAuthor
 }
 
-export type WishlistStatus = 'open' | 'done'
+export type WishlistStatus = 'open' | 'done' | 'paused' | 'abandoned'
+
+export type WishlistProgressSourceType = 'chat-message' | 'artwork' | 'music-track' | 'reading-note' | 'countdown-day'
+
+export interface WishlistProgress extends BaseObject {
+  type: 'wishlist-progress'
+  note: string
+  author: ContentAuthor
+  sourceType: WishlistProgressSourceType | null
+  sourceId?: string
+}
 
 export interface WishlistItem extends BaseObject {
   type: 'wishlist-item'
   title: string
   status: WishlistStatus
   completedAt: number | null
+  author: ContentAuthor
+  /** 纯本地日期 YYYY-MM-DD；不带时区。 */
+  targetDate: string | null
+  statusChangedAt: number
+  statusReason: string | null
+  progress: WishlistProgress[]
 }
 
 /** `targetDate` 固定为本地日期 `YYYY-MM-DD`，避免纯日期被时区偏移。 */
@@ -1197,6 +1213,7 @@ export interface LifeDaySummary {
   studyActivityCount: number
   countdownActivityCount: number
   bookmarkActivityCount: number
+  wishlistActivityCount: number
   pricedCostCents: number
   unpricedCalls: number
 }

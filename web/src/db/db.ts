@@ -286,6 +286,17 @@ export class HabitatDb extends Dexie {
         if (countdown.repeat === undefined) countdown.repeat = 'none'
         if (countdown.reminder === undefined) countdown.reminder = 'none'
       }))
+    // v16：愿望清单升级为可编辑的长期生活事实；旧记录补作者、目标日、状态原因与进展数组。
+    this.version(16)
+      .stores({ wishlist: 'id, status, createdAt, updatedAt' })
+      .upgrade((tx) => tx.table('wishlist').toCollection().modify((item: WishlistItem) => {
+        if (item.author === undefined) item.author = 'user'
+        if (item.targetDate === undefined) item.targetDate = null
+        if (item.statusChangedAt === undefined) item.statusChangedAt = item.updatedAt
+        if (item.statusReason === undefined) item.statusReason = null
+        if (item.progress === undefined) item.progress = []
+        if (item.status !== 'done' && item.completedAt !== null) item.completedAt = null
+      }))
     // 刻意没有 .upgrade()：搬迁不在版本变化时做，而在每次启动时做（见上方注释与 legacy-upload.ts）。
     // 也不在这里声明 diaries / moments —— 声明了也删不掉它们，省掉能少一份「以为删了」的误解。
   }

@@ -26,7 +26,10 @@ import type {
   StudyTask,
   Sticker,
   SessionGroup,
+  ContentAuthor,
+  WishlistProgressSourceType,
   WishlistItem,
+  WishlistProgress,
 } from '@shared/types'
 import { MAX_PHOTO_BYTES } from '@shared/types'
 import { db, type LegacyUpload } from '../db/db'
@@ -44,7 +47,7 @@ export const BACKUP_FORMAT = 'habitat-backup'
  * ⚠️ 但**旧备份（v2–v8）里带着它们**，导入时不能丢：走 `legacyUploads` 转存到服务端，
  * 详见 `importAll` 与 `db/legacy-upload.ts`。
  */
-export const BACKUP_VERSION = 13
+export const BACKUP_VERSION = 14
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -253,8 +256,22 @@ function looksLikeLegacyMoment(value: unknown): value is { id: string } {
   return isRecord(value) && typeof value.id === 'string' && value.type === 'moment' && typeof value.content === 'string'
 }
 
+const WISHLIST_STATUSES = ['open', 'done', 'paused', 'abandoned'] as const
+const WISHLIST_AUTHORS: ContentAuthor[] = ['user', 'companion']
+const WISHLIST_SOURCES: WishlistProgressSourceType[] = ['chat-message', 'artwork', 'music-track', 'reading-note', 'countdown-day']
+
 function looksLikeWishlistItem(value: unknown): value is WishlistItem {
-  return isRecord(value) && typeof value.id === 'string' && value.type === 'wishlist-item' && typeof value.title === 'string'
+  if (!isRecord(value) || typeof value.id !== 'string' || value.type !== 'wishlist-item' || typeof value.title !== 'string') return false
+  if (value.status !== undefined && !WISHLIST_STATUSES.includes(value.status as typeof WISHLIST_STATUSES[number])) return false
+  if (value.author !== undefined && !WISHLIST_AUTHORS.includes(value.author as ContentAuthor)) return false
+  if (value.targetDate !== undefined && value.targetDate !== null && (typeof value.targetDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.targetDate))) return false
+  if (value.progress !== undefined && (!Array.isArray(value.progress) || value.progress.some((row) => {
+    if (!isRecord(row) || typeof row.id !== 'string' || row.type !== 'wishlist-progress' || typeof row.note !== 'string') return true
+    if (row.author !== undefined && !WISHLIST_AUTHORS.includes(row.author as ContentAuthor)) return true
+    if (row.sourceType !== undefined && row.sourceType !== null && !WISHLIST_SOURCES.includes(row.sourceType as WishlistProgressSourceType)) return true
+    return false
+  }))) return false
+  return true
 }
 
 const COUNTDOWN_CATEGORIES: CountdownCategory[] = ['anniversary', 'event', 'deadline', 'other']
@@ -476,7 +493,25 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   }
   // 旧留言不落 Dexie，转存到服务端（见下面的 legacyUploads）
   const legacyMoments = momentsRaw.filter(looksLikeLegacyMoment)
-  const wishlist = wishlistRaw.filter(looksLikeWishlistItem)
+  const wishlist = wishlistRaw.filter(looksLikeWishlistItem).map((item) => {
+    const at = Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now()
+    const progress: WishlistProgress[] = Array.isArray(item.progress) ? item.progress.map((row) => ({
+      ...row,
+      author: row.author ?? 'user',
+      sourceType: row.sourceType ?? null,
+      ...(row.sourceId === undefined || row.sourceId === null ? {} : { sourceId: row.sourceId }),
+    })) : []
+    return {
+      ...item,
+      status: item.status ?? 'open',
+      completedAt: item.status === 'done' ? (item.completedAt ?? at) : (item.completedAt ?? null),
+      author: item.author ?? 'user',
+      targetDate: item.targetDate ?? null,
+      statusChangedAt: item.statusChangedAt ?? at,
+      statusReason: item.statusReason ?? null,
+      progress,
+    }
+  })
   const countdowns = countdownsRaw.filter(looksLikeCountdown).map((countdown) => ({
     ...countdown,
     category: countdown.category ?? 'other',

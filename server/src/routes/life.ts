@@ -83,6 +83,14 @@ const BOOKMARK_EVENT_TYPES = new Set([
   'bookmark.category.updated',
 ])
 
+const WISHLIST_EVENT_TYPES = new Set([
+  'wishlist.created',
+  'wishlist.updated',
+  'wishlist.status.updated',
+  'wishlist.progress.added',
+  'wishlist.deleted',
+])
+
 const BOOKMARK_TARGET_TYPES = new Set([
   'external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'music-track', 'study-record',
 ])
@@ -259,6 +267,46 @@ function bookmarkEventBody(value: unknown): {
   }
 }
 
+function wishlistEventBody(value: unknown): {
+  eventType: string
+  metrics: Record<string, unknown>
+  refId: string
+  at: number | undefined
+} {
+  const body = objectBody(value)
+  const eventType = boundedText(body, 'eventType', 48)
+  if (!WISHLIST_EVENT_TYPES.has(eventType)) throw new RequestError(ErrorCodes.BadRequest, '不支持的愿望事件类型')
+  const wishlistId = boundedText(body, 'wishlistId', 160)
+  const title = boundedText(body, 'title', 160)
+  const status = body.status
+  if (status !== undefined && status !== 'open' && status !== 'done' && status !== 'paused' && status !== 'abandoned') throw new RequestError(ErrorCodes.BadRequest, 'status 不合法')
+  const author = body.author
+  if (author !== undefined && author !== 'user' && author !== 'companion') throw new RequestError(ErrorCodes.BadRequest, 'author 不合法')
+  const targetDate = body.targetDate
+  if (targetDate !== undefined && targetDate !== null && (typeof targetDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate))) throw new RequestError(ErrorCodes.BadRequest, 'targetDate 必须是 YYYY-MM-DD')
+  const reason = body.reason === undefined || body.reason === null ? null : boundedText(body, 'reason', 300)
+  const progressNote = body.progressNote === undefined ? undefined : boundedText(body, 'progressNote', 600)
+  const sourceType = body.sourceType
+  if (sourceType !== undefined && sourceType !== null && typeof sourceType !== 'string') throw new RequestError(ErrorCodes.BadRequest, 'sourceType 不合法')
+  const sourceId = body.sourceId
+  if (sourceId !== undefined && sourceId !== null && typeof sourceId !== 'string') throw new RequestError(ErrorCodes.BadRequest, 'sourceId 不合法')
+  return {
+    eventType,
+    refId: wishlistId,
+    at: optionalTimestamp(body),
+    metrics: {
+      source: 'wishlist', title,
+      ...(status === undefined ? {} : { status }),
+      ...(author === undefined ? {} : { author }),
+      ...(targetDate === undefined ? {} : { targetDate }),
+      ...(reason === null ? {} : { reason }),
+      ...(progressNote === undefined ? {} : { progressNote }),
+      ...(sourceType === undefined ? {} : { sourceType }),
+      ...(sourceId === undefined ? {} : { sourceId }),
+    },
+  }
+}
+
 export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, state: StateProvider | null): void {
   app.get('/api/life/month', async (request) => {
     const query = request.query as Record<string, unknown>
@@ -295,6 +343,12 @@ export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, st
   app.post('/api/life/events/bookmark', async (request, reply) => {
     const input = bookmarkEventBody(request.body)
     const at = Date.now()
+    const id = appendEventLog(input.eventType, input.metrics, input.refId, at)
+    return reply.status(201).send({ ok: true, id, dayKey: dayKeyOf(at), at })
+  })
+  app.post('/api/life/events/wishlist', async (request, reply) => {
+    const input = wishlistEventBody(request.body)
+    const at = input.at ?? Date.now()
     const id = appendEventLog(input.eventType, input.metrics, input.refId, at)
     return reply.status(201).send({ ok: true, id, dayKey: dayKeyOf(at), at })
   })

@@ -22,6 +22,7 @@
     "probe:listening": "tsx scripts/probe-listening.ts",
     "probe:study-life": "tsx scripts/probe-study-life.ts",
     "probe:countdown-life": "tsx scripts/probe-countdown-life.ts",
+    "probe:wishlist-life": "tsx scripts/probe-wishlist-life.ts",
     "probe:bookmark-life": "tsx scripts/probe-bookmark-life.ts",
     "probe:reading-life": "tsx scripts/probe-reading-life.ts",
     "probe:nocturne-tools-standalone": "node scripts/probe-nocturne-tools-standalone.mjs",
