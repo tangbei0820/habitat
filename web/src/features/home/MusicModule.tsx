@@ -11,11 +11,11 @@
  *  - 下方的「收下一首歌」表单与歌单列表继续复用本地 MusicTrack；网易云搜索 / 歌词 / AI 选歌留给后续 MCP 切片。
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import type { ListeningHistoryItem, ListeningSessionView, MusicTrack } from '@shared/types'
+import type { ListeningComment, ListeningHistoryItem, ListeningQueueItem, ListeningSessionView, MusicTrack } from '@shared/types'
 import { IconNote, IconPause, IconPlay, IconSkipBack, IconSkipForward } from '../../components/qixi/Icons'
 import { createMusicTrack, deleteMusicTrack, listMusicTracks, updateMusicTrack } from '../../db/home'
 import { addListenSeconds } from '../../db/listen'
-import { getListeningSession, listListeningHistory, updateListeningSession } from '../../lib/listening'
+import { createListeningComment, getListeningSession, listListeningComments, listListeningHistory, updateListeningQueue, updateListeningSession } from '../../lib/listening'
 
 function mm(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -40,6 +40,9 @@ export function MusicModule() {
   const [duration, setDuration] = useState(0)
   const [sharedSession, setSharedSession] = useState<ListeningSessionView | null>(null)
   const [history, setHistory] = useState<ListeningHistoryItem[]>([])
+  const [queue, setQueue] = useState<ListeningQueueItem[]>([])
+  const [comments, setComments] = useState<ListeningComment[]>([])
+  const [commentDraft, setCommentDraft] = useState('')
   const audioRef = useRef<HTMLAudioElement | null>(null)
   /** 还没落盘的收听秒数；攒够 15 秒（或暂停 / 切歌 / 卸载）就写进 listenSessions */
   const pendingRef = useRef(0)
@@ -71,6 +74,7 @@ export function MusicModule() {
     const pull = async (): Promise<void> => {
       try {
         const next = await getListeningSession()
+        setQueue(next.queue)
         if (!alive || next.updatedAt <= sharedUpdatedAtRef.current) return
         sharedUpdatedAtRef.current = next.updatedAt
         setSharedSession(next)
@@ -109,6 +113,11 @@ export function MusicModule() {
 
   const current = items[currentIndex] ?? null
 
+  useEffect(() => {
+    if (current === null) { setComments([]); return }
+    void listListeningComments(current.id).then(setComments).catch(() => undefined)
+  }, [current?.id])
+
   function snapshot(item: MusicTrack | null): Pick<MusicTrack, 'id' | 'title' | 'artist' | 'externalUrl'> | null {
     if (item === null) return null
     return { id: item.id, title: item.title, artist: item.artist, externalUrl: item.externalUrl }
@@ -122,16 +131,38 @@ export function MusicModule() {
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
   }
 
+  async function queueTrack(item: MusicTrack): Promise<void> {
+    try { setQueue(await updateListeningQueue({ action: 'add', track: snapshot(item)! })) }
+    catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
+  }
+
+  async function removeQueueTrack(item: ListeningQueueItem): Promise<void> {
+    try { setQueue(await updateListeningQueue({ action: 'remove', track: item })) }
+    catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
+  }
+
+  async function submitComment(event: FormEvent): Promise<void> {
+    event.preventDefault()
+    if (current === null || commentDraft.trim() === '') return
+    try {
+      const next = await createListeningComment(snapshot(current)!, commentDraft)
+      setComments((items) => [...items, next]); setCommentDraft('')
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
+  }
+
   const step = useCallback((offset: number): void => {
     if (items.length === 0) return
     flushListen()
-    const nextIndex = (currentIndex + offset + items.length) % items.length
+    const queued = offset > 0 ? queue[0] : undefined
+    const queuedIndex = queued === undefined ? -1 : items.findIndex((item) => item.id === queued.id)
+    const nextIndex = queuedIndex >= 0 ? queuedIndex : (currentIndex + offset + items.length) % items.length
     const next = items[nextIndex] ?? null
+    if (queued !== undefined) void removeQueueTrack(queued)
     setCurrentIndex(nextIndex)
     setPos(0)
     setDuration(0)
     if (next !== null) syncShared('paused', 0, next)
-  }, [currentIndex, items, flushListen])
+  }, [currentIndex, items, flushListen, queue])
 
   function togglePlay(): void {
     const audio = audioRef.current
@@ -308,7 +339,14 @@ export function MusicModule() {
           <span className="shrink-0 text-xs" style={{ color: 'var(--text-secondary)' }}>{sharedSession.state === 'playing' ? '播放中' : '已暂停'} · {mm(sharedSession.positionSeconds)}</span>
         </div>
       )}
+      {queue.length > 0 && <div className="mt-3 border-t pt-3" style={{ borderColor: 'var(--border-soft)' }}><div className="flex items-center justify-between text-xs" style={{ color: 'var(--text-secondary)' }}><span>接下来播放 · {queue.length}</span><button type="button" onClick={() => void updateListeningQueue({ action: 'clear' }).then(setQueue).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))}>清空队列</button></div><ol className="mt-2 space-y-1 text-sm">{queue.slice(0, 6).map((item, index) => <li key={item.id} className="flex items-center justify-between gap-2"><span className="min-w-0 truncate">{index + 1}. {item.title}{item.artist ? ` · ${item.artist}` : ''}</span><button type="button" className="text-xs" style={{ color: 'var(--text-tertiary)' }} onClick={() => void removeQueueTrack(item)}>移除</button></li>)}</ol></div>}
     </section>
+
+    {current !== null && <section className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }} data-testid="music-comments">
+      <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">这首歌留下的话</h2><p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>评论会和曲目一起进入共同听歌记录；小栖的回应也会出现在这里。</p></div><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{comments.length} 条</span></div>
+      {comments.length > 0 && <ul className="mt-3 space-y-2">{comments.map((item) => <li key={item.id} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-soft)' }}><div className="flex items-center justify-between text-xs" style={{ color: 'var(--text-secondary)' }}><span>{item.author === 'companion' ? '小栖' : '你'}</span><time dateTime={new Date(item.createdAt).toISOString()}>{new Date(item.createdAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div><p className="mt-1 whitespace-pre-wrap break-words text-sm">{item.content}</p></li>)}</ul>}
+      <form onSubmit={(event) => void submitComment(event)} className="mt-3 flex items-end gap-2"><textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} maxLength={1_000} rows={2} placeholder="留一句关于这首歌的话……" className="min-w-0 flex-1 resize-y rounded border bg-transparent p-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><button type="submit" disabled={commentDraft.trim() === ''} className="rounded-full px-3 py-2 text-xs disabled:opacity-40" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>留下</button></form>
+    </section>}
 
     <section className="rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }} data-testid="music-history">
       <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">一起听过</h2><p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>从服务端播放事实聚合，不复制音频；每首歌保留共同听过的次数和时长。</p></div><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{history.length} 首</span></div>
@@ -344,7 +382,7 @@ export function MusicModule() {
       </div>
       {item.note !== null && <p className="mt-3 whitespace-pre-wrap break-words text-sm">{item.note}</p>}
       {item.externalUrl !== null && <a href={item.externalUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block break-all text-xs underline" style={{ color: 'var(--accent-strong)' }}>打开音乐链接</a>}
-      <div className="mt-3 flex justify-end gap-3 text-xs"><button type="button" onClick={() => edit(item)} style={{ color: 'var(--accent-strong)' }}>编辑</button><button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deletingId === item.id ? '确认删除？' : '删除'}</button></div>
+      <div className="mt-3 flex justify-end gap-3 text-xs"><button type="button" onClick={() => void queueTrack(item)} disabled={item.externalUrl === null || item.externalUrl === '' || queue.some((queued) => queued.id === item.id)} style={{ color: 'var(--accent-strong)' }}>{queue.some((queued) => queued.id === item.id) ? '已在队列' : item.externalUrl === null || item.externalUrl === '' ? '需可播链接' : '加入队列'}</button><button type="button" onClick={() => edit(item)} style={{ color: 'var(--accent-strong)' }}>编辑</button><button type="button" onClick={() => void remove(item.id)} onBlur={() => setDeletingId(null)} style={{ color: deletingId === item.id ? 'var(--danger)' : 'var(--text-secondary)' }}>{deletingId === item.id ? '确认删除？' : '删除'}</button></div>
     </li>)}</ul>}
   </div>
 }

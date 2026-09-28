@@ -24,6 +24,7 @@ import {
   createMessageArtwork,
   createMessageBookmark,
   createMessagePhotos,
+  listMusicTracks,
 } from '../../db/home'
 import {
   addVersion,
@@ -500,6 +501,7 @@ export function ChatWindowPage() {
       const stickerCatalog = stickers.length === 0
         ? await listStickers()
         : stickers
+      const listeningCatalog = await listMusicTracks()
       await streamChat(
         {
           ...(sessionId === undefined ? {} : { sessionId }),
@@ -511,6 +513,14 @@ export function ChatWindowPage() {
               name: sticker.name,
               category: sticker.category,
               tags: sticker.tags,
+            })),
+          }),
+          ...(listeningCatalog.length === 0 ? {} : {
+            listeningCatalog: listeningCatalog.slice(0, 100).map((track) => ({
+              id: track.id,
+              title: track.title,
+              artist: track.artist,
+              externalUrl: track.externalUrl,
             })),
           }),
         },

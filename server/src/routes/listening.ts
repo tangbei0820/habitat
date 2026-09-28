@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors.js'
-import type { ListeningPlaybackState, ListeningSessionView, MusicTrack } from '@shared/types.js'
+import type { ListeningComment, ListeningPlaybackState, ListeningQueueItem, ListeningSessionView, MusicTrack } from '@shared/types.js'
 import { RequestError } from '../lib/errors.js'
-import { getListeningSession, listListeningHistory, updateListeningSession, type ListeningSessionPatch } from '../db/listening.js'
+import { createListeningComment, getListeningSession, listListeningComments, listListeningHistory, updateListeningQueue, updateListeningSession, type ListeningSessionPatch } from '../db/listening.js'
 
 type TrackSnapshot = Pick<MusicTrack, 'id' | 'title' | 'artist' | 'externalUrl'>
 
@@ -48,4 +48,30 @@ export function registerListeningRoutes(app: FastifyInstance): void {
     return { items: listListeningHistory(limit) }
   })
   app.put('/api/listening/session', async (request): Promise<ListeningSessionView> => updateListeningSession(patchOf(request.body)))
+  app.post('/api/listening/queue', async (request): Promise<{ items: ListeningQueueItem[] }> => {
+    const body = bodyRecord(request.body)
+    const action = body.action === 'add' || body.action === 'remove' || body.action === 'clear' ? body.action : null
+    if (action === null) throw new RequestError(ErrorCodes.BadRequest, 'action 必须是 add / remove / clear')
+    const actor = body.actor === undefined ? 'user' : body.actor
+    if (actor !== 'user') throw new RequestError(ErrorCodes.BadRequest, '公开队列接口只允许 user 身份')
+    const item = action === 'clear' ? undefined : track(body.track)
+    if (action !== 'clear' && item === null) throw new RequestError(ErrorCodes.BadRequest, 'track 必须是有效曲目')
+    if (action === 'add' && (item === null || item === undefined || item.externalUrl === null)) throw new RequestError(ErrorCodes.BadRequest, '加入队列需要可播放的 http(s) 音源地址')
+    return { items: updateListeningQueue({ action, actor, ...(item === null || item === undefined ? {} : { track: item }) }) }
+  })
+  app.get('/api/listening/comments', async (request): Promise<{ items: ListeningComment[] }> => {
+    const query = request.query as Record<string, unknown>
+    const trackId = typeof query.trackId === 'string' ? query.trackId.trim() : ''
+    if (trackId === '' || trackId.length > 160) throw new RequestError(ErrorCodes.BadRequest, 'trackId 必须是非空字符串')
+    const rawLimit = query.limit === undefined ? 100 : Number(Array.isArray(query.limit) ? query.limit[0] : query.limit)
+    if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 200) throw new RequestError(ErrorCodes.BadRequest, 'limit 必须是 1–200 的整数')
+    return { items: listListeningComments(trackId, rawLimit) }
+  })
+  app.post('/api/listening/comments', async (request): Promise<ListeningComment> => {
+    const body = bodyRecord(request.body)
+    const trackValue = track(body.track)
+    if (trackValue === null) throw new RequestError(ErrorCodes.BadRequest, 'track 必须是有效曲目')
+    if (typeof body.content !== 'string' || body.content.trim() === '' || body.content.trim().length > 1_000) throw new RequestError(ErrorCodes.BadRequest, 'content 必须是 1–1000 字的非空文本')
+    return createListeningComment({ track: trackValue, author: 'user', content: body.content })
+  })
 }

@@ -3,6 +3,15 @@
 > 本文件记「改了什么」（面向版本，按 Phase 组织）。
 > 「做到哪、还欠什么」在 `docs/TASKS.md`。
 
+## 2026-09-28 · V2-D · Together Listening 共同生活增强
+
+### T-129 · 共享队列、逐曲回忆与 Runtime 参与
+
+- 一起听服务端会话增加最多 50 首共享队列；加入、移除、清空和播放到下一首均复用最小曲目快照，不复制音频。
+- 新增逐曲 `listening.comment.created` 事实，用户可在当前曲目下留言，小栖可通过真实 Runtime 工具留下 companion 回忆。
+- 新增 `listening_context` / `listening_queue_add` / `listening_comment` 能力；聊天只临时发送本地曲目目录，工具结果继续回灌模型上下文。
+- 一起听页面增加队列与逐曲回忆区；`probe:listening` 扩展至 11/11。生产部署未执行。
+
 ## 2026-09-28 · V2-A · P0 Chat 关系互动
 
 ### T-128 · 会话关系事件、暂停与双向恢复

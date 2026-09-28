@@ -23,7 +23,7 @@
  */
 
 /** 能力归属模块 —— 用于 LLM 页面卡片分组与详情页归属 */
-export type CapabilityModule = 'memory' | 'state' | 'diary' | 'board' | 'relationship' | 'tools' | 'web'
+export type CapabilityModule = 'memory' | 'state' | 'diary' | 'board' | 'relationship' | 'listening' | 'tools' | 'web'
 
 /**
  * 自主级别：回答「这项能力 AI 自己能不能调」。
@@ -64,6 +64,10 @@ export type CapabilityId =
   | 'relationship.pause'
   | 'relationship.request_recovery'
   | 'relationship.decide_recovery'
+  /* —— 一起听（共享队列 / 逐曲回忆） —— */
+  | 'listening.context'
+  | 'listening.queue_add'
+  | 'listening.comment'
   /* —— 聊天表情包（图库来自本轮前端，不把图片原文塞进模型上下文） —— */
   | 'sticker.search'
   | 'sticker.send'
@@ -467,6 +471,66 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
           decision: { type: 'string', enum: ['approve', 'deny'], description: 'approve=同意恢复，deny=拒绝恢复' },
         },
         required: ['requestId', 'decision'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'listening.context',
+    module: 'listening',
+    label: '查看一起听',
+    summary: '读取当前曲目、队列与共同听歌历史',
+    modelHint: '查看当前一起听会话、接下来播放的队列与最近共同听过的曲目；需要基于实际歌单做决定时先调用。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'listening_context',
+      description: '读取当前一起听曲目、播放状态、共享队列和最近共同听歌历史。无参数。',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    id: 'listening.queue_add',
+    module: 'listening',
+    label: '安排一起听',
+    summary: '把已知曲目加入共同播放队列',
+    modelHint: '把本轮目录中确实存在、且适合当前语境的曲目排到一起听队列；不要凭空捏造曲目或链接。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'listening_queue_add',
+      description: '把一首已知曲目加入一起听队列。必须提供曲目 id、标题和可选音源快照；重复曲目不会再次加入。',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: '本轮目录里的曲目 id' },
+          title: { type: 'string', description: '曲目标题' },
+          artist: { type: 'string', description: '音乐人，可省略' },
+          externalUrl: { type: 'string', description: '可选的 http(s) 直连音源地址' },
+        },
+        required: ['id', 'title'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'listening.comment',
+    module: 'listening',
+    label: '留下听歌回忆',
+    summary: '为当前或指定曲目写一段共同回忆',
+    modelHint: '只有确实有想法时，才为正在听或刚听过的曲目留下一段短回忆；也可以选择不写。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'listening_comment',
+      description: '为当前一起听曲目留下小栖的评论或回忆。正文不超过 1000 字，写完立即进入共同听歌记录。',
+      parameters: {
+        type: 'object',
+        properties: {
+          trackId: { type: 'string', description: '曲目 id；省略则使用当前曲目' },
+          title: { type: 'string', description: '曲目标题；指定 trackId 时可省略' },
+          artist: { type: 'string', description: '音乐人，可省略' },
+          externalUrl: { type: 'string', description: '可选的 http(s) 直连音源地址' },
+          content: { type: 'string', description: '小栖想留下的评论或回忆，不超过 1000 字' },
+        },
+        required: ['content'],
         additionalProperties: false,
       },
     },

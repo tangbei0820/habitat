@@ -663,6 +663,7 @@ export interface ListeningSessionView {
   startedAt: number | null
   updatedAt: number
   listeners: { user: boolean; companion: boolean }
+  queue: ListeningQueueItem[]
 }
 
 /** 服务端由播放事实聚合出的共同听歌历史；不复制音频或本地曲库。 */
@@ -673,6 +674,27 @@ export interface ListeningHistoryItem {
   totalSeconds: number
   playCount: number
   lastPlayedAt: number
+}
+
+/** 一起听共享队列中的最小曲目快照；仍不复制本地音乐库。 */
+export interface ListeningQueueItem {
+  id: string
+  title: string
+  artist: string | null
+  externalUrl: string | null
+  addedBy: 'user' | 'companion'
+  addedAt: number
+}
+
+/** 逐曲共同回忆 / 评论，正文只保存为事件事实，不进入音乐库。 */
+export interface ListeningComment {
+  id: string
+  trackId: string
+  title: string
+  artist: string | null
+  author: 'user' | 'companion'
+  content: string
+  createdAt: number
 }
 
 /** `studiedOn` 是本地日期；时长统一存分钟，避免展示层反复换算。 */

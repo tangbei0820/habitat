@@ -58,6 +58,12 @@ export const CAPABILITY_MODULES: readonly CapabilityModuleMeta[] = [
     noPageHint: '暂无独立页面 · 拍一拍、暂停与恢复申请发生在聊天页',
   },
   {
+    key: 'listening',
+    name: '一起听',
+    icon: 'music',
+    launch: { to: '/home/music', label: '打开一起听' },
+  },
+  {
     key: 'tools',
     name: '工具',
     icon: 'toolbox',

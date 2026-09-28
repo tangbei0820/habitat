@@ -137,6 +137,22 @@ function parseStickerCatalog(raw: unknown): ChatStickerCatalogItem[] | undefined
   })
 }
 
+function parseListeningCatalog(raw: unknown): ChatStreamRequest['listeningCatalog'] {
+  if (raw === undefined) return undefined
+  if (!Array.isArray(raw)) throw new ProviderError(ErrorCodes.BadRequest, 'listeningCatalog 必须是数组')
+  if (raw.length > 100) throw new ProviderError(ErrorCodes.BadRequest, 'listeningCatalog 最多 100 项')
+  return raw.map((item, index) => {
+    const record = asRecord(item)
+    if (record === null) throw new ProviderError(ErrorCodes.BadRequest, `listeningCatalog[${index}] 不是对象`)
+    const id = typeof record.id === 'string' ? record.id.trim() : ''
+    const title = typeof record.title === 'string' ? record.title.trim() : ''
+    if (id === '' || title === '' || id.length > 160 || title.length > 160) throw new ProviderError(ErrorCodes.BadRequest, `listeningCatalog[${index}] 缺少有效 id 或 title`)
+    const artist = record.artist === null || record.artist === undefined ? null : typeof record.artist === 'string' ? record.artist.trim().slice(0, 160) : null
+    const externalUrl = record.externalUrl === null || record.externalUrl === undefined ? null : typeof record.externalUrl === 'string' ? record.externalUrl.trim() : null
+    return { id, title, artist, externalUrl }
+  })
+}
+
 function parseBody(raw: unknown): ChatStreamRequest {
   const record = asRecord(raw)
   if (record === null) throw new ProviderError(ErrorCodes.BadRequest, '请求体必须是 JSON 对象')
@@ -147,6 +163,7 @@ function parseBody(raw: unknown): ChatStreamRequest {
   const temperature = parseNumber(record.temperature, 'temperature')
   const maxTokens = parseNumber(record.maxTokens, 'maxTokens')
   const stickerCatalog = parseStickerCatalog(record.stickerCatalog)
+  const listeningCatalog = parseListeningCatalog(record.listeningCatalog)
   const rawWebSearch = asRecord(record.webSearch)
   if (record.webSearch !== undefined && rawWebSearch === null) {
     throw new ProviderError(ErrorCodes.BadRequest, 'webSearch 必须是对象')
@@ -166,6 +183,7 @@ function parseBody(raw: unknown): ChatStreamRequest {
     ...(maxTokens === undefined ? {} : { maxTokens }),
     ...(normalizedWebSearchQuery === undefined ? {} : { webSearch: { query: normalizedWebSearchQuery } }),
     ...(stickerCatalog === undefined ? {} : { stickerCatalog }),
+    ...(listeningCatalog === undefined ? {} : { listeningCatalog }),
   }
 }
 
@@ -342,7 +360,11 @@ export function registerChatRoutes(
     const filteredCapabilitySnapshot = stickerReady
       ? sessionBoundSnapshot
       : sessionBoundSnapshot.filter((item) => item.id !== 'sticker.search' && item.id !== 'sticker.send')
-    const context = await assembleChatContext(body.messages, state, filteredCapabilitySnapshot, counterpartAt, {
+    const listeningReady = (body.listeningCatalog?.length ?? 0) > 0
+    const finalCapabilitySnapshot = listeningReady
+      ? filteredCapabilitySnapshot
+      : filteredCapabilitySnapshot.filter((item) => item.id !== 'listening.queue_add')
+    const context = await assembleChatContext(body.messages, state, finalCapabilitySnapshot, counterpartAt, {
       lastCounterpartMessageAt: counterpartAt,
       counterpartText: latestUserText,
       triggerWords: policy.triggerWords,
@@ -365,7 +387,7 @@ export function registerChatRoutes(
     // —— 工具装配：**从能力快照生成**，不是写死的清单 ——
     // 快照里 `enabled=false` 的能力（Nocturne 没配、Phase 未实施）压根不会出现在这里，
     // 于是模型根本看不到它，也就不会去调一个不存在的东西 —— 这是「不伪造能力」的最后一道。
-    const boundTools = buildBoundTools(filteredCapabilitySnapshot)
+    const boundTools = buildBoundTools(finalCapabilitySnapshot)
     const llmTools = toLlmTools(boundTools)
     const toolRuntime: ToolRuntime = {
       memory,
@@ -373,6 +395,7 @@ export function registerChatRoutes(
       capabilities,
       ...(body.webSearch === undefined ? {} : { webSearchQuery: body.webSearch.query }),
       stickerCatalog: body.stickerCatalog ?? [],
+      listeningCatalog: body.listeningCatalog ?? [],
       ...(body.sessionId === undefined ? {} : { chatSessionId: body.sessionId }),
     }
 

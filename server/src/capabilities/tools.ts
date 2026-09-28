@@ -15,7 +15,7 @@
  */
 import type { CapabilityAutonomy, CapabilityId, CapabilityModule, CapabilitySnapshot, CapabilityToolSchema } from '@shared/capabilities.js'
 import { CAPABILITY_DEFINITIONS } from '@shared/capabilities.js'
-import type { ChatStickerCatalogItem } from '@shared/events.js'
+import type { ChatListeningCatalogItem, ChatStickerCatalogItem } from '@shared/events.js'
 import type { LlmToolCall, MemoryProvider, StateProvider } from '@shared/providers.js'
 import { describeState } from '@shared/state-summary.js'
 import { getCompanionDiaryView, listCompanionDiaryViews, createCompanionDiary, setDiaryFragmentVisibility, updateCompanionDiary } from '../db/diary.js'
@@ -34,6 +34,7 @@ import {
   pokeRelationship,
   requestRelationshipRecovery,
 } from '../db/relationship.js'
+import { createListeningComment, getListeningSession, listListeningHistory, updateListeningQueue, type TrackSnapshot } from '../db/listening.js'
 import type { CapabilityService } from './registry.js'
 
 /** 一个绑定好的工具：从能力声明来，能被执行 */
@@ -60,6 +61,7 @@ const MODULE_SOURCE: Readonly<Record<CapabilityModule, string>> = {
   diary: '日记',
   board: '留言板',
   relationship: '关系互动',
+  listening: '一起听',
   tools: '系统',
   web: 'Web',
 }
@@ -150,6 +152,8 @@ export interface ToolRuntime {
   webSearchQuery?: string
   /** 本轮由浏览器带来的本地表情轻量目录，不写服务端数据库。 */
   stickerCatalog?: readonly ChatStickerCatalogItem[]
+  /** 本轮浏览器音乐目录；只传元数据，不上传音频。 */
+  listeningCatalog?: readonly ChatListeningCatalogItem[]
   /** 本次聊天请求已发送的表情；防止模型在多轮工具循环里重复发图。 */
   stickerSentId?: string
   /** 当前聊天会话 id；仅用于将 AI 发起的来电绑定到原会话。 */
@@ -469,6 +473,57 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
         } catch (error) {
           return failure(tool, error instanceof Error ? error.message : String(error))
         }
+      }
+
+      case 'listening.context': {
+        const session = getListeningSession()
+        const history = listListeningHistory(8)
+        const catalog = runtime.listeningCatalog ?? []
+        const lines = [
+          `当前：${session.track === null ? '没有正在播放的曲目' : `《${session.track.title}》${session.track.artist ? ` · ${session.track.artist}` : ''}（${session.state}，${Math.round(session.positionSeconds)} 秒）`}`,
+          `队列：${session.queue.length === 0 ? '空' : session.queue.map((item, index) => `${index + 1}. ${item.title}${item.artist ? ` · ${item.artist}` : ''}（id: ${item.id}）`).join('；')}`,
+          `最近共同听过：${history.length === 0 ? '暂无' : history.map((item) => `${item.title}（${item.totalSeconds} 秒，${item.playCount} 次）`).join('；')}`,
+          `本轮可选曲目：${catalog.length === 0 ? '未提供' : catalog.map((item) => `${item.title}${item.artist ? ` · ${item.artist}` : ''}（id: ${item.id}）`).join('；')}`,
+        ]
+        return { ok: true, text: lines.join('\n'), summary: '已读取一起听会话', detail: clip(lines.join('\n'), DETAIL_LIMIT) }
+      }
+
+      case 'listening.queue_add': {
+        const id = typeof value.id === 'string' ? value.id.trim() : ''
+        const title = typeof value.title === 'string' ? value.title.trim() : ''
+        if (id === '' || title === '') return failure(tool, '需要曲目 id 与 title')
+        const catalog = runtime.listeningCatalog ?? []
+        const catalogItem = catalog.find((item) => item.id === id)
+        if (catalogItem === undefined) return failure(tool, '这首曲目不在本轮可用目录中，未加入队列')
+        if (catalogItem.title !== title) return failure(tool, '曲目标题与本轮目录不一致，未加入队列')
+        const externalUrl = typeof value.externalUrl === 'string' ? value.externalUrl.trim() || null : catalogItem.externalUrl
+        if (externalUrl === null) return failure(tool, '这首曲目没有可播放的 http(s) 音源，未加入队列')
+        if (externalUrl !== null) {
+          try {
+            const parsed = new URL(externalUrl)
+            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return failure(tool, 'externalUrl 只支持 http / https')
+          } catch {
+            return failure(tool, 'externalUrl 不是合法 URL')
+          }
+        }
+        const track: TrackSnapshot = { id, title, artist: typeof value.artist === 'string' ? value.artist.trim() || null : catalogItem.artist, externalUrl }
+        const queue = updateListeningQueue({ action: 'add', track, actor: 'companion' })
+        return { ok: true, text: `已把《${title}》加入一起听队列（当前排第 ${queue.findIndex((item) => item.id === id) + 1} 首）。`, summary: `安排一起听《${title}》`, detail: `队列共 ${queue.length} 首` }
+      }
+
+      case 'listening.comment': {
+        const content = typeof value.content === 'string' ? value.content.trim() : ''
+        if (content === '') return failure(tool, '缺少必填参数 content')
+        if (content.length > 1_000) return failure(tool, 'content 最多 1000 字')
+        const session = getListeningSession()
+        const id = typeof value.trackId === 'string' ? value.trackId.trim() : ''
+        const current = id === '' ? session.track : session.track?.id === id ? session.track : (runtime.listeningCatalog ?? []).find((item) => item.id === id) ?? null
+        if (current === null || current === undefined) return failure(tool, '找不到要评论的曲目；先读取 listening_context')
+        const title = typeof value.title === 'string' && value.title.trim() !== '' ? value.title.trim() : current.title
+        const artist = typeof value.artist === 'string' ? value.artist.trim() || null : current.artist
+        const externalUrl = typeof value.externalUrl === 'string' ? value.externalUrl.trim() || null : current.externalUrl
+        const created = createListeningComment({ track: { id: current.id, title, artist, externalUrl }, author: 'companion', content })
+        return { ok: true, text: `已为《${title}》留下听歌回忆（commentId: ${created.id}）。`, summary: `留下《${title}》的听歌回忆` }
       }
 
       case 'sticker.search': {

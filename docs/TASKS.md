@@ -3523,3 +3523,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:relationship` **15/15**（含四项 Companion 工具真实执行）；两端 `npm run typecheck`、`git diff --check` 通过；未启动浏览器 CDP，未冒充完整浏览器回归通过。 |
 
 **明确延期**：关系事件的跨设备实时推送、独立关系历史筛选页与更细的“拒绝回复”理由编辑留待后续通知 / Chat polish；本批不部署 VPS。
+
+### T-129 · 2026-09-28 · P1 · 一起听共享队列与逐曲回忆 —— **完成（本地，未部署）**
+
+**范围**：在既有真实浏览器播放、服务端会话与共同听歌历史之上，补齐“一起听”第一组共同生活交互：共享队列、逐曲评论、小栖 Runtime 参与；不引入独立音乐库或服务器端播放器。
+
+| 交付 | 说明 |
+| --- | --- |
+| 共享队列 | 服务端 `app_kv:listening.queue.main` 保存最多 50 首带 `http(s)` 可播地址的最小曲目快照；加入幂等、移除、清空与真实队列播放；队列变化追加 `listening.queue.*` 事实。 |
+| 逐曲回忆 | 复用 `event_log` 新增 `listening.comment.created` 事实；用户在当前曲目下留言，小栖通过 Runtime 留下 companion 评论，按曲目刷新可追溯。 |
+| Runtime | 新增 `listening_context`、`listening_queue_add`、`listening_comment`；聊天只临时发送本地曲目轻量目录，目录为空时不暴露“安排一起听”工具，工具结果继续回灌下一轮模型。 |
+| UI | 一起听页展示当前共享队列、自动消费下一首、逐曲回忆区与加入队列入口；重复 / 失效曲目给出可读失败，不伪造播放。 |
+
+**参考取舍**：实查 [Duetto](https://github.com/avisforevelyn/Duetto) 的双人共享队列、逐曲回忆与 AI 参与契约，借鉴“事实进入歌曲档案、AI 可选择不动作”；实查 [netease-music-mcp](https://github.com/luuu-h/netease-music-mcp) 的搜索 / 歌词 / `listening_context` 工具边界，但不把其本机 `mpv` 播放链搬进 Habitat，也不在本批处理网易云 Cookie / 搜索适配。
+
+**验收**：`npm run typecheck`、`npm run build`、`PROBE_SERVER=http://127.0.0.1:3000 npm --prefix server run probe:listening` **11/11**、`git diff --check` 通过；`probe:ai-runtime` 的纯工具绑定部分通过，完整 HTTP 探针需按其独立 mock MCP / mock OpenAI 前置运行。
+
+**明确延期**：网易云搜索 / 歌词 / 登录、AI 自动选歌的外部音乐检索、歌词锚点与房间级 WebSocket、多设备实时同步、常驻底部播放器仍留在后续音乐 Provider / MCP 阶段；本批不进入 PDF / EPUB 共读器。

@@ -628,12 +628,27 @@ AI 修改自己的留言不走 HTTP，而由 Runtime 的 `messageboard_update` �
 ### `GET /api/listening/session` / `PUT /api/listening/session` —— 一起听当前会话
 
 当前只有单人格 `main` 会话。服务端保存当前曲目快照、播放状态（`idle` / `playing` / `paused`）、
-播放位置与更新时间；浏览器仍负责 `<audio>` 的实际播放，不把服务器上的 mpv 当成手机音源。
+播放位置、更新时间与共享队列；浏览器仍负责 `<audio>` 的实际播放，不把服务器上的 mpv 当成手机音源。
 `PUT` 请求体为 `{ track, state, positionSeconds }`，`track` 为复用 `MusicTrack` 的最小快照或 `null`（清空会话）。
 服务端只接受 `http(s)` 音频地址，不保存 Cookie / Provider 密钥。
 
+### `POST /api/listening/queue` —— 共同播放队列
+
+请求体为 `{ action: 'add' | 'remove' | 'clear', track? }`；公开接口只允许用户身份，`add` 必须带可播放的 `http(s)` 音源。
+对同一 `track.id` 幂等，队列最多 50 首；服务端仅保存曲目快照与加入者，不复制本地音频，
+并追加 `listening.queue.*` 事实。AI 通过 Runtime 的 `listening_queue_add` 使用同一仓储。
+
+### `GET/POST /api/listening/comments` —— 逐曲共同回忆
+
+`GET` 需要 `trackId`，返回按时间排序的逐曲评论；`POST` 请求体为 `{ track, content }`，只代表用户署名。
+小栖署名由 Runtime 的 `listening_comment` 写入同一 `listening.comment.created` 事实，避免出现第二套音乐笔记表。
+
 `GET /api/listening/history?limit=N` 从 `listening.track.started` / `listening.progress` 事实聚合共同听歌历史，
 返回曲目、播放次数、累计秒数与最近时间；不复制浏览器曲库或音频。音乐页以此展示“共同听过”，Life 月历仍读取原始增量事实。
+
+聊天每轮只把本地音乐的轻量目录（id / 标题 / 音乐人 / 可播地址）临时送入服务端；目录非空时，模型才会获得
+`listening_context`、`listening_queue_add`、`listening_comment` 三项真实工具。工具失败会回灌下一轮模型，
+不能凭空声称已点歌或已留下回忆。
 
 `GET /api/moments?limit=N` 供主屏 Widget 取最近 N 条 ——
 不然每次渲染主屏都要把全表拉过来再切片。`limit` 非正整数 → 400。

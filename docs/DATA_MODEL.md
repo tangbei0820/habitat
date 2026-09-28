@@ -191,8 +191,9 @@ interface SessionGroup extends BaseObject {
 | `ReadingNote` | `readingNotes` | `bookTitle`, `author`, `status`, `note`；TXT 共读书籍的 `BaseObject.metadata.reader` 保存正文、当前段落、书签、阅读秒数、阅读外观（字体 / 主题）、文本锚点批注与生词（不新增平行书库表） |
 | `DailyReadingEntry` | `dailyReadings` | `sourceBookId`, `paragraphIndex`, `bookTitle`, `author`, `text`；每日品读历史只保存片段快照与原书锚点，批注继续写回 `ReadingBookState.annotations`；主屏 `daily-reading` Widget 只引用其 `id` |
 | `MusicTrack` | `musicTracks` | `title`, `artist`, `note`, `externalUrl` |
-| `ListeningSessionView` | 服务端 `app_kv:listening.session.main` | 当前曲目最小快照、`state`, `positionSeconds`, `startedAt`, `listeners`；不复制音乐库 |
+| `ListeningSessionView` | 服务端 `app_kv:listening.session.main` + `app_kv:listening.queue.main` | 当前曲目最小快照、`state`, `positionSeconds`, `startedAt`, `listeners`, 最多 50 首队列；不复制音乐库 |
 | `ListeningHistoryItem` | 服务端 `event_log` 的播放事实投影 | `trackId`, `title`, `artist`, `totalSeconds`, `playCount`, `lastPlayedAt`；按轨道聚合，不复制音乐库 |
+| `ListeningComment` | 服务端 `event_log` 的 `listening.comment.created` 事实 | 曲目快照、作者 `user|companion`、正文与时间；不改写 `MusicTrack`，按曲目回放 |
 | `StudyRecord` | `studyRecords` | `subject`, `note`, `studiedOn`, `durationMinutes` |
 | `StudyCard` | `studyCards` | `subject`, `front`, `back`, `example`, `hint`, `dueOn`, `intervalDays`, `ease`, `repetitions`；默认按 `dueOn <= 本地今天` 进入到期队列 |
 | `StudyMaterial` | `studyMaterials` | `subject`, `title`, `kind=text|link`；文字资料保存受限正文，链接只保存安全的 `http(s)` 地址，卡片生成可选择文字资料作为上下文 |

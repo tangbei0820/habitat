@@ -4,6 +4,7 @@
  */
 import type { ErrorCode } from './errors'
 import type { LlmChatMessage, LlmUsage } from './providers'
+import type { MusicTrack } from './types'
 
 /** 本轮聊天可供 AI 选择的本地表情元数据；图片正文留在浏览器，避免进模型上下文。 */
 export interface ChatStickerCatalogItem {
@@ -12,6 +13,9 @@ export interface ChatStickerCatalogItem {
   category: string | null
   tags: readonly string[]
 }
+
+/** 本轮聊天可供小栖选择的一起听曲目元数据；不上传音频正文。 */
+export type ChatListeningCatalogItem = Pick<MusicTrack, 'id' | 'title' | 'artist' | 'externalUrl'>
 
 export type SseEventType =
   | 'health'
@@ -52,6 +56,7 @@ export interface ChatStreamRequest {
   webSearch?: { query: string }
   /** 当前浏览器本地图库的轻量目录；服务端只用它做本轮工具校验，不持久化。 */
   stickerCatalog?: ChatStickerCatalogItem[]
+  listeningCatalog?: ChatListeningCatalogItem[]
 }
 
 /** 上下文压缩的非流式请求：原消息只在本次调用中用于生成摘要，服务端不落聊天正文。 */

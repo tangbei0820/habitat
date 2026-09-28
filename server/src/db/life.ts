@@ -229,6 +229,18 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
     const trackTitle = metricText(metrics, 'title') ?? '这首歌'
     title = row.eventType === 'listening.track.started' ? `开始一起听《${trackTitle}》` : `一起听《${trackTitle}》`
     detail = row.eventType === 'listening.progress' ? null : metricText(metrics, 'artist')
+  } else if (row.eventType === 'listening.queue.added' || row.eventType === 'listening.queue.removed') {
+    source = '一起听'
+    const trackTitle = metricText(metrics, 'title') ?? '一首歌'
+    title = row.eventType === 'listening.queue.added' ? `把《${trackTitle}》排进队列` : `从队列移出了《${trackTitle}》`
+    detail = metricText(metrics, 'actor') === 'companion' ? '小栖安排' : '你安排'
+  } else if (row.eventType === 'listening.queue.cleared') {
+    source = '一起听'; title = '清空了一起听队列'; detail = metricText(metrics, 'count') === null ? null : `移除 ${metricText(metrics, 'count')} 首`
+  } else if (row.eventType === 'listening.comment.created') {
+    source = '一起听'
+    const trackTitle = metricText(metrics, 'title') ?? '这首歌'
+    title = `${metricText(metrics, 'author') === 'companion' ? '小栖' : '你'}为《${trackTitle}》留下回忆`
+    detail = metricText(metrics, 'content')
   } else if (row.eventType === 'moment.feed.created' || row.eventType === 'moment.feed.comment.created') {
     source = '朋友圈'
     const author = metricText(metrics, 'author') === 'companion' ? '小栖' : '你'

@@ -209,6 +209,8 @@ habitat/
 
 **T-128 已完成（本地）**：Chat 关系互动事实源、用户侧状态条 / 时间线卡、服务端暂停抑制、Companion Runtime 关系工具与 15/15 关系探针已收口；未部署 VPS。跨设备实时推送与独立关系历史筛选页留待后续通知 / Chat polish。
 
+**T-129 已完成（本地）**：一起听补齐服务端共享队列、逐曲评论事实与小栖 Runtime 的 `listening_context` / `listening_queue_add` / `listening_comment`；聊天仅临时发送本地曲目元数据，音乐页展示队列与逐曲回忆。两端 typecheck、前端 build、`probe:listening` 11/11 与 diff 检查通过；未部署 VPS。网易云搜索 / 歌词 / 外部 AI 选歌、房间 WebSocket 与 PDF / EPUB 共读仍延期。
+
 **T-125 已完成（本地）**：朋友圈文字回应树支持嵌套、编辑、删除与整棵子树级联清理，动态 / 回应进入 Life 事实；一起听从真实播放事实聚合历史并在 Home 展示。两端 typecheck、前端 build、服务端 feed / listening / moment-group 探针通过；浏览器新增回应与一起听历史断言通过，既有 Home 回归仍有倒数日刷新、音乐空态与学习卡片旧断言失败；未部署 VPS。附件动态、互动通知、AI 自主发布、NetEase 搜索 / AI 评论、PDF / EPUB 与 Widget 拖拽保留后续 P2。
 
 **T-121 已完成（生产）**：每日品读第一阶段已部署至 `https://habitat.beiyan.cc`；生产 SQLite 重启前备份为 `habitat.db.bak-20260928-fd72eb9`，`habitat-server` active，服务器本机与服务器自检公网 `/api/health` 均返回 `{"ok":true}`，正确 JSON 的 `reading.daily.swapped` 请求返回 201，临时探针事件已清理，生产 bundle `assets/index-X9zoWOm1.js` 含 `每日品读`、`daily-reading`、`dailyReadings`、`reading.daily.swapped` 与 `reading-excerpt` 标记。
