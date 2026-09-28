@@ -63,6 +63,7 @@ const READING_EVENT_TYPES = new Set([
   'reading.vocabulary',
   'reading.daily.swapped',
   'reading.daily.annotation',
+  'reading.daily.comment',
 ])
 
 const STUDY_EVENT_TYPES = new Set([
@@ -95,7 +96,7 @@ const WISHLIST_EVENT_TYPES = new Set([
 ])
 
 const BOOKMARK_TARGET_TYPES = new Set([
-  'external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'reading-excerpt', 'music-track', 'study-record',
+  'external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'reading-excerpt', 'reading-annotation', 'music-track', 'study-record',
 ])
 
 function optionalNonnegativeInteger(body: Record<string, unknown>, key: string, max = 1_000_000_000): number | undefined {
@@ -136,6 +137,8 @@ function readingEventBody(value: unknown): {
   }
   const mode = body.mode === undefined ? undefined : body.mode
   if (mode !== undefined && mode !== 'reader' && mode !== 'daily') throw new RequestError(ErrorCodes.BadRequest, 'mode 必须是 reader 或 daily')
+  const annotationAuthor = body.annotationAuthor === undefined ? undefined : body.annotationAuthor
+  if (annotationAuthor !== undefined && annotationAuthor !== 'user' && annotationAuthor !== 'companion') throw new RequestError(ErrorCodes.BadRequest, 'annotationAuthor 必须是 user 或 companion')
   return {
     eventType,
     bookId,
@@ -149,6 +152,7 @@ function readingEventBody(value: unknown): {
       ...(progressPercent === undefined ? {} : { progressPercent }),
       ...(enabled === undefined ? {} : { enabled }),
       ...(mode === undefined ? {} : { mode }),
+      ...(annotationAuthor === undefined ? {} : { annotationAuthor }),
     },
   }
 }

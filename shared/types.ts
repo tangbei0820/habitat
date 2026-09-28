@@ -302,8 +302,8 @@ export interface CountdownDay extends BaseObject {
   reminder: CountdownReminder
 }
 
-/** 主屏 Widget 的形态（SPEC §5.2 首批两种） */
-export type HomeWidgetKind = 'board' | 'countdown'
+/** 主屏 Widget 的形态（SPEC §5.2；内容型 Widget 只保存来源引用） */
+export type HomeWidgetKind = 'board' | 'countdown' | 'daily-reading'
 
 /** 留言板 Widget 的展示范围；只保存引用语义，不复制留言正文。 */
 export type BoardWidgetScope =
@@ -470,6 +470,7 @@ export type BookmarkTargetType =
   | 'photo'
   | 'reading-note'
   | 'reading-excerpt'
+  | 'reading-annotation'
   | 'music-track'
   | 'study-record'
 

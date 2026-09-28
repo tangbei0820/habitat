@@ -179,7 +179,7 @@ interface SessionGroup extends BaseObject {
 | `Artwork` | `artworks` | `title`, `category`, `description`, `externalUrl` |
 | `Photo` | `photos` | `title`, `caption`, `imageDataUrl`, `mimeType`, `sizeBytes`, `takenAt`, `collectionId` |
 | `ReadingNote` | `readingNotes` | `bookTitle`, `author`, `status`, `note`；TXT 共读书籍的 `BaseObject.metadata.reader` 保存正文、当前段落、书签、阅读秒数、阅读外观（字体 / 主题）、文本锚点批注与生词（不新增平行书库表） |
-| `DailyReadingEntry` | `dailyReadings` | `sourceBookId`, `paragraphIndex`, `bookTitle`, `author`, `text`；每日品读历史只保存片段快照与原书锚点，批注继续写回 `ReadingBookState.annotations` |
+| `DailyReadingEntry` | `dailyReadings` | `sourceBookId`, `paragraphIndex`, `bookTitle`, `author`, `text`；每日品读历史只保存片段快照与原书锚点，批注继续写回 `ReadingBookState.annotations`；主屏 `daily-reading` Widget 只引用其 `id` |
 | `MusicTrack` | `musicTracks` | `title`, `artist`, `note`, `externalUrl` |
 | `ListeningSessionView` | 服务端 `app_kv:listening.session.main` | 当前曲目最小快照、`state`, `positionSeconds`, `startedAt`, `listeners`；不复制音乐库 |
 | `StudyRecord` | `studyRecords` | `subject`, `note`, `studiedOn`, `durationMinutes` |
@@ -217,7 +217,7 @@ interface SessionGroup extends BaseObject {
 | 留言收藏 → 原留言 | `Bookmark.targetType='moment'` + `sourceId` + `metadata.source*` | 保存作者、创建时间与正文快照；编辑原留言不回写既有收藏；来源链接回 `/home/board#<id>` |
 | 作品 → 来源内容 | `BaseObject.sourceId` / `sessionId` | 本体尽量**引用原始对象**，必要时存稳定快照（SPEC §3.6.3） |
 | 相册 → 来源消息 | `BaseObject.sourceId` / `sessionId` | 保留原图 + 来源 + 时间 + 发送方 / 生成方（SPEC §4.4） |
-| 主屏 Widget → 被展示内容 | `HomeWidget.kind` + `refId` / `boardScope`（本地表 `homeWidgets`） | **只存引用、不复制数据**（SPEC §1.4）；留言板 `boardScope` 可指向 recent / group / moment；唯一索引 `&kind` 从数据层保证**每种 Widget 至多一条**；引用失效时渲染层不渲染，删实体时同事务清引用 |
+| 主屏 Widget → 被展示内容 | `HomeWidget.kind` + `refId` / `boardScope`（本地表 `homeWidgets`） | **只存引用、不复制数据**（SPEC §1.4）；留言板 `boardScope` 可指向 recent / group / moment；每日品读 `refId` 指向 `DailyReadingEntry.id`；唯一索引 `&kind` 从数据层保证**每种 Widget 至多一条**；引用失效时渲染层不渲染，删实体时同事务清引用 |
 | 收藏 → 分类 | `Bookmark.categoryId`（本地表 `bookmarkCategories`） | 单归属；删分类**不删收藏**，同事务把类内 `categoryId` 置 `null`（SPEC §3.5.4） |
 | 照片 → 相册 | `Photo.collectionId`（本地表 `photoCollections`） | 单归属；删相册**不删照片**，同事务把册内 `collectionId` 置 `null`（SPEC §3.7.3）。⚠️ 「移出相册」只置空归属，与「删除照片」是两件事 |
 

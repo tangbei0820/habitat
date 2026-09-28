@@ -50,7 +50,7 @@ export function loadLifeDay(dayKey: string): Promise<LifeDayDetail> {
 }
 
 export type ReadingLifeEvent = {
-  eventType: 'reading.opened' | 'reading.progress' | 'reading.bookmark' | 'reading.annotation' | 'reading.vocabulary' | 'reading.daily.swapped' | 'reading.daily.annotation'
+  eventType: 'reading.opened' | 'reading.progress' | 'reading.bookmark' | 'reading.annotation' | 'reading.vocabulary' | 'reading.daily.swapped' | 'reading.daily.annotation' | 'reading.daily.comment'
   bookId: string
   bookTitle: string
   paragraphIndex?: number
@@ -59,6 +59,7 @@ export type ReadingLifeEvent = {
   readingSecondsTotal?: number
   enabled?: boolean
   mode?: 'reader' | 'daily'
+  annotationAuthor?: 'user' | 'companion'
 }
 
 /** 共读只记录行为事实；服务端不可用时由阅读器保留本地阅读，不阻断正文。 */

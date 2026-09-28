@@ -1156,3 +1156,10 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - `habitat-server` active；服务器本机与服务器自检公网 `/api/health` 均返回 `{"ok":true}`；`reading.daily.swapped` 正确 JSON 请求返回 201。
 - 首页切换到 `assets/index-X9zoWOm1.js`；生产 bundle 已检出 `每日品读`、`daily-reading`、`dailyReadings`、`reading.daily.swapped` 与 `reading-excerpt` 标记。
 - 线上临时验收事件已精确清理；本轮未启动浏览器 CDP，以服务端自检与线上 bundle 验收为准。
+
+### 2026-09-28 · T-122 · 每日品读模块收口（本地）
+
+- 每日品读复用共读段落锚点，补齐用户 / 小栖身份批注；小栖回应由服务端当前主聊天 Provider 生成，Provider 不可用时返回明确错误。
+- 片段、用户批注、小栖批注可分别收藏，收藏快照保留作品、作者、段落与来源；新增 `daily-reading` 主屏 Widget，只展示短摘要并回链模块页。
+- 历史支持书名 / 作者 / 片段搜索与二次确认删除；新增 `reading.daily.comment` Life 事件与 `POST /api/reading/daily/comment`。
+- `probe:reading-life` 14/14，mock Provider 端点成功 / 失败分支、两端 typecheck、前端 build、验收脚本语法与 diff check 通过；独立浏览器 targeted e2e 8/8。

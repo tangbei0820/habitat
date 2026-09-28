@@ -3418,3 +3418,22 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 客户端提示 | 本轮未启动浏览器 CDP；线上 bundle / 服务端自检通过，不冒充本机浏览器回归通过。 |
 
 **阶段边界**：本阶段到此停止；PDF / EPUB / 网络文学来源、AI 主动批注 / 回复、每日品读 Widget、历史搜索 / 删除、跨设备同步留在后续任务。
+
+### T-122 · 2026-09-28 · V2-D 每日品读模块收口：双方批注、收藏、Widget 与历史管理 —— **完成（本地）**
+
+**范围**：在 T-120 的片段闭环上完成 PRODUCT_SPEC §3.12 的核心交互；继续复用 `ReadingBookState.annotations`、`Bookmark`、`HomeWidget` 与 Life 事件，不引入平行品读笔记表。
+
+| 交付 | 说明 |
+| --- | --- |
+| 双方批注 | 用户批注与小栖回应都写回原书同一段落锚点，使用 `author=user|companion` 区分；小栖通过服务端主聊天 Provider 生成短回应，未配置 Provider 时明确失败，不伪造 AI 内容。 |
+| 收藏与来源 | 片段继续使用 `reading-excerpt`；用户 / 小栖批注新增 `reading-annotation` 独立收藏，保存作品、作者、段落、批注身份与来源回链。 |
+| 首页 Widget | 新增 `daily-reading` Widget，只引用 `DailyReadingEntry.id`，主屏仅展示短摘要并回链每日品读页；换段时同步当前引用，删除引用失效时诚实隐藏。 |
+| 历史 | 支持按书名 / 作者 / 片段搜索，二次确认删除历史选择；删除只移除选择事实，不删除原书、批注或已经保存的收藏快照。 |
+| Life / API | 新增 `POST /api/reading/daily/comment`；新增 `reading.daily.comment` 与 `reading-annotation` 收藏目标，时间线保留 `annotationAuthor`。 |
+| 验收 | `probe:reading-life` **14/14**；mock Provider 实测小栖回应端点 200 与无 Provider 明确错误；两端 typecheck、前端 build、verify-home / verify-export 语法检查、`git diff --check`；独立浏览器 targeted e2e **8/8**（片段、双方批注、批注收藏、Widget、换段历史、搜索、删除）。 |
+
+**明确延期**：PDF / EPUB / 网络文学来源、跨设备同步、批注线程 / 编辑、Widget 拖拽编排仍归共读 / Home 后续任务；不在本批扩展阅读器范围。
+
+### T-123 · 2026-09-28 · V2-D 每日品读模块收口部署 VPS —— **待部署**
+
+**范围**：部署 T-122 的每日品读模块收口到 `https://habitat.beiyan.cc`；保留生产 `.env` / SQLite，完成备份、重启、健康、静态资源与新端点验收后停止本阶段。

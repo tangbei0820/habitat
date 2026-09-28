@@ -116,6 +116,15 @@ async function clickButton(label) {
   })()`)
 }
 
+async function clickSelector(selector) {
+  return evaluate(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)})
+    if (!(element instanceof HTMLElement)) return false
+    element.click()
+    return true
+  })()`)
+}
+
 const results = []
 function check(label, ok, detail = '') {
   results.push(ok)
@@ -194,7 +203,7 @@ await clickSelector('[data-testid="feed-submit"]')
 await waitFor(`document.body.innerText.includes('第一条朋友圈动态')`, '朋友圈动态落地')
 check('朋友圈可发布文字动态', true)
 await clickButton('编辑')
-await setValue('textarea', '第一条朋友圈动态（已编辑）')
+await setValue('textarea:not([data-testid="feed-draft"])', '第一条朋友圈动态（已编辑）')
 await clickButton('保存')
 await waitFor(`document.body.innerText.includes('第一条朋友圈动态（已编辑）')`, '朋友圈编辑落地')
 check('朋友圈可编辑自己的动态', true)
@@ -376,9 +385,23 @@ await setValue('[data-testid="daily-reading-annotation"]', '这段文字值得�
 await clickButton('保存批注')
 await waitFor(`document.body.innerText.includes('这段文字值得和小栖慢慢讨论。')`, '每日品读批注')
 check('每日品读复用原书文本锚点写批注', true)
+await clickButton('请小栖回应')
+await waitFor(`document.querySelector('[data-testid="daily-reading-annotations"]')?.innerText.includes('小栖')`, '小栖品读回应')
+check('每日品读支持小栖独立回应并复用同一段落锚点', true)
+await evaluate(`(() => { const button = [...document.querySelectorAll('[data-testid="daily-reading-annotations"] button')].find((item) => item.textContent.trim() === '收藏'); if (!button) return false; button.click(); return true })()`)
+await waitFor(`document.querySelector('[data-testid="daily-reading-annotations"]')?.innerText.includes('已收藏')`, '品读批注收藏')
+check('用户与小栖批注可独立收藏', true)
+await clickButton('放到首页 Widget')
+await navigate('/home', '留言板')
+await waitFor(`document.querySelector('[data-testid="home-widget-daily-reading"]') !== null`, '每日品读首页 Widget')
+check('每日品读可放到首页 Widget 并回链', true)
+await navigate('/home/daily-reading', '每日品读')
 await clickButton('换一段')
 await waitFor(`document.querySelector('[data-testid="daily-reading-history"]')?.innerText.includes('2 段')`, '每日品读历史')
 check('每日品读支持换一段并保留历史', true)
+await setValue('#daily-reading-search', '验收共读')
+await waitFor(`document.querySelector('[data-testid="daily-reading-history"]')?.innerText.includes('验收共读')`, '品读历史搜索')
+check('每日品读历史支持按书名检索', true)
 await waitFor(`(async () => { const month = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit' }).format(new Date()); const summary = await fetch('/api/life/month?month=' + month).then((response) => response.ok ? response.json() : null); if (!summary) return false; for (const day of summary.days) { if (!day.eventCount) continue; const detail = await fetch('/api/life/day/' + day.dayKey).then((response) => response.ok ? response.json() : null); if (detail?.events?.some((event) => event.eventType === 'reading.opened' && event.metricsJson.bookTitle === '验收共读')) return true; } return false; })()`, '共读行为投影到 Life')
 check('阅读打开行为进入 Life 日期明细', true)
 await clickButton('← 回到书架')

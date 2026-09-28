@@ -221,7 +221,7 @@ function looksLikeHomeWidget(value: unknown): value is HomeWidget {
     isRecord(value) &&
     typeof value.id === 'string' &&
     value.type === 'home-widget' &&
-    (value.kind === 'board' || value.kind === 'countdown')
+    (value.kind === 'board' || value.kind === 'countdown' || value.kind === 'daily-reading')
   )
 }
 
@@ -286,7 +286,7 @@ function looksLikeWishlistItem(value: unknown): value is WishlistItem {
 }
 
 function normalizeBoardWidgetScope(value: unknown, version: number, kind: HomeWidget['kind']): BoardWidgetScope | null {
-  if (kind === 'countdown') return null
+  if (kind !== 'board') return null
   // v15 及更早的备份没有范围字段；兼容为「最近 3 条」。
   if (version < 16 || value === undefined) return { kind: 'recent' }
   if (!isRecord(value) || typeof value.kind !== 'string') throw new Error('备份内容损坏：留言 Widget 范围无效')
@@ -329,7 +329,7 @@ function looksLikeBookmark(value: unknown): value is Bookmark {
     typeof value.title !== 'string' ||
     (value.note !== null && typeof value.note !== 'string')
   ) return false
-  const targetTypes = ['external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'reading-excerpt', 'music-track', 'study-record']
+  const targetTypes = ['external-link', 'chat-message', 'diary', 'moment', 'artwork', 'photo', 'reading-note', 'reading-excerpt', 'reading-annotation', 'music-track', 'study-record']
   if (!targetTypes.includes(value.targetType)) return false
   if (value.tags !== undefined && (!Array.isArray(value.tags) || value.tags.length > 12 || value.tags.some((tag) => typeof tag !== 'string' || tag.trim() === '' || tag.trim().length > 20))) return false
   if (value.targetType !== 'external-link') return true

@@ -6,6 +6,7 @@ import { dayDistance, distanceLabel, nextOccurrenceDate } from './countdownDays'
 
 type BoardView = Extract<HomeWidgetView, { kind: 'board' }>
 type CountdownView = Extract<HomeWidgetView, { kind: 'countdown' }>
+type DailyReadingView = Extract<HomeWidgetView, { kind: 'daily-reading' }>
 
 function cardStyle() {
   return { borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }
@@ -73,6 +74,20 @@ function CountdownWidget({ view }: { view: CountdownView }) {
   )
 }
 
+/** 每日品读 Widget 只展示短摘要；完整片段与双方批注留在模块页。 */
+function DailyReadingWidget({ view }: { view: DailyReadingView }) {
+  return (
+    <Link to={`/home/daily-reading#${encodeURIComponent(view.entry.id)}`} data-testid="home-widget-daily-reading" className="rounded-xl border p-4" style={cardStyle()}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium" style={{ color: 'var(--accent-strong)' }}>每日品读</span>
+        <IconChevronRight size={13} style={{ color: 'var(--text-secondary)' }} />
+      </div>
+      <p className="mt-2 line-clamp-2 text-sm leading-6">“{view.entry.text}”</p>
+      <p className="mt-2 truncate text-xs" style={{ color: 'var(--text-secondary)' }}>《{view.entry.bookTitle}》 · {view.entry.author ?? '作者未标注'}</p>
+    </Link>
+  )
+}
+
 /**
  * 主屏 Widget 承载区（SPEC §1.4 / §5.2）。
  *
@@ -96,8 +111,10 @@ export function HomeWidgets() {
       {views.map((view) =>
         view.kind === 'board' ? (
           <BoardWidget key={view.id} view={view} />
-        ) : (
+        ) : view.kind === 'countdown' ? (
           <CountdownWidget key={view.id} view={view} />
+        ) : (
+          <DailyReadingWidget key={view.id} view={view} />
         ),
       )}
     </section>

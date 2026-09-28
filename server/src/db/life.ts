@@ -191,6 +191,7 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
     const book = bookTitle ? `《${bookTitle}》` : '书籍'
     if (row.eventType === 'reading.daily.swapped') title = `换了一段品读 · ${book}`
     else if (row.eventType === 'reading.daily.annotation') title = `写下品读批注 · ${book}`
+    else if (row.eventType === 'reading.daily.comment') title = `小栖回应品读 · ${book}`
     else if (row.eventType === 'reading.opened') title = `打开 ${book}`
     else if (row.eventType === 'reading.progress') {
       title = `阅读 ${book}`
@@ -260,6 +261,7 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
       diary: '日记',
       'reading-note': '共读',
       'reading-excerpt': '每日品读',
+      'reading-annotation': '品读批注',
       'music-track': '音乐',
       'study-record': '学习记录',
     }

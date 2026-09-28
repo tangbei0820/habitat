@@ -35,6 +35,7 @@ const events = [
   { eventType: 'reading.vocabulary', bookId, bookTitle, paragraphIndex: 2 },
   { eventType: 'reading.daily.swapped', bookId, bookTitle, paragraphIndex: 1, mode: 'daily' },
   { eventType: 'reading.daily.annotation', bookId, bookTitle, paragraphIndex: 1, mode: 'daily' },
+  { eventType: 'reading.daily.comment', bookId, bookTitle, paragraphIndex: 1, mode: 'daily', annotationAuthor: 'companion' },
 ]
 
 console.log(`\n=== Reading → Life probe (${base}) ===`)
@@ -53,6 +54,7 @@ try {
   check('共读与每日品读事件可从 Life 日期下钻读回', detail.status === 200 && projected.length === events.length)
   check('事件保留书名与稳定段落索引', record(record(projected.find((item) => record(item).eventType === 'reading.progress')).metricsJson).bookTitle === bookTitle && record(record(projected.find((item) => record(item).eventType === 'reading.progress')).metricsJson).paragraphIndex === 2)
   check('每日品读事件保留 daily 模式', record(record(projected.find((item) => record(item).eventType === 'reading.daily.swapped')).metricsJson).mode === 'daily')
+  check('小栖回应事件保留 companion 批注身份', record(record(projected.find((item) => record(item).eventType === 'reading.daily.comment')).metricsJson).annotationAuthor === 'companion')
 
   const badType = await request('/api/life/events/reading', { method: 'POST', headers, body: JSON.stringify({ eventType: 'reading.nope', bookId, bookTitle }) })
   check('拒绝未知共读事件类型', badType.status === 400)

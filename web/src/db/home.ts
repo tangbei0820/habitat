@@ -1068,7 +1068,7 @@ export async function deleteReadingVocabulary(id: string, vocabularyId: string):
   return next
 }
 
-export async function addReadingAnnotation(id: string, paragraphIndex: number, text: string, note: string): Promise<ReadingNote> {
+export async function addReadingAnnotation(id: string, paragraphIndex: number, text: string, note: string, author: ReadingAnnotation['author'] = 'user'): Promise<ReadingNote> {
   const item = await db.readingNotes.get(id)
   if (item === undefined) throw new Error('这本书已经不存在')
   const reader = getReadingBook(item)
@@ -1077,7 +1077,7 @@ export async function addReadingAnnotation(id: string, paragraphIndex: number, t
   const highlight = requiredText(text, '划线内容').slice(0, 500)
   const annotation: ReadingAnnotation = {
     id: nowId('reading-annotation'), paragraphIndex, text: highlight,
-    note: note.trim().slice(0, 2000), author: 'user', createdAt: Date.now(),
+    note: note.trim().slice(0, 2000), author, createdAt: Date.now(),
   }
   const next: ReadingNote = {
     ...item,
@@ -1158,6 +1158,35 @@ export async function createReadingExcerptBookmark(entry: DailyReadingEntry): Pr
   return item
 }
 
+export async function createReadingAnnotationBookmark(entry: DailyReadingEntry, annotation: ReadingAnnotation): Promise<Bookmark> {
+  const existing = await db.bookmarks.where('[targetType+targetId]').equals(['reading-annotation', annotation.id]).first()
+  if (existing !== undefined) throw new Error('这条品读批注已经收藏过了')
+  const at = Date.now()
+  const authorLabel = annotation.author === 'companion' ? '小栖' : '你'
+  const item: Bookmark = {
+    id: nowId('bookmark'), type: 'bookmark', targetType: 'reading-annotation', targetId: annotation.id,
+    title: `《${entry.bookTitle}》的${authorLabel}品读批注`, note: annotation.note || annotation.text,
+    categoryId: null, tags: [], sourceId: entry.id,
+    metadata: {
+      sourceModule: 'home-daily-reading', sourceObjectType: 'reading-annotation', sourceEntryId: entry.id,
+      sourceBookId: entry.sourceBookId, paragraphIndex: entry.paragraphIndex, bookTitle: entry.bookTitle,
+      author: entry.author, annotationAuthor: annotation.author, annotationId: annotation.id,
+      sourceCreatedAt: annotation.createdAt,
+    }, createdAt: at, updatedAt: at,
+  }
+  try {
+    await db.bookmarks.add(item)
+  } catch (err) {
+    if (isConstraintError(err)) throw new Error('这条品读批注已经收藏过了')
+    throw err
+  }
+  return item
+}
+
+export async function deleteDailyReading(id: string): Promise<void> {
+  await db.dailyReadings.delete(id)
+}
+
 export async function listMusicTracks(): Promise<MusicTrack[]> {
   return db.musicTracks.orderBy('updatedAt').reverse().toArray()
 }
@@ -1231,6 +1260,7 @@ export const HOME_WIDGET_BOARD_LIMIT = 3
 export type HomeWidgetView =
   | { kind: 'board'; id: string; createdAt: number; scope: BoardWidgetScope; notes: Moment[] }
   | { kind: 'countdown'; id: string; createdAt: number; day: CountdownDay }
+  | { kind: 'daily-reading'; id: string; createdAt: number; entry: DailyReadingEntry }
 
 /** 主屏 Widget 用的「最近 N 条」（由服务端切片，不把整表拉回来）；留言板模块页用全量 `listMoments()` */
 async function recentMoments(limit: number): Promise<Moment[]> {
@@ -1277,6 +1307,13 @@ export async function listHomeWidgetViews(): Promise<HomeWidgetView[]> {
         scope,
         notes,
       })
+      continue
+    }
+    if (widget.kind === 'daily-reading') {
+      if (widget.refId === null) continue
+      const entry = await db.dailyReadings.get(widget.refId)
+      if (entry === undefined) continue
+      views.push({ kind: 'daily-reading', id: widget.id, createdAt: widget.createdAt, entry })
       continue
     }
     if (widget.refId === null) continue

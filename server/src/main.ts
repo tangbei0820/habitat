@@ -33,6 +33,7 @@ import { registerAutomationRoutes } from './routes/automation.js'
 import { registerLifeRoutes } from './routes/life.js'
 import { registerMediaRoutes } from './routes/media.js'
 import { registerStudyRoutes } from './routes/study.js'
+import { registerReadingRoutes } from './routes/reading.js'
 import { registerListeningRoutes } from './routes/listening.js'
 import { registerToolRoutes } from './routes/tools.js'
 import { registerWorldbookRoutes } from './routes/worldbook.js'
@@ -123,6 +124,7 @@ registerChatRoutes(app, llmRegistry, stateProvider, memoryProvider, capabilitySe
 registerCallRoutes(app)
 registerMediaRoutes(app, llmRegistry)
 registerStudyRoutes(app, llmRegistry)
+registerReadingRoutes(app, llmRegistry)
 registerListeningRoutes(app)
 registerToolRoutes(app, gateway)
 const automationService = new AutomationService(llmRegistry, stateProvider, memoryProvider, app.log)
