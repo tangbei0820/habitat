@@ -1097,3 +1097,9 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 日记页只呈现 `author=companion` 的小栖日记封面、已开放正文 / 片段与申请状态，不再把用户个人日记混入 AI 私密空间。
 - 移除页面上的用户新建、编辑、删除表单；保留整篇 / 片段请求查看、申请历史与服务端权限过滤。
 - 不改 Dexie / SQLite schema；用户日记 REST API 与迁移兼容能力保留。两端 typecheck、前端 build、`git diff --check` 通过；浏览器 CDP 未启动，未冒充浏览器回归通过。
+
+### 2026-09-28 · T-113 · AI 私密日记入口收口部署 VPS（生产）
+
+- 本地提交 `1265a0c` 已部署到 `https://habitat.beiyan.cc`，生产 `.env` / SQLite 未覆盖，重启前备份为 `habitat.db.bak-20260928-1265a0c`。
+- `habitat-server` active；本地 `127.0.0.1:3000` 与公网 `/api/health` 均返回 `{"ok":true}`；首页切换到 `index-DV3_8HYC.js`。
+- 生产 bundle 已检出 `diary-ai-only` 与“请求查看”入口标记；日记富文本 / 图片与时间线未在本批展开。

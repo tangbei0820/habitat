@@ -3287,3 +3287,16 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、`npm run build`、`git diff --check`；脚本语法检查通过。浏览器 CDP 未启动，未冒充浏览器回归通过。
 
 **明确延期**：日记富文本 / 图片 / 时间线、封面编辑、批量授权与移动端视觉细节；继续留在后续 Home 批次。
+
+### T-113 · 2026-09-28 · V2-A Home 基础模块第十阶段部署 VPS —— **完成（生产）**
+
+**范围**：部署 T-112 AI 私密日记入口收口到 `https://habitat.beiyan.cc`；保留生产 `.env` / SQLite，不进入日记富媒体或其它 Home 模块。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `1265a0c` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与 `.workbuddy`。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-1265a0c`；生产 SQLite 与 `.env` 未被部署包覆盖。 |
+| 服务状态 | `habitat-server` active；本地监听 `127.0.0.1:3000` 与公网 `/api/health` 均返回 `{"ok":true}`。 |
+| 公网验收 | 首页已引用 `index-DV3_8HYC.js`；生产 bundle 含 `diary-ai-only`、`请求查看` 等新入口标记。 |
+
+**阶段边界**：本阶段到此停止；日记富文本 / 图片 / 时间线、批量授权、Widget 编排与其它 Living Apps 留在后续任务。
