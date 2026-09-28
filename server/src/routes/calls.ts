@@ -4,6 +4,8 @@ import { appendCallTurn, answerCall, createCall, finishCall, getCall, listCallTu
 import { appendEventLog, createNotification } from '../db/activity.js'
 import { RequestError } from '../lib/errors.js'
 import { publishCallEvent, subscribeAllCalls, subscribeCall } from '../services/call-events.js'
+import { sendWebPush } from '../services/push.js'
+import { notificationDeliveryAllowed } from '../db/notification-preferences.js'
 
 type IdParams = { id: string }
 type ChatQuery = { chatSessionId?: string }
@@ -71,12 +73,14 @@ export function registerCallRoutes(app: FastifyInstance): void {
   app.post('/api/calls/ring', async (request, reply) => {
     const body = bodyObject(request.body)
     const chatSessionId = requiredId(body.chatSessionId, 'chatSessionId')
-    const call = publishState(createCall(chatSessionId, 'companion'))
-    createNotification('proactive', '小栖来电', '小栖正在邀请你接听通话', { callId: call.id, chatSessionId })
+    const call = createCall(chatSessionId, 'companion')
+    if (notificationDeliveryAllowed('call').allowed) publishState(call)
+    const notice = createNotification('proactive', '小栖来电', '小栖正在邀请你接听通话', { callId: call.id, chatSessionId, category: 'call' })
+    void sendWebPush(notice).catch((error: unknown) => app.log.warn({ err: error }, '来电 Web Push 发送失败，站内通知已保留'))
     return reply.status(201).send({ call })
   })
 
-  app.get('/api/calls/inbox', async (_request, reply) => reply.send({ calls: listIncomingCalls() }))
+  app.get('/api/calls/inbox', async (_request, reply) => reply.send({ calls: notificationDeliveryAllowed('call').allowed ? listIncomingCalls() : [] }))
 
   app.get<{ Querystring: ChatQuery }>('/api/calls', async (request, reply) => {
     const chatSessionId = requiredId(request.query.chatSessionId, 'chatSessionId')

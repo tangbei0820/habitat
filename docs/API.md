@@ -786,6 +786,8 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | `GET /api/notifications?limit=` | 主动唤醒先进入服务端通知收件箱，不伪造前端 Dexie 聊天消息 |
 | `PATCH /api/notifications/:id/read` | 标记通知已读 |
 | `PATCH /api/notifications/read-all` | 原子标记全部未读通知为已读，返回 `updated` 数量 |
+| `GET /api/notifications/preferences` | 返回总开关、分类开关与 Quiet Hours；不改变通知收件箱 |
+| `PATCH /api/notifications/preferences` | 局部更新 `{ enabled?, quietHoursEnabled?, quietStart?, quietEnd?, categories? }`；时间为 `HH:mm` |
 | `GET /api/solitude?limit=` | AI 私有的独处记录；梦卡以 `metadata.kind="dream"` 区分 |
 
 调度器默认每分钟检查。Eventide 状态即使主动总开关关闭也可推进；真正的 wake / solitude / dream
@@ -813,6 +815,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | `GET /api/push/status` | VAPID 是否配置、公钥、订阅数与最近错误 |
 | `PUT /api/push/subscription` | 保存浏览器 `PushSubscription`；VAPID 未配置时拒绝 |
 | `DELETE /api/push/subscription` | 按 endpoint 取消订阅 |
+| `POST /api/push/test` | 向当前浏览器订阅发送一次测试通知；不写入站内收件箱，返回 `sent / skipped / reason` |
 
 价格单位是**分 / 百万 Token**。每条 UsageRecord 在写入时绑定当时适用的最新快照，费用按分向上取整；
 新增快照会给符合有效期、仍为 `cost=null` 的历史调用补价，但不会重算已经绑定快照的历史。没有匹配价格时

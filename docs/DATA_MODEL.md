@@ -330,6 +330,7 @@ Node 收到完整成功响应后才覆盖这行。sidecar 重启不会丢周期�
 | `automation_run` | BudgetGuard 预约与结果 | LLM 调用前先写 `reserved`；并发检查把未完成预约一起计入预算 |
 | `event_log` | 状态 / 主动行为事实 | Phase 4 统计只聚合此表，不反查聊天库 |
 | `notification` | 主动唤醒与系统通知 | 主动消息先进收件箱，不直接写前端 Dexie |
+| `app_kv:notification.preferences` | 通知总开关、分类开关、Quiet Hours | 只影响 Push / 主动打扰；不删除、不覆盖 `notification` 事实 |
 | `solitude_entry` | AI 私有独处记录与梦卡 | 与通知、用户日记分库；梦卡用 metadata 标识 |
 | `wallet` | 当前余额缓存 | 只能与流水在同一事务更新，余额不得小于 0 |
 | `wallet_transaction` | 不可变钱包流水 | 每次变化保留 delta、变化后余额、原因与可选来源引用 |

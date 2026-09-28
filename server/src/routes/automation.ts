@@ -1,7 +1,8 @@
 /** Phase 3B 主动行为、通知、独处、事件日志与钱包接口。 */
+import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors.js'
-import type { AutomationPolicy } from '@shared/types.js'
+import type { AutomationPolicy, NotificationCategory, NotificationRecord } from '@shared/types.js'
 import {
   getAutomationPolicy,
   getAutomationRuntimeState,
@@ -21,6 +22,8 @@ import { getWallet, listWalletTransactions, transactWallet } from '../db/wallet.
 import { RequestError } from '../lib/errors.js'
 import { parseClock } from '../lib/time-window.js'
 import type { AutomationService } from '../services/automation.js'
+import { getNotificationPreferences, NOTIFICATION_CATEGORIES, saveNotificationPreferences, type NotificationPreferencesPatch } from '../db/notification-preferences.js'
+import { getPushStatus, sendWebPush } from '../services/push.js'
 
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -120,6 +123,36 @@ function parsePolicyPatch(raw: unknown): AutomationPolicy {
   }
 }
 
+function parseNotificationPreferencesPatch(raw: unknown): NotificationPreferencesPatch {
+  const body = record(raw)
+  const patch: NotificationPreferencesPatch = {}
+  for (const key of ['enabled', 'quietHoursEnabled'] as const) {
+    if (body[key] !== undefined) {
+      if (typeof body[key] !== 'boolean') throw new RequestError(ErrorCodes.BadRequest, `${key} 必须是布尔值`)
+      patch[key] = body[key] as boolean
+    }
+  }
+  for (const key of ['quietStart', 'quietEnd'] as const) {
+    if (body[key] !== undefined) {
+      if (typeof body[key] !== 'string') throw new RequestError(ErrorCodes.BadRequest, `${key} 必须是 HH:mm`)
+      try { parseClock(body[key]) } catch { throw new RequestError(ErrorCodes.BadRequest, `${key} 必须是合法 HH:mm`) }
+      patch[key] = body[key]
+    }
+  }
+  if (body.categories !== undefined) {
+    const rawCategories = record(body.categories)
+    const categories: Partial<Record<NotificationCategory, boolean>> = {}
+    for (const key of NOTIFICATION_CATEGORIES) {
+      if (rawCategories[key] !== undefined) {
+        if (typeof rawCategories[key] !== 'boolean') throw new RequestError(ErrorCodes.BadRequest, `categories.${key} 必须是布尔值`)
+        categories[key] = rawCategories[key] as boolean
+      }
+    }
+    patch.categories = categories
+  }
+  return patch
+}
+
 export function registerAutomationRoutes(app: FastifyInstance, service: AutomationService): void {
   app.get('/api/automation', async () => ({
     policy: getAutomationPolicy(),
@@ -158,6 +191,24 @@ export function registerAutomationRoutes(app: FastifyInstance, service: Automati
     const { id } = request.params as { id: string }
     if (!markNotificationRead(id)) throw new RequestError(ErrorCodes.NotFound, `通知 '${id}' 不存在`)
     return { ok: true }
+  })
+  app.get('/api/notifications/preferences', async () => ({ preferences: getNotificationPreferences() }))
+  app.patch('/api/notifications/preferences', async (request) => ({
+    preferences: saveNotificationPreferences(parseNotificationPreferencesPatch(request.body)),
+  }))
+  app.post('/api/push/test', async () => {
+    const status = getPushStatus()
+    const test: NotificationRecord = {
+      id: `push-test-${randomUUID()}`,
+      kind: 'system',
+      title: '栖息地测试通知',
+      body: '推送通道工作正常。这条测试不会写入通知收件箱。',
+      metadata: { category: 'task', test: true },
+      readAt: null,
+      createdAt: Date.now(),
+    }
+    const result = await sendWebPush(test, { force: true })
+    return { ...result, configured: status.configured, subscriptionCount: status.subscriptionCount }
   })
   app.get('/api/solitude', async (request) => ({
     entries: listSolitudeEntries(limitOf((request.query as Record<string, unknown>).limit, 50, 200)),

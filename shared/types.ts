@@ -1055,6 +1055,41 @@ export interface BudgetDecision {
 
 export type NotificationKind = 'proactive' | 'system' | 'wake' | 'task' | 'api-error' | 'mcp-error'
 
+/** 通知偏好分类；分类开关只约束推送 / 主动打扰，不删除站内收件箱事实。 */
+export type NotificationCategory =
+  | 'proactive'
+  | 'messageboard'
+  | 'diary'
+  | 'moment'
+  | 'countdown'
+  | 'listening'
+  | 'wake'
+  | 'task'
+  | 'relationship'
+  | 'call'
+
+export interface NotificationCategoryPreferences {
+  proactive: boolean
+  messageboard: boolean
+  diary: boolean
+  moment: boolean
+  countdown: boolean
+  listening: boolean
+  wake: boolean
+  task: boolean
+  relationship: boolean
+  call: boolean
+}
+
+export interface NotificationPreferences {
+  enabled: boolean
+  quietHoursEnabled: boolean
+  quietStart: string
+  quietEnd: string
+  categories: NotificationCategoryPreferences
+  updatedAt: number
+}
+
 export interface NotificationRecord {
   id: string
   kind: NotificationKind

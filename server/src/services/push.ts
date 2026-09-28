@@ -8,6 +8,7 @@ import {
   pushSubscriptionSummary,
   removePushSubscription,
 } from '../db/push.js'
+import { notificationCategoryOf, notificationDeliveryAllowed } from '../db/notification-preferences.js'
 
 const publicKey = process.env.WEB_PUSH_PUBLIC_KEY?.trim() ?? ''
 const privateKey = process.env.WEB_PUSH_PRIVATE_KEY?.trim() ?? ''
@@ -31,21 +32,35 @@ export function getPushStatus(): PushStatus {
   }
 }
 
-export async function sendWebPush(notification: NotificationRecord): Promise<void> {
-  if (!getPushStatus().configured) return
+export interface PushSendResult {
+  sent: number
+  skipped: boolean
+  reason: string | null
+}
+
+export async function sendWebPush(notification: NotificationRecord, options: { force?: boolean } = {}): Promise<PushSendResult> {
+  if (!getPushStatus().configured) return { sent: 0, skipped: true, reason: '服务端尚未配置 Web Push VAPID' }
+  if (options.force !== true) {
+    const decision = notificationDeliveryAllowed(notificationCategoryOf(notification))
+    if (!decision.allowed) return { sent: 0, skipped: true, reason: decision.reason }
+  }
   const payload = JSON.stringify({
     title: notification.title,
     body: notification.body,
     tag: notification.id,
     url: '/life?tab=notifications',
   })
-  await Promise.all(listPushSubscriptions().map(async (subscription) => {
+  let sent = 0
+  const subscriptions = listPushSubscriptions()
+  if (subscriptions.length === 0) return { sent: 0, skipped: true, reason: '当前没有已启用的浏览器订阅' }
+  await Promise.all(subscriptions.map(async (subscription) => {
     try {
       await webpush.sendNotification({
         endpoint: subscription.endpoint,
         keys: { p256dh: subscription.p256dh, auth: subscription.auth },
       }, payload, { TTL: 60 * 60 })
       markPushSuccess(subscription.id)
+      sent += 1
     } catch (error) {
       const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
         ? Number((error as { statusCode?: unknown }).statusCode)
@@ -54,4 +69,5 @@ export async function sendWebPush(notification: NotificationRecord): Promise<voi
       else markPushFailure(subscription.id, error instanceof Error ? error.message : String(error))
     }
   }))
+  return { sent, skipped: false, reason: null }
 }

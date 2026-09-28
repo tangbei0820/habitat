@@ -23,6 +23,8 @@ import { createCompanionMoment, updateCompanionMoment } from '../db/moment.js'
 import { appendEventLog, createNotification } from '../db/activity.js'
 import { createCall } from '../db/calls.js'
 import { publishCallEvent } from '../services/call-events.js'
+import { sendWebPush } from '../services/push.js'
+import { notificationDeliveryAllowed } from '../db/notification-preferences.js'
 import { dayKeyOf } from '../db/usage.js'
 import { decideEvent, requestToolConfirm } from '../services/event-inbox.js'
 import { searchWeb } from '../lib/web-fetch.js'
@@ -432,8 +434,9 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
         const chatSessionId = runtime.chatSessionId?.trim() ?? ''
         if (chatSessionId === '') return failure(tool, '当前轮没有绑定聊天会话，无法发起通话')
         const call = createCall(chatSessionId, 'companion')
-        publishCallEvent({ type: 'state', call })
-        createNotification('proactive', '小栖来电', '小栖正在邀请你接听通话', { callId: call.id, chatSessionId })
+        if (notificationDeliveryAllowed('call').allowed) publishCallEvent({ type: 'state', call })
+        const notice = createNotification('proactive', '小栖来电', '小栖正在邀请你接听通话', { callId: call.id, chatSessionId, category: 'call' })
+        void sendWebPush(notice).catch(() => undefined)
         appendEventLog('call.ring', { callId: call.id, chatSessionId }, call.id)
         return {
           ok: true,

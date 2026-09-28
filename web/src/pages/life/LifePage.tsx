@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import type { LifeLedgerView, LifeMonthSummary, LifeRuntimeView, NotificationRecord, PushStatus, RuntimeEvent } from '@shared/types'
+import type { LifeLedgerView, LifeMonthSummary, LifeRuntimeView, NotificationPreferences, NotificationRecord, PushStatus, RuntimeEvent } from '@shared/types'
 import { listEvents } from '../../db/events'
 import { weekListenSeconds } from '../../db/listen'
 import { listDiaries } from '../../db/home'
@@ -10,8 +10,8 @@ import {
 } from '../../components/qixi/Icons'
 import {
   addPriceSnapshot, addWalletTransaction, loadLifeDay, loadLifeLedger, loadLifeMonth,
-  loadLifeRuntime, loadNotifications, loadPushStatus, loadSurfFeeds, markAllNotificationsRead,
-  markNotificationRead, runAutomationCheck, saveSurfFeeds, type LifeDayDetail,
+  loadLifeRuntime, loadNotificationPreferences, loadNotifications, loadPushStatus, loadSurfFeeds, markAllNotificationsRead,
+  markNotificationRead, runAutomationCheck, saveNotificationPreferences, saveSurfFeeds, sendPushTest, type LifeDayDetail,
 } from '../../features/life/api'
 import { ApiRequestError } from '../../lib/api'
 import { browserPushSupported, currentPushSubscription, disablePush, enablePush } from '../../features/life/push'
@@ -119,12 +119,51 @@ function LedgerView({ month }: { month: string }) {
 }
 
 function NotificationsView() {
-  const [items, setItems] = useState<NotificationRecord[] | null>(null); const [push, setPush] = useState<PushStatus | null>(null); const [subscribed, setSubscribed] = useState(false); const [error, setError] = useState<string | null>(null)
-  const refresh = useCallback(async () => { const [notifications, status] = await Promise.all([loadNotifications(), loadPushStatus()]); setItems(notifications); setPush(status); setSubscribed((await currentPushSubscription()) !== null) }, [])
+  const [items, setItems] = useState<NotificationRecord[] | null>(null)
+  const [push, setPush] = useState<PushStatus | null>(null)
+  const [subscribed, setSubscribed] = useState(false)
+  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const categoryLabels: Array<[keyof NotificationPreferences['categories'], string]> = [
+    ['proactive', 'AI 主动消息'], ['messageboard', '留言板'], ['diary', '日记授权结果'], ['moment', '朋友圈互动'],
+    ['countdown', '倒数日'], ['listening', '一起听'], ['wake', 'Wake'], ['task', '工具任务完成'], ['relationship', '关系恢复申请'], ['call', '通话邀请'],
+  ]
+  const refresh = useCallback(async () => {
+    const [notifications, status, prefs] = await Promise.all([loadNotifications(), loadPushStatus(), loadNotificationPreferences()])
+    setItems(notifications); setPush(status); setPreferences(prefs); setSubscribed((await currentPushSubscription()) !== null)
+  }, [])
   useEffect(() => { void refresh().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))) }, [refresh])
-  async function togglePush() { setError(null); try { if (subscribed) await disablePush(); else if (push?.publicKey) await enablePush(push.publicKey); await refresh() } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) } }
+  async function togglePush() {
+    setError(null); setNotice(null)
+    try { if (subscribed) await disablePush(); else if (push?.publicKey) await enablePush(push.publicKey); await refresh() }
+    catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+  }
+  async function savePreferences() {
+    if (preferences === null) return
+    setSaving(true); setError(null); setNotice(null)
+    try { setPreferences(await saveNotificationPreferences(preferences)); setNotice('通知偏好已保存') }
+    catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+    finally { setSaving(false) }
+  }
+  async function testPush() {
+    setTesting(true); setError(null); setNotice(null)
+    try {
+      const result = await sendPushTest()
+      setNotice(result.sent > 0 ? '测试通知已发送' : (result.reason ?? '测试通知未送达'))
+      await refresh()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+    finally { setTesting(false) }
+  }
   const report = (reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))
-  return <div className="space-y-3"><ErrorLine value={error}/><Panel><div className="flex items-center justify-between"><div><h2 className="font-medium">Web Push</h2><p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{!browserPushSupported() ? '当前浏览器不支持' : !push?.configured ? '服务端尚未配置 VAPID，站内通知仍可用' : subscribed ? '已启用' : '可选启用'}</p>{push?.lastError && <p className="mt-1 text-xs" style={{ color: 'var(--danger)' }}>最近失败：{push.lastError}</p>}</div><button disabled={!browserPushSupported() || !push?.configured} onClick={() => void togglePush()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">{subscribed ? '关闭' : '启用'}</button></div></Panel><div className="flex items-center justify-between"><span className="text-sm">未读 {items?.filter((item) => item.readAt === null).length ?? 0}</span><button className="text-sm underline" onClick={() => void markAllNotificationsRead().then(refresh).catch(report)}>全部已读</button></div><LoadingOrEmpty loading={items === null && error === null} empty={items?.length === 0}>{items?.map((item) => <button key={item.id} className="block w-full text-left" onClick={() => item.readAt === null && void markNotificationRead(item.id).then(refresh).catch(report)}><Panel className={item.readAt === null ? 'border-l-4' : 'opacity-70'}><div className="flex justify-between gap-3"><strong>{item.title}</strong><small>{dateTime(item.createdAt)}</small></div><p className="mt-1 whitespace-pre-wrap text-sm">{item.body}</p></Panel></button>)}</LoadingOrEmpty></div>
+  return <div className="space-y-3"><ErrorLine value={error}/>{notice !== null && <p className="rounded-lg p-3 text-sm" style={{ color: 'var(--accent-strong)', background: 'var(--bg-subtle)' }}>{notice}</p>}
+    <Panel><div className="flex items-center justify-between gap-3"><div><h2 className="font-medium">通知偏好</h2><p className="text-xs" style={{ color: 'var(--text-secondary)' }}>只影响推送与主动打扰，站内通知仍会保留。</p></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={preferences?.enabled ?? true} disabled={preferences === null} onChange={(event) => preferences !== null && setPreferences({ ...preferences, enabled: event.target.checked })}/>总开关</label></div>
+      {preferences !== null && <><div className="mt-3 flex flex-wrap items-center gap-3 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={preferences.quietHoursEnabled} onChange={(event) => setPreferences({ ...preferences, quietHoursEnabled: event.target.checked })}/>免打扰</label><label className="flex items-center gap-2">从 <input type="time" value={preferences.quietStart} onChange={(event) => setPreferences({ ...preferences, quietStart: event.target.value })} className="rounded border bg-transparent px-2 py-1"/></label><label className="flex items-center gap-2">到 <input type="time" value={preferences.quietEnd} onChange={(event) => setPreferences({ ...preferences, quietEnd: event.target.value })} className="rounded border bg-transparent px-2 py-1"/></label></div><div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">{categoryLabels.map(([key, label]) => <label key={key} className="flex items-center gap-2"><input type="checkbox" checked={preferences.categories[key]} onChange={(event) => setPreferences({ ...preferences, categories: { ...preferences.categories, [key]: event.target.checked } })}/>{label}</label>)}</div><div className="mt-3 flex justify-end"><button disabled={saving} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" onClick={() => void savePreferences()}>{saving ? '保存中…' : '保存通知偏好'}</button></div></>}
+    </Panel>
+    <Panel><div className="flex items-center justify-between gap-3"><div><h2 className="font-medium">Web Push</h2><p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{!browserPushSupported() ? '当前浏览器不支持' : !push?.configured ? '服务端尚未配置 VAPID，站内通知仍可用' : subscribed ? '已启用' : '可选启用'}</p>{push?.lastError && <p className="mt-1 text-xs" style={{ color: 'var(--danger)' }}>最近失败：{push.lastError}</p>}</div><div className="flex gap-2"><button disabled={!browserPushSupported() || !push?.configured} onClick={() => void togglePush()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">{subscribed ? '关闭' : '启用'}</button><button disabled={!subscribed || testing} onClick={() => void testPush()} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">{testing ? '发送中…' : '发送测试通知'}</button></div></div></Panel>
+    <div className="flex items-center justify-between"><span className="text-sm">未读 {items?.filter((item) => item.readAt === null).length ?? 0}</span><button className="text-sm underline" onClick={() => void markAllNotificationsRead().then(refresh).catch(report)}>全部已读</button></div><LoadingOrEmpty loading={items === null && error === null} empty={items?.length === 0}>{items?.map((item) => <button key={item.id} className="block w-full text-left" onClick={() => item.readAt === null && void markNotificationRead(item.id).then(refresh).catch(report)}><Panel className={item.readAt === null ? 'border-l-4' : 'opacity-70'}><div className="flex justify-between gap-3"><strong>{item.title}</strong><small>{dateTime(item.createdAt)}</small></div><p className="mt-1 whitespace-pre-wrap text-sm">{item.body}</p></Panel></button>)}</LoadingOrEmpty></div>
 }
 
 /**

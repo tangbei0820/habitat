@@ -3,6 +3,7 @@ import type {
   LifeMonthSummary,
   LifeRuntimeView,
   NotificationRecord,
+  NotificationPreferences,
   PriceSnapshotRecord,
   PushStatus,
 } from '@shared/types'
@@ -77,6 +78,35 @@ export function markNotificationRead(id: string): Promise<void> {
 export function markAllNotificationsRead(): Promise<number> {
   return fetchJson<{ updated: number }>('/api/notifications/read-all', { method: 'PATCH' })
     .then((result) => result.updated)
+}
+
+export function loadNotificationPreferences(): Promise<NotificationPreferences> {
+  return fetchJson<{ preferences: NotificationPreferences }>('/api/notifications/preferences')
+    .then((result) => result.preferences)
+}
+
+export function saveNotificationPreferences(patch: {
+  enabled?: boolean
+  quietHoursEnabled?: boolean
+  quietStart?: string
+  quietEnd?: string
+  categories?: Partial<NotificationPreferences['categories']>
+}): Promise<NotificationPreferences> {
+  return fetchJson<{ preferences: NotificationPreferences }>('/api/notifications/preferences', {
+    method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(patch),
+  }).then((result) => result.preferences)
+}
+
+export interface PushTestResult {
+  sent: number
+  skipped: boolean
+  reason: string | null
+  configured: boolean
+  subscriptionCount: number
+}
+
+export function sendPushTest(): Promise<PushTestResult> {
+  return fetchJson('/api/push/test', { method: 'POST', headers: jsonHeaders, body: '{}' })
 }
 
 export function loadLifeRuntime(): Promise<LifeRuntimeView> {
