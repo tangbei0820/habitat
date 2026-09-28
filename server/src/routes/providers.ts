@@ -79,10 +79,11 @@ function parseName(raw: unknown): string {
   return name
 }
 
-function parseProvider(raw: unknown): 'openai-compat' | 'elevenlabs' {
+function parseProvider(raw: unknown): 'openai-compat' | 'elevenlabs' | 'codex-subscription' {
   if (raw === undefined || raw === 'openai-compat') return 'openai-compat'
   if (raw === 'elevenlabs') return 'elevenlabs'
-  throw new ProviderError(ErrorCodes.BadRequest, 'provider 必须是 openai-compat 或 elevenlabs')
+  if (raw === 'codex-subscription') return 'codex-subscription'
+  throw new ProviderError(ErrorCodes.BadRequest, 'provider 必须是 openai-compat、elevenlabs 或 codex-subscription')
 }
 
 function parseVoiceSettings(raw: unknown): ElevenLabsVoiceSettings | undefined {
@@ -111,12 +112,13 @@ function parseVoiceSettings(raw: unknown): ElevenLabsVoiceSettings | undefined {
 }
 
 /** 只接受 http/https；顺手去掉结尾斜杠，否则会拼出 `//chat/completions` */
-function parseBaseUrl(raw: unknown): string {
+function parseBaseUrl(raw: unknown, _provider?: 'openai-compat' | 'elevenlabs' | 'codex-subscription'): string {
   if (typeof raw !== 'string' || raw.trim() === '') {
     throw new ProviderError(ErrorCodes.BadRequest, 'baseUrl 必填')
   }
   const trimmed = raw.trim().replace(/\/+$/, '')
   let url: URL
+  if (trimmed === 'codex://local') return trimmed
   try {
     url = new URL(trimmed)
   } catch {
@@ -189,7 +191,7 @@ function parseCreateInput(raw: unknown): ApiProfileCreateInput {
   return {
     name: parseName(record.name),
     provider: parseProvider(record.provider),
-    baseUrl: parseBaseUrl(record.baseUrl),
+    baseUrl: parseBaseUrl(record.baseUrl, parseProvider(record.provider)),
     modelMap: parseModelMapInput(record.modelMap),
     ...(record.keyRef === undefined ? {} : { keyRef: parseKeyRefInput(record.keyRef) }),
     ...(record.headers === undefined ? {} : { headers: parseHeadersInput(record.headers) }),
@@ -206,7 +208,7 @@ function parseUpdateInput(raw: unknown): ApiProfileUpdateInput {
   const patch: ApiProfileUpdateInput = {}
   if (record.name !== undefined) patch.name = parseName(record.name)
   if (record.provider !== undefined) patch.provider = parseProvider(record.provider)
-  if (record.baseUrl !== undefined) patch.baseUrl = parseBaseUrl(record.baseUrl)
+  if (record.baseUrl !== undefined) patch.baseUrl = parseBaseUrl(record.baseUrl, patch.provider ?? undefined)
   if (record.modelMap !== undefined) patch.modelMap = parseModelMapInput(record.modelMap)
   if (record.keyRef !== undefined) patch.keyRef = parseKeyRefInput(record.keyRef)
   if (record.headers !== undefined) patch.headers = parseHeadersInput(record.headers)
@@ -255,13 +257,16 @@ function draftProfile(raw: unknown, registry: LlmRegistry, capability?: Provider
   const record = requireRecord(raw)
   const profileId = parseOptionalProfileId(record.profileId)
   const existing = profileId === undefined ? undefined : registry.require(profileId)
+  const provider = record.provider === undefined ? existing?.provider ?? 'openai-compat' : parseProvider(record.provider)
   const baseUrl = record.baseUrl === undefined
     ? existing?.baseUrl
-    : parseBaseUrl(record.baseUrl)
+    : parseBaseUrl(record.baseUrl, provider)
   if (baseUrl === undefined) throw new ProviderError(ErrorCodes.BadRequest, 'baseUrl 必填')
-  const provider = record.provider === undefined ? existing?.provider ?? 'openai-compat' : parseProvider(record.provider)
   if (provider === 'elevenlabs' && capability !== undefined && capability !== 'voice') {
     throw new ProviderError(ErrorCodes.BadRequest, 'ElevenLabs 连接只能绑定语音能力')
+  }
+  if (provider === 'codex-subscription' && capability !== undefined && capability !== 'chat') {
+    throw new ProviderError(ErrorCodes.BadRequest, 'Codex Subscription 只能绑定主聊天能力')
   }
   const headers = record.headers === undefined ? existing?.headers : parseHeadersInput(record.headers)
   const streamOptions = record.streamOptions === undefined
@@ -422,12 +427,15 @@ export function registerProviderRoutes(app: FastifyInstance, registry: LlmRegist
         }
         if (!sawReply) throw new ProviderError(ErrorCodes.ProviderUpstreamError, '流式请求完成，但没有返回正文')
       } else if (capability === 'voice') {
+        if (!('synthesize' in provider)) throw new ProviderError(ErrorCodes.BadRequest, 'Codex Subscription 不支持语音测试')
         const result = await provider.synthesize('这是栖息地的语音连接测试。')
         previewDataUrl = `data:${result.mimeType};base64,${Buffer.from(result.audio).toString('base64')}`
       } else if (capability === 'vision') {
+        if (!('vision' in provider)) throw new ProviderError(ErrorCodes.BadRequest, 'Codex Subscription 不支持识图测试')
         const result = await provider.vision(typeof input.dataUrl === 'string' ? input.dataUrl : TEST_IMAGE, '请用一句话描述测试图片。')
         description = result.description
       } else {
+        if (!('generate' in provider)) throw new ProviderError(ErrorCodes.BadRequest, 'Codex Subscription 不支持生图测试')
         const result = await provider.generate('A tiny warm lamp icon on a plain background')
         previewDataUrl = result.dataUrl
       }

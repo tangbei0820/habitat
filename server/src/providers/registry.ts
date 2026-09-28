@@ -26,6 +26,7 @@ import { getProfile, getSecret, listProfiles } from '../db/profiles.js'
 import { ProviderError } from './errors.js'
 import { ElevenLabsProvider } from './elevenlabs.js'
 import { OpenAICompatProvider } from './openai-compat.js'
+import { CodexAppServerProvider } from './codex-app-server.js'
 
 const PROFILES_ENV_KEY = 'HABITAT_LLM_PROFILES'
 
@@ -94,7 +95,7 @@ function parseProfile(value: unknown, index: number): { profile: ApiProfile } | 
   if (id === undefined || id === '') return { problem: `第 ${index + 1} 条缺 id` }
 
   const provider = asString(value.provider) ?? 'openai-compat'
-  if (provider !== 'openai-compat' && provider !== 'elevenlabs') {
+  if (provider !== 'openai-compat' && provider !== 'elevenlabs' && provider !== 'codex-subscription') {
     return { problem: `方案 '${id}' 的 provider='${provider}' 暂不支持` }
   }
 
@@ -211,16 +212,30 @@ export class LlmRegistry {
     return this.adapter(profile, this.resolveKey(profile).key)
   }
 
+  /** 仅用于首个 chunk 之前的自动回退；一旦 SSE 已开始，调用方不得切换上下文。 */
+  fallbackChat(primaryId: string): { profile: ApiProfilePublic; provider: LLMProvider } | null {
+    const fallbackId = this.env.HABITAT_CHAT_FALLBACK_PROFILE_ID
+    if (fallbackId === undefined || fallbackId.trim() === '' || fallbackId === primaryId) return null
+    const profile = this.require(fallbackId.trim())
+    if (profile.provider !== 'codex-subscription' && profile.modelMap.chat === undefined) return null
+    return { profile: this.toPublic(profile), provider: this.adapter(profile, this.resolveKey(profile).key) }
+  }
+
   /** Phase 5 媒体能力与聊天共用同一方案 / 凭据，但拿到完整兼容适配器。 */
   mediaProvider(id: string): OpenAICompatProvider | ElevenLabsProvider {
     const profile = this.require(id)
-    return this.adapter(profile, this.resolveKey(profile).key)
+    if (profile.provider === 'codex-subscription') {
+      throw new ProviderError(ErrorCodes.ProviderNotConfigured, 'Codex Subscription 仅支持聊天能力')
+    }
+    return profile.provider === 'elevenlabs'
+      ? new ElevenLabsProvider(profile, this.resolveKey(profile).key)
+      : new OpenAICompatProvider(profile, this.resolveKey(profile).key)
   }
 
   /** 默认业务调用按能力绑定解析；没绑定时兼容回退到旧 active profile。 */
   capabilityProvider(capability: ProviderCapability): {
     profile: ApiProfilePublic
-    provider: OpenAICompatProvider | ElevenLabsProvider
+    provider: OpenAICompatProvider | ElevenLabsProvider | CodexAppServerProvider
     binding: ProviderCapabilityBinding | null
   } | null {
     const binding = this.binding(capability)
@@ -235,7 +250,8 @@ export class LlmRegistry {
             ? fallback.modelMap.vision
             : fallback.modelMap.image
       if (fallbackModel === undefined || fallbackModel === '') return null
-      return { profile: fallback, provider: this.mediaProvider(fallback.id), binding: null }
+      if (fallback.provider === 'codex-subscription' && capability !== 'chat') return null
+      return { profile: fallback, provider: this.adapter(this.require(fallback.id), this.resolveKey(this.require(fallback.id)).key), binding: null }
     }
     const profile = this.require(binding.profileId)
     const modelMap = { ...profile.modelMap }
@@ -246,6 +262,7 @@ export class LlmRegistry {
     } else if (capability === 'vision') modelMap.vision = binding.model
     else modelMap.image = binding.model
     const resolved = { ...profile, modelMap }
+    if (resolved.provider === 'codex-subscription' && capability !== 'chat') return null
     return {
       profile: this.toPublic(resolved),
       provider: this.adapter(resolved, this.resolveKey(profile).key),
@@ -254,7 +271,7 @@ export class LlmRegistry {
   }
 
   /** 未保存草稿专用 Adapter。apiKey 不落库，也不进入任何返回值。 */
-  draftProvider(profile: ApiProfile, apiKey?: string): OpenAICompatProvider | ElevenLabsProvider {
+  draftProvider(profile: ApiProfile, apiKey?: string): OpenAICompatProvider | ElevenLabsProvider | CodexAppServerProvider {
     const key = apiKey === undefined ? this.resolveKey(profile).key : apiKey
     return this.adapter(profile, key)
   }
@@ -293,9 +310,9 @@ export class LlmRegistry {
     return { key: value, source: 'env' }
   }
 
-  private adapter(profile: ApiProfile, key: string | null): OpenAICompatProvider | ElevenLabsProvider {
-    return profile.provider === 'elevenlabs'
-      ? new ElevenLabsProvider(profile, key)
-      : new OpenAICompatProvider(profile, key)
+  private adapter(profile: ApiProfile, key: string | null): OpenAICompatProvider | ElevenLabsProvider | CodexAppServerProvider {
+    if (profile.provider === 'elevenlabs') return new ElevenLabsProvider(profile, key)
+    if (profile.provider === 'codex-subscription') return new CodexAppServerProvider(profile)
+    return new OpenAICompatProvider(profile, key)
   }
 }

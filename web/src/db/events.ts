@@ -10,7 +10,7 @@ import { fetchJson } from '../lib/api'
 
 export interface EventQuery {
   decider?: 'companion' | 'user'
-  status?: 'pending' | 'approved' | 'denied' | 'failed'
+  status?: 'pending' | 'approved' | 'denied' | 'failed' | 'expired' | 'revoked'
   limit?: number
 }
 
@@ -39,6 +39,12 @@ export function decideEvent(id: string, decision: 'approve' | 'deny'): Promise<R
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ decision }),
+  }).then((result) => result.event)
+}
+
+export function revokeEvent(id: string): Promise<RuntimeEvent> {
+  return fetchJson<{ event: RuntimeEvent }>(`/api/inbox/${encodeURIComponent(id)}/revoke`, {
+    method: 'POST',
   }).then((result) => result.event)
 }
 

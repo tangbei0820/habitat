@@ -306,7 +306,7 @@ export function registerChatRoutes(
     // —— 写响应头之前的失败都还能返回结构化 JSON（走统一错误处理器）——
     const body = parseBody(request.body)
     const resolved = body.profileId === undefined ? registry.capabilityProvider('chat') : null
-    const profile = body.profileId === undefined
+    let profile = body.profileId === undefined
       ? resolved?.profile ?? null
       : registry.toPublic(registry.require(body.profileId))
     if (profile === null) {
@@ -315,8 +315,8 @@ export function registerChatRoutes(
         '没有可用的主聊天 API：请到「设置 → Provider Center」完成主聊天卡片',
       )
     }
-    const provider = resolved?.provider ?? registry.provider(profile.id)
-    const model = body.model ?? provider.defaultModel
+    let provider = resolved?.provider ?? registry.provider(profile.id)
+    let model = body.model ?? provider.defaultModel
 
     const counterpartAt = new Date()
     noteCounterpartActivity(counterpartAt.getTime())
@@ -401,15 +401,32 @@ export function registerChatRoutes(
           ...context.messages,
         ]
     let conversation = authorizedConversation
-    let iterator = provider.streamChat(conversation, streamOptions)[Symbol.asyncIterator]()
+    let iterator = provider.streamChat(conversation, { ...streamOptions, conversationId: body.sessionId })[Symbol.asyncIterator]()
 
     let step: IteratorResult<LlmStreamChunk>
     try {
       step = await iterator.next()
     } catch (err) {
+      // 只在首个 chunk 之前回退，避免一条回复中途切换 Provider 造成重复或乱序。
+      const fallback = body.profileId === undefined ? registry.fallbackChat(profile.id) : null
+      if (fallback !== null) {
+        try {
+          profile = fallback.profile
+          provider = fallback.provider
+          model = body.model ?? provider.defaultModel
+          streamOptions.model = model
+          iterator = provider.streamChat(conversation, { ...streamOptions, conversationId: body.sessionId })[Symbol.asyncIterator]()
+          step = await iterator.next()
+        } catch (fallbackError) {
+          finishAutomationRun(chatRunId, 'failed', fallbackError instanceof Error ? fallbackError.message : String(fallbackError), null)
+          if (fallbackError instanceof ProviderError) throw fallbackError
+          throw new ProviderError(ErrorCodes.Internal, fallbackError instanceof Error ? fallbackError.message : String(fallbackError))
+        }
+      } else {
       finishAutomationRun(chatRunId, 'failed', err instanceof Error ? err.message : String(err), null)
       if (err instanceof ProviderError) throw err
       throw new ProviderError(ErrorCodes.Internal, err instanceof Error ? err.message : String(err))
+      }
     }
 
     // —— 上游已确认开工，从这里开始自己写响应 ——
@@ -532,7 +549,7 @@ export function registerChatRoutes(
 
         // 3. 带着工具结果再流一轮。这里的失败已经是「响应头发出之后」，
         //    只能作为 chat-error 事件回传（与上面的 catch 同一处置）
-        iterator = provider.streamChat(conversation, streamOptions)[Symbol.asyncIterator]()
+        iterator = provider.streamChat(conversation, { ...streamOptions, conversationId: body.sessionId })[Symbol.asyncIterator]()
         step = await iterator.next()
       }
     } catch (err) {

@@ -43,6 +43,7 @@ import {
   messageText,
   newMessage,
   recallMessage,
+  removeCandidateVersion,
   restoreMessage,
   saveContextSummary,
   selectCandidateVersion,
@@ -430,6 +431,15 @@ export function ChatWindowPage() {
     let publicThought = ''
     let providerReasoning = ''
     let failure: string | null = null
+    const orderedBlocks: MessageBlock[] = [textBlock('')]
+
+    function appendReplyText(fragment: string): void {
+      if (fragment === '') return
+      content += fragment
+      const last = orderedBlocks[orderedBlocks.length - 1]
+      if (last?.kind === 'text') last.payload.text += fragment
+      else orderedBlocks.push(textBlock(fragment, orderedBlocks.length))
+    }
 
     let draftId: string | null = null
     let lastFlush = 0
@@ -451,7 +461,7 @@ export function ChatWindowPage() {
         ...(providerReasoning === '' ? {} : { providerReasoning: capReasoning(providerReasoning) }),
       }
       const patch = {
-        blocks: [textBlock(content)],
+        blocks: orderedBlocks.map((block, index) => ({ ...block, order: index })),
         ...(Object.keys(metadata).length === 0 ? {} : { metadata }),
       }
       try {
@@ -483,7 +493,7 @@ export function ChatWindowPage() {
         },
         {
           onDelta: (delta) => {
-            if (delta.content !== undefined) content += delta.content
+            if (delta.content !== undefined) appendReplyText(delta.content)
             if (delta.reasoning !== undefined) providerReasoning += delta.reasoning
             void flushDraft()
           },
@@ -492,7 +502,7 @@ export function ChatWindowPage() {
             void flushDraft()
           },
           onToolCall: (call) => {
-            void appendToolCall(call)
+            void appendToolCall(call, draftId ?? targetId, orderedBlocks).then(() => void flushDraft(true))
           },
           onError: (err) => {
             failure = err.message
@@ -523,7 +533,13 @@ export function ChatWindowPage() {
     if (targetId !== null) {
       // 换一个：正文非空才替换，失败 / 空回复时保住旧版本，用户不会有损失
       if (content !== '') {
-        const updated = await addVersion(targetId, { content, status, publicThought, providerReasoning })
+        const updated = await addVersion(targetId, {
+          content,
+          status,
+          publicThought,
+          providerReasoning,
+          blocks: orderedBlocks.map((block, index) => ({ ...block, order: index })),
+        })
         if (updated !== null) {
           setMessages((prev) => prev.map((m) => (m.id === targetId ? updated : m)))
         }
@@ -536,7 +552,7 @@ export function ChatWindowPage() {
           ...(providerReasoning === '' ? {} : { providerReasoning: capReasoning(providerReasoning) }),
         }
         const finalPatch = {
-          blocks: [textBlock(content)],
+          blocks: orderedBlocks.map((block, index) => ({ ...block, order: index })),
           status,
           ...(Object.keys(metadata).length === 0 ? {} : { metadata }),
         }
@@ -843,12 +859,9 @@ export function ChatWindowPage() {
    * AI **自主发起**的一次工具调用（Phase 6.5）：与 Mini Terminal 的手动调用同一种块，
    * 区别是它由服务端的 `tool-call` 帧驱动，用户没点任何东西。
    *
-   * ⚠️ 已知的呈现局限（P1 处理，已记 TASKS）：卡片总是排在当轮助手气泡**之后**。
-   * 模型若在工具调用**之后**又说了话，那段话会被并进同一个气泡、显示在卡片上方，
-   * 顺序与真实发生的时间相反。要修得把「一次回复」拆成多段气泡，属于消息模型改动，
-   * 不在本轮范围。
+   * 工具卡现在直接写入当轮助手消息的 blocks，与正文共享顺序；刷新后仍能还原「正文 → 工具 → 后续正文」。
    */
-  async function appendToolCall(call: ChatToolCallPayload): Promise<void> {
+  async function appendToolCall(call: ChatToolCallPayload, hostMessageId: string | null = null, hostBlocks?: MessageBlock[]): Promise<void> {
     if (sessionId === undefined) return
     const block: ToolResultBlock = {
       kind: 'tool-result',
@@ -865,13 +878,18 @@ export function ChatWindowPage() {
       },
       order: 0,
     }
-    const message = newMessage({ sessionId, role: 'tool', blocks: [block] })
-    try {
-      await appendMessage(message)
-      setMessages((prev) => [...prev, message])
-    } catch (err) {
-      // 卡片没落库不该把回复本身作废（正文还在流）；但必须留痕，不能静默
-      log.error('工具调用卡片落库失败', err)
+    if (hostMessageId !== null && hostBlocks !== undefined) {
+      // 工具卡属于同一次助手回复：直接插入同一消息块，渲染器按 order 保留真实发生顺序。
+      hostBlocks.push({ ...block, order: hostBlocks.length })
+    } else {
+      const message = newMessage({ sessionId, role: 'tool', blocks: [block] })
+      try {
+        await appendMessage(message)
+        setMessages((prev) => [...prev, message])
+      } catch (err) {
+        // 卡片没落库不该把回复本身作废（正文还在流）；但必须留痕，不能静默
+        log.error('工具调用卡片落库失败', err)
+      }
     }
     if (call.ok && call.stickerId !== undefined) {
       let sticker
@@ -991,6 +1009,7 @@ export function ChatWindowPage() {
 
     const items: SheetAction[] = []
     if (hasCopyText) items.push({ id: 'copy', label: hasText ? '复制' : '复制转写文本' })
+    if (message.candidates.length > 1) items.push({ id: 'delete-version', label: '删除当前候选版本', danger: true })
     // 「停止朗读」是纯本地动作，离线也留着；「朗读」要打 TTS 接口，离线时干脆不给这一项
     if (!isUser && hasText) {
       const speaking = speechRef.current !== null
@@ -1043,6 +1062,17 @@ export function ChatWindowPage() {
         setEditingId(id)
         setEditDraft(messageText(message))
         break
+      case 'delete-version': {
+        const selected = message.candidates.findIndex((candidate) => candidate.selected)
+        const updated = await removeCandidateVersion(id, selected)
+        if (updated === null) {
+          setErrorText('当前候选版本无法删除，至少需要保留一版')
+        } else {
+          setMessages((prev) => prev.map((item) => item.id === id ? updated : item))
+          showToast('已删除当前候选版本')
+        }
+        break
+      }
       case 'bookmark':
         try {
           const created = await createMessageBookmark(message)

@@ -3,6 +3,17 @@
 > 本文件记「改了什么」（面向版本，按 Phase 组织）。
 > 「做到哪、还欠什么」在 `docs/TASKS.md`。
 
+## 2026-09-28 · V2-A · P0 收口
+
+### T-124 · Provider / Runtime / Chat 正确性
+
+- 新增实验性 `codex-subscription` Provider：通过 `codex app-server --stdio` 的 JSON-RPC 事件适配 Habitat 聊天流，设置页主聊天能力支持 `codex://local`；Codex 不可用于语音、识图、生图，也不读取浏览器 Cookie 或伪造 API Key。
+- 聊天首个 SSE chunk 前支持 `HABITAT_CHAT_FALLBACK_PROFILE_ID` 回退；流开始后不切换 Provider。
+- Event Inbox 增加事件截止时间、`expired` / `revoked` 终态与用户撤回端点；默认写入确认 30 分钟、日记查看 60 分钟，过期不执行副作用。
+- AI 工具卡改为同一助手消息 blocks 的有序段，刷新后保留工具调用发生顺序；候选版本可删除当前版且至少保留一版；分组新增 `sortOrder`，Dexie 升 v21、备份格式升 v19，并提供列表上下调序。
+- 验收：两端 `npm run typecheck`、前端 `npm run build`；事件收件箱 mock 端到端 59/60，唯一失败为本机未配置 Nocturne 记忆写入前提。
+- 本批未部署 VPS；Codex app-server 的多线程生命周期、取消 / 重启恢复、工具映射与可视化回退策略留待后续 Provider 阶段。
+
 ## 2026-09-28 · V2-A Home
 
 ### T-106 · 留言板分组与历史视图

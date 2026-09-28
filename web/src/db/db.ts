@@ -78,6 +78,7 @@ export interface LegacyUpload {
  * v18：留言板 Widget 补 `boardScope`（T-108）；老 Widget 统一迁移为 recent，倒数日为 null。
  * v19：学习资料（T-116）；保存用户明确提供的 TXT / Markdown 内容或外部链接，不上传浏览器文件。
  * v20：每日品读片段历史（T-120）；只保存书架段落快照与来源锚点，批注继续写回 ReadingBookState。
+ * v21：会话分组显式排序（P0）；旧分组按创建顺序补 sortOrder，之后拖拽只改这一列。
  */
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
@@ -324,6 +325,37 @@ export class HabitatDb extends Dexie {
     this.version(19).stores({ studyMaterials: 'id, subject, createdAt, updatedAt' })
     // v20：每日品读。历史记录是独立的选择事实；原书正文与批注仍复用 readingNotes。
     this.version(20).stores({ dailyReadings: 'id, createdAt, sourceBookId, [sourceBookId+paragraphIndex]' })
+    this.version(21)
+      .stores({
+        sessions: 'id, updatedAt, pinnedAt, archivedAt, groupId',
+        sessionGroups: 'id, createdAt, sortOrder',
+        messages: 'id, sessionId, createdAt, [sessionId+createdAt+id]',
+        wishlist: 'id, status, createdAt, updatedAt',
+        countdowns: 'id, targetDate, createdAt',
+        bookmarks: 'id, targetType, targetId, createdAt, categoryId, &[targetType+targetId]',
+        bookmarkCategories: 'id, createdAt',
+        artworks: 'id, category, createdAt, updatedAt',
+        photos: 'id, takenAt, createdAt, collectionId',
+        photoCollections: 'id, createdAt',
+        readingNotes: 'id, status, createdAt, updatedAt',
+        musicTracks: 'id, createdAt, updatedAt',
+        studyRecords: 'id, studiedOn, createdAt, updatedAt',
+        homeWidgets: 'id, &kind, createdAt',
+        legacyUploads: 'id, kind, createdAt',
+        listenSessions: 'id, kind, dayKey, createdAt',
+        studyTasks: 'id, dayKey, createdAt',
+        studyCards: 'id, subject, dueOn, createdAt, updatedAt',
+        stickers: 'id, category, createdAt, updatedAt',
+        studyMaterials: 'id, subject, createdAt, updatedAt',
+        dailyReadings: 'id, createdAt, sourceBookId, [sourceBookId+paragraphIndex]',
+      })
+      .upgrade(async (tx) => {
+        const groups = await tx.table('sessionGroups').orderBy('createdAt').toArray()
+        await Promise.all(groups.map((group: SessionGroup, index: number) => tx.table('sessionGroups').put({
+          ...group,
+          sortOrder: typeof group.sortOrder === 'number' ? group.sortOrder : index,
+        })))
+      })
     // 刻意没有 .upgrade()：搬迁不在版本变化时做，而在每次启动时做（见上方注释与 legacy-upload.ts）。
     // 也不在这里声明 diaries / moments —— 声明了也删不掉它们，省掉能少一份「以为删了」的误解。
   }

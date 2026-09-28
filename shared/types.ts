@@ -68,6 +68,8 @@ export interface SessionGroup extends BaseObject {
   type: 'session-group'
   name: string
   collapsed: boolean
+  /** 用户手动编排的稳定顺序；缺省数据按创建时间迁移。 */
+  sortOrder: number
 }
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
@@ -418,6 +420,10 @@ export type RuntimeEventStatus =
   | 'denied'
   /** 批准了，但执行时失败（例如正文超长）—— 与 `denied` 分开，因为原因完全不同 */
   | 'failed'
+  /** 待决超过有效期，未执行任何副作用。 */
+  | 'expired'
+  /** 决策方主动撤回待决请求，未执行任何副作用。 */
+  | 'revoked'
 
 /**
  * 事件收件箱里的一条。
@@ -455,6 +461,8 @@ export interface RuntimeEvent {
   targetId: string | null
   /** 若这是片段级日记请求，指向具体 `fragment-N`；整篇请求为 `null`。 */
   targetFragmentId: string | null
+  /** 待决卡片的截止时间；终态事件仍保留原截止时间供追溯。 */
+  expiresAt: number | null
 }
 
 /**
@@ -689,7 +697,7 @@ export interface ListenSession {
 /* ---------- LLM 方案（§6.2 ApiProfile / §7.1 多方案管理） ---------- */
 
 /** 适配器类型。§7.1：以 OpenAI Chat Completions 兼容协议为最小公分母，后续可加原生适配器 */
-export type LlmProviderKind = 'openai-compat' | 'elevenlabs'
+export type LlmProviderKind = 'openai-compat' | 'elevenlabs' | 'codex-subscription'
 
 /** Provider Center 的四个独立能力入口（PRODUCT_SPEC §9.3）。 */
 export type ProviderCapability = 'chat' | 'voice' | 'vision' | 'image'

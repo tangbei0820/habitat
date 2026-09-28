@@ -51,7 +51,11 @@ function toProfile(row: ApiProfileRow): ApiProfile {
   return {
     id: row.id,
     name: row.name,
-    provider: row.provider === 'elevenlabs' ? 'elevenlabs' : 'openai-compat',
+    provider: row.provider === 'elevenlabs'
+      ? 'elevenlabs'
+      : row.provider === 'codex-subscription'
+        ? 'codex-subscription'
+        : 'openai-compat',
     baseUrl: row.baseUrl,
     keyRef: row.keyRef,
     modelMap: row.modelMap,

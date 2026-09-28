@@ -181,6 +181,8 @@ function eventStatusLabel(event: RuntimeEvent): string {
   if (event.status === 'pending') return event.decider === 'user' ? '等你确认' : '等小栖决定'
   if (event.status === 'approved') return '已完成'
   if (event.status === 'denied') return '已拒绝'
+  if (event.status === 'expired') return '已过期'
+  if (event.status === 'revoked') return '已撤回'
   return '执行失败'
 }
 

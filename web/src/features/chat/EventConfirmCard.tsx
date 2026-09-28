@@ -16,7 +16,7 @@
 import { useEffect, useState, type ComponentType } from 'react'
 import type { RuntimeEvent } from '@shared/types'
 import { IconAlert, IconBlock, IconCheck, IconNote, type IconProps } from '../../components/qixi/Icons'
-import { decideEvent, getEvent } from '../../db/events'
+import { decideEvent, getEvent, revokeEvent } from '../../db/events'
 
 /** 状态 → 展示。`pending` 不在表里（它有独立的按钮区）。 */
 const SETTLED_LABEL: Record<
@@ -27,6 +27,8 @@ const SETTLED_LABEL: Record<
   approved: { Icon: IconCheck, text: '你已允许', color: 'var(--accent-strong)' },
   denied: { Icon: IconBlock, text: '你已拒绝', color: 'var(--text-secondary)' },
   failed: { Icon: IconAlert, text: '允许了，但没能完成', color: 'var(--danger)' },
+  expired: { Icon: IconAlert, text: '请求已过期', color: 'var(--text-secondary)' },
+  revoked: { Icon: IconBlock, text: '请求已撤回', color: 'var(--text-secondary)' },
 }
 
 export function EventConfirmCard({
@@ -64,6 +66,20 @@ export function EventConfirmCard({
     setError(null)
     try {
       setEvent(await decideEvent(eventId, approve ? 'approve' : 'deny'))
+      onDecided?.()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function revoke(): Promise<void> {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      setEvent(await revokeEvent(eventId))
       onDecided?.()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
@@ -119,6 +135,15 @@ export function EventConfirmCard({
               style={{ minHeight: 34, padding: '0 18px', fontSize: 13 }}
             >
               拒绝
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void revoke()}
+              className="btn-pill btn-ghost disabled:opacity-40"
+              style={{ minHeight: 34, padding: '0 12px', fontSize: 13 }}
+            >
+              撤回请求
             </button>
           </div>
         </>

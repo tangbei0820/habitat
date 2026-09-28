@@ -89,6 +89,8 @@ export interface StreamChatOptions {
   idleTimeoutMs?: number
   /** 调用方取消（如客户端断开） */
   signal?: AbortSignal
+  /** Habitat 会话与 Codex app-server thread 的稳定绑定键。 */
+  conversationId?: string
 }
 
 /** LLMProvider（§7.1）：业务代码只依赖这个接口，不碰具体服务商 */

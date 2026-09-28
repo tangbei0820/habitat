@@ -82,6 +82,8 @@ export function DiaryModule() {
     if (event.status === 'pending') return '等小栖决定'
     if (event.status === 'approved') return '小栖已开放'
     if (event.status === 'denied') return '小栖暂未开放'
+    if (event.status === 'expired') return '请求已过期'
+    if (event.status === 'revoked') return '请求已撤回'
     return '处理失败'
   }
 

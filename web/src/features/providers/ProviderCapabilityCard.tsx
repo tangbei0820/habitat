@@ -58,10 +58,14 @@ interface Props {
 }
 
 export function ProviderCapabilityCard({ capability, profiles, binding, busy, onChanged }: Props) {
-  const availableProfiles = capability === 'voice' ? profiles : profiles.filter((profile) => profile.provider === 'openai-compat')
+  const availableProfiles = capability === 'chat'
+    ? profiles.filter((profile) => profile.provider === 'openai-compat' || profile.provider === 'codex-subscription')
+    : capability === 'voice'
+      ? profiles.filter((profile) => profile.provider !== 'codex-subscription')
+      : profiles.filter((profile) => profile.provider === 'openai-compat')
   const initialProfile = availableProfiles.find((profile) => profile.id === binding?.profileId) ?? availableProfiles[0]
   const [profileId, setProfileId] = useState(initialProfile?.id ?? '__new__')
-  const [providerKind, setProviderKind] = useState<LlmProviderKind>(capability === 'voice' ? initialProfile?.provider ?? 'openai-compat' : 'openai-compat')
+  const [providerKind, setProviderKind] = useState<LlmProviderKind>(initialProfile?.provider ?? 'openai-compat')
   const [connectionName, setConnectionName] = useState('')
   const [baseUrl, setBaseUrl] = useState(initialProfile?.baseUrl ?? '')
   const [apiKey, setApiKey] = useState('')
@@ -118,7 +122,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
   function selectProfile(next: string): void {
     setProfileId(next)
     const profile = availableProfiles.find((item) => item.id === next)
-    setProviderKind(capability === 'voice' ? profile?.provider ?? 'openai-compat' : 'openai-compat')
+    setProviderKind(profile?.provider ?? 'openai-compat')
     setBaseUrl(profile?.baseUrl ?? '')
     setModel(capability === 'voice' ? profile?.modelMap.tts ?? '' : profile?.modelMap[capability] ?? '')
     setSecondaryModel(capability === 'voice' ? profile?.modelMap.transcription ?? '' : '')
@@ -251,7 +255,7 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
   function restore(): void {
     const profile = availableProfiles.find((item) => item.id === binding?.profileId) ?? availableProfiles[0]
     setProfileId(profile?.id ?? '__new__')
-    setProviderKind(capability === 'voice' ? profile?.provider ?? 'openai-compat' : 'openai-compat')
+    setProviderKind(profile?.provider ?? 'openai-compat')
     setBaseUrl(profile?.baseUrl ?? '')
     setModel(binding?.model ?? '')
     setSecondaryModel(binding?.secondaryModel ?? '')
@@ -303,10 +307,10 @@ export function ProviderCapabilityCard({ capability, profiles, binding, busy, on
 
       {expanded && <div id={panelId} data-testid={`provider-card-panel-${capability}`}>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="text-xs">Provider 类型{capability === 'voice' ? <select className={INPUT} style={INPUT_STYLE} value={providerKind} onChange={(event) => { const next = event.target.value as LlmProviderKind; setProviderKind(next); if (next === 'elevenlabs') { setBaseUrl('https://api.elevenlabs.io/v1'); setModel('eleven_multilingual_v2'); setVoiceStability('0.5'); setVoiceSimilarity('0.75'); setVoiceStyle('0'); setVoiceSpeakerBoost(true); setVoiceSpeed('1') } setVoices([]); setVoiceResult(null); setTestResult(null); setTestedFingerprint(null) }}><option value="openai-compat">OpenAI-compatible</option><option value="elevenlabs">ElevenLabs（原生 TTS）</option></select> : <input className={INPUT} style={INPUT_STYLE} value="OpenAI-compatible" disabled />}</label>
+        <label className="text-xs">Provider 类型{capability === 'voice' || capability === 'chat' ? <select className={INPUT} style={INPUT_STYLE} value={providerKind} onChange={(event) => { const next = event.target.value as LlmProviderKind; setProviderKind(next); if (next === 'elevenlabs') { setBaseUrl('https://api.elevenlabs.io/v1'); setModel('eleven_multilingual_v2'); setVoiceStability('0.5'); setVoiceSimilarity('0.75'); setVoiceStyle('0'); setVoiceSpeakerBoost(true); setVoiceSpeed('1') } else if (next === 'codex-subscription') { setBaseUrl('codex://local'); setApiKey(''); } setVoices([]); setVoiceResult(null); setTestResult(null); setTestedFingerprint(null) }}><option value="openai-compat">OpenAI-compatible</option>{capability === 'voice' && <option value="elevenlabs">ElevenLabs（原生 TTS）</option>}{capability === 'chat' && <option value="codex-subscription">Codex Subscription（实验性）</option>}</select> : <input className={INPUT} style={INPUT_STYLE} value="OpenAI-compatible" disabled />}</label>
         <label className="text-xs">连接<select className={INPUT} style={INPUT_STYLE} value={profileId} onChange={(event) => selectProfile(event.target.value)}><option value="__new__">+ 新建连接</option>{availableProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
         {profileId === '__new__' && <label className="text-xs">连接名称<input className={INPUT} style={INPUT_STYLE} value={connectionName} onChange={(event) => setConnectionName(event.target.value)} placeholder="例如：OpenAI 语音" /></label>}
-        <label className="text-xs">Base URL<input className={INPUT} style={INPUT_STYLE} value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder={providerKind === 'elevenlabs' ? 'https://api.elevenlabs.io/v1' : 'https://api.openai.com/v1'} /></label>
+        <label className="text-xs">Base URL<input className={INPUT} style={INPUT_STYLE} value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder={providerKind === 'elevenlabs' ? 'https://api.elevenlabs.io/v1' : providerKind === 'codex-subscription' ? 'codex://local' : 'https://api.openai.com/v1'} /></label>
         <label className="text-xs">API Key<input className={INPUT} style={INPUT_STYLE} type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={selected?.hasKey === true ? '已保存；留空沿用' : '粘贴密钥（本地服务可留空）'} /></label>
         <label className="text-xs sm:col-span-2">自定义 Headers（JSON，可选）<textarea className={INPUT} style={INPUT_STYLE} value={headersText} onChange={(event) => setHeadersText(event.target.value)} placeholder={selected?.headerNames.length ? `已保存：${selected.headerNames.join('、')}；留空沿用` : '{"X-Header":"value"}'} rows={2} /></label>
         <label className="text-xs">{meta.model}<input className={INPUT} style={INPUT_STYLE} list={`models-${capability}`} value={model} onChange={(event) => setModel(event.target.value)} placeholder="可拉取，也可手填模型 ID" /><datalist id={`models-${capability}`}>{models.map((item) => <option key={item} value={item} />)}</datalist></label>

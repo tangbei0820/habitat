@@ -14,7 +14,7 @@
  *    这不是「顺手加个校验」，它跟「拒绝不等于删掉」是同一类纪律。
  */
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, isNull, lte } from 'drizzle-orm'
 import type {
   RuntimeEvent,
   RuntimeEventDecider,
@@ -54,6 +54,7 @@ function toEvent(row: RuntimeEventRow): RuntimeEvent {
     capabilityId: row.capabilityId,
     targetId: row.targetId,
     targetFragmentId: row.targetFragmentId,
+    expiresAt: row.expiresAt,
   }
 }
 
@@ -71,6 +72,22 @@ export interface CreateEventInput {
   targetId?: string
   /** 日记片段级请求的具体片段；整篇请求或其它事件省略 */
   targetFragmentId?: string
+  /** 默认按事件种类给一个短时有效期；传 null 可用于不自动过期的系统事件。 */
+  expiresInMs?: number | null
+}
+
+const DEFAULT_EXPIRY_MS: Record<RuntimeEventKind, number> = {
+  tool_confirm: 30 * 60 * 1000,
+  diary_access_request: 60 * 60 * 1000,
+}
+
+/** 将过期视作正常终态，保留卡片与结果用于审计，绝不删除用户曾经看到的请求。 */
+export function expirePendingEvents(now = Date.now()): number {
+  return db
+    .update(runtimeEvent)
+    .set({ status: 'expired', result: '这条请求已超过有效期，没有执行任何副作用。', decidedAt: now })
+    .where(and(eq(runtimeEvent.status, 'pending'), isNotNull(runtimeEvent.expiresAt), lte(runtimeEvent.expiresAt, now)))
+    .run().changes
 }
 
 export function createEvent(input: CreateEventInput): RuntimeEvent {
@@ -89,12 +106,16 @@ export function createEvent(input: CreateEventInput): RuntimeEvent {
     targetFragmentId: input.targetFragmentId ?? null,
     createdAt: Date.now(),
     decidedAt: null,
+    expiresAt: input.expiresInMs === null
+      ? null
+      : Date.now() + (input.expiresInMs ?? DEFAULT_EXPIRY_MS[input.kind]),
   }
   db.insert(runtimeEvent).values(row).run()
   return toEvent(row)
 }
 
 export function getEvent(id: string): RuntimeEvent | null {
+  expirePendingEvents()
   const row = db.select().from(runtimeEvent).where(eq(runtimeEvent.id, id)).get()
   return row === undefined ? null : toEvent(row)
 }
@@ -119,6 +140,7 @@ export function listEvents(filter: {
   status?: RuntimeEventStatus
   limit?: number
 } = {}): RuntimeEvent[] {
+  expirePendingEvents()
   const conditions = []
   if (filter.decider !== undefined) conditions.push(eq(runtimeEvent.decider, filter.decider))
   if (filter.status !== undefined) conditions.push(eq(runtimeEvent.status, filter.status))
@@ -149,6 +171,7 @@ export function findPendingEvent(
   kind: RuntimeEventKind,
   predicate: (payload: Record<string, unknown>, event: RuntimeEvent) => boolean,
 ): RuntimeEvent | null {
+  expirePendingEvents()
   const rows = db
     .select()
     .from(runtimeEvent)
@@ -177,6 +200,7 @@ export function findPendingEvent(
  * 但每轮都重复「北北已经允许你写日记了」既费 token，又会让它以为要再写一篇。
  */
 export function listUndeliveredResults(limit = 20): RuntimeEvent[] {
+  expirePendingEvents()
   return db
     .select()
     .from(runtimeEvent)
@@ -213,4 +237,13 @@ export function settleEvent(id: string, status: SettledStatus, result: string): 
     .run().changes
   if (changed === 0) return null
   return getEvent(id)
+}
+
+export function revokeEvent(id: string, decider: RuntimeEventDecider): RuntimeEvent | null {
+  const changed = db
+    .update(runtimeEvent)
+    .set({ status: 'revoked', result: '这条请求已被撤回，没有执行任何副作用。', decidedAt: Date.now() })
+    .where(and(eq(runtimeEvent.id, id), eq(runtimeEvent.decider, decider), eq(runtimeEvent.status, 'pending')))
+    .run().changes
+  return changed === 0 ? null : getEvent(id)
 }

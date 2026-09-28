@@ -407,29 +407,42 @@ function normalizeGroupName(name: string): string {
   return trimmed
 }
 
-/**
- * 按创建顺序取全部分组。
- * 「分组排序」是 SPEC §2.1.3 的后续扩展 —— 创建顺序同样是一个全序，删组也不会让兄弟分组换位，
- * 所以在引入显式排序字段之前，它比任何「按名称排」之类的猜测都稳。
- */
+/** 按用户显式顺序取全部分组；旧库迁移时 sortOrder 由创建时间顺序补齐。 */
 export async function listSessionGroups(): Promise<SessionGroup[]> {
-  return db.sessionGroups.orderBy('createdAt').toArray()
+  const groups = await db.sessionGroups.toArray()
+  return groups.sort((a, b) => (a.sortOrder - b.sortOrder) || (a.createdAt - b.createdAt))
 }
 
 export async function createSessionGroup(name: string): Promise<SessionGroup> {
   // 刻意不查重名：一个人自用，两个「工作」总比「建不出来但不说为什么」可接受。
   // 真要加约束，得连「同名时是合并还是拒绝」一起定，不适合顺手塞一条。
   const now = Date.now()
+  const groups = await db.sessionGroups.toArray()
   const group: SessionGroup = {
     id: crypto.randomUUID(),
     type: 'session-group',
     name: normalizeGroupName(name),
     collapsed: false,
+    sortOrder: groups.reduce((max, item) => Math.max(max, item.sortOrder ?? 0), -1) + 1,
     createdAt: now,
     updatedAt: now,
   }
   await db.sessionGroups.add(group)
   return group
+}
+
+/** 只调整分组顺序，不触碰会话活跃时间；一次事务保证拖拽中途刷新不会留下重复序号。 */
+export async function reorderSessionGroups(ids: readonly string[]): Promise<SessionGroup[]> {
+  const existing = await db.sessionGroups.toArray()
+  const byId = new Map(existing.map((group) => [group.id, group]))
+  if (ids.length !== existing.length || ids.some((id) => !byId.has(id))) {
+    throw new Error('分组列表已变化，请刷新后再排序')
+  }
+  const now = Date.now()
+  await db.transaction('rw', db.sessionGroups, async () => {
+    await Promise.all(ids.map((id, index) => db.sessionGroups.update(id, { sortOrder: index, updatedAt: now })))
+  })
+  return listSessionGroups()
 }
 
 /** 改名的 `updatedAt` 跟上：分组本身就是被编辑的对象（会话那边不跟，是因为它会牵动列表排序） */
@@ -570,6 +583,8 @@ export interface AddVersionInput {
   status?: MessageStatus
   publicThought?: string
   providerReasoning?: string
+  /** 生成过程中穿插的工具卡；顺序与正文同属一条助手消息。 */
+  blocks?: MessageBlock[]
 }
 
 /**
@@ -625,7 +640,7 @@ export async function addVersion(id: string, input: AddVersionInput): Promise<Ch
   }
   const next: ChatMessage = {
     ...message,
-    blocks: [textBlock(input.content)],
+    blocks: input.blocks ?? [textBlock(input.content)],
     candidates: withNewVersion(message, input.content, origin),
     ...(input.status === undefined ? {} : { status: input.status }),
     ...(hasThoughtPatch ? { metadata } : {}),
@@ -649,6 +664,27 @@ export async function selectCandidateVersion(
     ...message,
     blocks: [textBlock(target.content)],
     candidates: message.candidates.map((candidate, i) => ({ ...candidate, selected: i === index })),
+    updatedAt: Date.now(),
+  }
+  await db.messages.put(next)
+  return next
+}
+
+/** 删除当前展示候选；至少保留一版，避免「消息有正文但版本链为空」的不变量被破坏。 */
+export async function removeCandidateVersion(id: string, index: number): Promise<ChatMessage | null> {
+  const message = await db.messages.get(id)
+  if (message === undefined || message.candidates.length <= 1 || index < 0 || index >= message.candidates.length) return null
+  const selectedIndex = message.candidates.findIndex((candidate) => candidate.selected)
+  const candidates = message.candidates.filter((_, candidateIndex) => candidateIndex !== index)
+  const nextIndex = selectedIndex === index
+    ? Math.min(Math.max(index - 1, 0), candidates.length - 1)
+    : selectedIndex > index
+      ? selectedIndex - 1
+      : Math.min(Math.max(selectedIndex, 0), candidates.length - 1)
+  const next: ChatMessage = {
+    ...message,
+    blocks: [textBlock(candidates[nextIndex].content)],
+    candidates: candidates.map((candidate, candidateIndex) => ({ ...candidate, selected: candidateIndex === nextIndex })),
     updatedAt: Date.now(),
   }
   await db.messages.put(next)

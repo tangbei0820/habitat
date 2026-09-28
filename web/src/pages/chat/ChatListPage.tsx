@@ -28,6 +28,7 @@ import {
   listSessionGroups,
   listSessions,
   renameSessionGroup,
+  reorderSessionGroups,
   setSessionGroup,
   setSessionGroupCollapsed,
   setSessionPinned,
@@ -169,6 +170,21 @@ export function ChatListPage() {
       setError(null)
     } catch (err: unknown) {
       fail(err, '切换分组折叠失败')
+    }
+  }
+
+  async function moveGroup(groupId: string, direction: -1 | 1): Promise<void> {
+    const current = groups ?? []
+    const index = current.findIndex((group) => group.id === groupId)
+    const target = index + direction
+    if (index < 0 || target < 0 || target >= current.length) return
+    const ids = current.map((group) => group.id)
+    ;[ids[index], ids[target]] = [ids[target], ids[index]]
+    try {
+      setGroups(await reorderSessionGroups(ids))
+      setError(null)
+    } catch (err: unknown) {
+      fail(err, '调整分组顺序失败')
     }
   }
 
@@ -482,16 +498,20 @@ export function ChatListPage() {
                       : `确认删除？（${groupSessions.length} 个会话回到未分组）`}
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    data-testid={`group-menu-${group.id}`}
-                    aria-label={`分组操作：${group.name}`}
-                    className="icon-btn shrink-0"
-                    style={{ width: 30, height: 30, color: 'var(--text-tertiary)' }}
-                    onClick={() => setSheet({ kind: 'group', id: group.id })}
-                  >
-                    <IconMore size={15} />
-                  </button>
+                  <span className="flex shrink-0 items-center gap-0.5">
+                    <button type="button" aria-label={`分组上移：${group.name}`} disabled={groups?.[0]?.id === group.id} onClick={() => void moveGroup(group.id, -1)} className="icon-btn" style={{ width: 28, height: 28, color: 'var(--text-tertiary)' }}>↑</button>
+                    <button type="button" aria-label={`分组下移：${group.name}`} disabled={groups?.[groups.length - 1]?.id === group.id} onClick={() => void moveGroup(group.id, 1)} className="icon-btn" style={{ width: 28, height: 28, color: 'var(--text-tertiary)' }}>↓</button>
+                    <button
+                      type="button"
+                      data-testid={`group-menu-${group.id}`}
+                      aria-label={`分组操作：${group.name}`}
+                      className="icon-btn"
+                      style={{ width: 30, height: 30, color: 'var(--text-tertiary)' }}
+                      onClick={() => setSheet({ kind: 'group', id: group.id })}
+                    >
+                      <IconMore size={15} />
+                    </button>
+                  </span>
                 )}
               </li>
               {!group.collapsed && groupSessions.map((s) => renderSessionRow(s))}

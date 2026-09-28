@@ -394,7 +394,7 @@ export const runtimeEvent = sqliteTable('runtime_event', {
     .$type<RuntimeEventKind>()
     .notNull(),
   decider: text('decider', { enum: ['companion', 'user'] }).$type<RuntimeEventDecider>().notNull(),
-  status: text('status', { enum: ['pending', 'approved', 'denied', 'failed'] })
+  status: text('status', { enum: ['pending', 'approved', 'denied', 'failed', 'expired', 'revoked'] })
     .$type<RuntimeEventStatus>()
     .notNull(),
   title: text('title').notNull(),
@@ -410,6 +410,7 @@ export const runtimeEvent = sqliteTable('runtime_event', {
   targetId: text('target_id'),
   /** 日记片段级请求的具体片段；整篇请求或其它事件为 null。 */
   targetFragmentId: text('target_fragment_id'),
+  expiresAt: integer('expires_at'),
   createdAt: integer('created_at').notNull(),
   decidedAt: integer('decided_at'),
 })

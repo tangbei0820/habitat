@@ -3,7 +3,7 @@
 > **权威关系**：产品行为以 `docs/PRODUCT_SPEC.md` 为准 ｜ 实体设计与归属以《栖息地初版技术方案分析.md》§6 为准 ｜
 > 本文件记录**落地的实现口径**（字段、索引、约束、归属），是前两者的落地层。
 > 不复制 SPEC 的交互定义，也不改技术方案的架构决策。
-> 最后更新：2026-09-23
+> 最后更新：2026-09-28
 
 ---
 
@@ -96,13 +96,12 @@ interface BaseObject {
   而不是把内部工具名 `memory_search` 摆给用户看。旧数据没有这两个字段 → 渲染回退成
   `工具 {toolName}`，**无需迁移、Dexie 不升版本**（纯字段追加，不是索引变化）。
 
-**AI 自主工具调用的消息形态（Phase 6.5）**：一轮 AI 回复里若发生工具调用，前端会额外落
-**若干条 `role='tool'` 消息**（每次调用一条，`blocks` 只有 `tool-result`）。两条约定：
+**AI 自主工具调用的消息形态（P0）**：一轮 AI 回复里若发生工具调用，工具卡与正文落在
+同一条助手消息的 `blocks` 中，按 `order` 保留「正文 → 工具 → 后续正文」的真实顺序；
+只有 Mini Terminal 的手动调用仍使用独立 `role='tool'` 消息。两条约定：
 
 - 它是**系统的既成事实**，不是可选装饰 —— 落库失败会记日志，但不会让已生成的回复作废。
-- ⚠️ **已知局限**：这些卡片总是排在当轮助手气泡之后。模型若在工具调用**之后**又说了话，
-  那段话会并进同一个气泡、显示在卡片上方，与真实时间顺序相反。修法是把一次回复拆成多段气泡，
-  属消息模型改动 → 见 `TASKS.md` T-032 遗留项。
+- 卡片落库失败会记日志，但不会让已生成的回复作废；刷新后同一条助手消息仍可恢复工具卡顺序。
 
 ### 3.3 MessageCandidate —— 唯一的版本链（技术方案 §6.3）
 
@@ -228,7 +227,7 @@ interface SessionGroup extends BaseObject {
 
 | 项 | 改动 | 依据 |
 |---|---|---|
-| ~~会话分组~~ | ✅ 已落地（T-018）：`ChatSession.groupId` + `sessionGroups` 表 → Dexie v8 | SPEC §2.1.3 |
+| ~~会话分组~~ | ✅ 已落地（T-018）；P0 追加 `SessionGroup.sortOrder`、Dexie v21 与上下调序入口 | SPEC §2.1.3 |
 | 日记权限模型 | ✅ **已落地（T-036 / T-037 / T-068）**：服务端权威、整篇请求 / AI 决策、片段级 `fragment_visibility_json` 覆盖与安全过滤 | SPEC §3.4 / §6.3 |
 | 作品来源引用 | 复用基座的 `sourceId` / `sessionId`，**不新增字段**；聊天来源已落地（T-016） | SPEC §3.6.3 |
 | 相册来源引用 | 同上；聊天图片来源与 block 位置已落地（T-016）；自动收集沿用同一稳定键，来源元数据可标记 `sourceImageOrigin=generated` | SPEC §3.7.2 |
@@ -418,7 +417,7 @@ AI 的日记只能由 AI 侧写入（P1 的工具层，`db/diary.ts` 的 `create
 
 | 表 | 字段 | 关键不变量 |
 |---|---|---|
-| `runtime_event` | `id` / `kind` / `decider` / `status` / `title` / `detail` / `payload_json` / `result` / `result_delivered_at` / `capability_id` / `target_id` / `target_fragment_id` / `created_at` / `decided_at` | `decider` **就是权限位**；`pending` 之外一律终态 |
+| `runtime_event` | `id` / `kind` / `decider` / `status` / `title` / `detail` / `payload_json` / `result` / `result_delivered_at` / `capability_id` / `target_id` / `target_fragment_id` / `expires_at` / `created_at` / `decided_at` | `decider` **就是权限位**；`pending` 之外一律终态；过期 / 撤回不删除原事件 |
 
 字段约定：
 

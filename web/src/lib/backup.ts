@@ -50,7 +50,7 @@ export const BACKUP_FORMAT = 'habitat-backup'
  * ⚠️ 但**旧备份（v2–v8）里带着它们**，导入时不能丢：走 `legacyUploads` 转存到服务端，
  * 详见 `importAll` 与 `db/legacy-upload.ts`。
  */
-export const BACKUP_VERSION = 18
+export const BACKUP_VERSION = 19
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -207,7 +207,8 @@ function looksLikeSessionGroup(value: unknown): value is SessionGroup {
     isRecord(value) &&
     typeof value.id === 'string' &&
     value.type === 'session-group' &&
-    typeof value.name === 'string'
+    typeof value.name === 'string' &&
+    (value.sortOrder === undefined || (typeof value.sortOrder === 'number' && Number.isFinite(value.sortOrder)))
   )
 }
 
@@ -637,7 +638,9 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   if (!Array.isArray(sessionGroupsRaw)) {
     throw new Error('备份内容损坏：sessionGroups 必须是数组')
   }
-  const sessionGroups = sessionGroupsRaw.filter(looksLikeSessionGroup)
+  const sessionGroups = sessionGroupsRaw
+    .filter(looksLikeSessionGroup)
+    .map((group, index) => ({ ...group, sortOrder: typeof group.sortOrder === 'number' ? group.sortOrder : index }))
   if (sessionGroups.length !== sessionGroupsRaw.length) {
     throw new Error('备份内容损坏：存在无法识别的分组')
   }

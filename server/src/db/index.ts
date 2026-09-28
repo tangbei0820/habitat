@@ -350,6 +350,9 @@ if (!runtimeEventColumns.some((col) => col.name === 'target_id')) {
 if (!runtimeEventColumns.some((col) => col.name === 'target_fragment_id')) {
   sqlite.exec('ALTER TABLE runtime_event ADD COLUMN target_fragment_id TEXT')
 }
+if (!runtimeEventColumns.some((col) => col.name === 'expires_at')) {
+  sqlite.exec('ALTER TABLE runtime_event ADD COLUMN expires_at INTEGER')
+}
 
 export const db = drizzle(sqlite, { schema })
 

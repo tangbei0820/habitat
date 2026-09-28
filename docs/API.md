@@ -122,7 +122,9 @@ Provider Profile 仍由 `/api/providers` 管理；以下接口只管理“哪个
 ### `POST /api/providers/draft/models`
 
 使用未保存草稿代请求上游 `/models`。请求可传 `profileId` 复用现有连接，也可传 `baseUrl / apiKey / headers / streamOptions` 覆盖；
-也可传 `provider: "elevenlabs"`；`apiKey` 只活在本次请求中。返回 `{ ok, latencyMs, models, errorCategory, error }`，失败分类包括
+也可传 `provider: "elevenlabs"` 或 `provider: "codex-subscription"`；Codex 方案使用 `baseUrl: "codex://local"`，不需要 API Key，
+只通过 `HABITAT_CODEX_APP_SERVER_COMMAND`（默认 `codex app-server --stdio`）启动官方 app-server。该适配器是实验性能力，
+app-server 不可用时返回结构化失败，不会伪装成 OpenAI-compatible。返回 `{ ok, latencyMs, models, errorCategory, error }`，失败分类包括
 `authentication / network / timeout / protocol / unsupported / empty-models / empty-voices / unknown`。
 
 ### `POST /api/providers/draft/voices`
@@ -609,7 +611,7 @@ AI 修改自己的留言不走 HTTP，而由 Runtime 的 `messageboard_update` �
 
 ### `GET /api/inbox?decider=&status=&limit=`
 
-`decider` ∈ `companion` / `user`，`status` ∈ `pending` / `approved` / `denied` / `failed`，
+`decider` ∈ `companion` / `user`，`status` ∈ `pending` / `approved` / `denied` / `failed` / `expired` / `revoked`，
 两者都可省（省略即不筛这一维）。返回 `{ events: RuntimeEvent[] }`，按 `createdAt` 倒序。
 
 确认卡与 Life 页的「事件」tab 共用这一个端点。
@@ -629,6 +631,11 @@ AI 侧的事件**刻意没有 HTTP 决策入口** —— 它只能由 AI 通过 
 `diary_deny_access` 工具决定，而工具层硬编码了 `decider='companion'`。
 
 **决策只能做一次**：重复提交 → 400（否则确认卡点两下会写两篇日记）。片段请求的 `targetFragmentId` 公开下发，执行载荷中的正文仍不下发。
+
+待决事件默认有效期：写入确认 30 分钟、日记查看请求 60 分钟；到期自动转 `expired`，不执行副作用。
+`POST /api/inbox/:id/revoke` 允许用户撤回自己尚未处理的 `decider=user` 请求，转 `revoked` 而不是物理删除。
+
+聊天首个 SSE chunk 之前可通过环境变量 `HABITAT_CHAT_FALLBACK_PROFILE_ID` 指定回退方案；只有主 Provider 尚未吐出任何内容时才切换，流已开始后不跨 Provider 重放。
 
 ## Phase 1 已实现（切片五 · 诊断日志查询）
 

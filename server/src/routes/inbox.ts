@@ -20,11 +20,11 @@
 import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors.js'
 import type { RuntimeEventDecider, RuntimeEventStatus } from '@shared/types'
-import { getEvent, listEvents } from '../db/event.js'
+import { getEvent, listEvents, revokeEvent } from '../db/event.js'
 import { RequestError } from '../lib/errors.js'
 import { decideEvent } from '../services/event-inbox.js'
 
-const STATUSES: readonly string[] = ['pending', 'approved', 'denied', 'failed']
+const STATUSES: readonly string[] = ['pending', 'approved', 'denied', 'failed', 'expired', 'revoked']
 const DECIDERS: readonly string[] = ['companion', 'user']
 
 function enumOf<T extends string>(raw: unknown, allowed: readonly string[], field: string): T | undefined {
@@ -81,5 +81,12 @@ export function registerInboxRoutes(app: FastifyInstance): void {
     const result = await decideEvent(request.params.id, 'user', decision === 'approve')
     if (!result.ok) throw new RequestError(ErrorCodes.BadRequest, result.error)
     return { event: result.event }
+  })
+
+  /** 用户撤回尚未处理的确认请求；撤回是终态，不删除审计记录。 */
+  app.post<{ Params: { id: string } }>('/api/inbox/:id/revoke', async (request) => {
+    const event = revokeEvent(request.params.id, 'user')
+    if (event === null) throw new RequestError(ErrorCodes.BadRequest, '这条事件不存在、已过期或已经处理过了')
+    return { event }
   })
 }

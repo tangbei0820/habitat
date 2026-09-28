@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors'
-import type { MediaImageResult, MediaTranscriptionResult, MediaVisionResult, ProviderCapability } from '@shared/types'
+import type { ApiProfilePublic, MediaImageResult, MediaTranscriptionResult, MediaVisionResult, ProviderCapability } from '@shared/types'
 import { recordUsage } from '../db/usage.js'
 import { ProviderError } from '../providers/errors.js'
 import type { LlmRegistry } from '../providers/registry.js'
+import type { OpenAICompatProvider } from '../providers/openai-compat.js'
+import type { ElevenLabsProvider } from '../providers/elevenlabs.js'
 
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024
@@ -24,14 +26,19 @@ function text(value: unknown, name: string, max: number): string {
   return result
 }
 
-function active(registry: LlmRegistry, capability: ProviderCapability, profileId: unknown) {
+type MediaProvider = OpenAICompatProvider | ElevenLabsProvider
+
+function active(registry: LlmRegistry, capability: ProviderCapability, profileId: unknown): { profile: ApiProfilePublic; provider: MediaProvider } {
   if (typeof profileId === 'string' && profileId !== '') {
     const profile = registry.toPublic(registry.require(profileId))
     return { profile, provider: registry.mediaProvider(profile.id) }
   }
   const resolved = registry.capabilityProvider(capability)
   if (resolved === null) throw new ProviderError(ErrorCodes.ProviderNotConfigured, `没有可用的${capability} API 绑定`)
-  return resolved
+  if (!('transcribe' in resolved.provider)) {
+    throw new ProviderError(ErrorCodes.ProviderNotConfigured, 'Codex Subscription 仅支持聊天能力，请为媒体能力绑定其它 Provider')
+  }
+  return { ...resolved, provider: resolved.provider as OpenAICompatProvider | ElevenLabsProvider }
 }
 
 function parseDataUrl(value: unknown, allowed: ReadonlySet<string>, maxBytes: number, label: string): { data: Uint8Array; mimeType: string } {
