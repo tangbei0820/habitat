@@ -287,11 +287,26 @@ CREATE TABLE IF NOT EXISTS moment (
   id TEXT PRIMARY KEY,
   content TEXT NOT NULL,
   author TEXT NOT NULL,
+  group_id TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_moment_created ON moment (created_at DESC);
+CREATE TABLE IF NOT EXISTS moment_group (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_moment_group_order ON moment_group (updated_at DESC, created_at DESC);
 `)
+
+// 分组与留言归属是后续追加的列；老库的留言统一落到“未分组”，不需要回填数据。
+const momentColumns = sqlite.pragma('table_info(moment)') as Array<{ name: string }>
+if (!momentColumns.some((col) => col.name === 'group_id')) {
+  sqlite.exec('ALTER TABLE moment ADD COLUMN group_id TEXT')
+}
+sqlite.exec('CREATE INDEX IF NOT EXISTS idx_moment_group_created ON moment (group_id, created_at DESC)')
 
 const diaryColumns = sqlite.pragma('table_info(diary)') as Array<{ name: string }>
 if (!diaryColumns.some((col) => col.name === 'fragment_visibility_json')) {

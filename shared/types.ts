@@ -246,6 +246,14 @@ export interface Moment extends BaseObject {
   type: 'moment'
   content: string
   author: ContentAuthor
+  /** 所属留言分组；null 表示未分组。删组时回到未分组，不删除留言。 */
+  groupId: string | null
+}
+
+/** 留言板分组。分组只负责整理展示，不改变留言的作者与生命周期。 */
+export interface MomentGroup extends BaseObject {
+  type: 'moment-group'
+  name: string
 }
 
 export type WishlistStatus = 'open' | 'done' | 'paused' | 'abandoned'

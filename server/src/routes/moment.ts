@@ -9,15 +9,22 @@ import { ErrorCodes } from '@shared/errors.js'
 import type { ContentAuthor } from '@shared/types'
 import {
   createUserMoment,
+  createMomentGroup,
+  deleteMomentGroup,
   deleteUserMoment,
+  getMomentGroup,
   importMomentIfAbsent,
+  listMomentGroups,
   listMoments,
+  setMomentGroup,
+  updateMomentGroup,
   updateUserMoment,
 } from '../db/moment.js'
 import { RequestError } from '../lib/errors.js'
 
 const CONTENT_MAX = 500
 const IMPORT_MAX = 5_000
+const GROUP_NAME_MAX = 30
 
 function content(raw: unknown): string {
   if (typeof raw !== 'string') throw new RequestError(ErrorCodes.BadRequest, 'content 必须是字符串')
@@ -27,10 +34,18 @@ function content(raw: unknown): string {
   return value
 }
 
+function groupName(raw: unknown): string {
+  if (typeof raw !== 'string') throw new RequestError(ErrorCodes.BadRequest, '分组名称必须是字符串')
+  const value = raw.trim()
+  if (value === '' || value.length > GROUP_NAME_MAX) throw new RequestError(ErrorCodes.BadRequest, `分组名称为 1-${GROUP_NAME_MAX} 字`)
+  return value
+}
+
 interface ImportItem {
   id: string
   content: string
   author: ContentAuthor
+  groupId: string | null
   createdAt: number
   updatedAt: number
 }
@@ -45,6 +60,7 @@ function importItem(raw: unknown): ImportItem {
     id,
     content: content(item.content),
     author: item.author === 'companion' ? 'companion' : 'user',
+    groupId: null,
     createdAt: typeof item.createdAt === 'number' ? item.createdAt : at,
     updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : at,
   }
@@ -60,12 +76,21 @@ export function registerMomentRoutes(app: FastifyInstance): void {
     const query = request.query as Record<string, unknown>
     const rawQuery = query.q
     const rawAuthor = query.author
+    const rawGroup = query.groupId
     if (rawQuery !== undefined && typeof rawQuery !== 'string') throw new RequestError(ErrorCodes.BadRequest, 'q 必须是字符串')
     if (typeof rawQuery === 'string' && rawQuery.length > 120) throw new RequestError(ErrorCodes.BadRequest, 'q 最长 120 字')
     if (rawAuthor !== undefined && rawAuthor !== 'user' && rawAuthor !== 'companion') throw new RequestError(ErrorCodes.BadRequest, 'author 只能是 user 或 companion')
+    if (rawGroup !== undefined && typeof rawGroup !== 'string') throw new RequestError(ErrorCodes.BadRequest, 'groupId 必须是字符串')
+    let groupId: string | null | undefined
+    if (typeof rawGroup === 'string') {
+      if (rawGroup === 'none') groupId = null
+      else if (rawGroup.trim() !== '') groupId = rawGroup.trim()
+      else throw new RequestError(ErrorCodes.BadRequest, 'groupId 不能为空')
+    }
     const items = listMoments({
       ...(typeof rawQuery === 'string' && rawQuery.trim() !== '' ? { query: rawQuery } : {}),
       ...(rawAuthor === 'user' || rawAuthor === 'companion' ? { author: rawAuthor } : {}),
+      ...(groupId !== undefined ? { groupId } : {}),
     })
     const raw = request.query.limit
     if (raw === undefined) return { items }
@@ -76,12 +101,48 @@ export function registerMomentRoutes(app: FastifyInstance): void {
     return { items: items.slice(0, limit) }
   })
 
+  app.get('/api/moment-groups', async () => ({ groups: listMomentGroups() }))
+
+  app.post('/api/moment-groups', async (request, reply) => {
+    const body = typeof request.body === 'object' && request.body !== null
+      ? (request.body as Record<string, unknown>)
+      : {}
+    const created = createMomentGroup(groupName(body.name))
+    if (created === null) throw new RequestError(ErrorCodes.BadRequest, '已经有同名留言分组')
+    reply.code(201)
+    return created
+  })
+
+  app.patch<{ Params: { id: string } }>('/api/moment-groups/:id', async (request) => {
+    const body = typeof request.body === 'object' && request.body !== null
+      ? (request.body as Record<string, unknown>)
+      : {}
+    const updated = updateMomentGroup(request.params.id, groupName(body.name))
+    if (updated === null) {
+      if (getMomentGroup(request.params.id) === null) throw new RequestError(ErrorCodes.NotFound, '留言分组不存在')
+      throw new RequestError(ErrorCodes.BadRequest, '已经有同名留言分组')
+    }
+    return updated
+  })
+
+  app.delete<{ Params: { id: string } }>('/api/moment-groups/:id', async (request) => {
+    const moved = deleteMomentGroup(request.params.id)
+    if (moved === null) throw new RequestError(ErrorCodes.NotFound, '留言分组不存在')
+    return { moved }
+  })
+
   app.post('/api/moments', async (request, reply) => {
     const body = typeof request.body === 'object' && request.body !== null
       ? (request.body as Record<string, unknown>)
       : {}
+    const rawGroupId = body.groupId
+    if (rawGroupId !== undefined && rawGroupId !== null && (typeof rawGroupId !== 'string' || rawGroupId.trim() === '')) {
+      throw new RequestError(ErrorCodes.BadRequest, 'groupId 必须是有效字符串或 null')
+    }
+    const groupId = rawGroupId === null || rawGroupId === undefined ? null : rawGroupId.trim()
+    if (groupId !== null && getMomentGroup(groupId) === null) throw new RequestError(ErrorCodes.NotFound, '留言分组不存在')
     reply.code(201)
-    return createUserMoment(content(body.content))
+    return createUserMoment(content(body.content), groupId)
   })
 
   app.patch<{ Params: { id: string } }>('/api/moments/:id', async (request) => {
@@ -97,6 +158,19 @@ export function registerMomentRoutes(app: FastifyInstance): void {
     if (!deleteUserMoment(request.params.id)) throw new RequestError(ErrorCodes.NotFound, '这条留言不存在')
     // 同 `routes/diary.ts`：204 必须走 `send()`，不能 `return null`
     return reply.code(204).send()
+  })
+
+  app.put<{ Params: { id: string } }>('/api/moments/:id/group', async (request) => {
+    const body = typeof request.body === 'object' && request.body !== null
+      ? (request.body as Record<string, unknown>)
+      : {}
+    const raw = body.groupId
+    if (raw !== null && (typeof raw !== 'string' || raw.trim() === '')) throw new RequestError(ErrorCodes.BadRequest, 'groupId 必须是分组 id 或 null')
+    const groupId = raw === null ? null : raw.trim()
+    if (groupId !== null && getMomentGroup(groupId) === null) throw new RequestError(ErrorCodes.NotFound, '留言分组不存在')
+    const updated = setMomentGroup(request.params.id, groupId)
+    if (updated === null) throw new RequestError(ErrorCodes.NotFound, '这条留言不存在')
+    return updated
   })
 
   /** 一次性搬迁入口，幂等。 */

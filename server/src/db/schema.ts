@@ -352,12 +352,21 @@ export const moment = sqliteTable('moment', {
   id: text('id').primaryKey(),
   content: text('content').notNull(),
   author: text('author', { enum: ['user', 'companion'] }).$type<ContentAuthor>().notNull(),
+  groupId: text('group_id'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+export const momentGroup = sqliteTable('moment_group', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull().unique(),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })
 
 export type MomentRow = typeof moment.$inferSelect
 export type NewMoment = typeof moment.$inferInsert
+export type MomentGroupRow = typeof momentGroup.$inferSelect
 
 /**
  * Event Inbox · 事件收件箱（Phase 6.5 P1）。

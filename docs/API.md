@@ -559,7 +559,13 @@ AI 修改自己的留言不走 HTTP，而由 Runtime 的 `messageboard_update` �
 留言收藏在浏览器统一收藏库中保存 `targetType='moment'`、`sourceId=moment.id` 与稳定正文快照，
 来源链接回到 `/home/board#<moment-id>`。
 `GET /api/moments` 可选 `q`（最多 120 字，匹配留言正文）与 `author=user|companion`；`limit=N` 仍用于主屏 Widget，
-过滤先发生在服务端，再应用 limit。
+过滤先发生在服务端，再应用 limit。分组筛选使用 `groupId=<id>`；`groupId=none` 只返回未分组留言。
+
+### 留言板分组：`GET/POST /api/moment-groups`、`PATCH/DELETE /api/moment-groups/:id`、`PUT /api/moments/:id/group`
+
+分组名称最长 30 字且不可重复。留言可以在创建时带 `groupId`，也可以用 `PUT /api/moments/:id/group` 移入 / 移出（请求体
+`{ groupId: string | null }`）。删除分组只会把组内留言的归属置空，返回 `{ moved }`，不会删除留言或收藏快照。
+前端留言板按本地日历分段显示「今天 / 昨天 / 某年某月某日」，这是展示层历史视图，不复制第二份留言数据。
 
 ### `POST /api/study/cards/generate` —— 生成 AI 伴学卡片
 

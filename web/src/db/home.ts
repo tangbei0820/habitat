@@ -13,6 +13,7 @@ import {
   type HomeWidget,
   type HomeWidgetKind,
   type Moment,
+  type MomentGroup,
   type Photo,
   type PhotoCollection,
   type PhotoMime,
@@ -56,18 +57,54 @@ function requiredText(value: string, label: string): string {
  * 「小栖主动留言」就只能由前端伪造 —— 那是 SPEC §6.3 明令禁止的假数据。
  * 前端 Dexie 不再有 `moments` 表（v11 起）。
  */
-export async function listMoments(query?: string): Promise<Moment[]> {
+export async function listMoments(query?: string, groupId?: string | null): Promise<Moment[]> {
   const normalized = query?.trim() ?? ''
-  const suffix = normalized === '' ? '' : `?q=${encodeURIComponent(normalized)}`
+  const params = new URLSearchParams()
+  if (normalized !== '') params.set('q', normalized)
+  if (groupId !== undefined) params.set('groupId', groupId === null ? 'none' : groupId)
+  const suffix = params.toString() === '' ? '' : `?${params.toString()}`
   const data = await fetchJson<{ items: Moment[] }>(`/api/moments${suffix}`)
   return data.items
 }
 
-export async function createMoment(content: string): Promise<Moment> {
+export async function listMomentGroups(): Promise<MomentGroup[]> {
+  const data = await fetchJson<{ groups: MomentGroup[] }>('/api/moment-groups')
+  return data.groups
+}
+
+export async function createMomentGroup(name: string): Promise<MomentGroup> {
+  return fetchJson<MomentGroup>('/api/moment-groups', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: requiredText(name, '分组名称') }),
+  })
+}
+
+export async function updateMomentGroup(id: string, name: string): Promise<MomentGroup> {
+  return fetchJson<MomentGroup>(`/api/moment-groups/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: requiredText(name, '分组名称') }),
+  })
+}
+
+export async function deleteMomentGroup(id: string): Promise<{ moved: number }> {
+  return fetchJson<{ moved: number }>(`/api/moment-groups/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function setMomentGroup(id: string, groupId: string | null): Promise<Moment> {
+  return fetchJson<Moment>(`/api/moments/${encodeURIComponent(id)}/group`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ groupId }),
+  })
+}
+
+export async function createMoment(content: string, groupId: string | null = null): Promise<Moment> {
   return fetchJson<Moment>('/api/moments', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ content: requiredText(content, '留言') }),
+    body: JSON.stringify({ content: requiredText(content, '留言'), groupId }),
   })
 }
 

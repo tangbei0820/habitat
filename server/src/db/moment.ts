@@ -6,9 +6,9 @@
  */
 import { randomUUID } from 'node:crypto'
 import { desc, eq } from 'drizzle-orm'
-import type { Moment } from '@shared/types'
+import type { Moment, MomentGroup } from '@shared/types'
 import { db } from './index.js'
-import { moment, type MomentRow } from './schema.js'
+import { moment, momentGroup, type MomentGroupRow, type MomentRow } from './schema.js'
 
 function toMoment(row: MomentRow): Moment {
   return {
@@ -16,6 +16,17 @@ function toMoment(row: MomentRow): Moment {
     type: 'moment',
     content: row.content,
     author: row.author,
+    groupId: row.groupId ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+function toMomentGroup(row: MomentGroupRow): MomentGroup {
+  return {
+    id: row.id,
+    type: 'moment-group',
+    name: row.name,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -24,6 +35,8 @@ function toMoment(row: MomentRow): Moment {
 export interface MomentListFilter {
   query?: string
   author?: 'user' | 'companion'
+  /** undefined = 不筛；null = 只看未分组；字符串 = 指定分组。 */
+  groupId?: string | null
 }
 
 /** 检索发生在服务端权威留言对象上，避免主屏 / 多设备各自维护一份过滤逻辑。 */
@@ -31,8 +44,54 @@ export function listMoments(filter: MomentListFilter = {}): Moment[] {
   const query = filter.query?.trim().toLocaleLowerCase() ?? ''
   return db.select().from(moment).orderBy(desc(moment.createdAt)).all().map(toMoment).filter((item) => {
     if (filter.author !== undefined && item.author !== filter.author) return false
+    if (filter.groupId !== undefined && item.groupId !== filter.groupId) return false
     return query === '' || item.content.toLocaleLowerCase().includes(query)
   })
+}
+
+export function listMomentGroups(): MomentGroup[] {
+  return db.select().from(momentGroup).orderBy(momentGroup.updatedAt, momentGroup.createdAt).all().map(toMomentGroup)
+}
+
+export function getMomentGroup(id: string): MomentGroup | null {
+  const row = db.select().from(momentGroup).where(eq(momentGroup.id, id)).get()
+  return row === undefined ? null : toMomentGroup(row)
+}
+
+export function createMomentGroup(name: string): MomentGroup | null {
+  const trimmed = name.trim()
+  if (db.select({ id: momentGroup.id }).from(momentGroup).where(eq(momentGroup.name, trimmed)).get() !== undefined) return null
+  const at = Date.now()
+  const row: MomentGroupRow = { id: `moment-group-${randomUUID()}`, name: trimmed, createdAt: at, updatedAt: at }
+  db.insert(momentGroup).values(row).run()
+  return toMomentGroup(row)
+}
+
+export function updateMomentGroup(id: string, name: string): MomentGroup | null {
+  const existing = db.select().from(momentGroup).where(eq(momentGroup.id, id)).get()
+  if (existing === undefined) return null
+  const duplicate = db.select({ id: momentGroup.id }).from(momentGroup).where(eq(momentGroup.name, name)).get()
+  if (duplicate !== undefined && duplicate.id !== id) return null
+  const updatedAt = Math.max(Date.now(), existing.updatedAt + 1)
+  db.update(momentGroup).set({ name, updatedAt }).where(eq(momentGroup.id, id)).run()
+  return toMomentGroup({ ...existing, name, updatedAt })
+}
+
+/** 删除分组只清空留言归属，绝不删除留言本身。返回被移出的条数。 */
+export function deleteMomentGroup(id: string): number | null {
+  const existing = db.select({ id: momentGroup.id }).from(momentGroup).where(eq(momentGroup.id, id)).get()
+  if (existing === undefined) return null
+  const moved = db.update(moment).set({ groupId: null }).where(eq(moment.groupId, id)).run().changes
+  db.delete(momentGroup).where(eq(momentGroup.id, id)).run()
+  return moved
+}
+
+export function setMomentGroup(id: string, groupId: string | null): Moment | null {
+  const existing = db.select().from(moment).where(eq(moment.id, id)).get()
+  if (existing === undefined) return null
+  if (groupId !== null && db.select({ id: momentGroup.id }).from(momentGroup).where(eq(momentGroup.id, groupId)).get() === undefined) return null
+  db.update(moment).set({ groupId, updatedAt: existing.updatedAt }).where(eq(moment.id, id)).run()
+  return toMoment({ ...existing, groupId })
 }
 
 export function getMoment(id: string): Moment | null {
@@ -41,12 +100,13 @@ export function getMoment(id: string): Moment | null {
 }
 
 /** 用户留言。`author` 固定为 `user` —— AI 的留言走自己的写入路径（Phase 6.5 P1 工具层）。 */
-export function createUserMoment(content: string): Moment {
+export function createUserMoment(content: string, groupId: string | null = null): Moment {
   const at = Date.now()
   const row: MomentRow = {
     id: `moment-${randomUUID()}`,
     content,
     author: 'user',
+    groupId,
     createdAt: at,
     updatedAt: at,
   }
@@ -86,6 +146,7 @@ export function createCompanionMoment(content: string): Moment {
     id: `moment-${randomUUID()}`,
     content,
     author: 'companion',
+    groupId: null,
     createdAt: at,
     updatedAt: at,
   }

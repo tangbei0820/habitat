@@ -24,6 +24,7 @@
     "probe:countdown-life": "tsx scripts/probe-countdown-life.ts",
     "probe:wishlist-life": "tsx scripts/probe-wishlist-life.ts",
     "probe:bookmark-life": "tsx scripts/probe-bookmark-life.ts",
+    "probe:moment-groups": "tsx scripts/probe-moment-groups.ts",
     "probe:reading-life": "tsx scripts/probe-reading-life.ts",
     "probe:nocturne-tools-standalone": "node scripts/probe-nocturne-tools-standalone.mjs",
     "probe:phase3b": "tsx scripts/probe-phase3b.ts",

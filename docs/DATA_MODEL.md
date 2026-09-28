@@ -366,7 +366,8 @@ Life 月历与账本是查询模型，不复制事实表：月历按 `event_log.
 | 表 | 字段 | 关键不变量 |
 |---|---|---|
 | `diary` | `id` / `title` / `content` / `entry_date` / `author` / `visibility` / `fragment_visibility_json` / `created_at` / `updated_at` | `author` **就是权限位**：`user` 的日记用户可自由读写删；`companion` 默认私密。`fragment_visibility_json` 只保存 `fragment-N -> open/locked` 覆盖，缺省继承整篇权限；**正文过滤只走 `db/diary.ts` 的 `toDiaryView()` 这一个出口** |
-| `moment` | `id` / `content` / `author` / `created_at` / `updated_at` | 无可见性概念（写出来就是给人看的），只有「谁能删」：用户只能删自己的 |
+| `moment` | `id` / `content` / `author` / `group_id` / `created_at` / `updated_at` | 无可见性概念（写出来就是给人看的），只有「谁能删」：用户只能删自己的；`group_id` 可空，删组时置空 |
+| `moment_group` | `id` / `name` / `created_at` / `updated_at` | 名称唯一；只是整理容器，删除分组只把留言移回未分组，不删除留言或收藏快照 |
 
 字段约定：
 
@@ -390,6 +391,10 @@ Life 月历与账本是查询模型，不复制事实表：月历按 `event_log.
 ⚠️ **迁移上来的旧日记一律标 `author='user'`**，所以北北已写好的日记不会因迁移变成只读。
 AI 的日记只能由 AI 侧写入（P1 的工具层，`db/diary.ts` 的 `createCompanionDiary`），
 用户接口**不接受 `author` 入参**（SPEC §3.4.2）。
+
+留言板的历史视图按 `moment.created_at` 在前端分成「今天 / 昨天 / 某年某月某日」，不复制时间线数据；
+服务端 `GET /api/moments?groupId=` 负责分组筛选，`none` 代表未分组。分组整理不会改变 `updated_at`，
+这样移动留言不会把它伪装成刚刚发生的生活事件。
 
 ---
 
