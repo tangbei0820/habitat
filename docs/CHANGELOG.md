@@ -1085,3 +1085,9 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 用户图片消息写入 `metadata.imageSource=user`，AI 生图写入 `metadata.imageSource=generated`；照片来源元数据保留 `sourceImageOrigin`，普通历史助手图片按 AI 发送归类。
 - 不新增 Dexie / SQLite / API schema；自动收集偏好只存本机 `localStorage`，关闭不追溯删除既有照片。
 - 两端 typecheck、前端 build、`git diff --check` 通过；浏览器 CDP 未启动，未冒充浏览器回归通过。
+
+### 2026-09-28 · T-111 · 相册自动收集聊天图片部署 VPS（生产）
+
+- 本地提交 `3999e44` 已部署到 `https://habitat.beiyan.cc`，生产 `.env` / SQLite 未覆盖，重启前备份为 `habitat.db.bak-20260928-3999e44`。
+- `habitat-server` 已恢复 active；本机与公网 `/api/health` 均返回 `{"ok":true}`，首页切换到 `index-Bn-dYIch.js`。
+- 生产 bundle 已检出自动收集设置文案与 `habitat-photo-collection` 持久化键；远端留言路由哈希与本地一致。

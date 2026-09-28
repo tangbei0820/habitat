@@ -3258,3 +3258,16 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；自动收集开关与来源标记静态入口已覆盖，浏览器 CDP 未启动时不冒充浏览器回归通过。
 
 **明确延期**：已有历史消息的批量追溯收集、Blob / OPFS 存储迁移、相册批量导入与 AI 自主收藏；继续留在后续任务。
+
+### T-111 · 2026-09-28 · V2-A Home 基础模块第九阶段部署 VPS —— **完成（生产）**
+
+**范围**：部署 T-110 相册自动收集聊天图片到 `https://habitat.beiyan.cc`；保留生产 `.env` / SQLite，不进入下一项 Home 功能。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `3999e44` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与 `.workbuddy`。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-3999e44`；生产 SQLite 与 `.env` 未被部署包覆盖。 |
+| 服务状态 | `habitat-server` 重启后 active；服务启动过程中旧进程曾卡在 `deactivating`，仅结束该服务的卡住进程后恢复，未动其它服务或数据。 |
+| 公网验收 | 本机 / 公网 `/api/health` 均返回 `{"ok":true}`；首页引用 `index-Bn-dYIch.js`；生产 bundle 含自动收集设置文案与持久化键；远端留言路由文件哈希与本地一致。 |
+
+**阶段边界**：本阶段到此停止；已有历史消息批量追溯、Blob / OPFS、相册批量导入、日记富媒体 / 图片、Widget 编排与其它 Living Apps 留在后续任务。
