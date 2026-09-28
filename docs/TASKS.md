@@ -3344,3 +3344,17 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | 两端 `npm run typecheck`、前端 `npm run build`、`node --check web/scripts/verify-home.mjs`、`node --check web/scripts/verify-export.mjs`、`git diff --check` 通过；浏览器 CDP 未启动，未冒充浏览器回归通过。 |
 
 **明确延期**：PDF / EPUB / 图片资料解析、外链抓取与正文提取、向量检索 / RAG、AI 自动编排课程、测验与苏格拉底问答、服务端资料同步；待资料模型稳定后另开任务。
+
+### T-117 · 2026-09-28 · V2-A Home 基础模块第十二阶段部署 VPS —— **完成（生产）**
+
+**范围**：部署 T-116 学习资料登记与卡片上下文选择到 `https://habitat.beiyan.cc`；保留生产 `.env` 与 SQLite，不进入资料远程解析或其它 Home 模块。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `2bc1949` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与 `.workbuddy`。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-2bc1949`；生产 SQLite 与 `.env` 未被部署包覆盖。 |
+| 服务状态 | `habitat-server` active；服务器本机 `127.0.0.1:3000` 与服务器自检公网 `/api/health` 均返回 `{"ok":true}`。 |
+| 公网验收 | 首页已引用 `assets/index-CgzEeiP_.js`；生产 bundle 含 `study-materials`、`study-card-material`、`TXT / Markdown` 与“学习资料”标记。 |
+| 客户端提示 | 当前执行环境直连公网 TLS 被本机网络重置；以服务器自检结果与线上 bundle 验收为准，未冒充本机浏览器回归通过。 |
+
+**阶段边界**：本阶段到此停止；PDF / EPUB / 图片解析、外链抓取与 RAG、AI 自动课程编排、服务端资料同步留在后续任务。

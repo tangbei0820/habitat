@@ -1122,3 +1122,9 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 已保存的文字资料可以在生成 AI 伴学卡片时作为受限上下文；服务端不复制资料、不把 URL 当成模型上下文。
 - 新增 `studyMaterials`，Dexie 升 v19、备份格式升 v17；旧库 / 旧备份按空资料兼容。
 - 两端 typecheck、前端 build、脚本语法检查与 `git diff --check` 通过；浏览器 CDP 未启动，未冒充浏览器回归通过。
+
+### 2026-09-28 · T-117 · AI 伴学学习资料部署 VPS（生产）
+
+- 本地提交 `2bc1949` 已部署到 `https://habitat.beiyan.cc`，生产 `.env` / SQLite 未覆盖，重启前备份为 `habitat.db.bak-20260928-2bc1949`。
+- `habitat-server` active；服务器本机与服务器自检公网 `/api/health` 均返回 `{"ok":true}`；首页切换到 `index-CgzEeiP_.js`。
+- 生产 bundle 已检出 `study-materials`、`study-card-material`、`TXT / Markdown` 与“学习资料”标记；本机直连公网 TLS 被网络重置，未冒充本机浏览器回归通过。
