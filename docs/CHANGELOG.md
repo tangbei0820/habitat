@@ -17,6 +17,19 @@
 - T-106 代码已部署到 `https://habitat.beiyan.cc`，保留生产 `.env` / SQLite，重启前生成 `habitat.db.bak-20260928-25fa303`。
 - 生产 `habitat-server` active，公网健康检查通过；首页已切换到 `index-DAkBPArf.js`，留言板接口返回结构化错误与分组列表。
 
+### T-108 · 留言板 Widget 范围
+
+- `HomeWidget` 新增 `boardScope`，支持最近 3 条、指定分组、指定留言；主屏只保存引用，正文仍由留言服务端实时读取。
+- 留言板页新增范围选择与更新入口；指定留言卡片回到 `/home/board#<id>`，分组 / 单条引用失效时不渲染。
+- 新增 `GET /api/moments/:id`；Dexie 升 v18，旧 Widget 迁移为 recent；备份升 v16 并兼容旧备份。
+- `probe:moment-groups` 扩展到 **13/13**；两端 typecheck、build、脚本语法与 `git diff --check` 通过。
+
+### T-109 · 留言板 Widget 范围部署
+
+- T-108 已部署到 `https://habitat.beiyan.cc`，保留生产 `.env` / SQLite，重启前备份 `habitat.db.bak-20260928-ef5fe76`。
+- `habitat-server` active；本机与服务器自 curl 公网 `/api/health` 返回 `{"ok":true}`；首页已引用 `index-wdNQr2lm.js`。
+- 公网 `GET /api/moments?limit=1` 正常；不存在留言返回结构化 404；远端 `moment.ts` SHA-256 与本地一致。
+
 ## 2026-09-27 · V2-B
 
 ### T-076 · 聊天显式联网搜索

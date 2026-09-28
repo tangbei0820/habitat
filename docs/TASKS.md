@@ -3229,6 +3229,15 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 
 **待优化（明确延期）**：Widget 拖拽编排、跨标签实时订阅与更多 Living App Widget；继续留在后续主屏编排阶段。
 
-### T-109 · 2026-09-28 · V2-A Home 基础模块第八阶段部署 VPS —— **待部署**
+### T-109 · 2026-09-28 · V2-A Home 基础模块第八阶段部署 VPS —— **完成（生产）**
 
-部署 T-108 完成后补写生产备份、服务重启、公网静态资源与单条留言路由验收；不覆盖生产 `.env` / SQLite，不进入下一阶段。
+**范围**：部署 T-108 的留言板 Widget 范围与单条读取接口；保留生产 `.env` / SQLite，不进入下一阶段。
+
+| 项 | 结果 |
+| --- | --- |
+| 代码上机 | 本地提交 `ef5fe76` 打包上传；排除 `.git`、依赖目录、`server/data`、`server/.env` 与 `.workbuddy`。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-20260928-ef5fe76`；生产 SQLite 未被部署包覆盖。 |
+| 服务状态 | `habitat-server` active；本机与服务器自 curl 公网 `/api/health` 均返回 `{"ok":true}`。 |
+| 公网验收 | 首页已引用 `index-wdNQr2lm.js`；`GET /api/moments?limit=1` 正常；不存在留言返回结构化 404；远端 `server/src/routes/moment.ts` SHA-256 与本地一致。 |
+
+**阶段边界**：本阶段到此停止；Widget 拖拽编排、跨标签实时订阅、日记富媒体 / 图片、服务端收藏分页与其它 Living Apps 留在后续任务。
