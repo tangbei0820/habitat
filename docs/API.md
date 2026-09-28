@@ -806,7 +806,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | 接口 | 说明 |
 |---|---|
 | `GET /api/life/month?month=YYYY-MM` | 用户时区月历摘要：事件 / 失败 / 调用 / Token / 已定价费用 / 未定价数 |
-| `GET /api/life/day/:dayKey` | 日期下钻；返回当天 EventLog 与 UsageRecord，不反查聊天库 |
+| `GET /api/life/day/:dayKey` | 日期下钻；返回共同生活 `timeline` 投影、原始 EventLog 与 UsageRecord，不反查聊天库 |
 | `POST /api/life/events/reading` | 共读行为投影：打开、进度 / 阅读时长、书签、批注、生词；写入 EventLog，失败不影响本地阅读 |
 | `GET /api/life/ledger?month=YYYY-MM` | 用量总计、按服务 / 模型聚合、价格快照、钱包与最近流水 |
 | `GET /api/life/runtime` | 聚合 server、Eventide、MCP、当前状态、主动策略 / 运行态 / 最近任务 |
@@ -816,6 +816,10 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | `PUT /api/push/subscription` | 保存浏览器 `PushSubscription`；VAPID 未配置时拒绝 |
 | `DELETE /api/push/subscription` | 按 endpoint 取消订阅 |
 | `POST /api/push/test` | 向当前浏览器订阅发送一次测试通知；不写入站内收件箱，返回 `sent / skipped / reason` |
+
+`timeline` 按发生时间正序返回当天的可读事件卡（来源、标题、详情、原始类型与可追溯 `refId`）。
+它由 EventLog 投影生成，不新增事实表；`events` / `usage` 继续保留给诊断与兼容用途。
+API / Token / 费用记录属于次级系统统计，前端默认收起，不与共同生活事件混排。
 
 价格单位是**分 / 百万 Token**。每条 UsageRecord 在写入时绑定当时适用的最新快照，费用按分向上取整；
 新增快照会给符合有效期、仍为 `cost=null` 的历史调用补价，但不会重算已经绑定快照的历史。没有匹配价格时

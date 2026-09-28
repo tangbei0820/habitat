@@ -2,6 +2,7 @@ import type {
   LifeLedgerView,
   LifeMonthSummary,
   LifeRuntimeView,
+  LifeTimelineItem,
   NotificationRecord,
   NotificationPreferences,
   PriceSnapshotRecord,
@@ -12,6 +13,7 @@ import { fetchJson } from '../../lib/api'
 const jsonHeaders = { 'content-type': 'application/json' }
 
 export interface LifeDayDetail {
+  timeline: LifeTimelineItem[]
   events: Array<{
     id: number
     eventType: string

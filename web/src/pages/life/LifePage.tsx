@@ -39,21 +39,6 @@ function dateTime(value: number | null): string {
   }).format(value)
 }
 function money(cents: number): string { return `${(cents / 100).toFixed(2)} 元` }
-function lifeEventLabel(event: { eventType: string; metricsJson: Record<string, unknown> }): string {
-  const title = typeof event.metricsJson.bookTitle === 'string' && event.metricsJson.bookTitle.trim() !== ''
-    ? `《${event.metricsJson.bookTitle}》`
-    : '这本书'
-  if (event.eventType === 'reading.opened') return `共读 · 打开 ${title}`
-  if (event.eventType === 'reading.progress') {
-    const percent = typeof event.metricsJson.progressPercent === 'number' ? ` · ${event.metricsJson.progressPercent}%` : ''
-    const seconds = typeof event.metricsJson.readingSecondsDelta === 'number' ? ` · +${Math.round(event.metricsJson.readingSecondsDelta / 60)} 分钟` : ''
-    return `共读 · 阅读 ${title}${percent}${seconds}`
-  }
-  if (event.eventType === 'reading.bookmark') return `共读 · ${event.metricsJson.enabled === true ? '夹入' : '移除'}书签 ${title}`
-  if (event.eventType === 'reading.annotation') return `共读 · 写下批注 ${title}`
-  if (event.eventType === 'reading.vocabulary') return `共读 · 收入生词 ${title}`
-  return event.eventType
-}
 function Panel({ children, className = '', testId }: { children: ReactNode; className?: string; testId?: string }) {
   return <section data-testid={testId} className={`rounded-xl border p-4 ${className}`} style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-surface-solid)' }}>{children}</section>
 }
@@ -96,7 +81,13 @@ function CalendarView({ month, setMonth }: { month: string; setMonth: (value: st
       return <button key={key} onClick={() => selectDay(key)} className="min-h-14 rounded-lg border p-1 text-left" style={{ borderColor: selected === key ? 'var(--accent-strong)' : 'var(--border-soft)', background: item ? 'var(--bg-subtle)' : 'transparent' }}><span>{day}</span>{item && <span className="mt-1 block text-[10px]" style={{ color: item.failedEventCount > 0 ? 'var(--danger)' : 'var(--text-secondary)' }}>{item.eventCount}事 · {item.apiCalls}次</span>}</button>
     })}</div></Panel>
     {summary && <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4"><Panel><strong className="block text-base">{summary.totals.eventCount}</strong>本月事件</Panel><Panel><strong className="block text-base">{summary.totals.totalTokens}</strong>Token</Panel><Panel><strong className="block text-base">{Math.round(summary.totals.callDurationMs / 60000)} 分钟</strong>通话</Panel><Panel><strong className="block text-base">{money(summary.totals.pricedCostCents)}</strong>{summary.totals.unpricedCalls > 0 ? `另 ${summary.totals.unpricedCalls} 次未定价` : '已全部定价'}</Panel></div>}
-    {selected && <Panel><h2 className="mb-3 font-medium">{selected} 明细</h2>{detail === null ? <p className="text-sm">正在读取…</p> : detail.events.length + detail.usage.length === 0 ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>当天没有事实记录</p> : <div className="space-y-2 text-sm">{detail.events.map((event) => <div key={`event-${event.id}`} className="rounded-lg p-2" style={{ background: 'var(--bg-subtle)' }}><strong>{lifeEventLabel(event)}</strong><span className="ml-2 text-xs">{dateTime(event.at)}</span></div>)}{detail.usage.map((usage) => <div key={`usage-${usage.id}`} className="rounded-lg p-2" style={{ background: 'var(--bg-subtle)' }}><strong>{usage.service}</strong> · {usage.model}<span className="block text-xs">{usage.totalTokens} Token · {usage.cost === null ? '未定价' : money(usage.cost)}</span></div>)}</div>}</Panel>}
+    {selected && <Panel>
+      <div className="mb-3 flex items-start justify-between gap-3"><div><h2 className="font-medium">{selected} · 共同生活</h2><p className="text-xs" style={{ color: 'var(--text-secondary)' }}>按发生时间整理的聊天、主动行为与生活记录</p></div><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{detail?.timeline.length ?? 0} 件事</span></div>
+      {detail === null ? <p className="text-sm">正在读取…</p> : <>
+        {detail.timeline.length === 0 ? <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>当天还没有共同生活事件</p> : <div className="space-y-2">{detail.timeline.map((item) => <article key={item.id} className="rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-subtle)' }}><div className="flex items-start gap-3"><time className="w-12 shrink-0 pt-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>{new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(item.at)}</time><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="rounded-full px-2 py-0.5 text-[11px]" style={{ color: 'var(--accent-strong)', background: 'var(--bg-surface-solid)' }}>{item.source}</span><strong>{item.title}</strong></div>{item.detail && <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>{item.detail}</p>}<details className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}><summary className="cursor-pointer">查看来源</summary><p className="mt-1 break-all">{item.eventType}{item.refId ? ` · ${item.refId}` : ''}</p></details></div></div></article>)}</div>}
+        {detail.usage.length > 0 && <details className="mt-4 rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)' }}><summary className="cursor-pointer text-sm font-medium">系统统计 · {detail.usage.length} 次模型调用</summary><div className="mt-2 space-y-2">{detail.usage.map((usage) => <div key={`usage-${usage.id}`} className="rounded-lg p-2 text-sm" style={{ background: 'var(--bg-subtle)' }}><div className="flex justify-between gap-3"><strong>{usage.service} · {usage.model}</strong><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{dateTime(usage.at)}</span></div><span className="block text-xs" style={{ color: 'var(--text-secondary)' }}>{usage.totalTokens} Token · {usage.cost === null ? '未定价' : money(usage.cost)}</span></div>)}</div></details>}
+      </>}
+    </Panel>}
     </LoadingOrEmpty>
   </div>
 }

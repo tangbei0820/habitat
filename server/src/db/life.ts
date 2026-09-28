@@ -1,5 +1,5 @@
 /** Life 页面查询模型：只聚合服务端事实表，不反查前端聊天库。 */
-import type { LifeDaySummary, LifeLedgerView, LifeMonthSummary, UsageBreakdown } from '@shared/types.js'
+import type { LifeDaySummary, LifeLedgerView, LifeMonthSummary, LifeTimelineItem, UsageBreakdown } from '@shared/types.js'
 import { and, desc, eq, gte, lt } from 'drizzle-orm'
 import { db } from './index.js'
 import { eventLog, usageRecord } from './schema.js'
@@ -102,9 +102,92 @@ export function getLifeLedger(month: string): LifeLedgerView {
 export function getLifeDay(dayKey: string): {
   events: Array<typeof eventLog.$inferSelect>
   usage: Array<typeof usageRecord.$inferSelect>
+  timeline: LifeTimelineItem[]
 } {
+  const events = db.select().from(eventLog).where(eq(eventLog.dayKey, dayKey)).orderBy(desc(eventLog.at)).all()
   return {
-    events: db.select().from(eventLog).where(eq(eventLog.dayKey, dayKey)).orderBy(desc(eventLog.at)).all(),
+    events,
     usage: db.select().from(usageRecord).where(eq(usageRecord.dayKey, dayKey)).orderBy(desc(usageRecord.at)).all(),
+    timeline: events
+      .slice()
+      .sort((left, right) => left.at - right.at || left.id - right.id)
+      .map(toTimelineItem),
+  }
+}
+
+function metricText(metrics: Record<string, unknown>, key: string): string | null {
+  const value = metrics[key]
+  if (typeof value === 'string' && value.trim() !== '') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return null
+}
+
+function titleForAction(eventType: string): string {
+  const action = eventType.slice('automation.action.'.length).replace(/\.(completed|failed)$/, '')
+  const labels: Record<string, string> = {
+    message: '发送了一条主动消息',
+    diary: '写下了一篇日记',
+    messageboard: '留下一条留言',
+    surf: '进行了一次自主冲浪',
+    call: '发起了一次通话',
+  }
+  return labels[action] ?? `完成了主动行为：${action || '未知'}`
+}
+
+function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
+  const metrics = row.metricsJson
+  let source = '系统'
+  let title = '生活事件'
+  let detail: string | null = null
+  const metricTitle = metricText(metrics, 'title')
+  const error = metricText(metrics, 'error')
+
+  if (row.eventType.startsWith('reading.')) {
+    source = '共读'
+    const bookTitle = metricText(metrics, 'bookTitle')
+    const book = bookTitle ? `《${bookTitle}》` : '书籍'
+    if (row.eventType === 'reading.opened') title = `打开 ${book}`
+    else if (row.eventType === 'reading.progress') {
+      title = `阅读 ${book}`
+      const percent = metricText(metrics, 'progressPercent')
+      const seconds = metricText(metrics, 'readingSecondsDelta')
+      detail = [percent ? `进度 ${percent}%` : null, seconds ? `本次 ${Math.round(Number(seconds) / 60)} 分钟` : null].filter(Boolean).join(' · ') || null
+    } else if (row.eventType === 'reading.bookmark') title = `${metrics.enabled === true ? '夹入' : '移除'}书签 · ${book}`
+    else if (row.eventType === 'reading.annotation') title = `写下批注 · ${book}`
+    else if (row.eventType === 'reading.vocabulary') title = `收入生词 · ${book}`
+  } else if (row.eventType === 'call.ring') {
+    source = '通话'; title = '发起通话邀请'; detail = '等待接听或拒绝'
+  } else if (row.eventType === 'call.ended') {
+    source = '通话'; title = '通话结束'
+    const duration = metricText(metrics, 'durationMs')
+    detail = duration ? `时长 ${Math.max(0, Math.round(Number(duration) / 60000))} 分钟` : metricText(metrics, 'status')
+  } else if (row.eventType === 'capability.diary.create' || row.eventType === 'capability.diary.update') {
+    source = '日记'; title = row.eventType.endsWith('.create') ? '写下了一篇日记' : '更新了一篇日记'; detail = metricTitle
+  } else if (row.eventType === 'capability.messageboard.write' || row.eventType === 'capability.messageboard.update') {
+    source = '留言板'; title = row.eventType.endsWith('.write') ? '留下一条留言' : '更新了一条留言'; detail = metricTitle
+  } else if (row.eventType.startsWith('automation.wake.')) {
+    source = '主动行为'; title = 'Wake 主动行为'; detail = row.eventType.endsWith('.failed') ? error : row.eventType.endsWith('.actions_dropped') ? '部分行动被丢弃' : '本轮行动已完成'
+  } else if (row.eventType.startsWith('automation.solitude.') || row.eventType.startsWith('automation.surf.')) {
+    source = '独处时光'; title = row.eventType.includes('surf') ? '自主冲浪记录' : '独处时光'; detail = error ?? metricText(metrics, 'url')
+  } else if (row.eventType.startsWith('automation.action.')) {
+    source = '主动行为'; title = titleForAction(row.eventType); detail = error ?? (row.eventType.endsWith('.failed') ? '执行失败' : '执行完成')
+  } else if (row.eventType.startsWith('automation.dream.')) {
+    source = '独处时光'; title = '梦境记录'; detail = error ?? '已完成一次梦境整理'
+  } else if (row.eventType.startsWith('eventide.')) {
+    source = '状态'; title = row.eventType.includes('settlement') ? '状态结算' : '状态事件'; detail = error ?? metricText(metrics, 'reason')
+  } else {
+    detail = error ?? metricTitle ?? metricText(metrics, 'reason')
+  }
+
+  return {
+    id: `event:${row.id}`,
+    eventId: row.id,
+    eventType: row.eventType,
+    at: row.at,
+    source,
+    title,
+    detail,
+    refId: row.refId,
+    metrics,
   }
 }

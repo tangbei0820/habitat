@@ -88,6 +88,7 @@ const days = monthView.body.days as Array<{ dayKey: string }> | undefined
 const detail = await json(`/api/life/day/${days?.[0]?.dayKey ?? `${month}-01`}`)
 const usage = detail.body.usage as Array<{ priceSnapshotId?: string }> | undefined
 check('日期下钻保留用量与价格来源', detail.response.ok && usage?.[0]?.priceSnapshotId === snapshots?.[0]?.id)
+check('日期下钻返回共同生活时间线投影', detail.response.ok && Array.isArray(detail.body.timeline))
 
 const readAll = await json('/api/notifications/read-all', { method: 'PATCH' })
 check('通知中心支持全部已读', readAll.response.ok && readAll.body.updated === 0)

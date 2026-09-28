@@ -1187,6 +1187,22 @@ export interface LifeDaySummary {
   unpricedCalls: number
 }
 
+/**
+ * Life 当天的共同生活时间线项。它是 event_log 的可读投影，
+ * 保留原始类型和 metrics 供详情/排障使用，但普通页面不直接展示对象。
+ */
+export interface LifeTimelineItem {
+  id: string
+  eventId: number
+  eventType: string
+  at: number
+  source: string
+  title: string
+  detail: string | null
+  refId: string | null
+  metrics: Record<string, unknown>
+}
+
 export interface UsageBreakdown {
   key: string
   calls: number

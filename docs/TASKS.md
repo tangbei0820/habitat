@@ -2939,3 +2939,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 服务状态 | `habitat-server` 重启后 active；首次探测发生在进程完成启动前，等待后复验通过；Node `v20.16.0`，Nocturne 工具面自检正常。 |
 | 公网验收 | 服务器本机与 `https://habitat.beiyan.cc/api/health` 均返回 `ok: true`；首页引用 `index-BoKHzI44.js`；`GET /api/notifications/preferences` 返回通知偏好默认结构。 |
 | 用户验证 | 请刷新 `https://habitat.beiyan.cc`；若浏览器仍显示旧壳，执行一次强制刷新或清理该站点旧缓存。 |
+
+### T-089 · 2026-09-28 · V2-A 后续：Life 共同生活时间线—— **完成（本地）**
+
+**边界**：只把 Life 日期下钻从“原始事件 + 用量平铺”收口为可读的共同生活时间线；不新增事实表、不反查本地聊天库、不改月历统计口径，也不新增一起听 / 钱包等事件源（共读仅复用已有阅读 EventLog）。
+
+| 交付 | 说明 |
+| --- | --- |
+| 时间线投影 | `/api/life/day/:dayKey` 新增 `timeline`，由当天 EventLog 投影生成，按发生时间正序返回 `source / title / detail / eventType / refId`；原始 `events` 与 `usage` 保留兼容。 |
+| 事件可读化 | 覆盖共读、通话、日记、留言板、Wake / 主动行为、独处冲浪、梦境与 Eventide；未知类型仍保留原始类型入口，不把对象直接渲染成 `[object Object]`。 |
+| Life 交互 | 日期明细先展示共同生活事件卡，时间、来源、详情可追溯；API / Token / 费用移入默认收起的“系统统计”，不再与生活事件混排。 |
+| 参考取舍 | 实查 [WORKKK](https://github.com/zhizhou-xiee/workkk) README 的实时状态可见、历史与可折叠信息块；只借“先看当前状态、需要时展开细节”的信息层级，不采用其游戏化状态 / 成就模型。 |
+| 数据边界 | 仅新增共享响应类型 `LifeTimelineItem`，无 SQLite / Dexie / 备份版本变化；事实来源仍是 EventLog / UsageRecord。 |
+
+**验收**：`npm run typecheck`、`npm run build`、`git diff --check` 通过；前端时间线只渲染后端生成的字符串字段，系统统计可折叠。生产仍停在 T-088，本批未部署。
+
+**待优化（后续功能）**：聊天正文 / 朋友圈 / 相册等仍需各自追加真实 Life EventLog；时间线筛选、详情深链与服务端分页另起任务，不在本批扩展。
