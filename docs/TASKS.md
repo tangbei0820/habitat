@@ -2969,3 +2969,17 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:phase4` 新增聊天完成事实断言；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-088，本批未部署。 |
 
 **待优化（后续功能）**：朋友圈、收藏 / 作品 / 相册、一起听、学习与倒数日仍需各自接入真实 Life EventLog；本批不扩展其它来源。
+
+### T-091 · 2026-09-28 · V2-A 后续：一起听事实进入 Life—— **完成（本地）**
+
+**边界**：只把现有一起听共享播放同步投影为 Life 事实与月历时长；不接网易云 / MCP 搜索、歌词、AI 选歌或 WebSocket，不改本地音乐库与现有 `listenSessions` 备份语义。
+
+| 交付 | 说明 |
+| --- | --- |
+| 播放事实 | 服务端在真实播放开始与位置同步时追加 `listening.track.started` / `listening.progress`，只保存曲目快照、位置与秒数增量，不保存音频内容。 |
+| Life 汇总 | `LifeDaySummary` 新增 `listeningDurationMs`，月历展示本月一起听时长；时间线按曲目合并高频进度事件，避免每 5 秒堆一张卡。 |
+| 共享会话 | 继续复用现有 `app_kv` 会话与 `/api/listening/session`，播放 / 暂停 / 切歌仍由当前前端控制，未伪造“小栖在场”。 |
+| 参考取舍 | 实查 [Duetto](https://github.com/avisforevelyn/Duetto) README 的真实播放、共同房间状态卡与可追溯 archive；只借“播放事实可回看”的语义，不采用其 WebSocket、网易云登录或 AI 听歌分析。 |
+| 验收 | `probe:listening` **7/7** 覆盖开始播放、连续同步、暂停累计与曲目合并；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-088，本批未部署。 |
+
+**待优化（后续功能）**：一起听历史归档、共同评论、AI 选歌 / 评论、网易云 / MCP 与多端实时冲突处理另起任务。

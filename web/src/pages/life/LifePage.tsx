@@ -39,6 +39,10 @@ function dateTime(value: number | null): string {
   }).format(value)
 }
 function money(cents: number): string { return `${(cents / 100).toFixed(2)} 元` }
+function durationMinutes(milliseconds: number): string {
+  const minutes = Math.round(Math.max(0, milliseconds) / 60000)
+  return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`
+}
 function Panel({ children, className = '', testId }: { children: ReactNode; className?: string; testId?: string }) {
   return <section data-testid={testId} className={`rounded-xl border p-4 ${className}`} style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-surface-solid)' }}>{children}</section>
 }
@@ -80,7 +84,7 @@ function CalendarView({ month, setMonth }: { month: string; setMonth: (value: st
       const key = `${month}-${String(day).padStart(2, '0')}`; const item = summaries.get(key)
       return <button key={key} onClick={() => selectDay(key)} className="min-h-14 rounded-lg border p-1 text-left" style={{ borderColor: selected === key ? 'var(--accent-strong)' : 'var(--border-soft)', background: item ? 'var(--bg-subtle)' : 'transparent' }}><span>{day}</span>{item && <span className="mt-1 block text-[10px]" style={{ color: item.failedEventCount > 0 ? 'var(--danger)' : 'var(--text-secondary)' }}>{item.eventCount}事 · {item.apiCalls}次</span>}</button>
     })}</div></Panel>
-    {summary && <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4"><Panel><strong className="block text-base">{summary.totals.eventCount}</strong>本月事件</Panel><Panel><strong className="block text-base">{summary.totals.totalTokens}</strong>Token</Panel><Panel><strong className="block text-base">{Math.round(summary.totals.callDurationMs / 60000)} 分钟</strong>通话</Panel><Panel><strong className="block text-base">{money(summary.totals.pricedCostCents)}</strong>{summary.totals.unpricedCalls > 0 ? `另 ${summary.totals.unpricedCalls} 次未定价` : '已全部定价'}</Panel></div>}
+    {summary && <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-5"><Panel><strong className="block text-base">{summary.totals.eventCount}</strong>本月事件</Panel><Panel><strong className="block text-base">{summary.totals.totalTokens}</strong>Token</Panel><Panel><strong className="block text-base">{durationMinutes(summary.totals.callDurationMs)}</strong>通话</Panel><Panel><strong className="block text-base">{durationMinutes(summary.totals.listeningDurationMs)}</strong>一起听</Panel><Panel><strong className="block text-base">{money(summary.totals.pricedCostCents)}</strong>{summary.totals.unpricedCalls > 0 ? `另 ${summary.totals.unpricedCalls} 次未定价` : '已全部定价'}</Panel></div>}
     {selected && <Panel>
       <div className="mb-3 flex items-start justify-between gap-3"><div><h2 className="font-medium">{selected} · 共同生活</h2><p className="text-xs" style={{ color: 'var(--text-secondary)' }}>按发生时间整理的聊天、主动行为与生活记录</p></div><span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{detail?.timeline.length ?? 0} 件事</span></div>
       {detail === null ? <p className="text-sm">正在读取…</p> : <>

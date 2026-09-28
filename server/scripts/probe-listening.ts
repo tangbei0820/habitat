@@ -31,6 +31,17 @@ check('可写入播放中的曲目快照', updated.status === 200 && record(upda
 const persisted = await request('/api/listening/session')
 check('刷新读取仍保留曲目与播放位置', persisted.status === 200 && record(persisted.body).positionSeconds === 12.5 && record(record(persisted.body).track).id === track.id)
 
+await request('/api/listening/session', { method: 'PUT', headers, body: JSON.stringify({ track, state: 'playing', positionSeconds: 22.5 }) })
+await request('/api/listening/session', { method: 'PUT', headers, body: JSON.stringify({ track, state: 'paused', positionSeconds: 25.5 }) })
+const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+const month = today.slice(0, 7)
+const lifeDay = await request(`/api/life/day/${today}`)
+const lifeMonth = await request(`/api/life/month?month=${month}`)
+const daySummary = (record(lifeMonth.body).days as Array<Record<string, unknown>> | undefined)?.find((day) => day.dayKey === today)
+const timeline = record(lifeDay.body).timeline as Array<Record<string, unknown>> | undefined
+check('播放事实进入 Life 时间线且按曲目合并', lifeDay.status === 200 && timeline?.some((item) => item.eventType === 'listening.track.started') === true && timeline?.some((item) => item.eventType === 'listening.progress' && item.detail === '累计 13 秒') === true)
+check('月历汇总真实一起听秒数', lifeMonth.status === 200 && daySummary?.listeningDurationMs === 13_000)
+
 const bad = await request('/api/listening/session', { method: 'PUT', headers, body: JSON.stringify({ track: { ...track, externalUrl: 'javascript:alert(1)' }, state: 'paused', positionSeconds: 0 }) })
 check('拒绝非 HTTP(S) 音源地址', bad.status === 400)
 

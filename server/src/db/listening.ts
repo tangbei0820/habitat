@@ -1,6 +1,7 @@
 /** 一起听当前会话：只保存共享播放状态，不复制本地音乐库。 */
 import type { ListeningPlaybackState, ListeningSessionView, MusicTrack } from '@shared/types.js'
 import { getKv, setKv } from './kv.js'
+import { appendEventLog } from './activity.js'
 
 const KEY = 'listening.session.main'
 
@@ -64,6 +65,10 @@ export function updateListeningSession(patch: ListeningSessionPatch): ListeningS
   const previous = getListeningSession()
   const now = Date.now()
   const trackChanged = patch.track?.id !== previous.track?.id
+  const sameTrack = !trackChanged && patch.track !== null && previous.track !== null
+  const deltaSeconds = sameTrack && previous.state === 'playing'
+    ? Math.max(0, patch.positionSeconds - previous.positionSeconds)
+    : 0
   const startedAt = patch.state === 'playing'
     ? (trackChanged || previous.startedAt === null ? now : previous.startedAt)
     : previous.startedAt
@@ -78,5 +83,23 @@ export function updateListeningSession(patch: ListeningSessionPatch): ListeningS
     listeners: { user: patch.track !== null, companion: previous.listeners.companion },
   }
   setKv(KEY, JSON.stringify(next))
+  // 只记录播放事实，不保存音频内容；每次同步都保留真实增量，Life 投影会按曲目合并卡片。
+  if (deltaSeconds > 0 && patch.track !== null) {
+    appendEventLog('listening.progress', {
+      trackId: patch.track.id,
+      title: patch.track.title,
+      artist: patch.track.artist,
+      deltaSeconds,
+      positionSeconds: patch.positionSeconds,
+      state: patch.state,
+    }, patch.track.id, now)
+  }
+  if (patch.state === 'playing' && patch.track !== null && (trackChanged || previous.state !== 'playing')) {
+    appendEventLog('listening.track.started', {
+      trackId: patch.track.id,
+      title: patch.track.title,
+      artist: patch.track.artist,
+    }, patch.track.id, now)
+  }
   return next
 }

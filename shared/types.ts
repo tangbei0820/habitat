@@ -1183,6 +1183,7 @@ export interface LifeDaySummary {
   completionTokens: number
   totalTokens: number
   callDurationMs: number
+  listeningDurationMs: number
   pricedCostCents: number
   unpricedCalls: number
 }

@@ -25,6 +25,7 @@ function emptyDay(dayKey: string): LifeDaySummary {
     callDurationMs: 0,
     pricedCostCents: 0,
     unpricedCalls: 0,
+    listeningDurationMs: 0,
   }
 }
 
@@ -45,6 +46,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     day.eventCount += 1
     if (row.eventType.endsWith('.failed')) day.failedEventCount += 1
     if (row.eventType === 'call.ended' && typeof row.metricsJson.durationMs === 'number') day.callDurationMs += Math.max(0, row.metricsJson.durationMs)
+    if (row.eventType === 'listening.progress' && typeof row.metricsJson.deltaSeconds === 'number') day.listeningDurationMs += Math.max(0, row.metricsJson.deltaSeconds * 1000)
     days.set(row.dayKey, day)
   }
   for (const row of db.select().from(usageRecord).where(and(gte(usageRecord.dayKey, `${month}-01`), lt(usageRecord.dayKey, `${end}-01`))).all()) {
@@ -62,6 +64,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     totals.completionTokens += day.completionTokens
     totals.totalTokens += day.totalTokens
     totals.callDurationMs += day.callDurationMs
+    totals.listeningDurationMs += day.listeningDurationMs
     totals.pricedCostCents += day.pricedCostCents
     totals.unpricedCalls += day.unpricedCalls
   }
@@ -108,11 +111,39 @@ export function getLifeDay(dayKey: string): {
   return {
     events,
     usage: db.select().from(usageRecord).where(eq(usageRecord.dayKey, dayKey)).orderBy(desc(usageRecord.at)).all(),
-    timeline: events
+    timeline: collapseListeningTimeline(events
       .slice()
       .sort((left, right) => left.at - right.at || left.id - right.id)
-      .map(toTimelineItem),
+      .map(toTimelineItem)),
   }
+}
+
+function collapseListeningTimeline(items: LifeTimelineItem[]): LifeTimelineItem[] {
+  const result: LifeTimelineItem[] = []
+  const progressIndex = new Map<string, number>()
+  for (const item of items) {
+    if (item.eventType !== 'listening.progress') {
+      result.push(item)
+      continue
+    }
+    const key = item.refId ?? item.id
+    const seconds = typeof item.metrics.deltaSeconds === 'number' ? Math.max(0, item.metrics.deltaSeconds) : 0
+    const existingIndex = progressIndex.get(key)
+    if (existingIndex === undefined) {
+      progressIndex.set(key, result.length)
+      result.push({ ...item, detail: `累计 ${listenDuration(seconds)}` })
+      continue
+    }
+    const existing = result[existingIndex]
+    const total = typeof existing.metrics.deltaSeconds === 'number' ? existing.metrics.deltaSeconds + seconds : seconds
+    result[existingIndex] = { ...existing, metrics: { ...existing.metrics, deltaSeconds: total }, detail: `累计 ${listenDuration(total)}` }
+  }
+  return result
+}
+
+function listenDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.max(1, Math.round(seconds))} 秒`
+  return `${Math.max(1, Math.round(seconds / 60))} 分钟`
 }
 
 function metricText(metrics: Record<string, unknown>, key: string): string | null {
@@ -167,6 +198,11 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
     const messageCount = metricText(metrics, 'messageCount')
     const toolRounds = metricText(metrics, 'toolRounds')
     detail = [messageCount ? `上下文 ${messageCount} 条` : null, toolRounds && Number(toolRounds) > 0 ? `工具 ${toolRounds} 轮` : null].filter(Boolean).join(' · ') || null
+  } else if (row.eventType === 'listening.track.started' || row.eventType === 'listening.progress') {
+    source = '一起听'
+    const trackTitle = metricText(metrics, 'title') ?? '这首歌'
+    title = row.eventType === 'listening.track.started' ? `开始一起听《${trackTitle}》` : `一起听《${trackTitle}》`
+    detail = row.eventType === 'listening.progress' ? null : metricText(metrics, 'artist')
   } else if (row.eventType === 'capability.diary.create' || row.eventType === 'capability.diary.update') {
     source = '日记'; title = row.eventType.endsWith('.create') ? '写下了一篇日记' : '更新了一篇日记'; detail = metricTitle
   } else if (row.eventType === 'capability.messageboard.write' || row.eventType === 'capability.messageboard.update') {
