@@ -72,6 +72,8 @@ export interface NewMessageInput {
   blocks?: MessageBlock[]
   status?: MessageStatus
   replyToId?: string | null
+  /** 仅保存跨模块所需的轻量来源标记（例如图片是用户上传还是 AI 生成）。 */
+  metadata?: Record<string, unknown>
 }
 
 /** 造一个纯文本块（消息体里最常见的形状） */
@@ -94,6 +96,7 @@ export function newMessage(input: NewMessageInput): ChatMessage {
     candidates: [],
     recalledAt: null,
     editedAt: null,
+    ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
     createdAt: now,
     updatedAt: now,
   }

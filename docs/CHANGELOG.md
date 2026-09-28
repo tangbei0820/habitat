@@ -1077,3 +1077,11 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 
 - 本地提交 `8346a21` 已部署至 `https://habitat.beiyan.cc`，保留生产 `.env` / SQLite，并创建备份 `habitat.db.bak-20260928-8346a21`。
 - `habitat-server` 重启后 active；公网健康、首页新静态资源、远端 Life 路由哈希与标签非法请求 400 冒烟通过。
+
+### 2026-09-28 · T-110 · 相册自动收集聊天图片（本地）
+
+- 设置页新增相册自动收集偏好：用户发送、AI 发送、AI 生成三类来源独立控制，默认关闭，并说明本地存储 / 备份体积影响。
+- 新图片在原消息落库后直接复用现有 Photo 仓储与来源键；`message.id + image block.order` 负责幂等去重，自动重复不打断聊天，失败给轻提示且不丢原消息。
+- 用户图片消息写入 `metadata.imageSource=user`，AI 生图写入 `metadata.imageSource=generated`；照片来源元数据保留 `sourceImageOrigin`，普通历史助手图片按 AI 发送归类。
+- 不新增 Dexie / SQLite / API schema；自动收集偏好只存本机 `localStorage`，关闭不追溯删除既有照片。
+- 两端 typecheck、前端 build、`git diff --check` 通过；浏览器 CDP 未启动，未冒充浏览器回归通过。

@@ -229,7 +229,9 @@ interface SessionGroup extends BaseObject {
 | ~~会话分组~~ | ✅ 已落地（T-018）：`ChatSession.groupId` + `sessionGroups` 表 → Dexie v8 | SPEC §2.1.3 |
 | 日记权限模型 | ✅ **已落地（T-036 / T-037 / T-068）**：服务端权威、整篇请求 / AI 决策、片段级 `fragment_visibility_json` 覆盖与安全过滤 | SPEC §3.4 / §6.3 |
 | 作品来源引用 | 复用基座的 `sourceId` / `sessionId`，**不新增字段**；聊天来源已落地（T-016） | SPEC §3.6.3 |
-| 相册来源引用 | 同上；聊天图片来源与 block 位置已落地（T-016） | SPEC §3.7.2 |
+| 相册来源引用 | 同上；聊天图片来源与 block 位置已落地（T-016）；自动收集沿用同一稳定键，来源元数据可标记 `sourceImageOrigin=generated` | SPEC §3.7.2 |
+
+相册“自动收集聊天图片”是本机偏好，不是照片实体字段：三个来源开关（用户发送 / AI 发送 / AI 生成）保存在前端 `localStorage`，默认关闭，既不进 Dexie 备份也不上送服务端。开启后只处理新消息；关闭不会删除已收照片。自动与手动入口都调用同一个 `createMessagePhotos()`，所以仍以 `message.id + image block.order` 去重。
 
 > 日记的「AI 决定允许 / 拒绝查看」与片段级开放已经接入服务端能力注册表；后续只补更细的片段请求与富媒体锚点，不再把当前能力标成占位。
 

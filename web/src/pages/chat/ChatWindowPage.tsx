@@ -61,6 +61,7 @@ import { describeImage, generateImage, synthesizeSpeech, transcribeAudio } from 
 import { useOnlineStatus } from '../../features/offline/useOnlineStatus'
 import { createStickerFromFile, getSticker, listStickers } from '../../db/stickers'
 import { appendBookmarkLifeEvent } from '../../features/life/api'
+import { usePhotoCollectionSettings } from '../../features/home/usePhotoCollectionSettings'
 
 /** 首屏只拉最近这么多条（§9 风险8：按时间分页，不全量读）；向上翻页也用它 */
 const PAGE_SIZE = 60
@@ -203,6 +204,9 @@ export function ChatWindowPage() {
   /** 全局显示偏好（SPEC §9.1.3）：两侧头像开关拆开，在这里读一次再往下传，气泡保持纯展示组件 */
   const showCompanionAvatar = useChatDisplay((state) => state.showCompanionAvatar)
   const showUserAvatar = useChatDisplay((state) => state.showUserAvatar)
+  const collectUserSent = usePhotoCollectionSettings((state) => state.collectUserSent)
+  const collectAssistantSent = usePhotoCollectionSettings((state) => state.collectAssistantSent)
+  const collectAssistantGenerated = usePhotoCollectionSettings((state) => state.collectAssistantGenerated)
 
   /* ---------- 消息对象操作（SPEC §2.3）的状态 ---------- */
   /** 离线时禁掉所有会发请求的消息动作（朗读 / 换一个 / 重发 / 重新生成） */
@@ -238,6 +242,33 @@ export function ChatWindowPage() {
   const toastTimerRef = useRef<number | null>(null)
   const speechRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null)
   const highlightTimerRef = useRef<number | null>(null)
+
+  /**
+   * 自动收集只处理刚落库的新消息；消息 id + block.order 仍由仓储层负责稳定去重。
+   * 历史消息不在打开会话时批量扫描，避免用户只想聊天却突然读取大量图片。
+   */
+  function autoCollectChatImages(message: ChatMessage): void {
+    const imageOrders = message.blocks
+      .filter((block) => block.kind === 'image')
+      .map((block) => block.order)
+    if (imageOrders.length === 0) return
+
+    const source = message.metadata?.imageSource
+    const orders = message.role === 'user'
+      ? (collectUserSent ? imageOrders : [])
+      : message.role === 'assistant' && source === 'generated'
+        ? (collectAssistantGenerated ? imageOrders : [])
+        : message.role === 'assistant' && collectAssistantSent
+          ? imageOrders
+          : []
+    if (orders.length === 0) return
+
+    void createMessagePhotos(message, { blockOrders: orders, throwOnAllSkipped: false })
+      .catch((error: unknown) => {
+        log.warn('聊天图片自动收集失败', error)
+        showToast(`自动收集图片失败：${error instanceof Error ? error.message : String(error)}`)
+      })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -547,6 +578,7 @@ export function ChatWindowPage() {
   async function submitUserMessage(input: {
     text: string
     blocks?: MessageBlock[]
+    metadata?: Record<string, unknown>
     requestReply: boolean
     /** 本轮是否由“联网搜索”入口明确授权 */
     webSearchQuery?: string
@@ -561,9 +593,11 @@ export function ChatWindowPage() {
       role: 'user',
       text: input.text,
       ...(input.blocks === undefined ? {} : { blocks: input.blocks }),
+      ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
     })
     await appendMessage(userMessage)
     setMessages((prev) => [...prev, userMessage])
+    autoCollectChatImages(userMessage)
     setErrorText(null)
 
     // 2. 首条消息顺便给会话起名（否则一直叫「新的对话」）。
@@ -708,6 +742,7 @@ export function ChatWindowPage() {
     await submitUserMessage({
       text: '',
       blocks: [{ kind: 'image', payload: { url: dataUrl, ...(description === undefined ? {} : { alt: description }) }, order: 0 }],
+      metadata: { imageSource: 'user' },
       requestReply: true,
     })
     if (visionFailed) showToast('图片已发送，但视觉识别未完成')
@@ -752,6 +787,7 @@ export function ChatWindowPage() {
       const message = newMessage({
         sessionId,
         role: 'assistant',
+        metadata: { imageSource: 'generated' },
         blocks: [
           { kind: 'text', payload: { text: `已按描述生成图片：${prompt}` }, order: 0 },
           { kind: 'image', payload: { url: result.dataUrl, alt: prompt }, order: 1 },
@@ -759,6 +795,7 @@ export function ChatWindowPage() {
       })
       await appendMessage(requestMessage); await appendMessage(message)
       setMessages((prev) => [...prev, requestMessage, message]); await touchSession(sessionId)
+      autoCollectChatImages(message)
       showToast('图片已生成')
     } catch (err) {
       log.error('生成图片失败', err); setErrorText(err instanceof Error ? err.message : String(err))

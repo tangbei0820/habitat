@@ -799,13 +799,24 @@ export interface MessagePhotoCaptureResult {
   skipped: number
 }
 
+export interface MessagePhotoCaptureOptions {
+  /** 只收录指定的顶层图片块；不传则保持手动入口的「整条消息」语义。 */
+  blockOrders?: number[]
+  /** 自动收集时重复是正常状态，不应抛异常打断聊天。 */
+  throwOnAllSkipped?: boolean
+}
+
 /**
  * 把消息里的所有顶层图片一次加入相册。先把图片全部读完再开事务，避免第二张失败时只留下第一张。
  * 以「消息 id + block.order」生成稳定主键，所以重复点击不会产生副本。
  */
-export async function createMessagePhotos(message: ChatMessage): Promise<MessagePhotoCaptureResult> {
-  const images = message.blocks.filter((block) => block.kind === 'image')
-  if (images.length === 0) throw new Error('这条消息里没有可加入相册的图片')
+export async function createMessagePhotos(message: ChatMessage, options: MessagePhotoCaptureOptions = {}): Promise<MessagePhotoCaptureResult> {
+  const allowedOrders = options.blockOrders === undefined ? null : new Set(options.blockOrders)
+  const images = message.blocks.filter((block) => block.kind === 'image' && (allowedOrders === null || allowedOrders.has(block.order)))
+  if (images.length === 0) {
+    if (options.throwOnAllSkipped === false) return { added: [], skipped: 0 }
+    throw new Error('这条消息里没有可加入相册的图片')
+  }
   const prepared = await Promise.all(images.map(async (block, index) => {
     const loaded = await loadChatImage(block.payload.url)
     const at = Date.now()
@@ -822,7 +833,11 @@ export async function createMessagePhotos(message: ChatMessage): Promise<Message
       collectionId: null,
       sourceId: message.id,
       sessionId: message.sessionId,
-      metadata: chatSourceMetadata(message, { sourceBlockKind: 'image', sourceBlockOrder: block.order }),
+      metadata: chatSourceMetadata(message, {
+        sourceBlockKind: 'image',
+        sourceBlockOrder: block.order,
+        ...(message.metadata?.imageSource === 'generated' ? { sourceImageOrigin: 'generated' } : {}),
+      }),
       createdAt: at,
       updatedAt: at,
     }
@@ -841,7 +856,9 @@ export async function createMessagePhotos(message: ChatMessage): Promise<Message
       }
     }
   })
-  if (added.length === 0) throw new Error(images.length === 1 ? '这张图片已经加入相册了' : '这条消息里的图片已经全部加入相册了')
+  if (added.length === 0 && options.throwOnAllSkipped !== false) {
+    throw new Error(images.length === 1 ? '这张图片已经加入相册了' : '这条消息里的图片已经全部加入相册了')
+  }
   return { added, skipped }
 }
 

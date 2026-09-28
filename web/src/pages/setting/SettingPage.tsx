@@ -8,6 +8,7 @@ import { IdentitySettings } from '../../features/setting/IdentitySettings'
 import { PromptSettings } from '../../features/setting/PromptSettings'
 import { ProviderSettings } from '../../features/providers/ProviderSettings'
 import { McpManager } from '../../features/mcp/McpManager'
+import { PhotoCollectionSettings } from '../../features/home/PhotoCollectionSettings'
 import { ApiRequestError } from '../../lib/api'
 import { getMcpHealth, getServerHealth } from '../../lib/health'
 import { log } from '../../lib/log'
@@ -114,6 +115,8 @@ export function SettingPage() {
 
         {/* Prompt 与世界书（7A · SPEC §9.4）：人格 / 透明查看 / 世界书入口 */}
         <PromptSettings />
+
+        <PhotoCollectionSettings />
 
         <ProviderSettings />
 
