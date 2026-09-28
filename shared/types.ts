@@ -1185,6 +1185,7 @@ export interface LifeDaySummary {
   callDurationMs: number
   listeningDurationMs: number
   studyActivityCount: number
+  countdownActivityCount: number
   pricedCostCents: number
   unpricedCalls: number
 }

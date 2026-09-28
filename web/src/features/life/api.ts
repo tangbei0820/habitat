@@ -86,6 +86,22 @@ export function appendStudyLifeEvent(event: StudyLifeEvent): Promise<void> {
   }).then(() => undefined)
 }
 
+export type CountdownLifeEvent = {
+  eventType: 'countdown.created' | 'countdown.deleted' | 'countdown.widget.updated'
+  countdownId: string
+  title: string
+  targetDate: string
+  action?: 'pinned' | 'unpinned'
+  at?: number
+}
+
+/** 倒数日只投影操作事实；本地日期数据仍由 Dexie 保管。 */
+export function appendCountdownLifeEvent(event: CountdownLifeEvent): Promise<void> {
+  return fetchJson('/api/life/events/countdown', {
+    method: 'POST', headers: jsonHeaders, body: JSON.stringify(event),
+  }).then(() => undefined)
+}
+
 export function loadLifeLedger(month: string): Promise<LifeLedgerView> {
   return fetchJson(`/api/life/ledger?month=${encodeURIComponent(month)}`)
 }

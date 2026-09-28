@@ -27,6 +27,7 @@ function emptyDay(dayKey: string): LifeDaySummary {
     unpricedCalls: 0,
     listeningDurationMs: 0,
     studyActivityCount: 0,
+    countdownActivityCount: 0,
   }
 }
 
@@ -49,6 +50,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     if (row.eventType === 'call.ended' && typeof row.metricsJson.durationMs === 'number') day.callDurationMs += Math.max(0, row.metricsJson.durationMs)
     if (row.eventType === 'listening.progress' && typeof row.metricsJson.deltaSeconds === 'number') day.listeningDurationMs += Math.max(0, row.metricsJson.deltaSeconds * 1000)
     if (row.eventType.startsWith('study.')) day.studyActivityCount += 1
+    if (row.eventType.startsWith('countdown.')) day.countdownActivityCount += 1
     days.set(row.dayKey, day)
   }
   for (const row of db.select().from(usageRecord).where(and(gte(usageRecord.dayKey, `${month}-01`), lt(usageRecord.dayKey, `${end}-01`))).all()) {
@@ -68,6 +70,7 @@ export function getLifeMonthSummary(month: string): LifeMonthSummary {
     totals.callDurationMs += day.callDurationMs
     totals.listeningDurationMs += day.listeningDurationMs
     totals.studyActivityCount += day.studyActivityCount
+    totals.countdownActivityCount += day.countdownActivityCount
     totals.pricedCostCents += day.pricedCostCents
     totals.unpricedCalls += day.unpricedCalls
   }
@@ -227,6 +230,14 @@ function toTimelineItem(row: typeof eventLog.$inferSelect): LifeTimelineItem {
       title = '完成了一件学习小事'
       detail = label
     }
+  } else if (row.eventType.startsWith('countdown.')) {
+    source = '倒数日'
+    let title = metricText(metrics, 'title') ?? '一个重要日子'
+    const targetDate = metricText(metrics, 'targetDate')
+    if (row.eventType === 'countdown.created') title = `记下了「${title}」`
+    else if (row.eventType === 'countdown.deleted') title = `移除了「${title}」`
+    else title = `${metricText(metrics, 'action') === 'pinned' ? '把' : '从主屏撤下'}「${title}」`
+    detail = targetDate ? `日期 ${targetDate}` : null
   } else if (row.eventType === 'capability.diary.create' || row.eventType === 'capability.diary.update') {
     source = '日记'; title = row.eventType.endsWith('.create') ? '写下了一篇日记' : '更新了一篇日记'; detail = metricTitle
   } else if (row.eventType === 'capability.messageboard.write' || row.eventType === 'capability.messageboard.update') {

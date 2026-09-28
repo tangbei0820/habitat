@@ -70,6 +70,12 @@ const STUDY_EVENT_TYPES = new Set([
   'study.task.completed',
 ])
 
+const COUNTDOWN_EVENT_TYPES = new Set([
+  'countdown.created',
+  'countdown.deleted',
+  'countdown.widget.updated',
+])
+
 function optionalNonnegativeInteger(body: Record<string, unknown>, key: string, max = 1_000_000_000): number | undefined {
   if (body[key] === undefined) return undefined
   const value = body[key]
@@ -180,6 +186,32 @@ function studyEventBody(value: unknown): {
   }
 }
 
+function countdownEventBody(value: unknown): {
+  eventType: string
+  metrics: Record<string, unknown>
+  refId: string
+  at: number | undefined
+} {
+  const body = objectBody(value)
+  const eventType = boundedText(body, 'eventType', 40)
+  if (!COUNTDOWN_EVENT_TYPES.has(eventType)) throw new RequestError(ErrorCodes.BadRequest, '不支持的倒数日事件类型')
+  const countdownId = boundedText(body, 'countdownId', 160)
+  const title = boundedText(body, 'title', 120)
+  const targetDate = boundedText(body, 'targetDate', 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) throw new RequestError(ErrorCodes.BadRequest, 'targetDate 必须是 YYYY-MM-DD')
+  const action = body.action
+  if (eventType === 'countdown.widget.updated' && action !== 'pinned' && action !== 'unpinned') throw new RequestError(ErrorCodes.BadRequest, '倒数日 Widget 事件需要 pinned / unpinned')
+  return {
+    eventType,
+    refId: countdownId,
+    at: optionalTimestamp(body),
+    metrics: {
+      source: 'countdown', title, targetDate,
+      ...(action === undefined ? {} : { action }),
+    },
+  }
+}
+
 export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, state: StateProvider | null): void {
   app.get('/api/life/month', async (request) => {
     const query = request.query as Record<string, unknown>
@@ -203,6 +235,12 @@ export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, st
   })
   app.post('/api/life/events/study', async (request, reply) => {
     const input = studyEventBody(request.body)
+    const at = input.at ?? Date.now()
+    const id = appendEventLog(input.eventType, input.metrics, input.refId, at)
+    return reply.status(201).send({ ok: true, id, dayKey: dayKeyOf(at), at })
+  })
+  app.post('/api/life/events/countdown', async (request, reply) => {
+    const input = countdownEventBody(request.body)
     const at = input.at ?? Date.now()
     const id = appendEventLog(input.eventType, input.metrics, input.refId, at)
     return reply.status(201).send({ ok: true, id, dayKey: dayKeyOf(at), at })

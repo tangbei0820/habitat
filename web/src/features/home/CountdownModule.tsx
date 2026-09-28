@@ -10,6 +10,12 @@ import {
 } from '../../db/home'
 import { dayDistance, distanceLabel } from './countdownDays'
 import { IconCheck } from '../../components/qixi/Icons'
+import { appendCountdownLifeEvent } from '../life/api'
+
+function emitCountdownLifeEvent(event: Parameters<typeof appendCountdownLifeEvent>[0]): void {
+  /* Life 是跨模块投影；本地倒数日操作不能被服务端短暂不可用阻断。 */
+  void appendCountdownLifeEvent(event).catch(() => undefined)
+}
 
 export function CountdownModule() {
   const [items, setItems] = useState<CountdownDay[]>([])
@@ -35,7 +41,8 @@ export function CountdownModule() {
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
     try {
-      await createCountdown(title, targetDate)
+      const created = await createCountdown(title, targetDate)
+      emitCountdownLifeEvent({ eventType: 'countdown.created', countdownId: created.id, title: created.title, targetDate: created.targetDate, at: created.createdAt })
       setTitle('')
       setTargetDate('')
       setError(null)
@@ -50,7 +57,9 @@ export function CountdownModule() {
       setDeleting(id)
       return
     }
+    const item = items.find((candidate) => candidate.id === id)
     await deleteCountdown(id)
+    if (item !== undefined) emitCountdownLifeEvent({ eventType: 'countdown.deleted', countdownId: item.id, title: item.title, targetDate: item.targetDate })
     setDeleting(null)
     await refresh()
   }
@@ -61,8 +70,10 @@ export function CountdownModule() {
    */
   async function toggleHome(item: CountdownDay): Promise<void> {
     try {
-      if (onHomeId === item.id) await removeHomeWidget('countdown')
+      const action = onHomeId === item.id ? 'unpinned' : 'pinned'
+      if (action === 'unpinned') await removeHomeWidget('countdown')
       else await putHomeWidget('countdown', item.id)
+      emitCountdownLifeEvent({ eventType: 'countdown.widget.updated', countdownId: item.id, title: item.title, targetDate: item.targetDate, action })
       setError(null)
       await refresh()
     } catch (err: unknown) {

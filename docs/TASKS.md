@@ -2998,3 +2998,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `probe:study-life` **7/7**；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-088，本批未部署。 |
 
 **待优化（后续功能）**：学习资料上传 / 链接解析、测验与苏格拉底对话、AI 根据历史表现排课、学习事件更细的时长与连续学习统计另起任务。
+
+### T-093 · 2026-09-28 · V2-A 后续：倒数日事实进入 Life—— **完成（本地）**
+
+**边界**：只把现有倒数日的创建、删除与主屏 Widget 上 / 撤下投影到服务端 EventLog；不提前实现编辑、分类、重复事件、到期自动提醒或新的倒数日服务端存储。
+
+| 交付 | 说明 |
+| --- | --- |
+| 事实写入 | 新增 `POST /api/life/events/countdown`，严格白名单三类 `countdown.*` 事件；本地操作成功后尽力追加事实，Life 不可用不阻断倒数日。 |
+| 时间线 | Life 将操作投影为“记下 / 移除 / 放到主屏 / 从主屏撤下”，保留倒数日 id、标题与目标日期；普通 UI 不展示原始对象。 |
+| 月历 | `LifeDaySummary` 新增 `countdownActivityCount`，月历新增倒数日活动摘要卡；统计只读服务端 EventLog。 |
+| 数据边界 | 无 SQLite / Dexie schema 变化；目标日期仍是本地 `YYYY-MM-DD`，不因时区转换漂移。 |
+| 参考取舍 | 实查 [Journal](https://github.com/BomBomLab/Journal) README 的 timeline-compatible 数据契约与日 / 周 / 月聚合思路；只借“事件先结构化再渲染”的层次，不引入其 cyberboss runtime、私有数据生产或 UI。 |
+| 验收 | `probe:countdown-life` **6/6**；两端 typecheck、web build、`git diff --check` 通过。生产仍停在 T-088，本批未部署。 |
+
+**待优化（后续功能）**：倒数日编辑 / 分类 / 重复事件、到期自动通知与通知偏好联动另起任务。
