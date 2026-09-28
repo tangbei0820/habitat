@@ -3329,3 +3329,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 公网验收 | 首页已引用 `index-a7B1ba3Y.js`；生产 bundle 含 `diary-timeline`、`diary-date-divider` 与日期分段文案。 |
 
 **阶段边界**：本阶段到此停止；周 / 月聚合、日期跳转控件、富文本 / 图片块、封面编辑与批量授权留在后续任务。
+
+### T-116 · 2026-09-28 · V2-A Home 基础模块第十二阶段：AI 伴学学习资料 —— **完成（本地）**
+
+**范围**：在既有 AI 伴学卡片 / 复习链路上增加可复用的学习资料入口；本批只做本地 TXT / Markdown 文字资料与安全 `http(s)` 链接登记，不做远程抓取、RAG、PDF / 图片解析或学习计划重构。
+
+| 交付 | 说明 |
+| --- | --- |
+| 数据与迁移 | 新增 `StudyMaterial` / `studyMaterials`；Dexie 升 v19，备份升 v17，旧库 / 旧备份按空资料兼容。文字内容上限 200000 字，标题 / 主题有界。 |
+| 页面交互 | `/home/study` 增加资料登记区：可导入 TXT / Markdown 文件或保存安全 `http(s)` 链接；资料列表支持按主题显示与删除，链接明确标注“仅保存链接，尚未抓取”。 |
+| 卡片联动 | 生成卡片前可选择当前主题下的文字资料；服务端只接收标题与受限摘录，提示模型仅使用给定资料，不替用户抓取外链。 |
+| 数据主权 | 资料与卡片同属本地学习仓储，统一纳入导入 / 导出；不新建服务端资料副本，不把 URL 当作模型上下文。 |
+| 参考取舍 | 借鉴 [StudyIndex](https://github.com/ethanhunt1011/studyindex) 的“资料 → 卡片 / 复习上下文”路径；不采用其云端账号、Firebase、外部模型绑定、RAG 与游戏化体系。 |
+| 验收 | 两端 `npm run typecheck`、前端 `npm run build`、`node --check web/scripts/verify-home.mjs`、`node --check web/scripts/verify-export.mjs`、`git diff --check` 通过；浏览器 CDP 未启动，未冒充浏览器回归通过。 |
+
+**明确延期**：PDF / EPUB / 图片资料解析、外链抓取与正文提取、向量检索 / RAG、AI 自动编排课程、测验与苏格拉底问答、服务端资料同步；待资料模型稳定后另开任务。

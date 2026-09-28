@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { StudyRecord, StudyTask } from '@shared/types'
+import type { StudyMaterial, StudyRecord, StudyTask } from '@shared/types'
 import { IconCalendar, IconCheck } from '../../components/qixi/Icons'
 import { createStudyRecord, deleteStudyRecord, listStudyRecords, updateStudyRecord } from '../../db/home'
 import { deleteStudyCard, filterStudyCards, generateStudyCards, listStudyCards, reviewStudyCard, summarizeStudyCards, type StudyCardFilter } from '../../db/studyCards'
 import { createTask, deleteTask, listTodayTasks, toggleTask } from '../../db/studyTasks'
+import { createStudyLinkMaterial, createStudyTextMaterial, deleteStudyMaterial, listStudyMaterials } from '../../db/studyMaterials'
 import { appendStudyLifeEvent } from '../life/api'
 
 function todayKey(): string { const now = new Date(); const pad = (value: number) => String(value).padStart(2, '0'); return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` }
@@ -129,13 +130,90 @@ function WeekRhythm({ items }: { items: StudyRecord[] }) {
   )
 }
 
-function AiStudyCards() {
+function StudyMaterials({ onChanged }: { onChanged: () => void }) {
+  const [items, setItems] = useState<StudyMaterial[]>([])
+  const [subject, setSubject] = useState('英语')
+  const [title, setTitle] = useState('')
+  const [kind, setKind] = useState<'text' | 'link'>('text')
+  const [content, setContent] = useState('')
+  const [url, setUrl] = useState('')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(() => { void listStudyMaterials().then(setItems).catch(() => setItems([])) }, [])
+  useEffect(() => { refresh() }, [refresh])
+
+  async function importFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file === undefined) return
+    if (!/\.(txt|md)$/i.test(file.name) && file.type !== 'text/plain' && file.type !== 'text/markdown') {
+      setError('第一批资料文件只支持 TXT 或 Markdown')
+      return
+    }
+    try {
+      const nextContent = await file.text()
+      if (nextContent.trim() === '') throw new Error('资料文件是空的')
+      setTitle(file.name.replace(/\.(txt|md)$/i, '') || '未命名资料')
+      setContent(nextContent)
+      setKind('text')
+      setError(null)
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
+  }
+
+  async function submit(event: FormEvent): Promise<void> {
+    event.preventDefault()
+    try {
+      const item = kind === 'text'
+        ? await createStudyTextMaterial(subject, title, content)
+        : await createStudyLinkMaterial(subject, title, url)
+      setItems((previous) => [item, ...previous])
+      setTitle(''); setContent(''); setUrl(''); setError(null); onChanged()
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
+  }
+
+  async function remove(id: string): Promise<void> {
+    if (deletingId !== id) { setDeletingId(id); return }
+    try { await deleteStudyMaterial(id); setItems((previous) => previous.filter((item) => item.id !== id)); setDeletingId(null); onChanged() }
+    catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
+  }
+
+  return <section className="card" style={{ padding: '18px 20px' }} data-testid="study-materials">
+    <div className="flex items-start justify-between gap-3">
+      <div><div className="cell-label"><IconCalendar size={13} /> 学习资料</div><p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>把词表、笔记或资料链接放在这里，生成卡片时可选作上下文。</p></div>
+      <span className="t-caption" style={{ color: 'var(--text-secondary)' }}>{items.length} 份</span>
+    </div>
+    <form onSubmit={(event) => void submit(event)} className="mt-3 grid gap-2">
+      <div className="grid gap-2 sm:grid-cols-3">
+        <input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={80} placeholder="学习主题" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-material-subject" />
+        <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} placeholder="资料名称" className="rounded-lg border bg-transparent px-3 py-2 text-sm sm:col-span-2" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-material-title" />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={kind} onChange={(event) => setKind(event.target.value as 'text' | 'link')} aria-label="资料类型" className="rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-material-kind"><option value="text">文字资料</option><option value="link">网页链接</option></select>
+        {kind === 'text' ? <label className="cursor-pointer rounded-full border px-3 py-2 text-xs" style={{ borderColor: 'var(--border-soft)' }}><input type="file" accept=".txt,.md,text/plain,text/markdown" onChange={(event) => void importFile(event)} className="sr-only" data-testid="study-material-file" />导入 TXT / Markdown</label> : <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://…" className="min-w-[14rem] flex-1 rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-material-url" />}
+        <button type="submit" disabled={subject.trim() === '' || title.trim() === '' || (kind === 'text' ? content.trim() === '' : url.trim() === '')} className="btn-pill" style={{ minHeight: 38, padding: '0 16px', fontSize: 12.5 }}>保存资料</button>
+      </div>
+      {kind === 'text' && <textarea value={content} onChange={(event) => setContent(event.target.value)} maxLength={200000} rows={3} placeholder="粘贴一段词表 / 笔记，或先用上面的按钮导入文件……" className="resize-y rounded-lg border bg-transparent p-3 text-sm leading-6" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-material-content" />}
+    </form>
+    {error !== null && <p className="mt-2 text-xs" style={{ color: 'var(--danger)' }}>{error}</p>}
+    <div className="mt-3 space-y-2">
+      {items.map((item) => <article key={item.id} className="rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-material-item">
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><strong className="text-sm">{item.title}</strong><p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{item.subject} · {item.kind === 'text' ? '文字资料' : '网页链接'}</p></div><button type="button" onClick={() => void remove(item.id)} className="shrink-0 text-xs" style={{ color: deletingId === item.id ? 'var(--danger)' : 'var(--text-tertiary)' }}>{deletingId === item.id ? '确认删除？' : '删除'}</button></div>
+        {item.kind === 'text' ? <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>{item.content}</p> : <><a href={item.url ?? '#'} target="_blank" rel="noreferrer" className="mt-2 block truncate text-xs" style={{ color: 'var(--accent-strong)' }}>{item.url}</a><p className="mt-1 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>链接已保存；网页抓取与 RAG 后续接入。</p></>}
+      </article>)}
+    </div>
+  </section>
+}
+
+function AiStudyCards({ materialsRevision }: { materialsRevision: number }) {
   const navigate = useNavigate()
   const [subject, setSubject] = useState('英语')
   const [goal, setGoal] = useState('记住今天能用上的几个词和短语')
   const [level, setLevel] = useState('初学者')
   const [count, setCount] = useState('3')
   const [allCards, setAllCards] = useState<Awaited<ReturnType<typeof listStudyCards>>>([])
+  const [materials, setMaterials] = useState<StudyMaterial[]>([])
+  const [materialId, setMaterialId] = useState('')
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [filter, setFilter] = useState<StudyCardFilter>('due')
@@ -152,7 +230,10 @@ function AiStudyCards() {
     setFlipped(false)
   }, [subject])
 
-  useEffect(() => { void refresh().catch(() => setAllCards([])) }, [refresh])
+  useEffect(() => {
+    void refresh().catch(() => setAllCards([]))
+    void listStudyMaterials(subject.trim() === '' ? undefined : subject.trim()).then(setMaterials).catch(() => setMaterials([]))
+  }, [refresh, subject, materialsRevision])
 
   const summary = useMemo(() => summarizeStudyCards(allCards), [allCards])
   const cards = useMemo(
@@ -165,7 +246,14 @@ function AiStudyCards() {
     setError(null)
     setNotice(null)
     try {
-      const generated = await generateStudyCards({ subject, goal, level, count: Number(count) })
+      const selectedMaterial = materials.find((item) => item.id === materialId)
+      const generated = await generateStudyCards({
+        subject,
+        goal,
+        level,
+        count: Number(count),
+        ...(selectedMaterial === undefined ? {} : { materialTitle: selectedMaterial.title, materialContext: selectedMaterial.content ?? undefined }),
+      })
       emitStudyLifeEvent({ eventType: 'study.cards.generated', subject, count: generated.length })
       await refresh()
       setNotice('小栖给你放好了新卡片，先翻一张看看。')
@@ -234,6 +322,7 @@ function AiStudyCards() {
         </select>
         <button type="button" onClick={() => void generate()} disabled={busy || subject.trim() === '' || goal.trim() === ''} className="btn-pill" style={{ minHeight: 38, padding: '0 16px', fontSize: 12.5 }}>{busy ? '小栖正在整理…' : '生成一组卡片'}</button>
       </div>
+      {materials.length > 0 && <div className="mt-2 flex items-center gap-2"><label htmlFor="study-card-material" className="shrink-0 text-xs" style={{ color: 'var(--text-secondary)' }}>参考资料</label><select id="study-card-material" value={materialId} onChange={(event) => setMaterialId(event.target.value)} className="min-w-0 flex-1 rounded-lg border bg-transparent px-3 py-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-card-material"><option value="">不引用资料</option>{materials.map((item) => <option key={item.id} value={item.id}>{item.title}{item.kind === 'link' ? '（链接，仅作来源）' : ''}</option>)}</select></div>}
       <div className="flex items-center gap-2 border-b pb-2" style={{ borderColor: 'var(--border-soft)' }} data-testid="study-card-filters">
         {([['due', `待复习（${summary.due}）`], ['all', `全部（${summary.total}）`], ['mature', `已形成间隔（${summary.mature}）`]] as const).map(([value, label]) => (
           <button key={value} type="button" data-testid={`study-card-filter-${value}`} aria-pressed={filter === value} onClick={() => selectFilter(value)} className="rounded-full px-3 py-1.5 text-xs" style={{ background: filter === value ? 'var(--bg-subtle)' : 'transparent', color: filter === value ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{label}</button>
@@ -269,6 +358,7 @@ function AiStudyCards() {
 
 export function StudyModule() {
   const [items, setItems] = useState<StudyRecord[]>([])
+  const [materialsRevision, setMaterialsRevision] = useState(0)
   const [subject, setSubject] = useState('')
   const [note, setNote] = useState('')
   const [studiedOn, setStudiedOn] = useState(todayKey)
@@ -300,7 +390,8 @@ export function StudyModule() {
   }
   const totalMinutes = items.reduce((sum, item) => sum + item.durationMinutes, 0)
   return <div className="space-y-4">
-    <AiStudyCards />
+    <AiStudyCards materialsRevision={materialsRevision} />
+    <StudyMaterials onChanged={() => setMaterialsRevision((value) => value + 1)} />
     <TodayTasks />
     <WeekRhythm items={items} />
     <form onSubmit={(event) => void submit(event)} className="grid gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface-solid)' }}>

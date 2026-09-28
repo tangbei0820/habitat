@@ -183,6 +183,7 @@ interface SessionGroup extends BaseObject {
 | `ListeningSessionView` | 服务端 `app_kv:listening.session.main` | 当前曲目最小快照、`state`, `positionSeconds`, `startedAt`, `listeners`；不复制音乐库 |
 | `StudyRecord` | `studyRecords` | `subject`, `note`, `studiedOn`, `durationMinutes` |
 | `StudyCard` | `studyCards` | `subject`, `front`, `back`, `example`, `hint`, `dueOn`, `intervalDays`, `ease`, `repetitions`；默认按 `dueOn <= 本地今天` 进入到期队列 |
+| `StudyMaterial` | `studyMaterials` | `subject`, `title`, `kind=text|link`；文字资料保存受限正文，链接只保存安全的 `http(s)` 地址，卡片生成可选择文字资料作为上下文 |
 | `Sticker` | `stickers` | `name`, `imageDataUrl`, `mimeType`, `sizeBytes`, `category`, `tags`, `source`；消息发送时另存快照，删除图库条目不影响历史 |
 
 另有**两张分类表**（不是生活数据本身，是收纳容器）：
@@ -257,6 +258,7 @@ interface SessionGroup extends BaseObject {
 | v16 | 160 | `WishlistItem` 补作者、目标日期、暂停 / 放弃状态、状态原因与嵌套进展（T-102）；upgrade 为老记录补默认值 |
 | v17 | 170 | `Bookmark` 补 `tags[]` 多维标签（T-104）；upgrade 为老收藏补空数组，不新增索引 |
 | v18 | 180 | `HomeWidget` 补 `boardScope`（T-108）；老留言板 Widget 迁移为 `{kind:'recent'}`，倒数日明确写 `null` |
+| v19 | 190 | 新增 `studyMaterials`（T-116）；保存本地 TXT / Markdown 文字资料与安全 `http(s)` 链接，纯新增表，不需要 `upgrade()` 回调 |
 
 Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画版本（`verify-chat.mjs`）。
 **每次升版都要在 `db.ts` 的版本注释里写清「为什么」**；只写「加了张表」等于没写。
@@ -302,6 +304,8 @@ Dexie 把声明版本 ×10 作为 IndexedDB 版本号，验收脚本据此刻画
 | v13 | 倒数日补分类、每年重复与提醒字段；旧版导入时为缺失字段补默认值 |
 | v14 | 愿望清单补作者、目标日期、暂停 / 放弃状态、状态原因与嵌套进展；旧版导入时补 `author=user`、空目标日 / 原因 / 进展 |
 | v15 | 收藏补 `tags[]` 多维标签；旧版导入时补空数组，标签不改变分类的单归属语义 |
+| v16 | `HomeWidget` 补 `boardScope`（T-108）；旧版导入时留言板范围回退为 `recent`，倒数日范围为 `null` |
+| v17 | + 学习资料 `studyMaterials`（T-116）；旧版导入时按空处理，链接不在导入阶段抓取远程内容 |
 > ⚠️ v7 导入时**必须按 `kind` 去重**：`&kind` 是唯一索引，手改过的备份（例如两条 `board`）会让
 > `bulkAdd` 抛 `ConstraintError`，导致**整份备份一个字都导不进去**。保留 `createdAt` 最早的那条，
 > 与「先上主屏的在前」的排序语义一致。

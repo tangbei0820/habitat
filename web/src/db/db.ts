@@ -16,6 +16,7 @@ import type {
   ListenSession,
   StudyRecord,
   StudyCard,
+  StudyMaterial,
   StudyTask,
   Sticker,
   WishlistItem,
@@ -74,6 +75,7 @@ export interface LegacyUpload {
  * v16：愿望清单补作者、目标日、状态与进展（T-102）；upgrade 为老记录补默认值。
  * v17：收藏增加多维标签（T-104）；upgrade 为老收藏补空数组。
  * v18：留言板 Widget 补 `boardScope`（T-108）；老 Widget 统一迁移为 recent，倒数日为 null。
+ * v19：学习资料（T-116）；保存用户明确提供的 TXT / Markdown 内容或外部链接，不上传浏览器文件。
  */
 export class HabitatDb extends Dexie {
   sessions!: Table<ChatSession, string>
@@ -90,6 +92,7 @@ export class HabitatDb extends Dexie {
   musicTracks!: Table<MusicTrack, string>
   studyRecords!: Table<StudyRecord, string>
   studyCards!: Table<StudyCard, string>
+  studyMaterials!: Table<StudyMaterial, string>
   homeWidgets!: Table<HomeWidget, string>
   /** 搬迁中转表：启动流程把旧表搬完、服务端确认后就清空，之后一直是空的 */
   legacyUploads!: Table<LegacyUpload, string>
@@ -314,6 +317,8 @@ export class HabitatDb extends Dexie {
       .upgrade((tx) => tx.table('homeWidgets').toCollection().modify((widget: HomeWidget) => {
         if (widget.boardScope === undefined) widget.boardScope = widget.kind === 'board' ? { kind: 'recent' } satisfies BoardWidgetScope : null
       }))
+    // v19：学习资料第一批。资料正文仍是用户本机数据，链接只保存安全的 http(s) 指针。
+    this.version(19).stores({ studyMaterials: 'id, subject, createdAt, updatedAt' })
     // 刻意没有 .upgrade()：搬迁不在版本变化时做，而在每次启动时做（见上方注释与 legacy-upload.ts）。
     // 也不在这里声明 diaries / moments —— 声明了也删不掉它们，省掉能少一份「以为删了」的误解。
   }

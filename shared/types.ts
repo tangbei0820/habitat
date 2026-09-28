@@ -644,6 +644,18 @@ export interface StudyTask {
   createdAt: number
 }
 
+/** 学习资料：先保存用户明确提供的 TXT / Markdown 内容或安全的外部链接。 */
+export type StudyMaterialKind = 'text' | 'link'
+
+export interface StudyMaterial extends BaseObject {
+  type: 'study-material'
+  subject: string
+  title: string
+  kind: StudyMaterialKind
+  content: string | null
+  url: string | null
+}
+
 /* ---------- 一起听 / 听雨 · 时长统计（第 6 批；纯本地，一天一行累加秒数） ---------- */
 
 export type ListenKind = 'music' | 'rain'

@@ -9,6 +9,8 @@ import type { LlmRegistry } from '../providers/registry.js'
 const SUBJECT_MAX = 80
 const GOAL_MAX = 240
 const LEVEL_MAX = 40
+const MATERIAL_TITLE_MAX = 120
+const MATERIAL_CONTEXT_MAX = 12_000
 const MAX_CARDS = 8
 
 function text(raw: unknown, field: string, max: number): string {
@@ -27,13 +29,22 @@ function count(raw: unknown): number {
   return raw
 }
 
-function bodyOf(raw: unknown): { subject: string; goal: string; level: string; count: number } {
+function optionalText(raw: unknown, field: string, max: number): string | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  return text(raw, field, max)
+}
+
+function bodyOf(raw: unknown): { subject: string; goal: string; level: string; count: number; materialTitle?: string; materialContext?: string } {
   const body = typeof raw === 'object' && raw !== null ? raw as Record<string, unknown> : {}
+  const materialTitle = optionalText(body.materialTitle, 'materialTitle', MATERIAL_TITLE_MAX)
+  const materialContext = optionalText(body.materialContext, 'materialContext', MATERIAL_CONTEXT_MAX)
   return {
     subject: text(body.subject, 'subject', SUBJECT_MAX),
     goal: text(body.goal ?? '建立今天可以记住的基础词汇与表达', 'goal', GOAL_MAX),
     level: text(body.level ?? '初学者', 'level', LEVEL_MAX),
     count: count(body.count),
+    ...(materialTitle === undefined ? {} : { materialTitle }),
+    ...(materialContext === undefined ? {} : { materialContext }),
   }
 }
 
@@ -82,7 +93,14 @@ export function registerStudyRoutes(app: FastifyInstance, registry: LlmRegistry)
       },
       {
         role: 'user',
-        content: `学习主题：${input.subject}\n学习目标：${input.goal}\n当前水平：${input.level}\n请生成 ${String(input.count)} 张今天适合复习的卡片。`,
+        content: [
+          `学习主题：${input.subject}`,
+          `学习目标：${input.goal}`,
+          `当前水平：${input.level}`,
+          input.materialTitle === undefined ? null : `参考资料：${input.materialTitle}`,
+          input.materialContext === undefined ? null : `资料摘录（只根据这段内容，不要臆造资料之外的事实）：\n${input.materialContext}`,
+          `请生成 ${String(input.count)} 张今天适合复习的卡片。`,
+        ].filter((line): line is string => line !== null).join('\n'),
       },
     ]
     const result = await runBackgroundLlm(resolved.provider, messages, 'study', {

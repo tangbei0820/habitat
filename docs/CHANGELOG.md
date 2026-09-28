@@ -1115,3 +1115,10 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 本地提交 `4f24705` 已部署到 `https://habitat.beiyan.cc`，生产 `.env` / SQLite 未覆盖，重启前备份为 `habitat.db.bak-20260928-4f24705`。
 - `habitat-server` active；本地与公网 `/api/health` 均返回 `{"ok":true}`；首页切换到 `index-a7B1ba3Y.js`。
 - 生产 bundle 已检出 `diary-timeline`、`diary-date-divider` 与日期分段文案；未新增 schema / API。
+
+### 2026-09-28 · T-116 · AI 伴学学习资料（本地）
+
+- 学习页新增本地 TXT / Markdown 资料导入与安全 `http(s)` 链接登记；资料可按主题查看、删除，外链只保存地址，不在本批自动抓取。
+- 已保存的文字资料可以在生成 AI 伴学卡片时作为受限上下文；服务端不复制资料、不把 URL 当成模型上下文。
+- 新增 `studyMaterials`，Dexie 升 v19、备份格式升 v17；旧库 / 旧备份按空资料兼容。
+- 两端 typecheck、前端 build、脚本语法检查与 `git diff --check` 通过；浏览器 CDP 未启动，未冒充浏览器回归通过。

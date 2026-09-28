@@ -201,19 +201,22 @@ check('刚导出过就不再提醒', (await exists('[data-testid="backup-stale-h
     await dbm.db.listenSessions.put({ id: 'music:2026-09-25', kind: 'music', dayKey: '2026-09-25', seconds: 95, updatedAt: now, createdAt: now })
     await dbm.db.studyTasks.put({ id: 'task-verify-roundtrip', dayKey: '2026-09-25', label: '验收往返任务', done: false, createdAt: now })
     await dbm.db.studyCards.put({ id: 'study-card-verify-roundtrip', type: 'study-card', subject: '英语', front: 'hello', back: '你好', example: 'Hello there.', hint: '打招呼', source: 'ai', dueOn: '2026-09-25', intervalDays: 1, ease: 2.5, repetitions: 0, lastReviewedAt: null, createdAt: now, updatedAt: now })
+    await dbm.db.studyMaterials.put({ id: 'study-material-verify-roundtrip', type: 'study-material', subject: '英语', title: '验收词表', kind: 'text', content: 'hello = 你好', url: null, createdAt: now, updatedAt: now })
     const backup = await backupLib.exportAll()
-    const exported = { version: backup.version, listen: backup.listenSessions.length, tasks: backup.studyTasks.length, cards: backup.studyCards.length }
+    const exported = { version: backup.version, listen: backup.listenSessions.length, tasks: backup.studyTasks.length, cards: backup.studyCards.length, materials: backup.studyMaterials.length }
     await backupLib.importAll(backup)
     const listenRow = await dbm.db.listenSessions.get('music:2026-09-25')
     const taskRow = await dbm.db.studyTasks.get('task-verify-roundtrip')
     const cardRow = await dbm.db.studyCards.get('study-card-verify-roundtrip')
+    const materialRow = await dbm.db.studyMaterials.get('study-material-verify-roundtrip')
     const msgCount = await dbm.db.messages.count()
-    return { ...exported, listenOk: listenRow !== undefined && listenRow.seconds === 95, taskOk: taskRow !== undefined && taskRow.label === '验收往返任务', cardOk: cardRow !== undefined && cardRow.front === 'hello', msgCount }
+    return { ...exported, listenOk: listenRow !== undefined && listenRow.seconds === 95, taskOk: taskRow !== undefined && taskRow.label === '验收往返任务', cardOk: cardRow !== undefined && cardRow.front === 'hello', materialOk: materialRow !== undefined && materialRow.title === '验收词表', msgCount }
   })()`)
-  check('备份格式已升 v16', roundtrip.version === 16, `v${roundtrip.version}`)
+  check('备份格式已升 v17', roundtrip.version === 17, `v${roundtrip.version}`)
   check('一起听时长进了备份', roundtrip.listen >= 1 && roundtrip.listenOk, `listenSessions ${roundtrip.listen} 条`)
   check('学习任务进了备份', roundtrip.tasks >= 1 && roundtrip.taskOk, `studyTasks ${roundtrip.tasks} 条`)
   check('AI 伴学卡片进了备份', roundtrip.cards >= 1 && roundtrip.cardOk, `studyCards ${roundtrip.cards} 条`)
+  check('学习资料进了备份', roundtrip.materials >= 1 && roundtrip.materialOk, `studyMaterials ${roundtrip.materials} 条`)
   check('v11 往返导入不丢既有数据（消息还在）', roundtrip.msgCount >= 2, `${roundtrip.msgCount} 条消息`)
 }
 

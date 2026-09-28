@@ -391,6 +391,15 @@ const musicLink = await evaluate(`(() => { const link = document.querySelector('
 check('音乐记录新增、编辑并安全打开外链', musicLink?.target === '_blank' && musicLink?.rel.includes('noreferrer'), JSON.stringify(musicLink))
 
 await navigate('/home/study', '记一次学习')
+await setValue('[data-testid="study-material-subject"]', '英语')
+await setValue('[data-testid="study-material-title"]', '验收词表')
+await setValue('[data-testid="study-material-content"]', 'hello = 你好\nworld = 世界')
+await clickButton('保存资料')
+await waitFor(`document.body.innerText.includes('验收词表') && document.querySelector('[data-testid="study-material-item"]') !== null`, '学习资料落地')
+check('学习资料可保存并出现在资料区', true)
+await waitFor(`document.querySelector('[data-testid="study-card-material"] option') !== null`, '学习卡片资料选择器')
+await evaluate(`(() => { const select = document.querySelector('[data-testid="study-card-material"]'); if (!select) return false; const option = [...select.options].find((item) => item.textContent?.includes('验收词表')); if (!option) return false; select.value = option.value; select.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
+check('学习卡片可选择已保存资料作为上下文', (await evaluate(`document.querySelector('[data-testid="study-card-material"]')?.value !== ''`)) === true)
 await setValue('#study-subject', 'TypeScript strict')
 await setValue('#study-date', '2026-09-23')
 await setValue('#study-duration', '45')
@@ -1330,7 +1339,7 @@ const dbShape = await evaluate(`(async () => {
   db.close()
   return value
 })()`)
-check('Dexie 已升到 v18：留言 Widget 范围与 v17 收藏标签迁移', dbShape.version === 180 && ['wishlist', 'countdowns', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'musicTracks', 'studyRecords', 'homeWidgets', 'legacyUploads', 'listenSessions', 'studyTasks', 'studyCards', 'stickers'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
+check('Dexie 已升到 v19：学习资料与留言 Widget 范围迁移', dbShape.version === 190 && ['wishlist', 'countdowns', 'bookmarks', 'bookmarkCategories', 'artworks', 'photos', 'photoCollections', 'readingNotes', 'musicTracks', 'studyRecords', 'studyMaterials', 'homeWidgets', 'legacyUploads', 'listenSessions', 'studyTasks', 'studyCards', 'stickers'].every((name) => dbShape.stores.includes(name)), JSON.stringify(dbShape))
 // 旧表壳**删不掉**（Dexie 的 stores() 跨版本累加，省略 ≠ 删除，见 db.ts 类注释 v11 条），
 // 所以这里验的是「搬走了」而不是「表没了」：旧表清空 + 中转表清空。
 // 两者都为 0 才有意义 —— 中转表清空的前置是「服务端已确认」（见 legacy-upload.ts 的三条纪律）。

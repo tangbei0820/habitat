@@ -23,6 +23,7 @@ import type {
   PhotoCollection,
   ReadingNote,
   StudyCard,
+  StudyMaterial,
   StudyRecord,
   StudyTask,
   Sticker,
@@ -48,7 +49,7 @@ export const BACKUP_FORMAT = 'habitat-backup'
  * ⚠️ 但**旧备份（v2–v8）里带着它们**，导入时不能丢：走 `legacyUploads` 转存到服务端，
  * 详见 `importAll` 与 `db/legacy-upload.ts`。
  */
-export const BACKUP_VERSION = 16
+export const BACKUP_VERSION = 17
 
 export interface HabitatBackup {
   format: typeof BACKUP_FORMAT
@@ -68,6 +69,7 @@ export interface HabitatBackup {
   musicTracks: MusicTrack[]
   studyRecords: StudyRecord[]
   studyCards: StudyCard[]
+  studyMaterials: StudyMaterial[]
   homeWidgets: HomeWidget[]
   listenSessions: ListenSession[]
   studyTasks: StudyTask[]
@@ -89,6 +91,7 @@ export interface BackupCounts {
   musicTracks: number
   studyRecords: number
   studyCards: number
+  studyMaterials: number
   homeWidgets: number
   listenSessions: number
   studyTasks: number
@@ -99,7 +102,7 @@ export interface BackupCounts {
 }
 
 export async function exportAll(): Promise<HabitatBackup> {
-  const [sessions, sessionGroups, messages, wishlist, countdowns, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, musicTracks, studyRecords, studyCards, homeWidgets, listenSessions, studyTasks, stickers] = await Promise.all([
+  const [sessions, sessionGroups, messages, wishlist, countdowns, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, musicTracks, studyRecords, studyCards, studyMaterials, homeWidgets, listenSessions, studyTasks, stickers] = await Promise.all([
     db.sessions.toArray(),
     db.sessionGroups.toArray(),
     db.messages.toArray(),
@@ -114,6 +117,7 @@ export async function exportAll(): Promise<HabitatBackup> {
     db.musicTracks.toArray(),
     db.studyRecords.toArray(),
     db.studyCards.toArray(),
+    db.studyMaterials.toArray(),
     db.homeWidgets.toArray(),
     db.listenSessions.toArray(),
     db.studyTasks.toArray(),
@@ -137,6 +141,7 @@ export async function exportAll(): Promise<HabitatBackup> {
     musicTracks,
     studyRecords,
     studyCards,
+    studyMaterials,
     homeWidgets,
     listenSessions,
     studyTasks,
@@ -447,6 +452,27 @@ function looksLikeStudyCard(value: unknown): value is StudyCard {
   )
 }
 
+function looksLikeStudyMaterial(value: unknown): value is StudyMaterial {
+  if (
+    !isRecord(value) || typeof value.id !== 'string' || value.type !== 'study-material' ||
+    typeof value.subject !== 'string' || value.subject.trim() === '' ||
+    typeof value.title !== 'string' || value.title.trim() === '' ||
+    (value.kind !== 'text' && value.kind !== 'link') ||
+    (value.content !== null && typeof value.content !== 'string') ||
+    (value.url !== null && typeof value.url !== 'string') ||
+    !Number.isFinite(value.createdAt) || !Number.isFinite(value.updatedAt)
+  ) return false
+  if (value.kind === 'text') return value.content !== null && value.content.trim() !== '' && value.url === null
+  if (value.content !== null) return false
+  if (value.url === null) return false
+  try {
+    const url = new URL(value.url)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 /**
  * v10 新增：一起听 / 听雨的时长行（id = `kind:dayKey`，一天一行累加秒数）。
  * seconds 为 0 的行不该存在（写入方 0 秒不落库），但备份语义是「回到那一刻」，见到也照收。
@@ -642,16 +668,18 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
   const listenSessionsRaw = version >= 10 ? raw.listenSessions : []
   const studyTasksRaw = version >= 10 ? raw.studyTasks : []
   const studyCardsRaw = version >= 11 ? raw.studyCards : []
+  const studyMaterialsRaw = version >= 17 ? raw.studyMaterials : []
   const stickersRaw = version >= 12 ? raw.stickers : []
-  if (!Array.isArray(listenSessionsRaw) || !Array.isArray(studyTasksRaw) || !Array.isArray(studyCardsRaw) || !Array.isArray(stickersRaw)) {
-    throw new Error('备份内容损坏：listenSessions / studyTasks / studyCards / stickers 必须是数组')
+  if (!Array.isArray(listenSessionsRaw) || !Array.isArray(studyTasksRaw) || !Array.isArray(studyCardsRaw) || !Array.isArray(studyMaterialsRaw) || !Array.isArray(stickersRaw)) {
+    throw new Error('备份内容损坏：listenSessions / studyTasks / studyCards / studyMaterials / stickers 必须是数组')
   }
   const listenSessions = listenSessionsRaw.filter(looksLikeListenSession)
   const studyTasks = studyTasksRaw.filter(looksLikeStudyTask)
   const studyCards = studyCardsRaw.filter(looksLikeStudyCard)
+  const studyMaterials = studyMaterialsRaw.filter(looksLikeStudyMaterial)
   const stickers = stickersRaw.filter(looksLikeSticker)
-  if (listenSessions.length !== listenSessionsRaw.length || studyTasks.length !== studyTasksRaw.length || studyCards.length !== studyCardsRaw.length || stickers.length !== stickersRaw.length) {
-    throw new Error('备份内容损坏：存在无法识别的听音时长、学习任务、学习卡片或表情包')
+  if (listenSessions.length !== listenSessionsRaw.length || studyTasks.length !== studyTasksRaw.length || studyCards.length !== studyCardsRaw.length || studyMaterials.length !== studyMaterialsRaw.length || stickers.length !== stickersRaw.length) {
+    throw new Error('备份内容损坏：存在无法识别的听音时长、学习任务、学习卡片、学习资料或表情包')
   }
 
   // 旧备份里的日记 / 留言转存进中转表：它们已经不属本地库了，但也不能就这么丢掉。
@@ -672,7 +700,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     })),
   ]
 
-  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.wishlist, db.countdowns, db.bookmarks, db.bookmarkCategories, db.artworks, db.photos, db.photoCollections, db.readingNotes, db.musicTracks, db.studyRecords, db.studyCards, db.homeWidgets, db.listenSessions, db.studyTasks, db.stickers, db.legacyUploads], async () => {
+  await db.transaction('rw', [db.sessions, db.sessionGroups, db.messages, db.wishlist, db.countdowns, db.bookmarks, db.bookmarkCategories, db.artworks, db.photos, db.photoCollections, db.readingNotes, db.musicTracks, db.studyRecords, db.studyCards, db.studyMaterials, db.homeWidgets, db.listenSessions, db.studyTasks, db.stickers, db.legacyUploads], async () => {
     await db.sessions.clear()
     await db.sessionGroups.clear()
     await db.messages.clear()
@@ -687,6 +715,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.musicTracks.clear()
     await db.studyRecords.clear()
     await db.studyCards.clear()
+    await db.studyMaterials.clear()
     await db.homeWidgets.clear()
     await db.listenSessions.clear()
     await db.studyTasks.clear()
@@ -706,6 +735,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     await db.musicTracks.bulkAdd(musicTracks)
     await db.studyRecords.bulkAdd(studyRecords)
     await db.studyCards.bulkAdd(studyCards)
+    await db.studyMaterials.bulkAdd(studyMaterials)
     await db.homeWidgets.bulkAdd(homeWidgets)
     await db.listenSessions.bulkAdd(listenSessions)
     await db.studyTasks.bulkAdd(studyTasks)
@@ -726,6 +756,7 @@ export async function importAll(raw: unknown): Promise<BackupCounts> {
     musicTracks: musicTracks.length,
     studyRecords: studyRecords.length,
     studyCards: studyCards.length,
+    studyMaterials: studyMaterials.length,
     homeWidgets: homeWidgets.length,
     listenSessions: listenSessions.length,
     studyTasks: studyTasks.length,

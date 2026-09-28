@@ -49,7 +49,7 @@ export async function listStudyCards(subject?: string): Promise<StudyCard[]> {
   return subject === undefined || subject === '' ? cards : cards.filter((card) => card.subject === subject)
 }
 
-export async function generateStudyCards(input: { subject: string; goal: string; level: string; count: number }): Promise<StudyCard[]> {
+export async function generateStudyCards(input: { subject: string; goal: string; level: string; count: number; materialTitle?: string; materialContext?: string }): Promise<StudyCard[]> {
   const data = await fetchJson<{ cards: StudyCardDraft[] }>('/api/study/cards/generate', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

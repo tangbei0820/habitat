@@ -570,8 +570,10 @@ AI 修改自己的留言不走 HTTP，而由 Runtime 的 `messageboard_update` �
 
 ### `POST /api/study/cards/generate` —— 生成 AI 伴学卡片
 
-请求体：`{ subject, goal, level, count? }`。服务端使用当前主聊天能力绑定生成结构化 JSON 卡片，
+请求体：`{ subject, goal, level, count?, materialTitle?, materialContext? }`。服务端使用当前主聊天能力绑定生成结构化 JSON 卡片，
 并将本次调用记入 `UsageRecord(service='study')`；密钥不出服务端。`count` 默认为 3，范围 1–8。
+`materialTitle` 最长 120 字，`materialContext` 最长 12000 字；上下文只作为用户选择的已保存文字资料摘录，
+服务端不会替用户抓取链接或把外部网页直接注入模型。
 返回 `{ cards: [{ front, back, example, hint }], model }`。前端再把卡片与复习状态存入 Dexie `studyCards`，
 因此离线时仍可翻卡和复习，但不能生成新卡。
 
