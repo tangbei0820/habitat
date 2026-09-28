@@ -2880,3 +2880,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 验收 | `npm run typecheck`、`npm run build`、`npm --prefix server run probe:elevenlabs` **6/6**、`git diff --check` 通过。浏览器真机录音仍需在 HTTPS 部署环境手动验收；生产仍停在 T-072，本批未部署。 |
 
 **待实现（后续独立任务）**：全双工低延迟 WebRTC / WebSocket、实时打断、来电通知、通话时长与 Life 事件统计、移动端锁屏 / 系统电话能力。
+
+### T-085 · 2026-09-28 · V2-A 后续：连续语音会话与轮流说话—— **完成（本地）**
+
+**边界**：把 T-084 的单轮录音通话升级为浏览器内连续语音会话；仍是逐句半双工，不伪装成 WebRTC / 电话全双工，不新增电话网、系统来电或后台响铃能力。
+
+| 交付 | 说明 |
+| --- | --- |
+| 连续识别 | 优先使用浏览器 `SpeechRecognition` / `webkitSpeechRecognition`，持续识别并显示 interim 文本；一句 final 结果立即交给当前会话，沿用现有 `submitUserMessage` 与 SSE 聊天流。 |
+| 轮流说话 | 用户说完后停止麦克风，等待模型与 TTS；播放时不收音，播放结束自动恢复监听，避免把小栖自己的声音识别成用户输入。 |
+| 兼容回退 | 不支持浏览器原生识别时保留 T-084 的 `MediaRecorder` → 服务端 ASR → TTS 逐轮模式；权限、识别、生成、播放错误仍可见且可重新开始。 |
+| 状态反馈 | 新增“通话中 / 正在听 / interim / 处理中 / 播放 / 停止听取”等状态与操作；挂断和切换会话会停止识别、释放麦克风与音频 URL。 |
+| 数据边界 | 原生连续识别的 final 文本以普通用户消息进入原会话；不伪造音频块，不新增 Dexie / SQLite schema。录音回退仍保存真实 `AudioBlock`。 |
+| 参考取舍 | 实查 [Ariakitty/ai-voice-call](https://github.com/Ariakitty/ai-voice-call)：借鉴连续识别、interim 文本、AI 播放时停麦、播放完恢复、同一会话与明确挂断；不采用其电话推送、原生来电横幅、独立 Node 电话服务和声纹验证。 |
+| 验收 | `npm run typecheck`、`npm run build`、`npm --prefix server run probe:elevenlabs` **6/6**、`git diff --check` 通过；真实浏览器连续识别需在 HTTPS 部署环境手动验收。生产仍停在 T-072，本批未部署。 |
+
+**后续独立任务**：把每通电话作为可回放的 call 记录 / Life 事件、句级 TTS 队列与断线送达账、主动来电邀请；这些需要先确定数据模型与通知策略。

@@ -666,6 +666,21 @@ export function ChatWindowPage() {
     }
   }
 
+  /** 连续语音识别的最终句子：不伪造音频块，直接把真实转写作为普通用户消息留痕。 */
+  async function callTurnText(text: string): Promise<string> {
+    const normalized = text.trim()
+    if (normalized === '') throw new Error('没有识别到清晰的语音，请再试一次')
+    if (sessionId === undefined) throw new Error('当前会话还没有准备好')
+    if (sending || mediaBusy) throw new Error('当前正在处理上一轮，请稍候')
+    setMediaBusy(true)
+    setErrorText(null)
+    try {
+      return await submitUserMessage({ text: normalized, requestReply: true }) ?? ''
+    } finally {
+      setMediaBusy(false)
+    }
+  }
+
   async function sendImage(dataUrl: string): Promise<void> {
     if (sending || mediaBusy) return
     setMediaBusy(true)
@@ -1456,7 +1471,7 @@ export function ChatWindowPage() {
           <Composer
             draft={draft}
             onDraftChange={setDraft}
-            sending={sending || mediaBusy}
+            sending={sending || mediaBusy || callOpen}
             unrepliedCount={unrepliedCount}
             onSend={(text, options) => void send(text, options)}
             onRequestReply={() => void requestReply()}
@@ -1503,6 +1518,7 @@ export function ChatWindowPage() {
         disabled={!online || session === undefined || session === null || sending || mediaBusy}
         onClose={() => setCallOpen(false)}
         onTurn={callTurn}
+        onTurnText={callTurnText}
         onError={setErrorText}
       />
 
