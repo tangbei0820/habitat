@@ -1128,3 +1128,10 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 本地提交 `2bc1949` 已部署到 `https://habitat.beiyan.cc`，生产 `.env` / SQLite 未覆盖，重启前备份为 `habitat.db.bak-20260928-2bc1949`。
 - `habitat-server` active；服务器本机与服务器自检公网 `/api/health` 均返回 `{"ok":true}`；首页切换到 `index-CgzEeiP_.js`。
 - 生产 bundle 已检出 `study-materials`、`study-card-material`、`TXT / Markdown` 与“学习资料”标记；本机直连公网 TLS 被网络重置，未冒充本机浏览器回归通过。
+
+### 2026-09-28 · T-118 · 朋友圈文字动态（本地）
+
+- Home 新增 `/home/feed` 朋友圈入口；复用服务端 `Moment` 事实源，新增 `channel=feed` 与留言板 `channel=board` 隔离查询。
+- 用户可发布、编辑、删除文字动态，按作者筛选；朋友圈动态可收藏，来源快照回链 `/home/feed#<id>`，不影响既有留言板分组 / Widget。
+- 老服务端 SQLite 启动时自动补 `channel='board'` 与索引；无 Dexie / 备份格式变化。
+- `probe:feed` 9/9、两端 typecheck、前端 build、verify-home 语法检查与 diff check 通过；浏览器 CDP 未启动，未冒充浏览器回归通过。

@@ -6,7 +6,7 @@
  */
 import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors.js'
-import type { ContentAuthor } from '@shared/types'
+import type { ContentAuthor, MomentChannel } from '@shared/types'
 import {
   createUserMoment,
   createMomentGroup,
@@ -47,6 +47,7 @@ interface ImportItem {
   content: string
   author: ContentAuthor
   groupId: string | null
+  channel: MomentChannel
   createdAt: number
   updatedAt: number
 }
@@ -62,6 +63,7 @@ function importItem(raw: unknown): ImportItem {
     content: content(item.content),
     author: item.author === 'companion' ? 'companion' : 'user',
     groupId: null,
+    channel: item.channel === 'feed' ? 'feed' : 'board',
     createdAt: typeof item.createdAt === 'number' ? item.createdAt : at,
     updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : at,
   }
@@ -78,9 +80,11 @@ export function registerMomentRoutes(app: FastifyInstance): void {
     const rawQuery = query.q
     const rawAuthor = query.author
     const rawGroup = query.groupId
+    const rawChannel = query.channel
     if (rawQuery !== undefined && typeof rawQuery !== 'string') throw new RequestError(ErrorCodes.BadRequest, 'q 必须是字符串')
     if (typeof rawQuery === 'string' && rawQuery.length > 120) throw new RequestError(ErrorCodes.BadRequest, 'q 最长 120 字')
     if (rawAuthor !== undefined && rawAuthor !== 'user' && rawAuthor !== 'companion') throw new RequestError(ErrorCodes.BadRequest, 'author 只能是 user 或 companion')
+    if (rawChannel !== undefined && rawChannel !== 'board' && rawChannel !== 'feed') throw new RequestError(ErrorCodes.BadRequest, 'channel 只能是 board 或 feed')
     if (rawGroup !== undefined && typeof rawGroup !== 'string') throw new RequestError(ErrorCodes.BadRequest, 'groupId 必须是字符串')
     let groupId: string | null | undefined
     if (typeof rawGroup === 'string') {
@@ -89,6 +93,7 @@ export function registerMomentRoutes(app: FastifyInstance): void {
       else throw new RequestError(ErrorCodes.BadRequest, 'groupId 不能为空')
     }
     const items = listMoments({
+      channel: rawChannel === 'feed' ? 'feed' : 'board',
       ...(typeof rawQuery === 'string' && rawQuery.trim() !== '' ? { query: rawQuery } : {}),
       ...(rawAuthor === 'user' || rawAuthor === 'companion' ? { author: rawAuthor } : {}),
       ...(groupId !== undefined ? { groupId } : {}),
@@ -137,13 +142,15 @@ export function registerMomentRoutes(app: FastifyInstance): void {
       ? (request.body as Record<string, unknown>)
       : {}
     const rawGroupId = body.groupId
+    const channel = body.channel === 'feed' ? 'feed' : 'board'
+    if (body.channel !== undefined && body.channel !== 'board' && body.channel !== 'feed') throw new RequestError(ErrorCodes.BadRequest, 'channel 只能是 board 或 feed')
     if (rawGroupId !== undefined && rawGroupId !== null && (typeof rawGroupId !== 'string' || rawGroupId.trim() === '')) {
       throw new RequestError(ErrorCodes.BadRequest, 'groupId 必须是有效字符串或 null')
     }
-    const groupId = rawGroupId === null || rawGroupId === undefined ? null : rawGroupId.trim()
+    const groupId = channel === 'feed' ? null : rawGroupId === null || rawGroupId === undefined ? null : rawGroupId.trim()
     if (groupId !== null && getMomentGroup(groupId) === null) throw new RequestError(ErrorCodes.NotFound, '留言分组不存在')
     reply.code(201)
-    return createUserMoment(content(body.content), groupId)
+    return createUserMoment(content(body.content), groupId, channel)
   })
 
   app.get<{ Params: { id: string } }>('/api/moments/:id', async (request) => {

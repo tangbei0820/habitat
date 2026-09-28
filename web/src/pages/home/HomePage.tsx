@@ -235,7 +235,7 @@ export function HomePage() {
       <div style={{ padding: '0 20px' }}>
         <HomeWidgets />
 
-        {/* 一行全入口：10 个模块一个不漏（愿望清单、读书不放走） */}
+        {/* 一行全入口：11 个模块一个不漏（朋友圈、愿望清单、读书不放走） */}
         <ul className="flex flex-wrap gap-2 pt-2" data-testid="home-entries">
           {HOME_MODULES.map((mod) => (
             <li key={mod.key}>

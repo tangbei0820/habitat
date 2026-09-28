@@ -306,7 +306,12 @@ const momentColumns = sqlite.pragma('table_info(moment)') as Array<{ name: strin
 if (!momentColumns.some((col) => col.name === 'group_id')) {
   sqlite.exec('ALTER TABLE moment ADD COLUMN group_id TEXT')
 }
+// 朋友圈复用 Moment 的内容基座，但用 channel 与留言板分开查询；老留言全部留在 board。
+if (!momentColumns.some((col) => col.name === 'channel')) {
+  sqlite.exec("ALTER TABLE moment ADD COLUMN channel TEXT NOT NULL DEFAULT 'board'")
+}
 sqlite.exec('CREATE INDEX IF NOT EXISTS idx_moment_group_created ON moment (group_id, created_at DESC)')
+sqlite.exec('CREATE INDEX IF NOT EXISTS idx_moment_channel_created ON moment (channel, created_at DESC)')
 
 const diaryColumns = sqlite.pragma('table_info(diary)') as Array<{ name: string }>
 if (!diaryColumns.some((col) => col.name === 'fragment_visibility_json')) {

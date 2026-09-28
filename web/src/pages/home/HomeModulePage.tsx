@@ -3,6 +3,7 @@ import { useSlideIn } from '../../components/qixi/useSlideIn'
 import { IconChevronLeft } from '../../components/qixi/Icons'
 import { homeModuleName } from '../../features/home/modules'
 import { BoardModule } from '../../features/home/BoardModule'
+import { FeedModule } from '../../features/home/FeedModule'
 import { CountdownModule } from '../../features/home/CountdownModule'
 import { WishlistModule } from '../../features/home/WishlistModule'
 import { DiaryModule } from '../../features/home/DiaryModule'
@@ -15,6 +16,7 @@ import { StudyModule } from '../../features/home/StudyModule'
 
 function moduleContent(module: string | undefined, name: string) {
   if (module === 'board') return <BoardModule />
+  if (module === 'feed') return <FeedModule />
   if (module === 'countdown') return <CountdownModule />
   if (module === 'wishlist') return <WishlistModule />
   if (module === 'diary') return <DiaryModule />

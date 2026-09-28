@@ -6,7 +6,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { desc, eq } from 'drizzle-orm'
-import type { Moment, MomentGroup } from '@shared/types'
+import type { Moment, MomentChannel, MomentGroup } from '@shared/types'
 import { db } from './index.js'
 import { moment, momentGroup, type MomentGroupRow, type MomentRow } from './schema.js'
 
@@ -16,6 +16,7 @@ function toMoment(row: MomentRow): Moment {
     type: 'moment',
     content: row.content,
     author: row.author,
+    channel: row.channel === 'feed' ? 'feed' : 'board',
     groupId: row.groupId ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -35,6 +36,7 @@ function toMomentGroup(row: MomentGroupRow): MomentGroup {
 export interface MomentListFilter {
   query?: string
   author?: 'user' | 'companion'
+  channel?: MomentChannel
   /** undefined = 不筛；null = 只看未分组；字符串 = 指定分组。 */
   groupId?: string | null
 }
@@ -44,6 +46,7 @@ export function listMoments(filter: MomentListFilter = {}): Moment[] {
   const query = filter.query?.trim().toLocaleLowerCase() ?? ''
   return db.select().from(moment).orderBy(desc(moment.createdAt)).all().map(toMoment).filter((item) => {
     if (filter.author !== undefined && item.author !== filter.author) return false
+    if (filter.channel !== undefined && item.channel !== filter.channel) return false
     if (filter.groupId !== undefined && item.groupId !== filter.groupId) return false
     return query === '' || item.content.toLocaleLowerCase().includes(query)
   })
@@ -100,12 +103,13 @@ export function getMoment(id: string): Moment | null {
 }
 
 /** 用户留言。`author` 固定为 `user` —— AI 的留言走自己的写入路径（Phase 6.5 P1 工具层）。 */
-export function createUserMoment(content: string, groupId: string | null = null): Moment {
+export function createUserMoment(content: string, groupId: string | null = null, channel: MomentChannel = 'board'): Moment {
   const at = Date.now()
   const row: MomentRow = {
     id: `moment-${randomUUID()}`,
     content,
     author: 'user',
+    channel,
     groupId,
     createdAt: at,
     updatedAt: at,
@@ -140,12 +144,13 @@ export function deleteUserMoment(id: string): boolean {
  *
  * 留言板没有可见性过滤，所以这里不需要第二个「AI 视角」出口。
  */
-export function createCompanionMoment(content: string): Moment {
+export function createCompanionMoment(content: string, channel: MomentChannel = 'board'): Moment {
   const at = Date.now()
   const row: MomentRow = {
     id: `moment-${randomUUID()}`,
     content,
     author: 'companion',
+    channel,
     groupId: null,
     createdAt: at,
     updatedAt: at,

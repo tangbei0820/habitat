@@ -3358,3 +3358,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 客户端提示 | 当前执行环境直连公网 TLS 被本机网络重置；以服务器自检结果与线上 bundle 验收为准，未冒充本机浏览器回归通过。 |
 
 **阶段边界**：本阶段到此停止；PDF / EPUB / 图片解析、外链抓取与 RAG、AI 自动课程编排、服务端资料同步留在后续任务。
+
+### T-118 · 2026-09-28 · V2-A Home 基础模块第十三阶段：朋友圈文字动态 —— **完成（本地）**
+
+**范围**：把 Home 中缺失的朋友圈入口补成可日常使用的文字动态闭环；复用服务端 `Moment` 事实源，通过 `channel=feed` 与留言板隔离，不在本批引入第二套内容表。
+
+| 交付 | 说明 |
+| --- | --- |
+| 数据与接口 | `Moment` 新增 `channel=board|feed`；服务端启动时为老库补 `channel='board'` 与索引。`GET/POST /api/moments` 支持频道筛选 / 写入，默认仍是留言板。 |
+| 页面入口 | Home 新增“朋友圈”入口 `/home/feed`；文字动态按时间倒序、今天 / 昨天 / 日期标签展示，可按“全部 / 我的 / 小栖”筛选。 |
+| 用户操作 | 用户可发布、编辑、二次确认删除自己的动态；可从原位收藏，收藏快照保留 `sourceModule=home-feed` 并回链朋友圈。小栖动态若由既有服务端事实源产生，可在“朋友圈”筛选中显示，但用户不能代改 / 删除。 |
+| 复用边界 | 留言板继续使用 `channel=board`、分组与 Widget 查询；朋友圈不混入留言板分组或主屏留言 Widget。 |
+| 参考取舍 | 实查 [shared-page](https://github.com/KKarsyline/shared-page)：借鉴人 / AI 明确署名、内容事实源与来源可追溯；不搬其日历便签、整页 PNG 或外部 MCP 服务。 |
+| 验收 | `probe:feed` **9/9**；两端 `npm run typecheck`、前端 `npm run build`、`node --check web/scripts/verify-home.mjs`、`git diff --check` 通过。浏览器 CDP 未启动，未冒充浏览器回归通过。 |
+
+**明确延期**：图片 / 音乐 / 作品引用、评论 / 回复、互动通知、AI 自主发朋友圈工具、朋友圈 Widget、跨设备实时订阅；本批不顺带进入下一模块。

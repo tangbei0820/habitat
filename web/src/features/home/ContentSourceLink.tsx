@@ -14,12 +14,13 @@ function roleLabel(metadata: Record<string, unknown> | undefined): string | null
 export function ContentSourceLink({ item }: { item: BaseObject }) {
   if (item.sourceId === undefined) return null
   const sourceModule = item.metadata?.sourceModule
-  if (sourceModule === 'home-board') {
+  if (sourceModule === 'home-board' || sourceModule === 'home-feed') {
     const sourceAuthor = item.metadata?.sourceAuthor === 'companion' ? '小栖' : '你'
-    const href = `/home/board#${encodeURIComponent(item.sourceId)}`
+    const isFeed = sourceModule === 'home-feed'
+    const href = `/home/${isFeed ? 'feed' : 'board'}#${encodeURIComponent(item.sourceId)}`
     return (
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-        <span>来源：留言板 · {sourceAuthor}</span>
+        <span>来源：{isFeed ? '朋友圈' : '留言板'} · {sourceAuthor}</span>
         <Link to={href} className="underline underline-offset-2" style={{ color: 'var(--accent-strong)' }}>
           查看来源
         </Link>

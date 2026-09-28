@@ -16,6 +16,7 @@ export interface HomeModule {
 
 export const HOME_MODULES: readonly HomeModule[] = [
   { key: 'board', name: '留言板', icon: 'mail' },
+  { key: 'feed', name: '朋友圈', icon: 'sparkle' },
   { key: 'countdown', name: '倒数日', icon: 'timer' },
   { key: 'wishlist', name: '愿望清单', icon: 'heart' },
   { key: 'diary', name: '日记', icon: 'journal' },

@@ -236,6 +236,9 @@ export interface ChatMessage extends BaseObject {
  */
 export type ContentAuthor = 'companion' | 'user'
 
+/** 共同生活内容所在的空间；留言板与朋友圈共用对象基座，但不共用展示语义。 */
+export type MomentChannel = 'board' | 'feed'
+
 /**
  * 留言板的一条生活痕迹。
  *
@@ -246,6 +249,7 @@ export interface Moment extends BaseObject {
   type: 'moment'
   content: string
   author: ContentAuthor
+  channel: MomentChannel
   /** 所属留言分组；null 表示未分组。删组时回到未分组，不删除留言。 */
   groupId: string | null
 }

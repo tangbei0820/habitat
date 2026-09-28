@@ -305,7 +305,7 @@ export function BookmarksModule() {
                 <a href={item.targetId} target="_blank" rel="noreferrer" className="font-medium underline decoration-1 underline-offset-4" style={{ color: 'var(--accent-strong)' }}>{item.title}</a>
               ) : <p className="font-medium">{item.title}</p>}
               {item.targetType === 'moment' ? (
-                <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>留言原文快照</p>
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{item.metadata?.sourceModule === 'home-feed' ? '动态原文快照' : '留言原文快照'}</p>
               ) : <p className="mt-1 break-all text-xs" style={{ color: 'var(--text-secondary)' }}>{item.targetId}</p>}
               {item.note !== null && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{item.note}</p>}
               {editingTags === item.id ? <div className="mt-2 flex gap-2"><input data-testid={`bookmark-tags-input-${item.id}`} aria-label="编辑标签" value={tagDrafts[item.id] ?? ''} onChange={(event) => setTagDrafts((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="用逗号分隔标签" className="min-w-0 flex-1 rounded border bg-transparent px-2 py-1 text-xs"/><button type="button" data-testid={`bookmark-tags-save-${item.id}`} className="rounded border px-2 py-1 text-xs" onClick={() => void saveTags(item)}>保存</button><button type="button" className="text-xs" onClick={() => setEditingTags(null)}>取消</button></div> : item.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{item.tags.map((tag) => <span key={tag} className="rounded-full px-2 py-0.5 text-xs" style={{ backgroundColor: 'var(--bg-subtle)', color: 'var(--text-secondary)' }}>#{tag}</span>)}</div>}

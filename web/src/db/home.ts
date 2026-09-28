@@ -14,6 +14,7 @@ import {
   type HomeWidget,
   type HomeWidgetKind,
   type Moment,
+  type MomentChannel,
   type MomentGroup,
   type Photo,
   type PhotoCollection,
@@ -58,9 +59,10 @@ function requiredText(value: string, label: string): string {
  * 「小栖主动留言」就只能由前端伪造 —— 那是 SPEC §6.3 明令禁止的假数据。
  * 前端 Dexie 不再有 `moments` 表（v11 起）。
  */
-export async function listMoments(query?: string, groupId?: string | null): Promise<Moment[]> {
+export async function listMoments(query?: string, groupId?: string | null, channel: MomentChannel = 'board'): Promise<Moment[]> {
   const normalized = query?.trim() ?? ''
   const params = new URLSearchParams()
+  params.set('channel', channel)
   if (normalized !== '') params.set('q', normalized)
   if (groupId !== undefined) params.set('groupId', groupId === null ? 'none' : groupId)
   const suffix = params.toString() === '' ? '' : `?${params.toString()}`
@@ -109,11 +111,11 @@ export async function setMomentGroup(id: string, groupId: string | null): Promis
   })
 }
 
-export async function createMoment(content: string, groupId: string | null = null): Promise<Moment> {
+export async function createMoment(content: string, groupId: string | null = null, channel: MomentChannel = 'board'): Promise<Moment> {
   return fetchJson<Moment>('/api/moments', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ content: requiredText(content, '留言'), groupId }),
+    body: JSON.stringify({ content: requiredText(content, channel === 'feed' ? '动态' : '留言'), groupId, channel }),
   })
 }
 
@@ -476,14 +478,15 @@ export async function createMomentBookmark(moment: Moment): Promise<Bookmark> {
     type: 'bookmark',
     targetType: 'moment',
     targetId: moment.id,
-    title: `${authorLabel}的留言`,
+    title: `${authorLabel}${moment.channel === 'feed' ? '的动态' : '的留言'}`,
     note: moment.content,
     categoryId: null,
     tags: [],
     sourceId: moment.id,
     metadata: {
-      sourceModule: 'home-board',
+      sourceModule: moment.channel === 'feed' ? 'home-feed' : 'home-board',
       sourceObjectType: 'moment',
+      sourceChannel: moment.channel,
       sourceAuthor: moment.author,
       sourceContent: moment.content,
       sourceCreatedAt: moment.createdAt,

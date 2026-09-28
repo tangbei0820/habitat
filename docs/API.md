@@ -558,9 +558,17 @@ AI 通过现有 `diary_allow_access` / `diary_deny_access` 工具处理：允许
 AI 修改自己的留言不走 HTTP，而由 Runtime 的 `messageboard_update` 工具执行并写入审计事件。
 留言收藏在浏览器统一收藏库中保存 `targetType='moment'`、`sourceId=moment.id` 与稳定正文快照，
 来源链接回到 `/home/board#<moment-id>`。
-`GET /api/moments` 可选 `q`（最多 120 字，匹配留言正文）与 `author=user|companion`；`limit=N` 仍用于主屏 Widget，
-过滤先发生在服务端，再应用 limit。分组筛选使用 `groupId=<id>`；`groupId=none` 只返回未分组留言。
+`GET /api/moments` 可选 `channel=board|feed`（省略时默认为 `board`）、`q`（最多 120 字，匹配正文）与
+`author=user|companion`；`limit=N` 仍用于主屏 Widget，过滤先发生在服务端，再应用 limit。留言板分组筛选使用
+`groupId=<id>`；`groupId=none` 只返回未分组留言。`POST /api/moments` 请求体支持 `{ content, channel?: 'board'|'feed', groupId? }`；
+`channel=feed` 会忽略分组并写入朋友圈入口，用户仍只能修改 / 删除自己的动态。
 `GET /api/moments/:id` 按稳定留言 id 读取单条留言，供指定留言 Widget 与来源回链确认引用仍然有效；不存在返回 404。
+
+### 朋友圈第一阶段：文字动态
+
+朋友圈与留言板共用 `moment` 事实源，但前端入口固定请求 `channel=feed`，不共享留言分组或留言板 Widget。
+当前支持用户发布、编辑、删除、按作者筛选、收藏与来源回链；小栖动态可由服务端事实源展示，但本批不新增 AI 自主发布工具。
+图片 / 音乐 / 作品引用、评论回应、互动通知与朋友圈 Widget 留在后续任务。
 
 ### 留言板分组：`GET/POST /api/moment-groups`、`PATCH/DELETE /api/moment-groups/:id`、`PUT /api/moments/:id/group`
 

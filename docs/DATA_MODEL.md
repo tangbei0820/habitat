@@ -373,7 +373,7 @@ Life 月历与账本是查询模型，不复制事实表：月历按 `event_log.
 | 表 | 字段 | 关键不变量 |
 |---|---|---|
 | `diary` | `id` / `title` / `content` / `entry_date` / `author` / `visibility` / `fragment_visibility_json` / `created_at` / `updated_at` | `author` **就是权限位**：`user` 的日记用户可自由读写删；`companion` 默认私密。`fragment_visibility_json` 只保存 `fragment-N -> open/locked` 覆盖，缺省继承整篇权限；**正文过滤只走 `db/diary.ts` 的 `toDiaryView()` 这一个出口** |
-| `moment` | `id` / `content` / `author` / `group_id` / `created_at` / `updated_at` | 无可见性概念（写出来就是给人看的），只有「谁能删」：用户只能删自己的；`group_id` 可空，删组时置空 |
+| `moment` | `id` / `content` / `author` / `channel` / `group_id` / `created_at` / `updated_at` | 无可见性概念（写出来就是给人看的），只有「谁能删」：用户只能删自己的；`channel=board|feed` 分离留言板与朋友圈；`group_id` 只对留言板有意义 |
 | `moment_group` | `id` / `name` / `created_at` / `updated_at` | 名称唯一；只是整理容器，删除分组只把留言移回未分组，不删除留言或收藏快照 |
 
 字段约定：
@@ -400,8 +400,9 @@ AI 的日记只能由 AI 侧写入（P1 的工具层，`db/diary.ts` 的 `create
 用户接口**不接受 `author` 入参**（SPEC §3.4.2）。
 
 留言板的历史视图按 `moment.created_at` 在前端分成「今天 / 昨天 / 某年某月某日」，不复制时间线数据；
-服务端 `GET /api/moments?groupId=` 负责分组筛选，`none` 代表未分组。分组整理不会改变 `updated_at`，
-这样移动留言不会把它伪装成刚刚发生的生活事件。
+服务端 `GET /api/moments?channel=board&groupId=` 负责留言板分组筛选，`none` 代表未分组。
+朋友圈复用同一事实表但固定使用 `channel=feed`，因此不会混入留言板 Widget / 分组；分组整理不会改变 `updated_at`，
+这样移动留言不会把它伪装成刚刚发生的生活事件。当前朋友圈第一阶段只开放文字动态与用户自有 CRUD，图片 / 音乐 / 作品引用、评论回应和 AI 自主发布另行接入。
 
 ---
 
