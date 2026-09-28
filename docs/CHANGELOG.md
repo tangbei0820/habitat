@@ -3,6 +3,14 @@
 > 本文件记「改了什么」（面向版本，按 Phase 组织）。
 > 「做到哪、还欠什么」在 `docs/TASKS.md`。
 
+## 2026-09-28 · V2-D · 共读 Runtime 接入
+
+### T-132 · 共读书架与聊天工具闭环
+
+- Chat 每轮从本地书架裁出当前段落附近的临时窗口；服务端新增 `reading_context`、`reading_read`、`reading_annotate` 三项真实 Capability，不保存书籍正文。
+- 小栖可读取书架 / 进度、读取窗口内段落，并将经过原文锚点校验的 Companion 批注回传浏览器；浏览器复用既有 `ReadingBookState.annotations` 写回原书并投影 `reading.annotation` Life 事实。
+- 同一轮和浏览器本地均抑制相同批注重复写入；新增 `probe:reading-tools` 6/6。未新增 schema 或备份版本，未部署 VPS。
+
 ## 2026-09-28 · V2-D · 共读格式扩展
 
 ### T-131 · PDF / EPUB 本地导入

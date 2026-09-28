@@ -348,6 +348,8 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
 
 `stickerCatalog` 是浏览器本地图库的轻量元数据快照（最多 100 项，只含 id / 名称 / 分类 / 标签），用于让本轮模型在需要时选择表情包；图片 data URL、图库数据库和用户文件不会上传或由服务端保存。缺省或为空时，本轮不绑定 `sticker.search` / `sticker.send`。工具成功后只回传被选中的 `stickerId`，前端再从本地图库解析并按发送时快照落一条独立 `sticker` 消息。
 
+`readingCatalog` 是浏览器本地共读书架的轻量窗口（最多 8 本；每本只含当前段落附近最多 80 段与最近批注），服务端只在本轮绑定 `reading_context` / `reading_read` / `reading_annotate`，不保存书籍正文。`reading_read` 只能读取窗口内的全局段落序号；`reading_annotate` 成功后回传原书 id、段落序号、原文锚点和批注，浏览器复用既有 `ReadingNote.metadata.reader.annotations` 写回本地书架，并追加 `reading.annotation` Life 事实。重复批注在服务端本轮与浏览器本地均会被抑制。
+
 ### `POST /api/chat/compact`（上下文摘要）
 
 聊天设置里的“压缩较早消息”调用此接口。请求只携带待归档的历史投影，服务端使用主聊天 Provider 生成摘要并记录一次普通聊天用量；服务端不保存聊天正文。

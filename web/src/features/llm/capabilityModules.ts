@@ -64,6 +64,12 @@ export const CAPABILITY_MODULES: readonly CapabilityModuleMeta[] = [
     launch: { to: '/home/music', label: '打开一起听' },
   },
   {
+    key: 'reading',
+    name: '共读',
+    icon: 'book',
+    launch: { to: '/home/reading', label: '打开共读' },
+  },
+  {
     key: 'tools',
     name: '工具',
     icon: 'toolbox',

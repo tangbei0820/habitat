@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import type { ChatToolCallPayload } from '@shared/events'
+import type { ChatReadingBookItem, ChatToolCallPayload } from '@shared/events'
 import type { LlmChatMessage } from '@shared/providers'
 import type { ChatContextSummary, ChatMessage, ChatSession, MessageBlock, MessageStatus, RelationshipSnapshot, Sticker, ToolResultBlock } from '@shared/types'
 import { VirtualList } from '../../components/VirtualList'
@@ -24,6 +24,9 @@ import {
   createMessageArtwork,
   createMessageBookmark,
   createMessagePhotos,
+  addReadingAnnotation,
+  getReadingBook,
+  listReadingNotes,
   listMusicTracks,
 } from '../../db/home'
 import {
@@ -62,7 +65,7 @@ import { log } from '../../lib/log'
 import { describeImage, generateImage, synthesizeSpeech, transcribeAudio } from '../../lib/media'
 import { useOnlineStatus } from '../../features/offline/useOnlineStatus'
 import { createStickerFromFile, getSticker, listStickers } from '../../db/stickers'
-import { appendBookmarkLifeEvent } from '../../features/life/api'
+import { appendBookmarkLifeEvent, appendReadingLifeEvent } from '../../features/life/api'
 import { usePhotoCollectionSettings } from '../../features/home/usePhotoCollectionSettings'
 import {
   decideRelationshipRecovery,
@@ -163,6 +166,55 @@ function copyableText(message: ChatMessage): string {
   if (plain !== '') return plain
   const audio = message.blocks.find((block) => block.kind === 'audio')
   return audio?.kind === 'audio' ? audio.payload.transcript?.trim() ?? '' : ''
+}
+
+/** 把当前本地书架裁成聊天 Runtime 的短窗口；正文不进服务端持久层。 */
+async function buildChatReadingCatalog(): Promise<ChatReadingBookItem[]> {
+  const notes = await listReadingNotes()
+  const result: ChatReadingBookItem[] = []
+  for (const note of notes.slice(0, 8)) {
+    const reader = getReadingBook(note)
+    if (reader === null) continue
+    const allParagraphs = reader.content.split('\n')
+    if (allParagraphs.length === 0) continue
+    const current = Math.min(Math.max(reader.currentParagraph, 0), allParagraphs.length - 1)
+    const windowSize = 80
+    const before = 24
+    const start = allParagraphs.length <= windowSize
+      ? 0
+      : Math.min(Math.max(current - before, 0), allParagraphs.length - windowSize)
+    const paragraphs: string[] = []
+    let chars = 0
+    for (let index = start; index < allParagraphs.length && paragraphs.length < windowSize; index += 1) {
+      const value = allParagraphs[index] ?? ''
+      const clipped = value.slice(0, 8_000)
+      if (chars + clipped.length > 60_000 && index > current) break
+      paragraphs.push(clipped)
+      chars += clipped.length
+    }
+    if (paragraphs.length === 0) continue
+    result.push({
+      id: note.id,
+      title: note.bookTitle,
+      author: note.author,
+      format: reader.format,
+      currentParagraph: current,
+      bookmarkParagraph: reader.bookmarkParagraph,
+      readingSeconds: reader.readingSeconds,
+      totalParagraphs: allParagraphs.length,
+      paragraphOffset: start,
+      paragraphs,
+      annotations: reader.annotations.slice(-40).map((annotation) => ({
+        id: annotation.id,
+        paragraphIndex: annotation.paragraphIndex,
+        text: annotation.text,
+        note: annotation.note,
+        author: annotation.author,
+        createdAt: annotation.createdAt,
+      })),
+    })
+  }
+  return result
 }
 
 /**
@@ -502,6 +554,7 @@ export function ChatWindowPage() {
         ? await listStickers()
         : stickers
       const listeningCatalog = await listMusicTracks()
+      const readingCatalog = await buildChatReadingCatalog()
       await streamChat(
         {
           ...(sessionId === undefined ? {} : { sessionId }),
@@ -523,6 +576,7 @@ export function ChatWindowPage() {
               externalUrl: track.externalUrl,
             })),
           }),
+          ...(readingCatalog.length === 0 ? {} : { readingCatalog }),
         },
         {
           onDelta: (delta) => {
@@ -962,6 +1016,38 @@ export function ChatWindowPage() {
       }
       setMessages((prev) => [...prev, stickerMessage])
       await touchSession(sessionId)
+    }
+    if (call.ok && call.readingAnnotation !== undefined) {
+      const { bookId, paragraphIndex, text, note } = call.readingAnnotation
+      try {
+        const books = await listReadingNotes()
+        const book = books.find((item) => item.id === bookId)
+        const reader = book === undefined ? null : getReadingBook(book)
+        if (book === undefined || reader === null) {
+          setErrorText('AI 的共读批注找不到对应书籍，未写入本地书架')
+          return
+        }
+        const duplicate = reader.annotations.some((annotation) => annotation.author === 'companion' && annotation.paragraphIndex === paragraphIndex && annotation.text === text && annotation.note === note)
+        if (duplicate) {
+          showToast('这条共读批注已经存在')
+          return
+        }
+        const updated = await addReadingAnnotation(bookId, paragraphIndex, text, note, 'companion')
+        const updatedReader = getReadingBook(updated)
+        void appendReadingLifeEvent({
+          eventType: 'reading.annotation',
+          bookId,
+          bookTitle: book.bookTitle,
+          paragraphIndex,
+          mode: 'reader',
+          annotationAuthor: 'companion',
+          ...(updatedReader === null ? {} : { readingSecondsTotal: updatedReader.readingSeconds }),
+        }).catch((err) => log.error('记录 AI 共读批注 Life 事实失败', err))
+        showToast(`小栖已在《${book.bookTitle}》留下批注`)
+      } catch (err) {
+        log.error('保存 AI 共读批注失败', err)
+        setErrorText('AI 的共读批注保存失败')
+      }
     }
   }
 

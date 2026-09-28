@@ -3572,3 +3572,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；构建产物包含独立 PDF worker / parser chunk。现有 TXT 浏览器回归路径保持不变；未部署 VPS，未冒充扫描件 OCR 或原版分页完成。
 
 **明确延期**：PDF 原版页面渲染与页书签、扫描件 OCR、EPUB 图片 / CSS 精确排版、书架全文 MCP、AI 翻页 / 生词工具、批注收藏与跨设备同步继续留在后续共读阶段。
+
+### T-132 · 2026-09-28 · V2-D · 共读 Runtime 接入—— **完成（本地，未部署）**
+
+**范围**：把现有本地书架接入聊天 Runtime 的最小真实闭环；不把整本书上传到服务端，不新建书库表，不冒充 Tasogare 的远程 MCP / 原版分页能力。
+
+| 交付 | 说明 |
+| --- | --- |
+| 临时阅读目录 | Chat 每轮从 `ReadingNote.metadata.reader` 裁出最多 8 本书、每本当前段落附近最多 80 段与最近批注；服务端只在本轮使用，不持久化正文。 |
+| Runtime 工具 | 新增 `reading_context`、`reading_read`、`reading_annotate`；能力清单、工具 schema、工具结果和失败反馈共用 Capability Registry，窗口外段落明确拒绝。 |
+| Companion 批注 | 服务端校验书籍 / 段落 / 原文锚点 / 长度，返回 `readingAnnotation`；浏览器复用 `addReadingAnnotation(..., 'companion')` 写回原书，并追加 `reading.annotation` Life 事实。 |
+| 重复与追溯 | 同一轮用批注键抑制工具循环重复，浏览器再按本地现状去重；工具卡保留来源与结果，批注保留原书 id / 段落锚点。 |
+| 参考取舍 | 继续借 [Tasogare](https://github.com/EnhydrInk/tasogare) 的书架 / 段落 / 批注 / MCP 能力边界；不搬运其远程书库、完整分页渲染或外部 UI。 |
+
+**验收**：服务端 `npm run probe:reading-tools` **6/6**；两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过。未新增 Dexie / 备份版本，未部署 VPS。
+
+**明确延期**：Tasogare 风格翻页 / 搜索 MCP、AI 翻页与生词工具、PDF 原版分页 / OCR、EPUB 精确排版与图片、批注收藏、跨设备书籍同步；本批不提前施工。

@@ -20,6 +20,7 @@ import type {
   ChatDeltaPayload,
   ChatDonePayload,
   ChatErrorPayload,
+  ChatReadingBookItem,
   ChatStickerCatalogItem,
   ChatStreamRequest,
   ChatToolCallPayload,
@@ -153,6 +154,54 @@ function parseListeningCatalog(raw: unknown): ChatStreamRequest['listeningCatalo
   })
 }
 
+function parseReadingCatalog(raw: unknown): ChatStreamRequest['readingCatalog'] {
+  if (raw === undefined) return undefined
+  if (!Array.isArray(raw)) throw new ProviderError(ErrorCodes.BadRequest, 'readingCatalog 必须是数组')
+  if (raw.length > 8) throw new ProviderError(ErrorCodes.BadRequest, 'readingCatalog 最多 8 本')
+  const formats = ['txt', 'pdf', 'epub'] as const
+  let totalChars = 0
+  return raw.map((item, index): ChatReadingBookItem => {
+    const record = asRecord(item)
+    if (record === null) throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}] 不是对象`)
+    const id = typeof record.id === 'string' ? record.id.trim() : ''
+    const title = typeof record.title === 'string' ? record.title.trim() : ''
+    const author = record.author === null || record.author === undefined ? null : typeof record.author === 'string' ? record.author.trim().slice(0, 160) : null
+    const format = formats.includes(record.format as typeof formats[number]) ? record.format as typeof formats[number] : null
+    const currentParagraph = record.currentParagraph
+    const bookmarkParagraph = record.bookmarkParagraph
+    const readingSeconds = record.readingSeconds
+    const totalParagraphs = record.totalParagraphs
+    const paragraphOffset = record.paragraphOffset
+    if (id === '' || title === '' || format === null || id.length > 160 || title.length > 200) throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}] 缺少有效 id、title 或 format`)
+    if (typeof currentParagraph !== 'number' || !Number.isInteger(currentParagraph) || currentParagraph < 0 ||
+      !(bookmarkParagraph === null || (typeof bookmarkParagraph === 'number' && Number.isInteger(bookmarkParagraph) && bookmarkParagraph >= 0)) ||
+      typeof readingSeconds !== 'number' || !Number.isInteger(readingSeconds) || readingSeconds < 0 ||
+      typeof totalParagraphs !== 'number' || !Number.isInteger(totalParagraphs) || totalParagraphs < 1 || totalParagraphs > 2_000_000 ||
+      typeof paragraphOffset !== 'number' || !Number.isInteger(paragraphOffset) || paragraphOffset < 0) {
+      throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}] 阅读进度字段非法`)
+    }
+    if (currentParagraph >= totalParagraphs || (bookmarkParagraph !== null && bookmarkParagraph >= totalParagraphs)) throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}] 段落位置超出正文`)
+    if (!Array.isArray(record.paragraphs) || record.paragraphs.length > 120 || paragraphOffset + record.paragraphs.length > totalParagraphs) throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}].paragraphs 超出窗口限制`)
+    const paragraphs = record.paragraphs.map((paragraph, paragraphIndex) => {
+      if (typeof paragraph !== 'string' || paragraph.length > 8_000) throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}].paragraphs[${paragraphIndex}] 超出 8000 字限制`)
+      totalChars += paragraph.length
+      return paragraph
+    })
+    if (totalChars > 600_000) throw new ProviderError(ErrorCodes.BadRequest, 'readingCatalog 正文窗口总量过大')
+    if (!Array.isArray(record.annotations) || record.annotations.length > 80) throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}].annotations 超出限制`)
+    const annotations = record.annotations.map((annotation, annotationIndex) => {
+      const value = asRecord(annotation)
+      if (value === null || typeof value.id !== 'string' || typeof value.paragraphIndex !== 'number' || !Number.isInteger(value.paragraphIndex) || value.paragraphIndex < 0 ||
+        typeof value.text !== 'string' || typeof value.note !== 'string' || (value.author !== 'user' && value.author !== 'companion') || typeof value.createdAt !== 'number') {
+        throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}].annotations[${annotationIndex}] 非法`)
+      }
+      if (value.id.length > 160 || value.text.length > 500 || value.note.length > 2_000) throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}].annotations[${annotationIndex}] 字段超出限制`)
+      return { id: value.id, paragraphIndex: value.paragraphIndex, text: value.text, note: value.note, author: value.author as 'user' | 'companion', createdAt: value.createdAt }
+    })
+    return { id, title, author, format, currentParagraph, bookmarkParagraph, readingSeconds, totalParagraphs, paragraphOffset, paragraphs, annotations }
+  })
+}
+
 function parseBody(raw: unknown): ChatStreamRequest {
   const record = asRecord(raw)
   if (record === null) throw new ProviderError(ErrorCodes.BadRequest, '请求体必须是 JSON 对象')
@@ -164,6 +213,7 @@ function parseBody(raw: unknown): ChatStreamRequest {
   const maxTokens = parseNumber(record.maxTokens, 'maxTokens')
   const stickerCatalog = parseStickerCatalog(record.stickerCatalog)
   const listeningCatalog = parseListeningCatalog(record.listeningCatalog)
+  const readingCatalog = parseReadingCatalog(record.readingCatalog)
   const rawWebSearch = asRecord(record.webSearch)
   if (record.webSearch !== undefined && rawWebSearch === null) {
     throw new ProviderError(ErrorCodes.BadRequest, 'webSearch 必须是对象')
@@ -184,6 +234,7 @@ function parseBody(raw: unknown): ChatStreamRequest {
     ...(normalizedWebSearchQuery === undefined ? {} : { webSearch: { query: normalizedWebSearchQuery } }),
     ...(stickerCatalog === undefined ? {} : { stickerCatalog }),
     ...(listeningCatalog === undefined ? {} : { listeningCatalog }),
+    ...(readingCatalog === undefined ? {} : { readingCatalog }),
   }
 }
 
@@ -263,6 +314,7 @@ async function runToolCall(
       summary: outcome.summary,
       ...(outcome.detail === undefined ? {} : { detail: outcome.detail }),
       ...(outcome.stickerId === undefined ? {} : { stickerId: outcome.stickerId }),
+      ...(outcome.readingAnnotation === undefined ? {} : { readingAnnotation: outcome.readingAnnotation }),
       // 挂起的事件 id：前端据此渲染确认卡按钮（见 ChatToolCallPayload.eventId 注释）
       ...(outcome.eventId === undefined ? {} : { eventId: outcome.eventId }),
     },
@@ -361,9 +413,13 @@ export function registerChatRoutes(
       ? sessionBoundSnapshot
       : sessionBoundSnapshot.filter((item) => item.id !== 'sticker.search' && item.id !== 'sticker.send')
     const listeningReady = (body.listeningCatalog?.length ?? 0) > 0
-    const finalCapabilitySnapshot = listeningReady
+    const listeningCapabilitySnapshot = listeningReady
       ? filteredCapabilitySnapshot
       : filteredCapabilitySnapshot.filter((item) => item.id !== 'listening.queue_add')
+    const readingReady = (body.readingCatalog?.length ?? 0) > 0
+    const finalCapabilitySnapshot = readingReady
+      ? listeningCapabilitySnapshot
+      : listeningCapabilitySnapshot.filter((item) => item.module !== 'reading')
     const context = await assembleChatContext(body.messages, state, finalCapabilitySnapshot, counterpartAt, {
       lastCounterpartMessageAt: counterpartAt,
       counterpartText: latestUserText,
@@ -396,6 +452,8 @@ export function registerChatRoutes(
       ...(body.webSearch === undefined ? {} : { webSearchQuery: body.webSearch.query }),
       stickerCatalog: body.stickerCatalog ?? [],
       listeningCatalog: body.listeningCatalog ?? [],
+      readingCatalog: body.readingCatalog ?? [],
+      readingAnnotationKeys: new Set<string>(),
       ...(body.sessionId === undefined ? {} : { chatSessionId: body.sessionId }),
     }
 

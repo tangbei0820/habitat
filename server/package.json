@@ -27,6 +27,7 @@
     "probe:moment-groups": "tsx scripts/probe-moment-groups.ts",
     "probe:feed": "tsx scripts/probe-feed.ts",
     "probe:reading-life": "tsx scripts/probe-reading-life.ts",
+    "probe:reading-tools": "tsx scripts/probe-reading-tools.ts",
     "probe:nocturne-tools-standalone": "node scripts/probe-nocturne-tools-standalone.mjs",
     "probe:phase3b": "tsx scripts/probe-phase3b.ts",
     "probe:phase4": "tsx scripts/probe-phase4.ts",

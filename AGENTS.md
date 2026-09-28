@@ -417,3 +417,5 @@ habitat/
 - 共读仍明确缺 PDF / EPUB 解析与分页、Tasogare 风格阅读 MCP、AI 翻页 / 生词工具、批注收藏和跨设备同步；下一轮若继续共读，先做格式与服务边界，不把本地 TXT 回应误称为完整共读。
 - ✅ **T-131 共读 PDF / EPUB 本地导入**：浏览器本机用 pdf.js / fflate 提取 PDF / EPUB 段落，按 OPF spine 保留 EPUB 顺序，复用既有阅读器 / 批注 / Life / 备份，不升 Dexie，未部署 VPS。
 - 共读仍明确缺 PDF 原版分页与扫描 OCR、EPUB 精确排版 / 图片、Tasogare 风格阅读 MCP、AI 翻页 / 生词工具、批注收藏和跨设备同步。
+- ✅ **T-132 共读 Runtime 接入**：Chat 每轮从本地书架裁出临时阅读窗口，新增 `reading_context` / `reading_read` / `reading_annotate`；小栖批注由浏览器写回原书并进入 Life，服务端不持久化书籍正文。两端 typecheck、前端 build、`probe:reading-tools` 6/6 通过，未部署 VPS。
+- 共读仍明确缺原版 PDF 分页 / OCR、EPUB 精确排版、Tasogare 风格全文 MCP、AI 翻页 / 生词工具、批注收藏和跨设备同步；T-132 不把临时窗口工具称成完整远程书架。

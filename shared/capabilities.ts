@@ -23,7 +23,7 @@
  */
 
 /** 能力归属模块 —— 用于 LLM 页面卡片分组与详情页归属 */
-export type CapabilityModule = 'memory' | 'state' | 'diary' | 'board' | 'relationship' | 'listening' | 'tools' | 'web'
+export type CapabilityModule = 'memory' | 'state' | 'diary' | 'board' | 'relationship' | 'listening' | 'reading' | 'tools' | 'web'
 
 /**
  * 自主级别：回答「这项能力 AI 自己能不能调」。
@@ -68,6 +68,10 @@ export type CapabilityId =
   | 'listening.context'
   | 'listening.queue_add'
   | 'listening.comment'
+  /* —— 共读（本轮书架窗口 / Companion 批注） —— */
+  | 'reading.context'
+  | 'reading.read'
+  | 'reading.annotate'
   /* —— 聊天表情包（图库来自本轮前端，不把图片原文塞进模型上下文） —— */
   | 'sticker.search'
   | 'sticker.send'
@@ -531,6 +535,64 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
           content: { type: 'string', description: '小栖想留下的评论或回忆，不超过 1000 字' },
         },
         required: ['content'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'reading.context',
+    module: 'reading',
+    label: '查看共读书架',
+    summary: '读取当前书架、进度与最近批注',
+    modelHint: '查看北北当前书架、阅读进度、书签与批注；需要先了解一起读过什么时调用。正文只会提供当前阅读窗口。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'reading_context',
+      description: '读取本轮共读书架的书名、格式、阅读进度、书签和批注数量。无参数；正文需要时再调用 reading_read。',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    id: 'reading.read',
+    module: 'reading',
+    label: '阅读当前段落',
+    summary: '读取书架中一本书的当前段落',
+    modelHint: '阅读书架中某本书的当前段落或指定段落；只能读取本轮提供的窗口，不要声称看到了整本书。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'reading_read',
+      description: '读取本轮共读目录中某本书的段落。paragraphIndex 省略时读取当前阅读位置；只能读取当前窗口范围。',
+      parameters: {
+        type: 'object',
+        properties: {
+          bookId: { type: 'string', description: '书籍 id（先用 reading_context 查看）' },
+          paragraphIndex: { type: 'number', description: '段落全局序号；省略则使用该书当前阅读位置' },
+          limit: { type: 'number', description: '向后读取的段落数，最多 5，省略为 1' },
+        },
+        required: ['bookId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'reading.annotate',
+    module: 'reading',
+    label: '留下共读批注',
+    summary: '把小栖的想法写回这本书的段落批注',
+    modelHint: '如果确实有值得留下的看法，可以给当前书籍段落写一条小栖批注；不想写就不要调用。相同段落与相同内容不要重复写。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'reading_annotate',
+      description: '给本轮共读目录中的一个段落留下小栖批注。浏览器会把它写回本地书架并记录 Life 事实；不要把它当成普通聊天消息。',
+      parameters: {
+        type: 'object',
+        properties: {
+          bookId: { type: 'string', description: '书籍 id（先用 reading_context 查看）' },
+          paragraphIndex: { type: 'number', description: '要批注的段落全局序号；省略则使用当前段落' },
+          text: { type: 'string', description: '段落中的原文锚点；省略则使用该段落前 500 字' },
+          note: { type: 'string', description: '小栖要留下的批注，不超过 2000 字' },
+        },
+        required: ['bookId', 'note'],
         additionalProperties: false,
       },
     },

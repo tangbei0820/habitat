@@ -15,7 +15,7 @@
  */
 import type { CapabilityAutonomy, CapabilityId, CapabilityModule, CapabilitySnapshot, CapabilityToolSchema } from '@shared/capabilities.js'
 import { CAPABILITY_DEFINITIONS } from '@shared/capabilities.js'
-import type { ChatListeningCatalogItem, ChatStickerCatalogItem } from '@shared/events.js'
+import type { ChatListeningCatalogItem, ChatReadingBookItem, ChatStickerCatalogItem } from '@shared/events.js'
 import type { LlmToolCall, MemoryProvider, StateProvider } from '@shared/providers.js'
 import { describeState } from '@shared/state-summary.js'
 import { getCompanionDiaryView, listCompanionDiaryViews, createCompanionDiary, setDiaryFragmentVisibility, updateCompanionDiary } from '../db/diary.js'
@@ -62,6 +62,7 @@ const MODULE_SOURCE: Readonly<Record<CapabilityModule, string>> = {
   board: '留言板',
   relationship: '关系互动',
   listening: '一起听',
+  reading: '共读',
   tools: '系统',
   web: 'Web',
 }
@@ -85,6 +86,13 @@ export interface ToolOutcome {
   eventId?: string
   /** 表情包工具成功选择的本地图库 id；图片快照由浏览器按 id 取回。 */
   stickerId?: string
+  /** 共读批注由浏览器写回本地书架；服务端只返回经过校验的锚点。 */
+  readingAnnotation?: {
+    bookId: string
+    paragraphIndex: number
+    text: string
+    note: string
+  }
 }
 
 /** 工具正文进模型上下文的上限：记忆全文可能很长，但也不能无界 */
@@ -154,6 +162,10 @@ export interface ToolRuntime {
   stickerCatalog?: readonly ChatStickerCatalogItem[]
   /** 本轮浏览器音乐目录；只传元数据，不上传音频。 */
   listeningCatalog?: readonly ChatListeningCatalogItem[]
+  /** 本轮浏览器书架的轻量阅读窗口，不写服务端数据库。 */
+  readingCatalog?: readonly ChatReadingBookItem[]
+  /** 本轮已经返回给浏览器的批注键；防止工具循环重复发起同一写回。 */
+  readingAnnotationKeys?: Set<string>
   /** 本次聊天请求已发送的表情；防止模型在多轮工具循环里重复发图。 */
   stickerSentId?: string
   /** 当前聊天会话 id；仅用于将 AI 发起的来电绑定到原会话。 */
@@ -195,6 +207,21 @@ function failure(tool: BoundTool, message: string): ToolOutcome {
 
 function clip(text: string, limit: number): string {
   return text.length <= limit ? text : `${text.slice(0, limit)}…（已截断）`
+}
+
+function readingBook(runtime: ToolRuntime, rawId: unknown): ChatReadingBookItem | null {
+  const id = typeof rawId === 'string' ? rawId.trim() : ''
+  if (id === '') return null
+  return (runtime.readingCatalog ?? []).find((book) => book.id === id) ?? null
+}
+
+function readingRange(book: ChatReadingBookItem): { start: number; end: number } {
+  return { start: book.paragraphOffset, end: book.paragraphOffset + book.paragraphs.length - 1 }
+}
+
+function readingParagraph(book: ChatReadingBookItem, index: number): string | null {
+  const localIndex = index - book.paragraphOffset
+  return localIndex >= 0 && localIndex < book.paragraphs.length ? book.paragraphs[localIndex] ?? null : null
 }
 
 /**
@@ -524,6 +551,74 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
         const externalUrl = typeof value.externalUrl === 'string' ? value.externalUrl.trim() || null : current.externalUrl
         const created = createListeningComment({ track: { id: current.id, title, artist, externalUrl }, author: 'companion', content })
         return { ok: true, text: `已为《${title}》留下听歌回忆（commentId: ${created.id}）。`, summary: `留下《${title}》的听歌回忆` }
+      }
+
+      case 'reading.context': {
+        const books = runtime.readingCatalog ?? []
+        if (books.length === 0) return { ok: true, text: '(本轮没有提供共读书架)', summary: '本轮没有可用书架' }
+        const lines = books.map((book) => {
+          const progress = book.totalParagraphs <= 0 ? 0 : Math.min(100, Math.round(((book.currentParagraph + 1) / book.totalParagraphs) * 100))
+          return `- 《${book.title}》${book.author === null ? '' : ` · ${book.author}`}（${book.format.toUpperCase()}，id: ${book.id}）进度 ${progress}%（第 ${book.currentParagraph + 1}/${book.totalParagraphs} 段，${book.annotations.length} 条批注${book.bookmarkParagraph === null ? '' : `，书签第 ${book.bookmarkParagraph + 1} 段`}）`
+        })
+        const text = `# 本轮共读书架\n\n${lines.join('\n')}\n\n正文只能通过 reading_read 读取当前窗口；本轮没有上传整本书。`
+        return { ok: true, text, summary: `已读取 ${books.length} 本共读书`, detail: clip(text, DETAIL_LIMIT) }
+      }
+
+      case 'reading.read': {
+        const book = readingBook(runtime, value.bookId)
+        if (book === null) return failure(tool, '找不到这本书；请先调用 reading_context')
+        const requested = value.paragraphIndex === undefined ? book.currentParagraph : value.paragraphIndex
+        if (typeof requested !== 'number' || !Number.isInteger(requested) || requested < 0 || requested >= book.totalParagraphs) {
+          return failure(tool, 'paragraphIndex 必须是有效的全局段落序号')
+        }
+        const limit = typeof value.limit === 'number' && Number.isInteger(value.limit) ? Math.min(Math.max(value.limit, 1), 5) : 1
+        const range = readingRange(book)
+        if (requested < range.start || requested > range.end) {
+          return failure(tool, `第 ${requested + 1} 段不在本轮阅读窗口内；当前窗口为第 ${range.start + 1}–${range.end + 1} 段，请让北北先打开或翻到附近位置`)
+        }
+        const rows: string[] = []
+        for (let index = requested; index < requested + limit && index <= range.end; index += 1) {
+          const paragraph = readingParagraph(book, index)
+          if (paragraph !== null) rows.push(`第 ${index + 1} 段：${clip(paragraph, 4_000)}`)
+        }
+        const text = `《${book.title}》${book.author === null ? '' : ` · ${book.author}`}（${book.format.toUpperCase()}）\n${rows.join('\n\n')}`
+        return { ok: true, text: clip(text, TOOL_TEXT_LIMIT), summary: `读了《${book.title}》第 ${requested + 1} 段`, detail: clip(text, DETAIL_LIMIT) }
+      }
+
+      case 'reading.annotate': {
+        const book = readingBook(runtime, value.bookId)
+        if (book === null) return failure(tool, '找不到这本书；请先调用 reading_context')
+        const requested = value.paragraphIndex === undefined ? book.currentParagraph : value.paragraphIndex
+        if (typeof requested !== 'number' || !Number.isInteger(requested) || requested < 0 || requested >= book.totalParagraphs) {
+          return failure(tool, 'paragraphIndex 必须是有效的全局段落序号')
+        }
+        const paragraph = readingParagraph(book, requested)
+        if (paragraph === null) {
+          const range = readingRange(book)
+          return failure(tool, `第 ${requested + 1} 段不在本轮阅读窗口内；当前窗口为第 ${range.start + 1}–${range.end + 1} 段`)
+        }
+        const note = typeof value.note === 'string' ? value.note.trim() : ''
+        if (note === '') return failure(tool, '缺少必填参数 note')
+        if (note.length > 2_000) return failure(tool, 'note 最多 2000 字')
+        const requestedText = typeof value.text === 'string' && value.text.trim() !== '' ? value.text.trim() : paragraph.trim().slice(0, 500)
+        const text = requestedText.slice(0, 500)
+        if (text === '') return failure(tool, '目标段落没有可用的原文锚点')
+        if (typeof value.text === 'string' && value.text.trim() !== '' && !paragraph.includes(value.text.trim())) {
+          return failure(tool, 'text 不是目标段落中的原文，未写入批注')
+        }
+        const annotationKey = `${book.id}:${requested}:${text}:${note}`
+        if (book.annotations.some((annotation) => annotation.author === 'companion' && annotation.paragraphIndex === requested && annotation.text === text && annotation.note === note) || runtime.readingAnnotationKeys?.has(annotationKey)) {
+          return { ok: true, text: `《${book.title}》第 ${requested + 1} 段已经有相同的小栖批注，本次没有重复写入。`, summary: '已有相同共读批注' }
+        }
+        runtime.readingAnnotationKeys?.add(annotationKey)
+        const annotation = { bookId: book.id, paragraphIndex: requested, text, note }
+        return {
+          ok: true,
+          text: `已为《${book.title}》第 ${requested + 1} 段留下小栖批注。浏览器会把它写回本地书架，并记录一条共读生活事实。`,
+          summary: `为《${book.title}》留下共读批注`,
+          detail: `${text}\n${note}`,
+          readingAnnotation: annotation,
+        }
       }
 
       case 'sticker.search': {

@@ -4,7 +4,7 @@
  */
 import type { ErrorCode } from './errors'
 import type { LlmChatMessage, LlmUsage } from './providers'
-import type { MusicTrack } from './types'
+import type { MusicTrack, ReadingFormat } from './types'
 
 /** 本轮聊天可供 AI 选择的本地表情元数据；图片正文留在浏览器，避免进模型上下文。 */
 export interface ChatStickerCatalogItem {
@@ -16,6 +16,31 @@ export interface ChatStickerCatalogItem {
 
 /** 本轮聊天可供小栖选择的一起听曲目元数据；不上传音频正文。 */
 export type ChatListeningCatalogItem = Pick<MusicTrack, 'id' | 'title' | 'artist' | 'externalUrl'>
+
+/** 本轮聊天可供小栖阅读的本地书架窗口；正文只在本次请求中暂存，服务端不持久化。 */
+export interface ChatReadingAnnotationItem {
+  id: string
+  paragraphIndex: number
+  text: string
+  note: string
+  author: 'user' | 'companion'
+  createdAt: number
+}
+
+/** 共读 Runtime 的轻量目录：正文是当前段落附近的窗口，不是整本书的上传。 */
+export interface ChatReadingBookItem {
+  id: string
+  title: string
+  author: string | null
+  format: ReadingFormat
+  currentParagraph: number
+  bookmarkParagraph: number | null
+  readingSeconds: number
+  totalParagraphs: number
+  paragraphOffset: number
+  paragraphs: string[]
+  annotations: ChatReadingAnnotationItem[]
+}
 
 export type SseEventType =
   | 'health'
@@ -57,6 +82,8 @@ export interface ChatStreamRequest {
   /** 当前浏览器本地图库的轻量目录；服务端只用它做本轮工具校验，不持久化。 */
   stickerCatalog?: ChatStickerCatalogItem[]
   listeningCatalog?: ChatListeningCatalogItem[]
+  /** 当前浏览器书架的轻量阅读窗口；正文仅用于本轮工具调用，不落服务端。 */
+  readingCatalog?: ChatReadingBookItem[]
 }
 
 /** 上下文压缩的非流式请求：原消息只在本次调用中用于生成摘要，服务端不落聊天正文。 */
@@ -122,6 +149,13 @@ export interface ChatToolCallPayload {
   eventId?: string
   /** `sticker_send` 成功时返回的本地图库 id；前端据此取快照并落一条 sticker 消息。 */
   stickerId?: string
+  /** `reading_annotate` 成功时由浏览器写回本地书架的批注数据。 */
+  readingAnnotation?: {
+    bookId: string
+    paragraphIndex: number
+    text: string
+    note: string
+  }
 }
 
 /** `chat-usage`：上游末包用量（在 `chat-done` 之前到达） */
