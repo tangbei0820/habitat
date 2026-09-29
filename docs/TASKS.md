@@ -16,7 +16,7 @@
 
 > **与 `docs/CHANGELOG.md` 的分工**：CHANGELOG 记「改了什么」（面向版本，按 Phase 组织）；本文件记「做到哪、还欠什么」（面向推进与排期）。
 > **两条硬规矩**：① 已完成只写要点，正文链到 CHANGELOG，**不复制**；② **所有待优化一律收敛到本文件**，不许散落在对话、代码注释或临时文件里。
-> 最后更新：2026-09-28
+> 最后更新：2026-09-29
 
 ---
 
@@ -3648,5 +3648,21 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 参考取舍 | 借 [Tasogare](https://github.com/EnhydrInk/tasogare) 的 `reading_status` 工具边界；不搬入其远程 JSON 书库或独立同步层。 |
 
 **验收**：服务端 `npm --prefix server run probe:reading-tools` **11/11**、`npm run typecheck`、`npm run build`、`git diff --check` 通过；未部署 VPS。
+
+**明确延期**：Tasogare 风格全文 MCP、PDF 原版分页 / OCR、EPUB 精确排版与图片、跨设备同步；本批不提前施工。
+
+### T-137 · 2026-09-29 · V2-D · 共读窗口搜索与生词解释工具 —— **完成（本地，未部署）**
+
+**范围**：把共读 Runtime 的“找原文、复习生词、补充解释”作为一个完整工具组收口；继续限定在浏览器本轮阅读窗口，不引入远程书库或全文同步。
+
+| 交付 | 说明 |
+| --- | --- |
+| 窗口搜索 | `reading_search` 支持按书籍或全本轮窗口搜索词 / 短语，命中结果带书名与全局段落锚点，并明确不是全文搜索。 |
+| 生词复习 | `reading_vocab` 按最近记录返回本轮生词、解释与稳定 id；空目录 / 无结果均有可读反馈。 |
+| 解释更新 | `reading_annotate_vocab` 只更新已有生词，支持 vocabulary id 或精确词面；浏览器保留原 id 写回 `ReadingBookState.vocabulary[].note`，重复解释幂等。 |
+| 追溯与边界 | 工具结果回灌下一轮模型；更新追加既有 `reading.vocabulary` Life 事实，失败不伪造写回，不新增 Dexie / 备份 / 服务端 schema。 |
+| 参考取舍 | 延续 Tasogare 的搜索 / `read_vocab` / `annotate_vocab` 能力边界；不搬入其远程全文书库、MCP 认证或跨设备同步。 |
+
+**验收**：`npm --prefix server run probe:reading-tools` **15/15**、两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；未部署 VPS。
 
 **明确延期**：Tasogare 风格全文 MCP、PDF 原版分页 / OCR、EPUB 精确排版与图片、跨设备同步；本批不提前施工。

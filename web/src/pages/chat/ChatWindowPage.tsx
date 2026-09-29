@@ -29,6 +29,7 @@ import {
   getReadingBook,
   listReadingNotes,
   listMusicTracks,
+  updateReadingVocabulary,
   updateReadingBookState,
 } from '../../db/home'
 import {
@@ -1117,6 +1118,41 @@ export function ChatWindowPage() {
       } catch (err) {
         log.error('保存 AI 共读生词失败', err)
         setErrorText('AI 的共读生词保存失败')
+      }
+    }
+    if (call.ok && call.readingVocabularyUpdate !== undefined) {
+      const { bookId, vocabularyId, paragraphIndex, term, note } = call.readingVocabularyUpdate
+      try {
+        const books = await listReadingNotes()
+        const book = books.find((item) => item.id === bookId)
+        const reader = book === undefined ? null : getReadingBook(book)
+        const word = reader?.vocabulary.find((item) => item.id === vocabularyId)
+        if (book === undefined || reader === null || word === undefined) {
+          setErrorText('AI 的共读生词解释找不到对应条目，未改动本地生词本')
+          return
+        }
+        if (word.paragraphIndex !== paragraphIndex || word.term !== term) {
+          setErrorText('AI 的共读生词解释锚点不匹配，未改动本地生词本')
+          return
+        }
+        if (word.note === note) {
+          showToast(`「${term}」的解释已经相同`)
+          return
+        }
+        const updated = await updateReadingVocabulary(bookId, vocabularyId, note)
+        const updatedReader = getReadingBook(updated)
+        void appendReadingLifeEvent({
+          eventType: 'reading.vocabulary',
+          bookId,
+          bookTitle: book.bookTitle,
+          paragraphIndex,
+          mode: 'reader',
+          ...(updatedReader === null ? {} : { readingSecondsTotal: updatedReader.readingSeconds }),
+        }).catch((err) => log.error('记录 AI 更新共读生词 Life 事实失败', err))
+        showToast(`小栖补充了《${book.bookTitle}》里「${term}」的解释`)
+      } catch (err) {
+        log.error('保存 AI 更新共读生词失败', err)
+        setErrorText('AI 的共读生词解释保存失败')
       }
     }
   }

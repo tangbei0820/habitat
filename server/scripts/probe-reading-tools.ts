@@ -46,6 +46,7 @@ const runtime: ToolRuntime = {
   readingAnnotationKeys: new Set<string>(),
   readingNavigationKeys: new Set<string>(),
   readingVocabularyKeys: new Set<string>(),
+  readingVocabularyUpdateKeys: new Set<string>(),
 }
 
 async function call(name: string, args: Record<string, unknown>) {
@@ -55,7 +56,7 @@ async function call(name: string, args: Record<string, unknown>) {
 }
 
 console.log('\n=== Reading Runtime tools probe ===')
-check('七项共读能力都绑定为模型工具', ['reading_context', 'reading_status', 'reading_read', 'reading_annotate', 'reading_advance', 'reading_vocabulary', 'reading_activity'].every((name) => tools.some((tool) => tool.name === name)))
+check('十项共读能力都绑定为模型工具', ['reading_context', 'reading_status', 'reading_read', 'reading_annotate', 'reading_advance', 'reading_vocabulary', 'reading_search', 'reading_vocab', 'reading_annotate_vocab', 'reading_activity'].every((name) => tools.some((tool) => tool.name === name)))
 
 const context = await call('reading_context', {})
 check('reading_context 返回书架与进度', context.ok && context.text.includes('探针之书') && context.text.includes('第 2/3 段'))
@@ -86,6 +87,18 @@ check('相同生词在同一轮内不会重复写入', duplicateVocabulary.ok &&
 
 book.annotations.push({ id: 'probe-annotation', paragraphIndex: 0, text: '第一段。', note: '旧批注', author: 'user', createdAt: 1 })
 book.vocabulary.push({ id: 'probe-vocabulary', paragraphIndex: 1, term: '灯', note: '夜里照亮方向的东西。', createdAt: 2 })
+const search = await call('reading_search', { query: '一盏' })
+check('reading_search 只返回当前窗口内的命中段落', search.ok && search.text.includes('第二段写着一盏灯'))
+
+const vocab = await call('reading_vocab', { bookId: book.id })
+check('reading_vocab 返回本轮生词与解释', vocab.ok && vocab.text.includes('灯') && vocab.text.includes('夜里照亮'))
+
+const vocabularyUpdate = await call('reading_annotate_vocab', { bookId: book.id, vocabularyId: 'probe-vocabulary', note: '补充：夜里照亮方向的东西。' })
+check('reading_annotate_vocab 返回浏览器写回所需的更新', vocabularyUpdate.ok && vocabularyUpdate.readingVocabularyUpdate?.note.includes('补充') === true)
+
+const duplicateVocabularyUpdate = await call('reading_annotate_vocab', { bookId: book.id, vocabularyId: 'probe-vocabulary', note: '补充：夜里照亮方向的东西。' })
+check('相同生词解释在同一轮内不会重复更新', duplicateVocabularyUpdate.ok && duplicateVocabularyUpdate.readingVocabularyUpdate === undefined && duplicateVocabularyUpdate.summary.includes('已更新'))
+
 const activity = await call('reading_activity', { limit: 5 })
 check('reading_activity 返回最近批注与生词', activity.ok && activity.text.includes('旧批注') && activity.text.includes('灯'))
 

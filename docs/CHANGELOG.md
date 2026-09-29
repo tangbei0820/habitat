@@ -3,6 +3,14 @@
 > 本文件记「改了什么」（面向版本，按 Phase 组织）。
 > 「做到哪、还欠什么」在 `docs/TASKS.md`。
 
+## 2026-09-29 · V2-D · 共读 Runtime 生词复习
+
+### T-137 · 共读窗口搜索与生词解释工具
+
+- 新增 `reading_search`、`reading_vocab`、`reading_annotate_vocab`：小栖可搜索本轮阅读窗口、复习本轮生词，并在确有新信息时补充已有生词解释。
+- 浏览器继续复用 `ReadingBookState.vocabulary` 写回原书；更新保留原生词 id，追加既有 `reading.vocabulary` Life 事实，不新增 Dexie / 备份 / 服务端书库。
+- 明确窗口边界、精确词面 / id 校验、重复更新幂等与失败反馈；探针扩展至 15/15。未部署 VPS。
+
 ## 2026-09-29 · V2-D · 共读近况
 
 ### T-134 · 共读最近活动工具

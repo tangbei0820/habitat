@@ -327,6 +327,7 @@ async function runToolCall(
       ...(outcome.readingAnnotation === undefined ? {} : { readingAnnotation: outcome.readingAnnotation }),
       ...(outcome.readingNavigation === undefined ? {} : { readingNavigation: outcome.readingNavigation }),
       ...(outcome.readingVocabulary === undefined ? {} : { readingVocabulary: outcome.readingVocabulary }),
+      ...(outcome.readingVocabularyUpdate === undefined ? {} : { readingVocabularyUpdate: outcome.readingVocabularyUpdate }),
       // 挂起的事件 id：前端据此渲染确认卡按钮（见 ChatToolCallPayload.eventId 注释）
       ...(outcome.eventId === undefined ? {} : { eventId: outcome.eventId }),
     },
@@ -468,6 +469,7 @@ export function registerChatRoutes(
       readingAnnotationKeys: new Set<string>(),
       readingNavigationKeys: new Set<string>(),
       readingVocabularyKeys: new Set<string>(),
+      readingVocabularyUpdateKeys: new Set<string>(),
       ...(body.sessionId === undefined ? {} : { chatSessionId: body.sessionId }),
     }
 

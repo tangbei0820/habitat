@@ -75,6 +75,9 @@ export type CapabilityId =
   | 'reading.advance'
   | 'reading.annotate'
   | 'reading.vocabulary'
+  | 'reading.search'
+  | 'reading.vocab'
+  | 'reading.annotate_vocab'
   | 'reading.activity'
   /* —— 聊天表情包（图库来自本轮前端，不把图片原文塞进模型上下文） —— */
   | 'sticker.search'
@@ -655,6 +658,71 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
           note: { type: 'string', description: '词义、例句或小栖的解释，不超过 1000 字' },
         },
         required: ['bookId', 'term'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'reading.search',
+    module: 'reading',
+    label: '搜索共读正文',
+    summary: '在本轮提供的阅读窗口中搜索原文',
+    modelHint: '只在需要找回本轮阅读窗口里的词句时调用；这是窗口内搜索，不代表看到了整本书。没有明确检索目标时不要调用。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'reading_search',
+      description: '在本轮共读书架提供的当前阅读窗口内搜索原文。只返回窗口命中的段落，不会搜索窗口外或未上传的全文。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '要搜索的词或短语，不超过 160 字' },
+          bookId: { type: 'string', description: '可选的书籍 id；省略则搜索本轮所有书' },
+          limit: { type: 'number', description: '最多返回的命中段落数，默认 8，最多 20' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'reading.vocab',
+    module: 'reading',
+    label: '复习共读生词',
+    summary: '读取本轮书架里的生词与解释',
+    modelHint: '需要复习、解释或回顾已经记下的共读生词时调用；结果只包含浏览器本轮带来的本地生词快照。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'reading_vocab',
+      description: '读取本轮共读书架当前窗口附带的生词与解释，按最近记录排序；不代表完整远程生词历史。',
+      parameters: {
+        type: 'object',
+        properties: {
+          bookId: { type: 'string', description: '可选的书籍 id；省略则读取本轮所有书' },
+          limit: { type: 'number', description: '最多返回的生词数，默认 12，最多 20' },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'reading.annotate_vocab',
+    module: 'reading',
+    label: '补充生词解释',
+    summary: '更新共读生词本中的解释',
+    modelHint: '只有在确实能补充更清楚的词义、例句或记忆提示时才更新已有生词；解释已经足够时不要调用。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'reading_annotate_vocab',
+      description: '更新本轮共读书架中已有生词的解释。必须提供 vocabularyId 或精确 term；浏览器会写回原书生词本并记录共读事实。',
+      parameters: {
+        type: 'object',
+        properties: {
+          bookId: { type: 'string', description: '书籍 id（先用 reading_context 或 reading_vocab 查看）' },
+          vocabularyId: { type: 'string', description: '已有生词 id；优先使用它' },
+          term: { type: 'string', description: '已有生词的精确词面；没有 vocabularyId 时使用' },
+          note: { type: 'string', description: '新的词义、例句或记忆提示，不超过 1000 字' },
+        },
+        required: ['bookId', 'note'],
         additionalProperties: false,
       },
     },

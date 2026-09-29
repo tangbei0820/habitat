@@ -103,6 +103,13 @@ export interface ToolOutcome {
     term: string
     note: string
   }
+  readingVocabularyUpdate?: {
+    bookId: string
+    vocabularyId: string
+    paragraphIndex: number
+    term: string
+    note: string
+  }
 }
 
 /** 工具正文进模型上下文的上限：记忆全文可能很长，但也不能无界 */
@@ -180,6 +187,8 @@ export interface ToolRuntime {
   readingNavigationKeys?: Set<string>
   /** 本轮已经返回给浏览器的生词键；防止工具循环重复写回。 */
   readingVocabularyKeys?: Set<string>
+  /** 本轮已经返回给浏览器的生词解释更新键；防止模型重复改写同一解释。 */
+  readingVocabularyUpdateKeys?: Set<string>
   /** 本次聊天请求已发送的表情；防止模型在多轮工具循环里重复发图。 */
   stickerSentId?: string
   /** 当前聊天会话 id；仅用于将 AI 发起的来电绑定到原会话。 */
@@ -705,6 +714,69 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
           summary: `记下生词「${term}」`,
           detail: note === '' ? term : `${term}：${note}`,
           readingVocabulary: { bookId: book.id, paragraphIndex: requested, term, note },
+        }
+      }
+
+      case 'reading.search': {
+        const query = typeof value.query === 'string' ? value.query.trim() : ''
+        if (query === '') return failure(tool, '缺少必填参数 query')
+        if (query.length > 160) return failure(tool, 'query 最多 160 字')
+        const books = runtime.readingCatalog ?? []
+        if (books.length === 0) return { ok: true, text: '(本轮没有提供共读正文窗口)', summary: '本轮没有可搜索的共读正文' }
+        const selected = value.bookId === undefined ? books : [readingBook(runtime, value.bookId)].filter((book): book is ChatReadingBookItem => book !== null)
+        if (value.bookId !== undefined && selected.length === 0) return failure(tool, '找不到这本书；请先调用 reading_context')
+        const limit = Math.min(Math.max(Math.round(normalizeLimit(value.limit) ?? 8), 1), 20)
+        const lowered = query.toLocaleLowerCase()
+        const hits = selected.flatMap((book) => book.paragraphs.flatMap((paragraph, localIndex) => {
+          if (!paragraph.toLocaleLowerCase().includes(lowered)) return []
+          return [{ book, paragraphIndex: book.paragraphOffset + localIndex, paragraph }]
+        })).slice(0, limit)
+        if (hits.length === 0) return { ok: true, text: `本轮阅读窗口内没有找到「${query}」。这不是整本书搜索。`, summary: `窗口内没有找到「${query}」` }
+        const rows = hits.map(({ book, paragraphIndex, paragraph }) => `- 《${book.title}》第 ${paragraphIndex + 1} 段：${clip(paragraph, 1_200)}`)
+        const text = `# 共读窗口搜索：${query}\n\n${rows.join('\n')}\n\n仅搜索浏览器本轮提供的当前阅读窗口，不代表完整书全文。`
+        return { ok: true, text: clip(text, TOOL_TEXT_LIMIT), summary: `在共读窗口找到 ${hits.length} 处「${query}」`, detail: clip(rows.join('\n'), DETAIL_LIMIT) }
+      }
+
+      case 'reading.vocab': {
+        const books = runtime.readingCatalog ?? []
+        if (books.length === 0) return { ok: true, text: '(本轮没有提供共读生词)', summary: '本轮没有可复习的生词' }
+        const selected = value.bookId === undefined ? books : [readingBook(runtime, value.bookId)].filter((book): book is ChatReadingBookItem => book !== null)
+        if (value.bookId !== undefined && selected.length === 0) return failure(tool, '找不到这本书；请先调用 reading_context')
+        const limit = Math.min(Math.max(Math.round(normalizeLimit(value.limit) ?? 12), 1), 20)
+        const words = selected.flatMap((book) => book.vocabulary.map((word) => ({ book, word })))
+          .sort((left, right) => right.word.createdAt - left.word.createdAt)
+          .slice(0, limit)
+        if (words.length === 0) return { ok: true, text: '(本轮书架还没有可见生词)', summary: '暂无共读生词' }
+        const rows = words.map(({ book, word }) => `- 《${book.title}》第 ${word.paragraphIndex + 1} 段 · ${word.term}${word.note === '' ? '' : `：${clip(word.note, 500)}`}（id: ${word.id}）`)
+        const text = `# 本轮共读生词\n\n${rows.join('\n')}\n\n仅包含浏览器本轮目录提供的本地生词快照，不代表完整历史。`
+        return { ok: true, text: clip(text, TOOL_TEXT_LIMIT), summary: `已读取 ${words.length} 个共读生词`, detail: clip(rows.join('\n'), DETAIL_LIMIT) }
+      }
+
+      case 'reading.annotate_vocab': {
+        const book = readingBook(runtime, value.bookId)
+        if (book === null) return failure(tool, '找不到这本书；请先调用 reading_context')
+        const vocabularyId = typeof value.vocabularyId === 'string' ? value.vocabularyId.trim() : ''
+        const term = typeof value.term === 'string' ? value.term.trim() : ''
+        if (vocabularyId === '' && term === '') return failure(tool, 'vocabularyId 与 term 至少提供一个')
+        const note = typeof value.note === 'string' ? value.note.trim() : ''
+        if (note === '') return failure(tool, '缺少必填参数 note')
+        if (note.length > 1_000) return failure(tool, 'note 最多 1000 字')
+        const word = vocabularyId !== ''
+          ? book.vocabulary.find((item) => item.id === vocabularyId)
+          : book.vocabulary.find((item) => item.term === term && item.paragraphIndex === book.currentParagraph) ?? book.vocabulary.find((item) => item.term === term)
+        if (word === undefined) return failure(tool, '找不到要更新的生词；请先调用 reading_vocab，并使用精确 vocabularyId 或 term')
+        if (term !== '' && word.term !== term) return failure(tool, 'vocabularyId 与 term 不匹配，未更新生词')
+        if (word.note === note) return { ok: true, text: `生词「${word.term}」已经是这段解释，本次没有重复更新。`, summary: '生词解释已经相同' }
+        const key = `${book.id}:${word.id}:${note}`
+        if (runtime.readingVocabularyUpdateKeys?.has(key)) return { ok: true, text: `生词「${word.term}」的解释本轮已经更新过，本次没有重复写回。`, summary: '生词解释已更新' }
+        runtime.readingVocabularyUpdateKeys?.add(key)
+        appendEventLog('capability.reading.annotate_vocab', { bookId: book.id, vocabularyId: word.id, term: word.term }, book.id)
+        return {
+          ok: true,
+          text: `已补充《${book.title}》生词「${word.term}」的解释。浏览器会写回原书生词本，并记录一条共读生活事实。`,
+          summary: `补充「${word.term}」的生词解释`,
+          detail: `${word.term}：${note}`,
+          readingVocabularyUpdate: { bookId: book.id, vocabularyId: word.id, paragraphIndex: word.paragraphIndex, term: word.term, note },
         }
       }
 

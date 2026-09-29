@@ -423,4 +423,5 @@ habitat/
 - ✅ **T-134 共读最近活动工具**：新增 `reading_activity`，按时间倒序汇总本轮目录里的最近批注与生词；探针 10/10、两端 typecheck 与前端 build 通过，未部署 VPS。
 - ✅ **T-135 共读正文批注收藏**：共读阅读器的用户 / 小栖批注复用现有 `Bookmark(targetType=reading-annotation)` 原位收藏，并保留来源回链；两端 typecheck 与前端 build 通过，未部署 VPS。
 - ✅ **T-136 共读状态工具**：新增 `reading_status`，返回本轮进度、书签、累计阅读时长、批注 / 生词数量和窗口边界；探针 11/11、两端 typecheck 与前端 build 通过，未部署 VPS。
+- ✅ **T-137 共读窗口搜索与生词解释工具**：新增 `reading_search`、`reading_vocab`、`reading_annotate_vocab`，限定当前浏览器窗口并复用本地生词本更新；探针 15/15、两端 typecheck 与前端 build 通过，未部署 VPS。
 - 共读仍明确缺 Tasogare 风格全文 MCP、PDF 原版分页 / OCR、EPUB 精确排版与图片、跨设备同步。

@@ -178,6 +178,14 @@ export interface ChatToolCallPayload {
     term: string
     note: string
   }
+  /** `reading_annotate_vocab` 成功时由浏览器更新原书生词解释。 */
+  readingVocabularyUpdate?: {
+    bookId: string
+    vocabularyId: string
+    paragraphIndex: number
+    term: string
+    note: string
+  }
 }
 
 /** `chat-usage`：上游末包用量（在 `chat-done` 之前到达） */

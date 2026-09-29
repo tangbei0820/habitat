@@ -1094,6 +1094,21 @@ export async function deleteReadingVocabulary(id: string, vocabularyId: string):
   return next
 }
 
+/** 更新已有生词的解释；沿用原生词 id，保证批注与 Life 回链稳定。 */
+export async function updateReadingVocabulary(id: string, vocabularyId: string, note: string): Promise<ReadingNote> {
+  const item = await db.readingNotes.get(id)
+  if (item === undefined) throw new Error('这本书已经不存在')
+  const reader = getReadingBook(item)
+  if (reader === null) throw new Error('这不是可打开的阅读内容')
+  const target = reader.vocabulary.find((word) => word.id === vocabularyId)
+  if (target === undefined) throw new Error('这个生词已经不存在')
+  const normalizedNote = requiredText(note, '生词解释').slice(0, 1000)
+  const nextVocabulary = reader.vocabulary.map((word) => word.id === vocabularyId ? { ...word, note: normalizedNote } : word)
+  const next: ReadingNote = { ...item, metadata: { ...item.metadata, reader: { ...reader, vocabulary: nextVocabulary } }, updatedAt: Date.now() }
+  await db.readingNotes.put(next)
+  return next
+}
+
 export async function addReadingAnnotation(id: string, paragraphIndex: number, text: string, note: string, author: ReadingAnnotation['author'] = 'user'): Promise<ReadingNote> {
   const item = await db.readingNotes.get(id)
   if (item === undefined) throw new Error('这本书已经不存在')
