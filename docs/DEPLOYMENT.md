@@ -344,6 +344,29 @@ WantedBy=multi-user.target
 启用：`sudo systemctl daemon-reload && sudo systemctl enable --now habitat-server`。
 验证：`curl -s http://127.0.0.1:3000/api/health` → `{"ok":true,...}`。
 
+Eventide sidecar 以同机 Python 进程运行，不持久化用户状态；宿主 SQLite 仍是唯一事实源。生产服务单元：
+
+```ini
+[Unit]
+Description=Habitat Eventide sidecar
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/habitat
+Environment=PYTHONPATH=/srv/habitat/.workbuddy/eventide-src/Eventide-<revision>/src
+ExecStart=/srv/habitat/.workbuddy/eventide-venv/bin/python -m uvicorn app:app --app-dir /srv/habitat/eventide-sidecar --host 127.0.0.1 --port 8234
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+部署后同时检查 `systemctl is-active habitat-eventide habitat-server`、
+`curl -s http://127.0.0.1:8234/health` 与 `curl -s https://<habitat 域名>/api/health/state`；
+未配置 Eventide 时 Habitat 仍可启动，但只能走状态降级路径，不能把它当作 Core-5 生产闭环通过。
+
 ### 6.4 `.env` 必填项（完整清单见 `server/.env.example`）
 
 | 变量 | 生产取值 | 说明 |
@@ -354,7 +377,7 @@ WantedBy=multi-user.target
 | `MCP_NOCTURNE_URL` | `http://127.0.0.1:<NGINX_PORT>/mcp`（**内网直连**，见 §3.1/§4） | 不走公网 TLS，绕开 Node 20 SNI 问题 |
 | `MCP_NOCTURNE_TOKEN` | 同宿主 nginx 秘密路径的 Bearer | 见 §3.3 |
 | `NOCTURNE_DASHBOARD_URL` | `https://beiyan.cc/dashboard`（只填受保护页面 URL） | Habitat 的原生 Dashboard 入口；不填账号、密码或 query token；生产优先不带尾斜杠以避免上游重定向 |
-| `EVENTIDE_URL` | 暂留空 | sidecar 未部署；留空不影响启动 |
+| `EVENTIDE_URL` | `http://127.0.0.1:8234` | 生产已启用宿主机 `habitat-eventide.service`；sidecar 只监听回环，不直接暴露公网 |
 | `WEB_PUSH_*` | 可选 | 三项齐全才启用推送 |
 | LLM 密钥 | **不进 .env**：设置页填（`api_secret` 表优先，只进不出） | `HABITAT_LLM_PROFILES` 仅首次种子 |
 
