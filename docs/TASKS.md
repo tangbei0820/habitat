@@ -3635,3 +3635,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm run typecheck`、`npm run build`、`git diff --check` 通过；`web/scripts/verify-home.mjs` 已加入“正文批注原位收藏”断言，未部署 VPS。
 
 **明确延期**：Tasogare 风格全文 MCP、PDF 原版分页 / OCR、EPUB 精确排版与图片、跨设备同步；本批不提前施工。
+
+### T-136 · 2026-09-29 · V2-D · 共读状态工具—— **完成（本地，未部署）**
+
+**范围**：补齐 Companion 查看当前共读状态的明确工具入口；不新增状态表，不把浏览器本地累计值冒充完整远程阅读历史。
+
+| 交付 | 说明 |
+| --- | --- |
+| Runtime | 新增 `reading_status`，返回当前段落 / 百分比、书签、累计阅读秒数、批注 / 生词数量及本轮窗口边界。 |
+| 边界 | 无本轮书架时返回可读空结果；状态只来自浏览器本轮 `readingCatalog`，正文仍需 `reading_read`。 |
+| 数据复用 | 复用 `ReadingBookState.currentParagraph`、`bookmarkParagraph`、`readingSeconds`、`annotations` 与 `vocabulary`，不新增 Dexie / 备份 / 服务端 schema。 |
+| 参考取舍 | 借 [Tasogare](https://github.com/EnhydrInk/tasogare) 的 `reading_status` 工具边界；不搬入其远程 JSON 书库或独立同步层。 |
+
+**验收**：服务端 `npm --prefix server run probe:reading-tools` **11/11**、`npm run typecheck`、`npm run build`、`git diff --check` 通过；未部署 VPS。
+
+**明确延期**：Tasogare 风格全文 MCP、PDF 原版分页 / OCR、EPUB 精确排版与图片、跨设备同步；本批不提前施工。

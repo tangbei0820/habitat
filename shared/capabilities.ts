@@ -70,6 +70,7 @@ export type CapabilityId =
   | 'listening.comment'
   /* —— 共读（本轮书架窗口 / Companion 批注） —— */
   | 'reading.context'
+  | 'reading.status'
   | 'reading.read'
   | 'reading.advance'
   | 'reading.annotate'
@@ -575,6 +576,19 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
         required: ['bookId'],
         additionalProperties: false,
       },
+    },
+  },
+  {
+    id: 'reading.status',
+    module: 'reading',
+    label: '查看共读状态',
+    summary: '读取当前进度、书签与累计阅读时长',
+    modelHint: '需要知道北北读到哪里、夹了哪一页或累计读了多久时调用；这是本轮本地书架的状态快照，不代表完整远程历史。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'reading_status',
+      description: '读取本轮共读书架的当前段落、书签、累计阅读时长、批注 / 生词数量与可用窗口边界。无参数。',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
     },
   },
   {

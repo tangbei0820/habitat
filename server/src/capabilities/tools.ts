@@ -578,6 +578,18 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
         return { ok: true, text, summary: `已读取 ${books.length} 本共读书`, detail: clip(text, DETAIL_LIMIT) }
       }
 
+      case 'reading.status': {
+        const books = runtime.readingCatalog ?? []
+        if (books.length === 0) return { ok: true, text: '(本轮没有提供共读书架)', summary: '本轮没有可用共读状态' }
+        const lines = books.map((book) => {
+          const progress = book.totalParagraphs <= 0 ? 0 : Math.min(100, Math.round(((book.currentParagraph + 1) / book.totalParagraphs) * 100))
+          const range = readingRange(book)
+          return `- 《${book.title}》：进度 ${progress}%（第 ${book.currentParagraph + 1}/${book.totalParagraphs} 段），书签 ${book.bookmarkParagraph === null ? '未设置' : `第 ${book.bookmarkParagraph + 1} 段`}，累计阅读 ${book.readingSeconds} 秒，批注 ${book.annotations.length} 条，生词 ${book.vocabulary.length} 个；本轮窗口第 ${range.start + 1}–${range.end + 1} 段`
+        })
+        const text = `# 本轮共读状态\n\n${lines.join('\n')}\n\n这是浏览器本轮提供的本地状态快照；阅读时长为累计值，不代表完整远程历史。`
+        return { ok: true, text, summary: `已读取 ${books.length} 本书的共读状态`, detail: clip(text, DETAIL_LIMIT) }
+      }
+
       case 'reading.read': {
         const book = readingBook(runtime, value.bookId)
         if (book === null) return failure(tool, '找不到这本书；请先调用 reading_context')

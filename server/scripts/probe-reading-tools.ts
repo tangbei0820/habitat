@@ -55,10 +55,13 @@ async function call(name: string, args: Record<string, unknown>) {
 }
 
 console.log('\n=== Reading Runtime tools probe ===')
-check('六项共读能力都绑定为模型工具', ['reading_context', 'reading_read', 'reading_annotate', 'reading_advance', 'reading_vocabulary', 'reading_activity'].every((name) => tools.some((tool) => tool.name === name)))
+check('七项共读能力都绑定为模型工具', ['reading_context', 'reading_status', 'reading_read', 'reading_annotate', 'reading_advance', 'reading_vocabulary', 'reading_activity'].every((name) => tools.some((tool) => tool.name === name)))
 
 const context = await call('reading_context', {})
 check('reading_context 返回书架与进度', context.ok && context.text.includes('探针之书') && context.text.includes('第 2/3 段'))
+
+const status = await call('reading_status', {})
+check('reading_status 返回书签、累计时长与窗口边界', status.ok && status.text.includes('累计阅读 42 秒') && status.text.includes('书签 第 1 段') && status.text.includes('本轮窗口'))
 
 const read = await call('reading_read', { bookId: book.id, paragraphIndex: 1 })
 check('reading_read 返回指定段落原文', read.ok && read.text.includes('第二段写着一盏灯'))

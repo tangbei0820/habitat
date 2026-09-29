@@ -79,6 +79,7 @@
 | `sticker.search` | tools | autonomous | `sticker_search` | 本轮有本地图库元数据时可用；只检索，不发送 |
 | `sticker.send` | tools | autonomous | `sticker_send` | 本轮有本地图库元数据时可用；一次选择一张 |
 | `reading.context` | reading | autonomous | `reading_context` | 本轮有本地书架窗口时可用；读取书名、进度、书签与批注 |
+| `reading.status` | reading | autonomous | `reading_status` | 读取当前进度、书签、累计阅读时长与本轮窗口边界 |
 | `reading.read` | reading | autonomous | `reading_read` | 只能读取本轮窗口内的全局段落序号 |
 | `reading.advance` | reading | autonomous | `reading_advance` | 只把本地阅读位置移动到当前窗口内的段落 |
 | `reading.annotate` | reading | autonomous | `reading_annotate` | 返回经原文锚点校验的 Companion 批注，由浏览器写回原书 |
@@ -138,7 +139,7 @@ AI 那边**零感知**。这条在 T-031（工具面 0/5 命中）之后才变�
 
 ### 3.3 共读书架的按轮绑定
 
-共读书籍仍归浏览器本地 `ReadingNote.metadata.reader`。聊天请求只带最多 8 本书的轻量目录，每本是当前段落附近的窗口（最多 80 段）与最近批注 / 生词；服务端收到后才临时绑定 `reading_context`、`reading_read`、`reading_advance`、`reading_annotate`、`reading_vocabulary`、`reading_activity`，没有书架时这些工具不进入本轮。`reading_read` 只能读取窗口内的全局段落位置；`reading_advance` 只能把本地进度移到窗口内段落；`reading_annotate` 与 `reading_vocabulary` 必须校验原文锚点，成功帧只带书籍 id / 段落 / 结果，浏览器再写回原书并记录 Life 事实；`reading_activity` 只汇总本轮目录里的最近批注 / 生词，并明确提示不是完整历史。服务端不保存整本书，模型不得把窗口外内容说成已读，也不得把共读动作伪装成普通聊天消息。
+共读书籍仍归浏览器本地 `ReadingNote.metadata.reader`。聊天请求只带最多 8 本书的轻量目录，每本是当前段落附近的窗口（最多 80 段）与最近批注 / 生词；服务端收到后才临时绑定 `reading_context`、`reading_status`、`reading_read`、`reading_advance`、`reading_annotate`、`reading_vocabulary`、`reading_activity`，没有书架时这些工具不进入本轮。`reading_status` 只返回本轮浏览器带来的进度、书签、累计阅读时长、批注 / 生词计数与窗口边界；`reading_read` 只能读取窗口内的全局段落位置；`reading_advance` 只能把本地进度移到窗口内段落；`reading_annotate` 与 `reading_vocabulary` 必须校验原文锚点，成功帧只带书籍 id / 段落 / 结果，浏览器再写回原书并记录 Life 事实；`reading_activity` 只汇总本轮目录里的最近批注 / 生词，并明确提示不是完整历史。服务端不保存整本书，模型不得把窗口外内容说成已读，也不得把共读动作伪装成普通聊天消息。
 
 ---
 
