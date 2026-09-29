@@ -20,10 +20,10 @@ export function generateImage(prompt: string): Promise<MediaImageResult> {
   })
 }
 
-export async function synthesizeSpeech(text: string): Promise<Blob> {
+export async function synthesizeSpeech(text: string, options?: { signal?: AbortSignal }): Promise<Blob> {
   assertOnline()
   const res = await fetch('/api/media/speech/stream', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }),
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }), signal: options?.signal,
   })
   if (!res.ok) {
     let body: Partial<ApiError> | null = null

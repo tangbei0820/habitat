@@ -30,6 +30,7 @@
     "probe:reading-tools": "tsx scripts/probe-reading-tools.ts",
     "probe:codex-adapter": "tsx scripts/probe-codex-adapter.ts",
     "probe:provider-fallback": "tsx scripts/probe-provider-fallback.ts",
+    "probe:call-core2": "tsx scripts/probe-call-core2.ts",
     "probe:nocturne-tools-standalone": "node scripts/probe-nocturne-tools-standalone.mjs",
     "probe:phase3b": "tsx scripts/probe-phase3b.ts",
     "probe:phase4": "tsx scripts/probe-phase4.ts",

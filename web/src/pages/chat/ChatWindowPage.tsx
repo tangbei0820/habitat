@@ -532,7 +532,7 @@ export function ChatWindowPage() {
   async function runGeneration(
     history: LlmChatMessage[],
     targetId: string | null,
-    options: { webSearchQuery?: string } = {},
+    options: { webSearchQuery?: string; onReplyChunk?: (text: string) => void } = {},
   ): Promise<string> {
     if (sessionId === undefined) return ''
     const controller = new AbortController()
@@ -618,7 +618,10 @@ export function ChatWindowPage() {
         },
         {
           onDelta: (delta) => {
-            if (delta.content !== undefined) appendReplyText(delta.content)
+            if (delta.content !== undefined) {
+              appendReplyText(delta.content)
+              options.onReplyChunk?.(delta.content)
+            }
             if (delta.reasoning !== undefined) providerReasoning += delta.reasoning
             void flushDraft()
           },
@@ -725,6 +728,8 @@ export function ChatWindowPage() {
     webSearchQuery?: string
     /** 「只发送」时给用户的确认语；语音条有自己的一句 */
     toast?: string
+    /** 通话模式可在模型生成时把正文增量交给句级 TTS 队列。 */
+    onReplyChunk?: (text: string) => void
   }): Promise<string | null> {
     if (sessionId === undefined) return null
 
@@ -759,7 +764,10 @@ export function ChatWindowPage() {
     return runGeneration(
       await buildHistoryThrough(userMessage.id, [...messagesRef.current, userMessage]),
       null,
-      input.webSearchQuery === undefined ? {} : { webSearchQuery: input.webSearchQuery },
+      {
+        ...(input.webSearchQuery === undefined ? {} : { webSearchQuery: input.webSearchQuery }),
+        ...(input.onReplyChunk === undefined ? {} : { onReplyChunk: input.onReplyChunk }),
+      },
     )
   }
 
@@ -828,7 +836,7 @@ export function ChatWindowPage() {
   }
 
   /** 通话模式的一轮：沿用普通语音消息与聊天生成链路，回复正文交给 CallPanel 朗读。 */
-  async function callTurn(dataUrl: string, durationMs: number): Promise<{ reply: string; transcript: string }> {
+  async function callTurn(dataUrl: string, durationMs: number, onReplyChunk?: (text: string) => void): Promise<{ reply: string; transcript: string }> {
     if (sessionId === undefined) throw new Error('当前会话还没有准备好')
     if (sending || mediaBusy) throw new Error('当前正在处理上一轮，请稍候')
     setMediaBusy(true)
@@ -845,6 +853,7 @@ export function ChatWindowPage() {
         text: '',
         blocks: [{ kind: 'audio', payload: { url: dataUrl, durationMs, transcript }, order: 0 }],
         requestReply: true,
+        onReplyChunk,
       })
       return { reply: reply ?? '', transcript }
     } finally {
@@ -853,7 +862,7 @@ export function ChatWindowPage() {
   }
 
   /** 连续语音识别的最终句子：不伪造音频块，直接把真实转写作为普通用户消息留痕。 */
-  async function callTurnText(text: string): Promise<string> {
+  async function callTurnText(text: string, onReplyChunk?: (chunk: string) => void): Promise<string> {
     const normalized = text.trim()
     if (normalized === '') throw new Error('没有识别到清晰的语音，请再试一次')
     if (sessionId === undefined) throw new Error('当前会话还没有准备好')
@@ -861,7 +870,7 @@ export function ChatWindowPage() {
     setMediaBusy(true)
     setErrorText(null)
     try {
-      return await submitUserMessage({ text: normalized, requestReply: true }) ?? ''
+      return await submitUserMessage({ text: normalized, requestReply: true, onReplyChunk }) ?? ''
     } finally {
       setMediaBusy(false)
     }

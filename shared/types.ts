@@ -1306,8 +1306,13 @@ export interface CallTurnRecord {
 }
 
 export type CallEvent =
-  | { type: 'state'; call: CallSessionRecord }
-  | { type: 'turn'; callId: string; turn: CallTurnRecord }
+  /**
+   * Event id is transport metadata rather than a persisted call field.  It is
+   * optional at the type boundary so older in-process publishers remain
+   * compatible; the call event hub fills it before fan-out / SSE delivery.
+   */
+  | { type: 'state'; call: CallSessionRecord; eventId?: string }
+  | { type: 'turn'; callId: string; turn: CallTurnRecord; eventId?: string }
 
 export interface WalletSummary {
   balance: number

@@ -1328,3 +1328,10 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 单会话 JSON 与全量备份导出剥离 `publicThought`、`providerReasoning` 和旧 `reasoning` 字段，避免诊断信息随可携带内容泄露。
 - HTML 富内容 iframe 增强 CSP 拒绝策略与无 referrer，tab-group 内表情包补齐渲染；未知块继续显式降级。
 - 两端 typecheck、前端 build、`probe:chat-compact` 5/5、diff check 与本地 PWA targeted 回归通过；未部署 VPS，未进入 Core-2。
+
+### 2026-09-29 · T-144 · Core-2 应用内通话完整收口（本地）
+
+- Chat 流式正文增量接入可取消的句级 TTS 队列：首句完成即播放，后续句子顺序排队，打断会取消请求、释放音频并丢弃未播放内容。
+- 通话面板改为显式客户端状态机，补齐重连恢复、SSE 事件 id / 去重、麦克风权限失败反馈、静音、扬声器与输入 / 输出设备入口。
+- 重复接听改为幂等返回 active；通话逐句写入串行化，避免重连 / 迟到回调造成重复或 sequence 冲突；聊天消息、通话历史与 Life 事实源保持原语义。
+- 新增 `probe:call-core2`，本地服务通过 9/9（含 SSE `id / eventId`）；两端 typecheck、前端 build 与 diff check 通过；未部署 VPS，Core-2 到此停止。

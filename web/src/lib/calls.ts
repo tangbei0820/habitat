@@ -42,18 +42,47 @@ export async function appendCallTurn(id: string, speaker: 'user' | 'companion', 
   return result.turn
 }
 
-export function subscribeCallEvents(id: string, onEvent: (event: CallEvent) => void): () => void {
-  const source = new EventSource(`/api/calls/${encodeURIComponent(id)}/events`)
-  source.onmessage = (message) => {
-    try { onEvent(JSON.parse(message.data) as CallEvent) } catch { /* 忽略畸形事件，浏览器会继续重连 */ }
-  }
-  return () => source.close()
+export type CallEventConnection = 'connecting' | 'connected' | 'reconnecting' | 'closed'
+
+interface SubscribeCallOptions {
+  onConnectionChange?: (state: CallEventConnection) => void
 }
 
-export function subscribeIncomingCallEvents(onEvent: (event: CallEvent) => void): () => void {
-  const source = new EventSource('/api/calls/events')
-  source.onmessage = (message) => {
-    try { onEvent(JSON.parse(message.data) as CallEvent) } catch { /* 忽略畸形事件 */ }
+function subscribe(source: EventSource, onEvent: (event: CallEvent) => void, options?: SubscribeCallOptions): () => void {
+  const seen = new Set<string>()
+  let closed = false
+  options?.onConnectionChange?.('connecting')
+  source.onopen = () => options?.onConnectionChange?.('connected')
+  source.onerror = () => {
+    if (!closed) options?.onConnectionChange?.('reconnecting')
   }
-  return () => source.close()
+  source.onmessage = (message) => {
+    try {
+      const event = JSON.parse(message.data) as CallEvent
+      const eventId = event.eventId ?? message.lastEventId
+      if (eventId !== '' && eventId !== undefined) {
+        if (seen.has(eventId)) return
+        seen.add(eventId)
+        // Bound the dedupe set for long-running calls.  Event ids are only
+        // useful within one live browser subscription.
+        if (seen.size > 256) seen.delete(seen.values().next().value as string)
+      }
+      onEvent(event)
+    } catch { /* 忽略畸形事件，浏览器会继续重连 */ }
+  }
+  return () => {
+    closed = true
+    options?.onConnectionChange?.('closed')
+    source.close()
+  }
+}
+
+export function subscribeCallEvents(id: string, onEvent: (event: CallEvent) => void, options?: SubscribeCallOptions): () => void {
+  const source = new EventSource(`/api/calls/${encodeURIComponent(id)}/events`)
+  return subscribe(source, onEvent, options)
+}
+
+export function subscribeIncomingCallEvents(onEvent: (event: CallEvent) => void, options?: SubscribeCallOptions): () => void {
+  const source = new EventSource('/api/calls/events')
+  return subscribe(source, onEvent, options)
 }

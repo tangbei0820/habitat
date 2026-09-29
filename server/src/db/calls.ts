@@ -71,7 +71,11 @@ export function listIncomingCalls(limit = 20): CallSessionRecord[] {
 
 export function answerCall(id: string, at = Date.now()): CallSessionRecord | null {
   const current = getCall(id)
-  if (current === null || current.status !== 'ringing') return null
+  // A retry after the browser reconnects must not turn an already answered
+  // call into a client-visible error.  Terminal states remain non-answerable.
+  if (current === null) return null
+  if (current.status === 'active') return current
+  if (current.status !== 'ringing') return null
   db.update(callSession).set({ status: 'active', answeredAt: at, updatedAt: at }).where(eq(callSession.id, id)).run()
   return getCall(id)
 }

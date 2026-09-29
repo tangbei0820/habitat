@@ -60,12 +60,14 @@
 
 > **T-108 / T-109 施工边界**：留言板 Widget 只保存 `boardScope` 引用（recent / group / moment），服务端单条读取用于失效检测与原留言回链；不复制正文、不做 Widget 拖拽编排，不顺带进入日记富媒体或其它 Living Apps。
 
-> **当前优先路线（2026-09-29 · T-143）**：Core-0 基线校准与 Core-1 Chat 完整消息空间已完成；后续暂停扩建 Home / Life / Living Apps，优先按
-> `HABITAT_V2_PLAN.md` §23 完成 **Core-2 应用内通话 →
-> Core-3 Nocturne 记忆 → Core-4 Eventide / Desire 状态 → Core-5 核心联调与生产观察**。
+> **当前优先路线（2026-09-29 · T-144）**：Core-0 基线校准、Core-1 Chat 完整消息空间与 Core-2 应用内通话已完成；后续暂停扩建 Home / Life / Living Apps，优先按
+> `HABITAT_V2_PLAN.md` §23 完成 **Core-3 Nocturne 记忆 →
+> Core-4 Eventide / Desire 状态 → Core-5 核心联调与生产观察**。
 > 每个 Core 阶段可以拆多个内部提交，但必须整阶段验收、更新文档后再停止；PSTN / CallKit / 原生系统电话不属于 Web 应用内通话完成口径。
 
 > **Core-1 当前结果（2026-09-29 · T-143）**：Chat 长会话定位已改为有限窗口 + 双向复合游标分页；搜索结果支持命中高亮与今天 / 昨天 / 月级导航；导出剥离公开思绪与 Provider reasoning；富内容 iframe CSP 与 tab-group 叶子渲染已收紧。两端 typecheck、前端 build、`probe:chat-compact` 5/5 与本地 PWA targeted 回归通过，尚未部署 VPS。下一步只进入 Core-2，不顺带修改记忆、状态或 Home / Life。
+
+> **Core-2 当前结果（2026-09-29 · T-144）**：应用内通话已补齐流式正文到句级 TTS 队列、播放打断、显式客户端状态机、SSE 事件去重 / 重连后事实重读、幂等接听 / 挂断、麦克风权限恢复提示、静音与设备选择；`probe:call-core2` 9/9，两端 typecheck、前端 build、diff check 与本地 PWA 通话面板回归通过，尚未部署 VPS。PSTN / CallKit / 原生系统电话、WebRTC 真全双工和 Android 真机硬件授权仍延期。下一步只进入 Core-3 Nocturne 记忆。
 
 **历史阶段路线（仅用于解释旧任务编号）**：P0 基座可视化 → P1 Chat MVP → P2 Home → P3A 记忆 → P3B 状态 → P4 Life → P5 高级能力 → P6 打磨。当前施工顺序以 T-141 / `HABITAT_V2_PLAN.md` §23 为准。
 

@@ -3767,3 +3767,23 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；本地 mock Provider 的 `probe:chat-compact` **5/5**；本地 PWA targeted 回归确认真实流式回复、搜索结果命中高亮、今天 / 月级导航均可见。`probe:chat-context` 未作为本批通过项（探针要求 Eventide sidecar 注入，当前 Core-1 隔离环境未配置），不将其冒充 Chat 通过。
 
 **明确延期**：完整浏览器自动化脚本仍依赖带 WebSocket 的 CDP runner（当前 Node 20 环境直接运行脚本缺少该全局对象）；HTML / tab-group 的生成协议、跨设备实时推送与 Core-2 的通话状态机不在本批新增。Core-1 完成后停止，下一阶段为 Core-2 应用内通话。
+
+### T-144 · 2026-09-29 · Core-2 · 应用内通话完整收口 —— **完成（本地，未部署）**
+
+**范围**：只补 Habitat 应用内互联网通话的低延迟体验、生命周期恢复与历史一致性；不进入 Nocturne / Eventide / Desire，不做 PSTN、CallKit、原生系统电话或 WebRTC 全双工。
+
+| 交付 | 结果 |
+| --- | --- |
+| 流式句级播放 | Chat 生成增量通过通话回调进入 `CallSpeechQueue`；按中文 / 英文标点拆句，首句完成即开始服务端 TTS，后续句子顺序播放；整段未出现句末标点时在收尾补播剩余文本。 |
+| 打断与资源边界 | “打断并说话”会中止当前 TTS fetch、暂停并释放 Audio URL、丢弃未播放句子；挂断 / 关闭 / 来电终态都会停止识别、录音、队列和音频，不让迟到 Promise 重新播放。 |
+| 客户端状态机 | 新增 `idle / ringing / connecting / listening / processing / speaking / reconnecting / ended / error` 显式状态；状态标签、错误反馈、播放中打断、静音、扬声器开关均由状态机驱动。 |
+| 断线恢复与幂等 | 通话 SSE 帧增加进程内 `id / eventId`，前端订阅去重并显示恢复态；连接恢复后重新读取服务端通话事实；重复接听返回既有 `active`，重复挂断沿用既有终态，不新增重复状态事实。 |
+| 设备与权限 | 支持麦克风静音、录音轨道启停、输入设备选择；支持浏览器提供 `setSinkId` 时切换输出设备，否则明确保留默认扬声器；权限拒绝给出恢复指引，不伪造已接通。 |
+| 历史一致性 | `call_turn` 写入增加前端串行链，避免用户句 / 小栖句并发追加造成 sequence 冲突；聊天仍复用原语音 / 文本消息，通话详情与 Life 时长事实源不变。 |
+| 验收工具 | 新增 `server/scripts/probe-call-core2.ts` / `probe:call-core2`，覆盖创建、接听幂等、逐句顺序、挂断幂等与历史列表。 |
+
+**参考取舍**：实查 [Callhome](https://github.com/Cheiineeey/callhome) 的显式通话阶段、柔性挂断与可追溯记录；实查 [erpan 入口说明](https://github.com/DasterProkio/awesome-ai-companion/blob/main/README.zh-CN.md) 的移动双向语音、麦克风开口打断与悬浮控制目标。Habitat 只映射状态 / 打断 / 恢复交互，不搬入电话网、Android 原生服务或第二套 Agent。
+
+**验收**：两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；`PROBE_SERVER=http://127.0.0.1:3000 npm --prefix server run probe:call-core2` **9/9**（含 SSE `id / eventId`）；本地 PWA 已打开通话面板并确认状态、打断按钮与设备控制入口可见。浏览器麦克风授权 / Android PWA 真机未在本轮自动接受权限提示，需用户在目标设备上做最终硬件验收。
+
+**明确延期**：PSTN / CallKit / 锁屏系统电话、WebRTC 真全双工、后台持续收音、跨设备音频中继、通话录音文件持久化与全文转写检索仍延期；这些不属于当前 Web 应用内通话完成口径。

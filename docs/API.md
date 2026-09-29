@@ -951,7 +951,7 @@ Web Push 仅是站内通知的尽力而为副本：VAPID 环境变量不完整�
 | `GET /api/calls?chatSessionId=` | 当前聊天的通话记录摘要 |
 | `GET /api/calls/inbox` | 当前待接听的小栖来电 |
 | `GET /api/calls/:id` | 通话状态与逐句记录 |
-| `GET /api/calls/events` / `GET /api/calls/:id/events` | 全局 / 单通电话 SSE 状态与逐句事件；断线由浏览器按 `retry` 自动重连 |
+| `GET /api/calls/events` / `GET /api/calls/:id/events` | 全局 / 单通电话 SSE 状态与逐句事件；每帧带进程内 `id` / `eventId`，浏览器按 `retry` 自动重连并去重；重连后客户端重新读取通话事实 |
 | `POST /api/calls/:id/answer` | 接听响铃中的通话 |
 | `POST /api/calls/:id/reject` | 拒绝响铃中的通话 |
 | `POST /api/calls/:id/hangup` | `{ status?: ended|cancelled|missed }`；结束、取消或标记未接 |
@@ -963,7 +963,7 @@ Web Push 仅是站内通知的尽力而为副本：VAPID 环境变量不完整�
 `400 PROVIDER_NOT_CONFIGURED`；上游鉴权 / 网络 / 非 2xx 继续使用统一 Provider 错误码。
 媒体路由的 Fastify 总体请求上限是 12 MB（容纳 base64 膨胀），端点内部再按上述解码后大小收紧。
 
-应用内电话的通话事实保存在服务端 SQLite，聊天正文仍归浏览器本地会话库；每次结束会追加 `call.ended` EventLog，Life 月历汇总通话时长。前端全局监听来电 SSE，并在接听后跳入原聊天会话；断线时 EventSource 按服务端 `retry` 自动重连，已结束状态不会继续收音。系统锁屏 / CallKit、PSTN 与实时 WebRTC 全双工仍不在当前范围。
+应用内电话的通话事实保存在服务端 SQLite，聊天正文仍归浏览器本地会话库；每次结束会追加 `call.ended` EventLog，Life 月历汇总通话时长。前端全局监听来电 SSE，并在接听后跳入原聊天会话；单通 SSE 断线时显示恢复状态、按服务端 `retry` 自动重连并重新读取状态，已结束状态不会继续收音。通话回复按句切分，首句到达后即开始服务端 TTS；播放可被用户打断，未播放的句子会丢弃而聊天正文与通话逐句记录仍保持一次。系统锁屏 / CallKit、PSTN 与实时 WebRTC 全双工仍不在当前范围。
 
 ## 待实现（按阶段）
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { CallEvent, CallSessionRecord } from '@shared/types'
 import { IconClose, IconMic } from '../../components/qixi/Icons'
@@ -9,19 +9,20 @@ export function IncomingCallPrompt() {
   const navigate = useNavigate()
   const [call, setCall] = useState<CallSessionRecord | null>(null)
   const [busy, setBusy] = useState(false)
+  const callRef = useRef<CallSessionRecord | null>(null)
 
   useEffect(() => {
     let disposed = false
     void listIncomingCalls().then((calls) => {
-      if (!disposed) setCall(calls[0] ?? null)
+      if (!disposed) { callRef.current = calls[0] ?? null; setCall(calls[0] ?? null) }
     }).catch(() => { /* 后端未启动时不打断正常页面 */ })
     const unsubscribe = subscribeIncomingCallEvents((event: CallEvent) => {
       if (event.type !== 'state') return
-      if (event.call.status === 'ringing' && event.call.direction === 'companion') setCall(event.call)
-      else if (event.call.id === call?.id) setCall(null)
+      if (event.call.status === 'ringing' && event.call.direction === 'companion') { callRef.current = event.call; setCall(event.call) }
+      else if (event.call.id === callRef.current?.id) { callRef.current = null; setCall(null) }
     })
     return () => { disposed = true; unsubscribe() }
-  }, [call?.id])
+  }, [])
 
   if (call === null) return null
 
@@ -33,6 +34,7 @@ export function IncomingCallPrompt() {
     try {
       await answerCall(activeCall.id)
       navigate(`/chat/${encodeURIComponent(activeCall.chatSessionId)}?call=${encodeURIComponent(activeCall.id)}`)
+      callRef.current = null
       setCall(null)
     } catch (error) {
       log.warn('接听来电失败', error)
@@ -46,6 +48,7 @@ export function IncomingCallPrompt() {
     if (activeCall === null) return
     setBusy(true)
     try { await rejectCall(activeCall.id) } catch (error) { log.warn('拒绝来电失败', error) }
+    callRef.current = null
     setCall(null)
     setBusy(false)
   }

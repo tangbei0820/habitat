@@ -29,7 +29,10 @@ function callOrThrow(id: string): CallSessionRecord {
 }
 
 function writeSse(reply: FastifyReply, event: CallEvent): void {
-  if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify(event)}\n\n`)
+  if (!reply.raw.destroyed) {
+    if (event.eventId !== undefined) reply.raw.write(`id: ${event.eventId}\n`)
+    reply.raw.write(`data: ${JSON.stringify(event)}\n\n`)
+  }
 }
 
 function openSse(reply: FastifyReply, request: FastifyRequest, subscribe: (listener: (event: CallEvent) => void) => () => void): void {
