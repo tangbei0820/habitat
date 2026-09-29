@@ -3619,3 +3619,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm run typecheck`、`npm run build`、`PROBE_SERVER=http://127.0.0.1:3000 npm --prefix server run probe:reading-tools` **10/10**、`git diff --check` 通过；未部署 VPS。
 
 **明确延期**：Tasogare 风格全文 MCP、PDF 原版分页 / OCR、EPUB 精确排版与图片、批注收藏、跨设备同步；本批不提前施工。
+
+### T-135 · 2026-09-29 · V2-D · 共读正文批注收藏—— **完成（本地，未部署）**
+
+**范围**：补齐产品定义中“共读高亮 / 批注可以收藏”的原位闭环；不新建批注收藏表，不改变既有阅读书架结构。
+
+| 交付 | 说明 |
+| --- | --- |
+| 原位操作 | 共读阅读器每条用户 / 小栖批注提供“收藏 / 已收藏”入口，重复点击不会重复写入。 |
+| 收藏中心 | 复用 `Bookmark(targetType=reading-annotation)`，保存书名、段落、作者、批注与来源书籍 id；收藏中心区分“共读批注快照”和“每日品读批注快照”。 |
+| 跨模块追溯 | 沿用现有 `ContentSourceLink` 回到共读书籍入口，并追加 `bookmark.created` Life 事实。 |
+| 数据边界 | 不新增 Dexie 版本、备份字段或服务端 schema；复用现有 `[targetType+targetId]` 唯一去重。 |
+| 参考取舍 | 借 [Tasogare](https://github.com/EnhydrInk/tasogare) 的文本锚点与双色批注语义；不搬入其独立书库、服务器同步或账号体系。 |
+
+**验收**：`npm run typecheck`、`npm run build`、`git diff --check` 通过；`web/scripts/verify-home.mjs` 已加入“正文批注原位收藏”断言，未部署 VPS。
+
+**明确延期**：Tasogare 风格全文 MCP、PDF 原版分页 / OCR、EPUB 精确排版与图片、跨设备同步；本批不提前施工。

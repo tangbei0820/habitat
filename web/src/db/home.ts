@@ -1209,6 +1209,31 @@ export async function createReadingAnnotationBookmark(entry: DailyReadingEntry, 
   return item
 }
 
+/** 从共读原书的批注原位收藏；与每日品读批注共用 reading-annotation 目标和来源回链。 */
+export async function createReadingBookAnnotationBookmark(book: ReadingNote, annotation: ReadingAnnotation): Promise<Bookmark> {
+  const existing = await db.bookmarks.where('[targetType+targetId]').equals(['reading-annotation', annotation.id]).first()
+  if (existing !== undefined) throw new Error('这条共读批注已经收藏过了')
+  const at = Date.now()
+  const authorLabel = annotation.author === 'companion' ? '小栖' : '你'
+  const item: Bookmark = {
+    id: nowId('bookmark'), type: 'bookmark', targetType: 'reading-annotation', targetId: annotation.id,
+    title: `《${book.bookTitle}》的${authorLabel}共读批注`, note: annotation.note || annotation.text,
+    categoryId: null, tags: [], sourceId: book.id,
+    metadata: {
+      sourceModule: 'home-reading', sourceObjectType: 'reading-annotation', sourceBookId: book.id,
+      sourceBookTitle: book.bookTitle, sourceBookAuthor: book.author, paragraphIndex: annotation.paragraphIndex,
+      annotationAuthor: annotation.author, annotationId: annotation.id, sourceCreatedAt: annotation.createdAt,
+    }, createdAt: at, updatedAt: at,
+  }
+  try {
+    await db.bookmarks.add(item)
+  } catch (err) {
+    if (isConstraintError(err)) throw new Error('这条共读批注已经收藏过了')
+    throw err
+  }
+  return item
+}
+
 export async function deleteDailyReading(id: string): Promise<void> {
   await db.dailyReadings.delete(id)
 }

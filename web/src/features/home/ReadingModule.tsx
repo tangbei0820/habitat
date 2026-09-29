@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
-import type { ReadingFontSize, ReadingFormat, ReadingNote, ReadingStatus, ReadingTheme } from '@shared/types'
+import type { ReadingAnnotation, ReadingFontSize, ReadingFormat, ReadingNote, ReadingStatus, ReadingTheme } from '@shared/types'
 import {
   addReadingAnnotation,
   addReadingVocabulary,
+  createReadingBookAnnotationBookmark,
   createReadingBook,
   createReadingNote,
   deleteReadingAnnotation,
   deleteReadingVocabulary,
   deleteReadingNote,
   getReadingBook,
+  listBookmarks,
   listReadingNotes,
   updateReadingBookState,
   updateReadingNote,
 } from '../../db/home'
-import { appendReadingLifeEvent, type ReadingLifeEvent } from '../life/api'
+import { appendBookmarkLifeEvent, appendReadingLifeEvent, type ReadingLifeEvent } from '../life/api'
 import { fetchJson } from '../../lib/api'
 import { importReadingDocument } from '../../lib/reading-import'
 
@@ -50,6 +52,8 @@ export function ReadingModule() {
   const [vocabularyTarget, setVocabularyTarget] = useState<number | null>(null)
   const [vocabularyTerm, setVocabularyTerm] = useState('')
   const [vocabularyNote, setVocabularyNote] = useState('')
+  const [annotationFavoriteIds, setAnnotationFavoriteIds] = useState<Set<string>>(new Set())
+  const [annotationFavoriteBusy, setAnnotationFavoriteBusy] = useState<string | null>(null)
   const [bookTitle, setBookTitle] = useState('')
   const [author, setAuthor] = useState('')
   const [status, setStatus] = useState<ReadingStatus>('reading')
@@ -60,7 +64,15 @@ export function ReadingModule() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  async function refresh(): Promise<void> { setItems(await listReadingNotes()) }
+  async function refresh(): Promise<void> {
+    const [nextItems, bookmarks] = await Promise.all([listReadingNotes(), listBookmarks()])
+    setItems(nextItems)
+    setAnnotationFavoriteIds(new Set(bookmarks.filter((item) => item.targetType === 'reading-annotation').map((item) => item.targetId)))
+    let hashId = ''
+    try { hashId = window.location.hash.startsWith('#') ? decodeURIComponent(window.location.hash.slice(1)) : '' } catch { hashId = '' }
+    const linkedBook = nextItems.find((item) => item.id === hashId && getReadingBook(item) !== null)
+    if (linkedBook !== undefined) { setSelectedId(linkedBook.id); setView('reader') }
+  }
   useEffect(() => { refresh().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err))).finally(() => setLoading(false)) }, [])
 
   function emitReadingEvent(event: ReadingLifeEvent): void {
@@ -175,6 +187,17 @@ export function ReadingModule() {
     catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
   }
 
+  async function favoriteAnnotation(annotation: ReadingAnnotation): Promise<void> {
+    if (selected === null || annotationFavoriteIds.has(annotation.id) || annotationFavoriteBusy === annotation.id) return
+    setAnnotationFavoriteBusy(annotation.id); setError(null)
+    try {
+      const created = await createReadingBookAnnotationBookmark(selected, annotation)
+      setAnnotationFavoriteIds((previous) => new Set(previous).add(annotation.id))
+      void appendBookmarkLifeEvent({ eventType: 'bookmark.created', bookmarkId: created.id, targetType: created.targetType, title: created.title }).catch(() => undefined)
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { setAnnotationFavoriteBusy(null) }
+  }
+
   async function requestCompanionComment(paragraphIndex: number): Promise<void> {
     if (selectedId === null || selected === null || selectedBook === null) return
     const excerpt = paragraphs[paragraphIndex]?.trim()
@@ -240,7 +263,7 @@ export function ReadingModule() {
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><button type="button" onClick={(event) => { event.stopPropagation(); setAnnotationTarget(index); setAnnotationDraft('') }} style={{ color: 'var(--accent-strong)' }}>划线 / 批注</button><button type="button" data-testid="reading-companion-comment" onClick={(event) => { event.stopPropagation(); void requestCompanionComment(index) }} disabled={companionBusy !== null || paragraph.trim() === ''} style={{ color: 'var(--accent-strong)' }}>{companionBusy === index ? '小栖正在回应……' : '请小栖回应'}</button><button type="button" onClick={(event) => { event.stopPropagation(); setVocabularyTarget(index); setVocabularyTerm(''); setVocabularyNote('') }} style={{ color: 'var(--accent-strong)' }}>加入生词</button>{isCurrent && <span style={{ color: palette.muted }}>正在这里</span>}</div>
             {annotationTarget === index && <div className="mt-3 rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)' }} onClick={(event) => event.stopPropagation()}><label htmlFor={`reading-annotation-${index}`} className="sr-only">批注内容</label><textarea id={`reading-annotation-${index}`} data-testid="reading-annotation" value={annotationDraft} onChange={(event) => setAnnotationDraft(event.target.value)} maxLength={2000} rows={3} placeholder="写下你想和小栖分享的想法……" className="w-full resize-y rounded-lg border bg-transparent p-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setAnnotationTarget(null)} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>取消</button><button type="button" onClick={() => void saveAnnotation()} className="rounded-full px-3 py-1.5 text-xs" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>保存批注</button></div></div>}
             {vocabularyTarget === index && <div className="mt-3 rounded-lg border p-3" style={{ borderColor: 'var(--border-soft)' }} onClick={(event) => event.stopPropagation()}><label htmlFor={`reading-vocabulary-${index}`} className="sr-only">生词</label><input id={`reading-vocabulary-${index}`} data-testid="reading-vocabulary" value={vocabularyTerm} onChange={(event) => setVocabularyTerm(event.target.value)} maxLength={120} placeholder="生词" className="w-full rounded-lg border bg-transparent p-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><input value={vocabularyNote} onChange={(event) => setVocabularyNote(event.target.value)} maxLength={1000} placeholder="词义或提醒（可选）" className="mt-2 w-full rounded-lg border bg-transparent p-2 text-sm" style={{ borderColor: 'var(--border-soft)' }} /><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setVocabularyTarget(null)} className="rounded-full border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }}>取消</button><button type="button" onClick={() => void saveVocabulary()} className="rounded-full px-3 py-1.5 text-xs" style={{ backgroundColor: 'var(--accent-strong)', color: 'var(--accent-on-strong)' }}>保存生词</button></div></div>}
-            {paragraphAnnotations.map((annotation) => <div key={annotation.id} className="mt-3 rounded-lg border-l-2 pl-3 text-xs" style={{ borderColor: annotation.author === 'companion' ? 'var(--accent-soft)' : 'var(--accent-strong)', color: palette.muted }}><div>{annotation.author === 'companion' ? '小栖的回应' : '你的划线'} · {annotation.note || '暂未写批注'}</div><button type="button" onClick={(event) => { event.stopPropagation(); void removeAnnotation(annotation.id) }} className="mt-1" style={{ color: 'var(--danger)' }}>删除这条批注</button></div>)}
+            {paragraphAnnotations.map((annotation) => <div key={annotation.id} data-testid={`reading-annotation-item-${annotation.id}`} className="mt-3 rounded-lg border-l-2 pl-3 text-xs" style={{ borderColor: annotation.author === 'companion' ? 'var(--accent-soft)' : 'var(--accent-strong)', color: palette.muted }}><div>{annotation.author === 'companion' ? '小栖的回应' : '你的划线'} · {annotation.note || '暂未写批注'}</div><div className="mt-1 flex flex-wrap gap-3"><button type="button" data-testid={`reading-annotation-favorite-${annotation.id}`} disabled={annotationFavoriteBusy === annotation.id || annotationFavoriteIds.has(annotation.id)} onClick={(event) => { event.stopPropagation(); void favoriteAnnotation(annotation) }} style={{ color: annotationFavoriteIds.has(annotation.id) ? 'var(--accent-strong)' : 'var(--text-secondary)' }}>{annotationFavoriteIds.has(annotation.id) ? '已收藏' : '收藏'}</button><button type="button" onClick={(event) => { event.stopPropagation(); void removeAnnotation(annotation.id) }} style={{ color: 'var(--danger)' }}>删除这条批注</button></div></div>)}
             {paragraphVocabulary.map((word) => <div key={word.id} className="mt-3 rounded-lg border-l-2 pl-3 text-xs" style={{ borderColor: 'var(--accent-strong)', color: palette.muted }}><div>生词 · <strong style={{ color: palette.text }}>{word.term}</strong>{word.note === '' ? '' : ` · ${word.note}`}</div><button type="button" onClick={(event) => { event.stopPropagation(); void removeVocabulary(word.id) }} className="mt-1" style={{ color: 'var(--danger)' }}>移除生词</button></div>)}
           </article>
         })}
