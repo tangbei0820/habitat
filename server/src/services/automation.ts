@@ -505,6 +505,7 @@ export class AutomationService {
           `（来源：${chosen.sourceFeed} · ${chosen.link}）`,
         ].join('\n'),
         tags: 'surf,独处浏览',
+        source: { kind: 'surf', label: chosen.link },
       })
       appendEventLog('automation.surf.consolidated', { runId, url: chosen.link }, record.id, now.getTime())
     } catch (error) {

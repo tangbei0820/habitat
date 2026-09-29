@@ -44,7 +44,7 @@ export const MEMORY_CONTENT_MAX = 4_000
 export const MEMORY_NAME_MAX = 120
 export const MEMORY_TAGS_MAX = 200
 
-/** 长期记忆写入门（Phase 7C）：`memory_write` 的执行体由装配点注入（Nocturne 适配层）。
+/** 历史确认事件兼容门：Core-3 起新的 `memory_write` 自主执行；旧 pending 事件仍由装配点注入（Nocturne 适配层）。
  *
  * 注入而不是直接 import provider —— event-inbox 是纯服务层，不该耦合 MCP 装配；
  * 探针也靠这个口子塞 mock 执行器。未注入（记忆链路没配）时批准执行会如实失败。
@@ -163,10 +163,8 @@ export type RequestConfirmResult = { ok: true; event: RuntimeEvent } | { ok: fal
  * 校验放在这里而不是执行阶段：模型给的参数不合法时应当**立刻**告诉它，
  * 让它自己改一次重发 —— 而不是先让北北看到一张注定失败的确认卡。
  *
- * ⚠️ Phase 7B 起日记三能力与留言板已自主化（不再产生新的确认卡）；
- * **Phase 7C 起 `memory_write`（写长期记忆）是确认协议的现役使用者** ——
- * 长期记忆是两人共享的资产，小栖在对话里主动要写时仍需北北点头（SPEC §9.7）。
- * 上面的日记/留言校验函数随之保留：它们同时服务于新数据上限的一致性。
+ * ⚠️ 日记 / 留言板已经自主化；Core-3 也把新 `memory_write` 改为小栖自己的主权决策。
+ * 这里的校验和执行分支只为消化升级时仍处于 pending 的历史确认事件，不再由新的能力快照产生。
  */
 export function requestToolConfirm(input: {
   capabilityId: string
@@ -260,7 +258,7 @@ async function executeToolConfirm(payload: Record<string, unknown>, approved: bo
 
   switch (toolName) {
     case 'memory_write': {
-      // Phase 7C：确认通过才真正调 Nocturne 的 hold。执行体未注入（记忆链路没配）= 如实失败
+      // 历史兼容：旧确认事件批准后仍真实调用 Nocturne 的 hold；新调用已在 Runtime 直接执行。
       if (memoryWriteExecutor === null) {
         return { status: 'failed', result: '记忆链路当前不可用，这条记忆没有写入。不要装作已经记住。' }
       }

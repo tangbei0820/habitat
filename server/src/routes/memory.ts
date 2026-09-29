@@ -7,12 +7,13 @@
  * 而不是留着返回 500 让人以为"配好就能用"。
  *
  * 剩下两个端点对应实例真实工具：`breath`（读全部）与 `trace`（关键词搜）。
- * 写入不从 HTTP 暴露，只能由 Runtime 的 `memory_write` 确认流程调用 `hold`。
+ * 写入不从 HTTP 暴露，只能由 Runtime 的 `memory_write` 调用 `hold`；审计端点只读 Habitat 本地状态。
  */
 import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors.js'
 import type { MemoryProvider } from '@shared/providers.js'
 import { RequestError } from '../lib/errors.js'
+import { listMemoryWriteAudits } from '../db/memory-audit.js'
 
 function text(raw: unknown, field: string, max: number): string {
   if (typeof raw !== 'string') throw new RequestError(ErrorCodes.BadRequest, `${field} 必须是字符串`)
@@ -47,5 +48,14 @@ export function registerMemoryRoutes(app: FastifyInstance, memory: MemoryProvide
       limit = integer(Number(request.query.limit), 'limit', 1, 100)
     }
     return memory.search(query, { limit })
+  })
+
+  /** Habitat 侧写入审计：只返回来源、状态与摘要，不复制 Nocturne 正文。 */
+  app.get<{ Querystring: { limit?: unknown } }>('/api/memory/audit', async (request) => {
+    if (request.query.limit !== undefined && Array.isArray(request.query.limit)) {
+      throw new RequestError(ErrorCodes.BadRequest, 'limit 不能重复传入')
+    }
+    const limit = request.query.limit === undefined ? 20 : integer(Number(request.query.limit), 'limit', 1, 100)
+    return { items: listMemoryWriteAudits(limit) }
   })
 }

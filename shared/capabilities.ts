@@ -138,11 +138,9 @@ export interface CapabilityDefinition {
  *     它们写的都是「小栖自己的东西」（私有日记 / 自己署名的留言），不是用户的文件；
  *     主动行为链路（BudgetGuard + 决策契约 + 行动审计）就是它们的闸门。
  *     ⚠️ 历史：P1 时它们曾是 `confirm`（确认卡），7B 起自主化；确认协议本身保留，
- *     给未来真正需要人把关的写能力用（如 `memory.write`）。
- *   · 写记忆 → `confirm`（2026-09-26 记忆沉淀批起**已实施**，绑 `memory_write`）：
- *     长期记忆是两人共享的资产，小栖在对话里主动要写时，仍需北北点头 ——
- *     这是确认协议的现役使用者。后台的自主沉淀（Surf 记录升格）不走确认卡，
- *     它受自动化策略、预算与行动审计约束（SPEC §9.5.3）。
+ *     给未来真正需要人把关的写能力用（如破坏性删除 / 合并）。
+ *   · 写记忆 → `autonomous`（Core-3）：小栖在自己的记忆域创建 / 补充 / 修正属于它的主权选择，
+ *     由参数校验、来源审计、去重和 MCP 失败回灌把关；删除 / 合并 / 迁移等破坏性操作仍需单独确认。
  *
  * ⚠️ `confirm` 级能力**也要绑工具**（P0 时它们一律不绑，因为那时确认协议还没落地）。
  * 不绑的后果是模型永远学不会「我可以请求写日记」—— 它会以为这件事根本做不到。
@@ -188,12 +186,12 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     module: 'memory',
     label: '写入记忆',
     summary: '把一段新记忆存进长期记忆',
-    modelHint: '把值得长期记住的事写进记忆。写入前会先请北北确认。',
-    autonomy: 'confirm',
+    modelHint: '把值得长期记住的事写进记忆；不值得记时什么都不做。每次写入都会保留来源并自动去重。',
+    autonomy: 'autonomous',
     tool: {
       name: 'memory_write',
       description:
-        '把一段值得长期记住的事写进小栖的长期记忆（影响之后所有的对话）。写入前需要北北确认，确认后才会真正生效。适合记下重要的约定、偏好或一起经历的事。',
+        '把一段值得长期记住的事写进小栖的长期记忆（影响之后所有的对话）。小栖自行决定是否调用；写入会保留来源并自动去重。需要修正旧记忆时用 mode=correction，并诚实说明 correctionOf。',
       parameters: {
         type: 'object',
         properties: {
@@ -205,6 +203,8 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
             description: '记忆种类：memory=发生过的事，feel=感受与印象，writing=想留下的句子，unresolved=还没了结的事；省略视为 memory',
           },
           tags: { type: 'string', description: '可选标签，多个用逗号分隔，不超过 200 字' },
+          mode: { type: 'string', enum: ['new', 'correction'], description: 'new=新增，correction=追加一条修正说明；Nocturne 当前不支持原地编辑 / 删除' },
+          correctionOf: { type: 'string', description: '修正模式下可选：旧记忆的可读线索，不是 Nocturne URI' },
         },
         required: ['content'],
         additionalProperties: false,

@@ -60,7 +60,7 @@
 
 > **T-108 / T-109 施工边界**：留言板 Widget 只保存 `boardScope` 引用（recent / group / moment），服务端单条读取用于失效检测与原留言回链；不复制正文、不做 Widget 拖拽编排，不顺带进入日记富媒体或其它 Living Apps。
 
-> **当前优先路线（2026-09-29 · T-144）**：Core-0 基线校准、Core-1 Chat 完整消息空间与 Core-2 应用内通话已完成；后续暂停扩建 Home / Life / Living Apps，优先按
+> **当前优先路线（2026-09-29 · T-145）**：Core-0 基线校准、Core-1 Chat 完整消息空间、Core-2 应用内通话与 **Core-3 Nocturne 记忆闭环**已完成；后续暂停扩建 Home / Life / Living Apps，优先按
 > `HABITAT_V2_PLAN.md` §23 完成 **Core-3 Nocturne 记忆 →
 > Core-4 Eventide / Desire 状态 → Core-5 核心联调与生产观察**。
 > 每个 Core 阶段可以拆多个内部提交，但必须整阶段验收、更新文档后再停止；PSTN / CallKit / 原生系统电话不属于 Web 应用内通话完成口径。
@@ -68,6 +68,8 @@
 > **Core-1 当前结果（2026-09-29 · T-143）**：Chat 长会话定位已改为有限窗口 + 双向复合游标分页；搜索结果支持命中高亮与今天 / 昨天 / 月级导航；导出剥离公开思绪与 Provider reasoning；富内容 iframe CSP 与 tab-group 叶子渲染已收紧。两端 typecheck、前端 build、`probe:chat-compact` 5/5 与本地 PWA targeted 回归通过，尚未部署 VPS。下一步只进入 Core-2，不顺带修改记忆、状态或 Home / Life。
 
 > **Core-2 当前结果（2026-09-29 · T-144）**：应用内通话已补齐流式正文到句级 TTS 队列、播放打断、显式客户端状态机、SSE 事件去重 / 重连后事实重读、幂等接听 / 挂断、麦克风权限恢复提示、静音与设备选择；`probe:call-core2` 9/9，两端 typecheck、前端 build、diff check 与本地 PWA 通话面板回归通过，尚未部署 VPS。PSTN / CallKit / 原生系统电话、WebRTC 真全双工和 Android 真机硬件授权仍延期。下一步只进入 Core-3 Nocturne 记忆。
+
+> **Core-3 当前结果（2026-09-29 · T-145）**：Nocturne `breath` / `trace` / `hold` 已闭成真实 Runtime 链路；`memory_write` 按最新产品语义改为 autonomous，支持 no-op、参数闸门、正文哈希去重、`mode=correction` 追加修正、聊天 / Surf 来源 tags、失败回灌与 `memory_write_audit` 回链页；`probe:memory-core3` 15/15，两端 typecheck、前端 build、diff check 通过，尚未部署 VPS。Nocturne 原生 URI 编辑 / 删除 / 回滚继续由受保护 Dashboard 承担；下一步只进入 Core-4 Eventide / Desire。
 
 **历史阶段路线（仅用于解释旧任务编号）**：P0 基座可视化 → P1 Chat MVP → P2 Home → P3A 记忆 → P3B 状态 → P4 Life → P5 高级能力 → P6 打磨。当前施工顺序以 T-141 / `HABITAT_V2_PLAN.md` §23 为准。
 
@@ -389,10 +391,10 @@ habitat/
 11. ✅ **T-063 Home 第一批已完成并随 T-072 部署**：AI 日记私密语义、留言板作者筛选、AI 伴学卡片生成 / 本地复习 / 备份均已落地；两端 typecheck 与 build 通过。
 12. ✅ **T-061 当前代码已部署上 VPS**：保留生产 `.env` 与 SQLite，备份数据库后更新代码和前端产物；`habitat-server` active、生产 `/api/health` 200、Dashboard 状态已配置、原生入口 302 与公网探针 6/6 通过。T-062 的 Provider Center 单列折叠前端修订与本轮 T-063～T-071 均已包含在当前部署；仍待北北用浏览器 / 手机完成人工登录、聊天流式、PWA 安装与离线验收；不能把服务端冒烟当成全部真机验收。
 13. **Phase 6.5 收口后的收尾项**（都在 `docs/TASKS.md`）：
-   - ✅ `memory.write` 已在 T-054 落地：通过 Nocturne MCP `hold` 写入，走 confirm 级 Event Inbox；不要把历史旧断言当成当前状态
+   - ✅ `memory.write` 已在 T-054 接入、并在 T-145 / Core-3 收口为 autonomous：通过 Nocturne MCP `hold` 写入，带来源审计、去重、修正追加和失败回灌；旧 confirm 事件只做兼容
    - ⏳ 确认卡**没有过期 / 撤回**机制；其**前端交互**（点按钮 / 刷新后状态还在）仍无人眼之外的覆盖
    - ⏳ 工具卡片总排在助手气泡之后 —— 模型在工具调用后又说话时顺序会反
-   - ⏳ 记忆与工具**仍没有界面**（档案页已如实标注「暂无界面」，不做假入口）
+   - ✅ 记忆已有 `/llm/memory` 摘要页（健康 / 近期全文 / 搜索 / 写入审计 / Dashboard 回链）；工具继续通过 Chat 工具卡 / Mini Terminal 暴露
 14. ⚠️ **不能直接把独处记录冒充成日记或留言** —— 那正是 SPEC §6.3 禁止的假数据。
    日记 / 留言现在有真实的写入路径（`createCompanionDiary` / `createCompanionMoment`），走它们即可
 15. 📌 **新增界面时先问一句「这个入口点下去真的会到地方吗」** —— P2 定的规矩：

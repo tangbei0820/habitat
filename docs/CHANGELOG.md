@@ -1335,3 +1335,11 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 通话面板改为显式客户端状态机，补齐重连恢复、SSE 事件 id / 去重、麦克风权限失败反馈、静音、扬声器与输入 / 输出设备入口。
 - 重复接听改为幂等返回 active；通话逐句写入串行化，避免重连 / 迟到回调造成重复或 sequence 冲突；聊天消息、通话历史与 Life 事实源保持原语义。
 - 新增 `probe:call-core2`，本地服务通过 9/9（含 SSE `id / eventId`）；两端 typecheck、前端 build 与 diff check 通过；未部署 VPS，Core-2 到此停止。
+
+### 2026-09-29 · T-145 · Core-3 Nocturne 记忆完整闭环（本地）
+
+- `memory_write` 按最新产品语义改为 autonomous：小栖可以写，也可以 no-op；参数校验、执行失败和 Nocturne 工具结果均回灌同一轮模型上下文，不再出现“卡片成功 / 模型否认”的分叉。
+- Nocturne `hold` 前新增 Habitat `memory_write_audit`：正文哈希 + 语义字段唯一去重，`mode=correction` 以追加修正落库，不冒充实例原地编辑 / 删除；失败留审计，重试不会重复成功写入。
+- 聊天写入保存 `sessionId` / `toolCallId` 来源，Surf 写入保存来源 URL，并将 `habitat:*` tags 一并带入同一条 Nocturne 记忆；记忆页新增审计摘要与回到原会话入口。
+- 新增 `GET /api/memory/audit` 与 `probe:memory-core3`；mock MCP 真实闭环 **15/15**，两端 typecheck、前端 build、diff check 通过；未部署 VPS，Core-3 到此停止。
+- 参考 [Nocturne](https://github.com/Dataojitori/nocturne_memory) 的原生 Memory Explorer / Review & Audit / Boot URI 交互，Habitat 继续只提供生活化摘要，深度编辑 / 回滚进入同一受保护 Dashboard。

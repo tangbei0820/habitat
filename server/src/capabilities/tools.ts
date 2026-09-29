@@ -16,7 +16,7 @@
 import type { CapabilityAutonomy, CapabilityId, CapabilityModule, CapabilitySnapshot, CapabilityToolSchema } from '@shared/capabilities.js'
 import { CAPABILITY_DEFINITIONS } from '@shared/capabilities.js'
 import type { ChatListeningCatalogItem, ChatReadingBookItem, ChatStickerCatalogItem } from '@shared/events.js'
-import type { LlmToolCall, MemoryProvider, StateProvider } from '@shared/providers.js'
+import type { LlmToolCall, MemoryProvider, MemoryWriteInput, StateProvider } from '@shared/providers.js'
 import { describeState } from '@shared/state-summary.js'
 import { getCompanionDiaryView, listCompanionDiaryViews, createCompanionDiary, setDiaryFragmentVisibility, updateCompanionDiary } from '../db/diary.js'
 import { createCompanionMoment, updateCompanionMoment } from '../db/moment.js'
@@ -247,8 +247,39 @@ function readingParagraph(book: ChatReadingBookItem, index: number): string | nu
   return localIndex >= 0 && localIndex < book.paragraphs.length ? book.paragraphs[localIndex] ?? null : null
 }
 
+function parseMemoryWriteInput(value: Record<string, unknown>, runtime: ToolRuntime, callId: string): MemoryWriteInput | string {
+  const content = typeof value.content === 'string' ? value.content.trim() : ''
+  if (content === '') return '缺少必填参数 content'
+  if (content.length > 4_000) return 'content 最多 4000 字'
+  const kind = typeof value.kind === 'string' ? value.kind.trim() : ''
+  if (kind !== '' && !['memory', 'feel', 'writing', 'unresolved'].includes(kind)) return 'kind 只能是 memory / feel / writing / unresolved'
+  const name = typeof value.name === 'string' ? value.name.trim() : ''
+  if (name.length > 120) return 'name 最多 120 字'
+  const tags = typeof value.tags === 'string' ? value.tags.trim() : ''
+  if (tags.length > 200) return 'tags 最多 200 字'
+  const mode = value.mode === undefined ? 'new' : value.mode
+  if (mode !== 'new' && mode !== 'correction') return 'mode 只能是 new 或 correction'
+  const correctionOf = typeof value.correctionOf === 'string' ? value.correctionOf.trim() : ''
+  if (correctionOf.length > 240) return 'correctionOf 最多 240 字'
+  return {
+    content,
+    ...(kind === '' ? {} : { kind: kind as MemoryWriteInput['kind'] }),
+    ...(name === '' ? {} : { name }),
+    ...(tags === '' ? {} : { tags }),
+    mode,
+    ...(correctionOf === '' ? {} : { correctionOf }),
+    source: {
+      kind: 'chat',
+      ...(runtime.chatSessionId === undefined ? {} : { sessionId: runtime.chatSessionId }),
+      toolCallId: callId,
+      label: '聊天中的小栖主动记忆',
+    },
+  }
+}
+
 /**
- * `confirm` 级工具的处置：**挂起，不执行**。
+ * `confirm` 级工具的处置：**挂起，不执行**。Core-3 的 `memory_write` 已是 autonomous，
+ * 不会走这里；这里继续服务未来的高风险写操作与历史事件。
  *
  * 这是「可暂停的逐次授权」（PRODUCT_SPEC §9.7）在工具层的实现点。模型发起之后，
  * 服务端只建一条待北北确认的事件，然后把「已提请确认、尚未执行」回灌给它 ——
@@ -315,6 +346,27 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
           text: clip(text, TOOL_TEXT_LIMIT),
           summary: `按「${query}」检索到记忆`,
           detail: clip(text, DETAIL_LIMIT),
+        }
+      }
+
+      case 'memory.write': {
+        if (runtime.memory === null) return failure(tool, '记忆链路当前不可用')
+        const input = parseMemoryWriteInput(value, runtime, call.id)
+        if (typeof input === 'string') return failure(tool, input)
+        const result = await runtime.memory.write(input)
+        if (result.status === 'duplicate') {
+          return {
+            ok: true,
+            text: `这条记忆之前已经处理过，本次没有重复写入。${result.text}`,
+            summary: '记忆已存在，没有重复写入',
+            detail: clip(result.text, DETAIL_LIMIT),
+          }
+        }
+        return {
+          ok: true,
+          text: `已真实写入 Nocturne 长期记忆。${result.text}`,
+          summary: '已写入长期记忆（已记录来源）',
+          detail: clip(result.text, DETAIL_LIMIT),
         }
       }
 

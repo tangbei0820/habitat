@@ -93,7 +93,7 @@ seedMcpServers(mcpSeed)
 const mcpConfigs = listMcpServerConfigs()
 const gateway = new McpGateway(mcpConfigs, app.log)
 const memoryProvider = new NocturneMemoryProvider(gateway)
-// 记忆写入门（Phase 7C）：收件箱确认卡批准后真正调 hold 的执行体从这里注入
+// 记忆写入门：Core-3 新调用在 Runtime 直接执行；这里保留旧 confirm 事件批准后的 hold 兼容执行体
 registerMemoryWriteExecutor((input) => memoryProvider.write(input))
 const stateProvider = loadEventideStateProvider()
 // 能力面：静态声明（shared/capabilities.ts）+ 运行时依赖探测，合成 AI「现在真能做什么」的快照
@@ -106,7 +106,7 @@ registerCapabilityRoutes(app, capabilityService)
 // 共同生活数据（Phase 6.5 起服务端权威）：AI 也在服务端跑，日记 / 留言板放这里才谈得上共用一份数据
 registerDiaryRoutes(app)
 registerMomentRoutes(app)
-// 事件收件箱（Phase 6.5 P1）：AI 想写东西要北北确认、北北想看日记要 AI 决定 —— 两件事的载体。
+// 事件收件箱（Phase 6.5 P1）：历史确认事件与日记访问请求的载体；Core-3 新 memory_write 不再挂确认卡。
 // ⚠️ 挂在 /api/inbox 而不是 /api/events —— 后者是 Eventide 的状态事件流水（automation.ts）
 registerInboxRoutes(app)
 // Prompt / 世界书（7A · SPEC §9.4）：Runtime 在服务端拼上下文，所以这两份配置也归服务端

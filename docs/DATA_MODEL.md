@@ -495,3 +495,20 @@ MCP 连接配置由服务端持有，浏览器只拿脱敏视图；不改 Dexie�
 | `mcp_server_secret` | `server_id` / `token` / `updated_at` | 一对一；token 只在服务端使用，任何 API 回执都只返回 `hasToken` |
 
 启动时环境变量 MCP 注册表只作一次性种子：缺 id 才插入，已有记录不被 `.env` 覆盖。删除时 secret 与配置在同一事务内清理。连接配置修改后 Gateway 整体热加载，避免半套注册表。
+
+## 15. Core-3 Nocturne 写入审计（服务端 SQLite）
+
+`memory_write_audit` 是 Habitat 的**行动审计**，不是 Nocturne 的平行记忆模型：正文仍只在 Nocturne，
+本地只保存去重、来源、状态与短预览，供失败回灌、记忆页回链和重复保护使用。
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` / `status` | 审计 id；`writing` / `written` / `duplicate` / `failed`。失败保留，不伪称成功。 |
+| `mode` / `correction_of` | `new` 或 `correction`；修正只表示追加一条修正事实，当前 hold 实例不支持原地编辑 / 删除。 |
+| `dedup_key` / `content_hash` | 正文哈希 + kind / name / tags / 修正线索生成；唯一键保证重复调用不重复 hold。 |
+| `content_preview` / `kind` / `name` / `tags` | 仅供摘要页确认动作，不复制完整正文。 |
+| `source_json` | `chat` / `call` / `surf` / `wake` / `solitude` / `manual`，聊天附 `sessionId` / `toolCallId`。 |
+| `provider_result` / `error` / 时间字段 | Nocturne 返回摘要、失败原因、创建与完成时间。 |
+
+这是服务端启动期 `CREATE TABLE IF NOT EXISTS` 的追加表，不改 Dexie，不升前端备份版本；与 `event_log`
+同时追加 `memory.write.completed` / `memory.write.failed` 事实，Life 可按事件聚合但不读取记忆正文。

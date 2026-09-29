@@ -254,6 +254,30 @@ export const eventLog = sqliteTable('event_log', {
   at: integer('at').notNull(),
 })
 
+/**
+ * Habitat 侧 Nocturne hold 审计：只记写入状态、去重键、来源和结果摘要，
+ * 不复制 Nocturne 正文或 URI 图谱。dedupKey 唯一，防止同一事实被重复 hold。
+ */
+export const memoryWriteAudit = sqliteTable('memory_write_audit', {
+  id: text('id').primaryKey(),
+  status: text('status', { enum: ['writing', 'written', 'duplicate', 'failed'] }).notNull(),
+  mode: text('mode', { enum: ['new', 'correction'] }).notNull(),
+  dedupKey: text('dedup_key').notNull().unique(),
+  contentHash: text('content_hash').notNull(),
+  contentPreview: text('content_preview').notNull(),
+  kind: text('kind').notNull(),
+  name: text('name'),
+  tags: text('tags'),
+  sourceJson: text('source_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  correctionOf: text('correction_of'),
+  providerResult: text('provider_result'),
+  error: text('error'),
+  createdAt: integer('created_at').notNull(),
+  completedAt: integer('completed_at'),
+})
+
+export type MemoryWriteAuditRow = typeof memoryWriteAudit.$inferSelect
+
 /** 应用内电话事实源：状态与逐句文字记录绑定原聊天会话，不另起 AI 上下文。 */
 export const callSession = sqliteTable('call_session', {
   id: text('id').primaryKey(),

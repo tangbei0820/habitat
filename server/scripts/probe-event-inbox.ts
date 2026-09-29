@@ -321,7 +321,7 @@ for (const id of ['diary.create', 'diary.update', 'diary.list_own', 'diary.read_
 }
 check('★ 写类已自主化（Phase 7B：diary.create / messageboard.write / messageboard.update）', byId.get('diary.create')?.autonomy === 'autonomous' && byId.get('messageboard.write')?.autonomy === 'autonomous' && byId.get('messageboard.update')?.autonomy === 'autonomous', `autonomy=${byId.get('diary.create')?.autonomy ?? ''}`)
 check('读自己的能力是 autonomous', byId.get('diary.read_own')?.autonomy === 'autonomous')
-check('写记忆已实施、绑工具且保持 confirm（Phase 7C）', byId.get('memory.write')?.enabled === true && byId.get('memory.write')?.toolName === 'memory_write' && byId.get('memory.write')?.autonomy === 'confirm')
+check('写记忆已实施、绑工具且按 Core-3 采用 autonomous', byId.get('memory.write')?.enabled === true && byId.get('memory.write')?.toolName === 'memory_write' && byId.get('memory.write')?.autonomy === 'autonomous')
 
 /* ------------------------------------------------- 13. 清理 */
 console.log('\n[13] 清理')

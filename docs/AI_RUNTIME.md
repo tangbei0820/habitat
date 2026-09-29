@@ -49,7 +49,7 @@
 
 | 级别 | 含义 | 本阶段实况 |
 | --- | --- | --- |
-| `autonomous` | AI 可自主调用，无需用户在旁 | 记忆读 / 记忆搜 / 状态读 / 日记的读与列 / 允许·拒绝查看 / 留言板写入与修改 / `tools.list` |
+| `autonomous` | AI 可自主调用，无需用户在旁 | 记忆读 / 搜 / 写（仅自己的主权记忆）/ 状态读 / 日记的读与列 / 允许·拒绝查看 / 留言板写入与修改 / `tools.list` |
 | `confirm` | 须先过用户确认卡 | **已绑给模型**（P1）：调用不会执行，而是**挂起**成一条待确认事件 |
 | `user-only` | 仅用户可发起 | 保留语义；**不绑** —— 连「怎么调」都不让模型知道 |
 | `unavailable` | 依赖未就绪 / 阶段未实施 | 当前没有固定的阶段占位；运行时会按真实依赖返回原因 |
@@ -63,7 +63,7 @@
 | --- | --- | --- | --- | --- |
 | `memory.read` | memory | autonomous | `memory_read` | 可用（需 Nocturne ready） |
 | `memory.search` | memory | autonomous | `memory_search` | 可用（需 Nocturne ready） |
-| `memory.write` | memory | confirm | `memory_write` | 可用（需 Nocturne ready；调用先挂起确认，批准后才写入） |
+| `memory.write` | memory | autonomous | `memory_write` | 可用（需 Nocturne ready；写入保留来源、自动去重，修正采用追加语义） |
 | `state.read` | state | autonomous | `state_read` | 可用（需 Eventide） |
 | `diary.create` | diary | autonomous | `diary_create` | 可用 · 立即写入小栖私密日记 |
 | `diary.update` | diary | autonomous | `diary_update` | 可用 · 立即修改小栖私密日记 |
@@ -323,8 +323,8 @@ P2 负责把它摆到台面上 —— **只动呈现层，执行层一行没改*
 
 - `FIELD_LABELS` 词典**未与真实 Eventide 的键集核对过**（键名不符时自动回退原键名，不会显示错值）
 - 工具卡片与助手气泡的时间顺序（见 `DATA_MODEL.md` §3.2 末）
-- `memory.write` 已接入 `hold`，但真实实例写入、失败回灌、去重 / 修正语义和来源审计仍归 Core-3 验收。
-- 确认卡服务端已经支持过期 / 撤回；前端展示、通知和自动化覆盖仍归 Core-1 / Core-3 补齐。
+- `memory.write` 已完成 Core-3：真实实例 `hold`、失败回灌、去重、修正追加、来源审计与记忆页回链均已接入；Nocturne 原生编辑 / 删除仍只在 Dashboard。
+- 确认卡服务端已经支持过期 / 撤回；前端展示、通知和自动化覆盖仍归后续高风险写能力补齐，Core-3 的记忆自主写入不走确认卡。
 - 记忆与工具没有独立“管理器”页面：记忆深处进入 Nocturne 原生 Dashboard，工具继续通过 Chat 工具卡 / Mini Terminal 暴露；
   若未来新增页面，必须先定义用户任务，不能为了显示能力制造假入口。
-- `FIELD_LABELS`、工具卡时序、确认卡前端交互和真实 Provider / Nocturne / Eventide 端到端验收仍需补。
+- `FIELD_LABELS`、工具卡时序、确认卡前端交互和真实 Provider / Eventide 端到端验收仍需补；Nocturne Core-3 真实链路需在生产配置下再跑一次同一验收脚本。

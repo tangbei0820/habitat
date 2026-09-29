@@ -22,6 +22,8 @@ import type {
   ToolGateway,
 } from '@shared/providers.js'
 import { GatewayError } from '../mcp/gateway.js'
+import { appendEventLog } from '../db/activity.js'
+import { markMemoryWriteFailed, markMemoryWriteWritten, reserveMemoryWrite } from '../db/memory-audit.js'
 
 interface McpTextBlock { type: 'text'; text: string }
 
@@ -84,14 +86,65 @@ export class NocturneMemoryProvider implements MemoryProvider {
   }
 
   async write(input: MemoryWriteInput): Promise<MemoryTextResult> {
-    // 实例的 `hold`：content 必填，kind / name / tags / importance / pinned / protected / drive …
-    // 全是可选。适配层只透传 `MemoryWriteInput` 里声明过的四项 —— `pinned` / `protected`
-    // 会锁重要度分，`drive` / `chord` 是实例自己的九维设计，模型不该碰（见接口注释）。
+    // hold 只接受实例真实支持的字段。来源 / 修正语义留在 Habitat 审计，
+    // 同时以 habitat:* tags 带进同一条 Nocturne 记忆，便于原生 Dashboard 追溯。
+    const reservation = reserveMemoryWrite(input)
+    if (reservation.kind === 'duplicate') {
+      return {
+        text: `这条记忆没有重复写入（Habitat 审计 ${reservation.record.id}，原状态：${reservation.record.status}）。`,
+        status: 'duplicate',
+        auditId: reservation.record.id,
+      }
+    }
+
     const args: Record<string, unknown> = { content: input.content }
     if (input.kind !== undefined) args.kind = input.kind
     if (input.name !== undefined && input.name !== '') args.name = input.name
-    if (input.tags !== undefined && input.tags !== '') args.tags = input.tags
-    return this.callText(NOCTURNE_TOOLS.write, args)
+    const tags = [input.tags?.trim() ?? '']
+    const source = input.source
+    if (source !== undefined) {
+      tags.push(`habitat:source=${source.kind}`)
+      if (source.sessionId !== undefined) tags.push(`habitat:session=${source.sessionId}`)
+      if (source.toolCallId !== undefined) tags.push(`habitat:tool=${source.toolCallId}`)
+      if (source.label !== undefined && source.label.trim() !== '') tags.push(`habitat:source-label=${source.label.trim()}`)
+    }
+    if (input.mode === 'correction') tags.push('habitat:correction')
+    if (input.correctionOf !== undefined && input.correctionOf.trim() !== '') tags.push(`habitat:correction-of=${input.correctionOf.trim()}`)
+    const mergedTags = tags.filter((tag) => tag !== '').join(',')
+    if (mergedTags !== '') args.tags = mergedTags
+
+    try {
+      const result = await this.callText(NOCTURNE_TOOLS.write, args)
+      const written = markMemoryWriteWritten(reservation.record.id, result.text)
+      // The Nocturne hold already succeeded. Event-log persistence is auxiliary;
+      // it must not turn a successful write into a false failure if the local log
+      // is temporarily unavailable.
+      try {
+        appendEventLog('memory.write.completed', {
+          auditId: reservation.record.id,
+          mode: input.mode ?? 'new',
+          kind: input.kind ?? 'memory',
+          source: input.source?.kind ?? 'manual',
+        }, written?.id ?? reservation.record.id)
+      } catch {
+        // The audit row remains the source of truth for the write outcome.
+      }
+      return { text: result.text, status: 'written', auditId: reservation.record.id }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      markMemoryWriteFailed(reservation.record.id, reason)
+      try {
+        appendEventLog('memory.write.failed', {
+          auditId: reservation.record.id,
+          mode: input.mode ?? 'new',
+          source: input.source?.kind ?? 'manual',
+          error: reason,
+        }, reservation.record.id)
+      } catch {
+        // Preserve the original provider failure for the caller.
+      }
+      throw error
+    }
   }
 
   async verifyToolFace(): Promise<string[]> {

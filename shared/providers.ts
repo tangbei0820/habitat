@@ -108,10 +108,27 @@ export interface LLMProvider {
 export interface MemoryTextResult {
   /** Nocturne 工具返回的是给模型阅读的文本，不依赖其内部数据库 schema。 */
   text: string
+  /** 写入时供 Runtime 判断是新写入还是重复去重；读 / 搜索不设置。 */
+  status?: 'written' | 'duplicate'
+  /** Habitat 侧审计记录 id；只用于可追溯卡片与日志。 */
+  auditId?: string
 }
 
 export interface MemorySearchOptions {
   limit?: number
+}
+
+export type MemoryWriteMode = 'new' | 'correction'
+
+/**
+ * 记忆写入来源。它是审计 / 回链信息，不是给模型自由编造的 Nocturne 字段；
+ * Runtime 会在调用入口补上当前会话与工具调用 id，后台能力则显式声明自己的来源。
+ */
+export interface MemoryWriteSource {
+  kind: 'chat' | 'call' | 'surf' | 'wake' | 'solitude' | 'manual'
+  sessionId?: string
+  toolCallId?: string
+  label?: string
 }
 
 /**
@@ -130,6 +147,12 @@ export interface MemoryWriteInput {
   name?: string
   /** 标签（实例侧是单个字符串，按逗号分隔的约定传）。 */
   tags?: string
+  /** `correction` 仍是 hold 的追加语义，不假装实例支持原地编辑 / 删除。 */
+  mode?: MemoryWriteMode
+  /** 供本地审计与 Nocturne tags 回链的来源信息。 */
+  source?: MemoryWriteSource
+  /** 可读的旧记忆线索；实例无 URI 时作为“修正哪一类记忆”的审计说明。 */
+  correctionOf?: string
 }
 
 /**
@@ -155,8 +178,8 @@ export interface MemoryProvider {
   search(query: string, options?: MemorySearchOptions): Promise<MemoryTextResult>
   /**
    * 写入长期记忆（实例工具：`hold`，Phase 7C 记忆沉淀接入）。
-   * ⚠️ 写入不是无副作用的 —— 调用方负责闸门：聊天工具走 `confirm` 挂起确认，
-   * 后台沉淀（Surf 升格）受自动化策略与审计约束。适配层只管通道。
+   * ⚠️ 写入不是无副作用的 —— Core-3 的聊天 Runtime 由小栖自主决定并经过来源 / 去重审计，
+   * 后台沉淀（Surf 升格）受自动化策略与行动审计约束。适配层只管 MCP 通道。
    */
   write(input: MemoryWriteInput): Promise<MemoryTextResult>
   /**

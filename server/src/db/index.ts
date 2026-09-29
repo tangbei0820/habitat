@@ -210,6 +210,25 @@ CREATE TABLE IF NOT EXISTS event_log (
 );
 CREATE INDEX IF NOT EXISTS idx_event_log_day ON event_log (day_key, id);
 CREATE INDEX IF NOT EXISTS idx_event_log_type ON event_log (event_type, id);
+CREATE TABLE IF NOT EXISTS memory_write_audit (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('writing', 'written', 'duplicate', 'failed')),
+  mode TEXT NOT NULL CHECK (mode IN ('new', 'correction')),
+  dedup_key TEXT NOT NULL UNIQUE,
+  content_hash TEXT NOT NULL,
+  content_preview TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  name TEXT,
+  tags TEXT,
+  source_json TEXT NOT NULL,
+  correction_of TEXT,
+  provider_result TEXT,
+  error TEXT,
+  created_at INTEGER NOT NULL,
+  completed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_memory_write_audit_created ON memory_write_audit (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_write_audit_status ON memory_write_audit (status, created_at DESC);
 CREATE TABLE IF NOT EXISTS call_session (
   id TEXT PRIMARY KEY,
   chat_session_id TEXT NOT NULL,

@@ -1279,6 +1279,26 @@ export interface EventLogRecord {
   at: number
 }
 
+/** Nocturne hold 的 Habitat 侧写入审计；不复制记忆正文或实例内部 schema。 */
+export type MemoryWriteAuditStatus = 'writing' | 'written' | 'duplicate' | 'failed'
+export type MemoryWriteAuditMode = 'new' | 'correction'
+export interface MemoryWriteAuditRecord {
+  id: string
+  status: MemoryWriteAuditStatus
+  mode: MemoryWriteAuditMode
+  dedupKey: string
+  contentPreview: string
+  kind: string
+  name: string | null
+  tags: string | null
+  source: Record<string, unknown>
+  correctionOf: string | null
+  providerResult: string | null
+  error: string | null
+  createdAt: number
+  completedAt: number | null
+}
+
 export type CallDirection = 'user' | 'companion'
 export type CallStatus = 'ringing' | 'active' | 'ended' | 'rejected' | 'missed' | 'cancelled'
 export type CallSpeaker = 'user' | 'companion'

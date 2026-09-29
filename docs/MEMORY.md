@@ -1,11 +1,11 @@
 # MEMORY · 记忆系统接入
 
-状态：**Phase 3A 完成**。本地 mock 全链探针 21/21，自部署实例含鉴权专项验真 26/26；接口已按**自部署实例的真实工具面**收敛（2026-09-24，T-031 / T-033 / T-034）。**Phase 7C（2026-09-26）起写工具 `hold` 已接入** —— 接口是「读两方法 + 写一方法」，`hold` 的参数面经 2026-09-26 服务器实测（见下表与「写记忆的产品语义」）。
+状态：**Core-3 完成**。本地 mock 记忆闭环验收 15/15，自部署实例含鉴权专项验真 26/26；接口已按**自部署实例的真实工具面**收敛（2026-09-24，T-031 / T-033 / T-034）。`hold` 已接入，Core-3 补齐了自主写入、no-op、去重、修正追加、来源审计和页面回链。
 
 - ✅ **工具面已查明并对齐**：实例真实 9 个工具，Habitat 用其中 3 个（`breath` / `trace` / `hold`）。旧适配层那 5 个名字（源自官方 Demo）**0/5 命中**，已整段重写。
-- ✅ **写工具已接入（Phase 7C 记忆沉淀批）**：`hold` 只透传 `content` / `kind` / `name` / `tags` 四个有产品语义的参数；
+- ✅ **写工具已接入（Core-3）**：`hold` 只透传 `content` / `kind` / `name` / `tags` 四个有产品语义的参数；
   `pinned` / `protected`（锁重要度分、不合并）、`drive` / `chord`（九维驱动 / 和弦设计）是实例自己的产品设计，**不透传**。
-  写闸门在执行层：聊天里 AI 主动写 → `confirm` 挂起等北北点头；后台 Surf 记录升格 → 自主但受独处开关与审计约束（SPEC §9.5.3 / §9.7）。
+-  写入采用小栖自己的主权决策：不值得记就是 no-op；写入自动做参数校验、来源审计和重复检测，`mode=correction` 以追加修正语义落库。删除 / 合并 / 迁移仍不冒充已支持，进入原生 Dashboard。
 - ✅ **真机只读与鉴权验真完成**：Streamable HTTP session、9 工具、`breath` / `trace`、无 Token 拒绝均通过，**26/26**；未调用任何写工具。
 - ✅ **生产已锁门**：现有 `OMBRE_API_PASSWORD` 保护 Dashboard/API；宿主 nginx 对轮换后的秘密 MCP 路径校验 Bearer。无 / 错 Token 401，正确 Token 200。
 
@@ -18,7 +18,7 @@
 - 配置全在环境变量，**地址与凭据不进仓库**（`server/src/mcp/registry.ts`）：
   `MCP_NOCTURNE_URL` / `MCP_NOCTURNE_TOKEN` / `MCP_NOCTURNE_NAMESPACE`
   （多 AI 共用同一实例时用 namespace 隔离；单人格留空）。
-- **前端永不直连 Nocturne** —— 只走 `server` 的 `/api/memory/*`。
+- **前端永不直连 Nocturne** —— 只走 `server` 的 `/api/memory/*`；`/api/memory/audit` 只读 Habitat 侧写入状态与来源，不复制记忆正文。
 
 ## 入口地址：秘密路径（**不是** `/mcp`）
 
@@ -68,7 +68,7 @@ sudo grep -rn "location.*mcp" /etc/nginx/sites-enabled/
 | --- | --- | --- |
 | `breath` | 无参，把记忆整个取回来（新窗 / Compact 后读） | ✅ `recall()` 就用它 |
 | `trace` | `query` + `limit`，按关键词搜记忆 | ✅ `search()` 就用它 |
-| `hold` | 写记忆（`kind` 区分 memory / feel / writing / unresolved / window / letter …） | ✅ `write()` 就用它（Phase 7C 起） |
+| `hold` | 写记忆（`kind` 区分 memory / feel / writing / unresolved / window / letter …） | ✅ `write()` 就用它（Core-3 起带审计 / 去重） |
 | `wander` | 按 `mode` 翻记忆抽屉 | ❌ |
 | `wander_mark` | 给抽屉表态（认 / 不认 / 悬置） | ❌ |
 | `drive` | 九维驱动模型（`drive_key`） | ❌ |
@@ -93,16 +93,24 @@ sudo grep -rn "location.*mcp" /etc/nginx/sites-enabled/
 | --- | --- | --- |
 | `recall()` | `breath` | 无参数；新窗 / Compact 后读记忆全文 |
 | `search(query, {limit})` | `trace` | 入参 `query`（必填）+ `limit`（可选） |
-| `write(input)` | `hold` | 入参 `content`（必填）+ `kind` / `name` / `tags`（可选，产品语义裁剪见上）；**Phase 7C 起** |
+| `write(input)` | `hold` | 入参 `content`（必填）+ `kind` / `name` / `tags`（可选）；Habitat 额外记录 `mode` / `correctionOf` / `source`，实例只收到四个真实字段 |
 | `verifyToolFace()` | `tools/list` | 启动期自检：上面三个工具缺了就告警，只列清单不调用 |
 
 **被撤掉的方法**：`read(uri)` / `create` / `update` / `delete` —— 一共 4 个。理由：
 实例没有 URI，也没有「编辑 / 删除」语义；这 4 个方法**从未被任何调用方使用**（全仓核查过）。
 `MemoryCreateInput` / `MemoryUpdateInput` 两个类型一并删除；`MemorySearchOptions` 去掉 `domain`（实例不认这个参数）。
 
-> ✅ **写工具已接入（Phase 7C，2026-09-26）**：按 `hold` 的产品语义裁剪入参
+> ✅ **写工具已接入（Core-3）**：按 `hold` 的产品语义裁剪入参
 > （只透传 `content` / `kind` / `name` / `tags`），闸门在执行层 —— 见本文件顶部与 SPEC §9.5.3 / §9.7。
 > 以下三条历史结论中的「只读」字样均为 Phase 3A 时的状态留档。
+
+### Core-3 写入闭环
+
+- `memory_write` 是 `autonomous`：小栖可以选择写，也可以本轮 no-op；普通聊天、通话、Surf 不会因为发生就自动晋升长期记忆。
+- Habitat 在调用 `hold` 前写入 `memory_write_audit`，以正文哈希 + kind / name / tags / 修正线索生成唯一去重键；同一事实重试只返回“已存在”，不会再次 hold。
+- `mode=correction` 是当前实例能力边界下的**追加修正**：审计保存 `correctionOf`，Nocturne tags 带 `habitat:correction`；不把 hold 冒充原地编辑或删除。
+- source 至少记录来源类型，聊天还记录 `sessionId` / `toolCallId`；`GET /api/memory/audit` 向摘要页提供脱敏的状态、预览和“回到原会话”链接。
+- hold 失败会把审计标为 `failed` 并把原错误回灌给模型；失败不删除 Activity / Surf 本体，也不能被文案说成“已经记住”。
 
 ### 侦察脚本 —— 现在是「漂移检测」，不是验收
 

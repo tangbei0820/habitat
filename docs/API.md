@@ -491,7 +491,7 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
       "label": "写入记忆",
       "summary": "把一段新记忆存进长期记忆",
       "enabled": true,
-      "autonomy": "confirm",
+      "autonomy": "autonomous",
       "toolName": "memory_write"
     }
   ]
@@ -753,7 +753,7 @@ AI 侧的事件**刻意没有 HTTP 决策入口** —— 它只能由 AI 通过 
 前端只走到这里；服务端内部统一走 `MemoryProvider` → `ToolGateway` → Nocturne MCP
 （**不用 Nocturne 的 REST**，见 `AGENTS.md` §3 铁律 4）。
 
-所有记忆端点的返回体都是同一个形状：
+`boot` / `search` 的返回体都是同一个形状：
 
 ```ts
 interface MemoryTextResult { text: string }
@@ -762,13 +762,13 @@ interface MemoryTextResult { text: string }
 即 Nocturne 工具返回的**给模型阅读的文本** —— 栖息地不解析、不依赖它的内部 schema
 （技术方案 §9 风险 5 的对策）。
 
-⚠️ **前端 HTTP 端点仍只有两个，且都是只读**（`boot` / `search`）。
+⚠️ **前端不会通过 HTTP 写 Nocturne**。读端点是 `boot` / `search`；另有只读的 Habitat 写入审计端点。
 原先的 `GET read` / `POST` / `PATCH` / `DELETE` 四个写端点**已移除** ——
 实例既没有 `uri` 概念，也没有「原地编辑 / 删除」语义，那四个端点从来不可能工作，
 且前端一个都没调用过。留着返回 500 只会让人误以为「配好就能用」。
 
 > HTTP 端点只读是**前端边界的刻意选择**：实例的 `hold` 能写，但长期记忆写入只允许从 Runtime 的
-> `memory_write` 工具发起，并先进入确认收件箱；批准后由服务端适配器调用 `hold`。
+> `memory_write` 工具发起。Core-3 起小栖在自己的记忆域可自主决定写或 no-op；服务端在 `hold` 前做来源审计 / 去重，失败如实回灌。
 > `wander_mark` / `drive` 等实例工具仍不接入 Habitat 能力面，
 > 详见 `docs/MEMORY.md` 的「定稿映射」与 `docs/AI_RUNTIME.md` 的能力表。
 
@@ -802,6 +802,17 @@ interface MemoryTextResult { text: string }
 >
 > 工具面漂移（实例改名 / 换血统）也走这条路：启动期自检会 warn，调用时返回 `MCP_TOOL_CALL_FAILED`。
 > 排查见 `docs/MEMORY.md` 的「侦察脚本」。
+
+### `GET /api/memory/audit`
+
+读取最近的 Habitat 侧 Nocturne 写入审计。响应只含状态、正文短预览、写入模式、来源和修正线索，
+不复制 Nocturne 正文，也不暴露 MCP 凭据；聊天来源可用 `source.sessionId` 回到原会话。
+
+| 查询参数 | 说明 |
+| --- | --- |
+| `limit` | 1–100，默认 20 |
+
+`status` 为 `writing` / `written` / `duplicate` / `failed`。失败记录保留，下一次同一去重键可以重试。
 
 ## Phase 3B 已实现（Eventide 状态 + 主动行为）
 

@@ -10,8 +10,9 @@ import { Link } from 'react-router-dom'
 import { IconChevronLeft } from '../../components/qixi/Icons'
 import { useSlideIn } from '../../components/qixi/useSlideIn'
 import { ApiRequestError } from '../../lib/api'
-import { getMcpHealthView, getMemoryBoot, searchMemory } from '../../lib/memory'
+import { getMcpHealthView, getMemoryBoot, getMemoryWriteAudit, searchMemory } from '../../lib/memory'
 import { log } from '../../lib/log'
+import type { MemoryWriteAuditRecord } from '@shared/types'
 
 type HealthState = 'loading' | 'ready' | 'unconfigured' | 'error'
 
@@ -32,6 +33,21 @@ export function MemoryPage() {
   const [result, setResult] = useState<string | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [searchLoading, setSearchLoading] = useState(false)
+
+  const [audit, setAudit] = useState<MemoryWriteAuditRecord[]>([])
+  const [auditError, setAuditError] = useState<string | null>(null)
+
+  const loadAudit = useCallback((): void => {
+    getMemoryWriteAudit()
+      .then((data) => {
+        setAudit(data.items)
+        setAuditError(null)
+      })
+      .catch((err: unknown) => {
+        log.error('读取记忆写入审计失败', err)
+        setAuditError(healthText(err))
+      })
+  }, [])
 
   const loadHealth = useCallback((): void => {
     setHealth('loading')
@@ -56,8 +72,6 @@ export function MemoryPage() {
       })
   }, [])
 
-  useEffect(loadHealth, [loadHealth])
-
   const loadBoot = useCallback((): void => {
     setBootLoading(true)
     getMemoryBoot()
@@ -74,6 +88,7 @@ export function MemoryPage() {
   }, [])
 
   useEffect(loadHealth, [loadHealth])
+  useEffect(loadAudit, [loadAudit])
 
   /**
    * 记忆全文只在实例就绪时去读。⚠️ 未配置 / 异常时**不发请求** ——
@@ -144,7 +159,46 @@ export function MemoryPage() {
           <Link to="/llm/memory/dashboard" className="rounded-lg border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border-soft)' }} data-testid="memory-dashboard-link">
             打开管理器
           </Link>
-        </div>
+      </div>
+
+        <section className="mt-4" data-testid="memory-audit">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium">最近的记忆动作</h2>
+            <button
+              type="button"
+              className="rounded-lg border px-2 py-1 text-xs"
+              style={{ borderColor: 'var(--border-soft)' }}
+              onClick={loadAudit}
+            >刷新</button>
+          </div>
+          {auditError !== null && <p className="mt-2 text-sm" style={{ color: 'var(--danger)' }}>{auditError}</p>}
+          {audit.length === 0 && auditError === null && (
+            <p className="mt-2 text-sm" style={{ color: 'var(--text-tertiary)' }}>还没有 Habitat 侧的写入记录。小栖不想记时什么都不会留下。</p>
+          )}
+          <div className="mt-2 space-y-2">
+            {audit.map((item) => {
+              const sessionId = typeof item.source.sessionId === 'string' ? item.source.sessionId : null
+              const sourceKind = typeof item.source.kind === 'string' ? item.source.kind : 'unknown'
+              const statusText = item.status === 'written' ? '已写入' : item.status === 'duplicate' ? '已去重' : item.status === 'failed' ? '失败' : '处理中'
+              return (
+                <div key={item.id} className="rounded-xl border p-3 text-xs" style={{ borderColor: 'var(--border-soft)' }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{item.mode === 'correction' ? '修正记忆' : '新增记忆'} · {statusText}</span>
+                    <span style={{ color: item.status === 'failed' ? 'var(--danger)' : 'var(--text-tertiary)' }}>{new Date(item.createdAt).toLocaleString()}</span>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap break-words" style={{ color: 'var(--text-secondary)' }}>{item.contentPreview}</p>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1" style={{ color: 'var(--text-tertiary)' }}>
+                    <span>来源：{sourceKind}</span>
+                    <span>类型：{item.kind}</span>
+                    {item.correctionOf !== null && <span>修正线索：{item.correctionOf}</span>}
+                    {sessionId !== null && <Link className="underline" to={`/chat/${encodeURIComponent(sessionId)}`}>回到原会话</Link>}
+                  </div>
+                  {item.error !== null && <p className="mt-1" style={{ color: 'var(--danger)' }}>失败原因：{item.error}</p>}
+                </div>
+              )
+            })}
+          </div>
+        </section>
 
         {/* 记忆全文（breath） */}
         <section className="mt-4">
@@ -223,7 +277,7 @@ export function MemoryPage() {
         </section>
 
         <p className="mt-6 text-xs" style={{ color: 'var(--text-secondary)' }}>
-          这里只有「读」。记忆的写入由小栖在对话里发起（写入前需你确认），独处浏览的记录也会自动沉淀进来；本页不提供手工编辑入口。
+          这里只有摘要、搜索和审计。记忆写入由小栖在 Runtime 中自行决定；不值得记时可以 no-op。原地编辑、删除与版本回滚进入同一套 Nocturne 原生 Dashboard，本页不复制那套管理器。
         </p>
       </div>
     </div>

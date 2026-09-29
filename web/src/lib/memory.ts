@@ -3,6 +3,7 @@
  * 健康走 /api/health/mcp。
  */
 import type { McpHealth } from '@shared/types'
+import type { MemoryWriteAuditRecord } from '@shared/types'
 import { fetchJson } from './api'
 
 export interface MemoryTextResult {
@@ -20,4 +21,8 @@ export function searchMemory(query: string, limit = 30): Promise<MemoryTextResul
 
 export function getMcpHealthView(): Promise<McpHealth> {
   return fetchJson('/api/health/mcp')
+}
+
+export function getMemoryWriteAudit(limit = 20): Promise<{ items: MemoryWriteAuditRecord[] }> {
+  return fetchJson(`/api/memory/audit?limit=${encodeURIComponent(String(limit))}`)
 }

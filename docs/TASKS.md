@@ -3787,3 +3787,22 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；`PROBE_SERVER=http://127.0.0.1:3000 npm --prefix server run probe:call-core2` **9/9**（含 SSE `id / eventId`）；本地 PWA 已打开通话面板并确认状态、打断按钮与设备控制入口可见。浏览器麦克风授权 / Android PWA 真机未在本轮自动接受权限提示，需用户在目标设备上做最终硬件验收。
 
 **明确延期**：PSTN / CallKit / 锁屏系统电话、WebRTC 真全双工、后台持续收音、跨设备音频中继、通话录音文件持久化与全文转写检索仍延期；这些不属于当前 Web 应用内通话完成口径。
+
+### T-145 · 2026-09-29 · Core-3 · Nocturne 记忆完整闭环 —— **完成（本地，未部署）**
+
+**范围**：只完成 Nocturne 记忆的 Runtime 闭环与 Habitat 摘要页；不改 Eventide / Desire，不复制 Nocturne 数据库，不进入 Home / Life 或 Core-5 联调。
+
+| 交付 | 说明 |
+| --- | --- |
+| 真实写入 | `memory_write` 经 `MemoryProvider` → `ToolGateway` → Nocturne `hold`，能力级别按最新产品语义为 `autonomous`；不值得记时模型可以 no-op。 |
+| 结果回灌 | `written` / `duplicate` / MCP 失败都从同一次执行生成 tool-result 文本与卡片，模型下一轮能看到真实结果；失败不伪称“已经记住”。 |
+| 去重与修正 | 新增 `memory_write_audit`，以正文哈希 + kind / name / tags / correctionOf 生成唯一键；重复调用不再次 hold；`mode=correction` 只追加修正事实并记录线索。 |
+| 来源 | 聊天审计保存 `sessionId` / `toolCallId`，Surf 保存来源 URL；`habitat:*` tags 进入同一条 Nocturne 记忆，摘要页提供回到原会话入口。 |
+| 页面 | `/llm/memory` 保留健康 / 近期全文 / 搜索 / 原生 Dashboard 入口，新增最近记忆动作、状态、来源、失败原因和回链；未配置 / 异常仍不发必败读取请求。 |
+| 数据边界 | 仅追加服务端 SQLite 审计表，不改 Dexie / 前端备份；Nocturne URI 编辑、删除、版本 Diff / Integrate / Reject / 回滚继续由同一受保护原生 Dashboard 负责。 |
+
+**参考取舍**：实查 [Nocturne](https://github.com/Dataojitori/nocturne_memory) README / Dashboard 交互，借鉴 Memory Explorer、详情 / Review & Audit、Boot URI 与 namespace 的“原生管理器 + 宿主摘要页”分层；不复制其前端、内部 URI 图谱或 REST。
+
+**验收**：`probe:memory-core3` **15/15**（mock MCP 实际 `breath` / `trace` / `hold`）、两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；生产 Nocturne 真实写入仍需在 VPS 使用同一探针做一次受控验收，未将 mock 结果冒充生产通过。
+
+**明确延期**：Nocturne 原生编辑 / 删除 / 合并 / 迁移代理、URI 级权限、Eventide / Desire、Core-5 Chat → 状态 → 记忆生产联调；下一步只进入 Core-4。
