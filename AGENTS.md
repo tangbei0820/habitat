@@ -427,6 +427,7 @@ habitat/
 ### 2026-09-29 当前续建收口
 
 - ✅ **T-149 Habitat v2 Atelier 前端整体换装已完成（本地）**：按 `D:/我搓/Kimi Code/design.md` 完成共享外壳、暖纸 / 墨色令牌、浮起底栏、Home Bento、Chat 气泡 / 思绪 / 工具卡、Life、LLM 能力档案、Provider Center、设置与 Home 模块子页的统一视觉重做；AI 日记列表改为拟真纸页与锁定 / 请求查看表现。只改前端样式与页面标记，不改数据 / API / 路由 / `data-testid`，独立预览保留在 `designs/habitat-v2-preview/`。两端 typecheck、前端 build、diff check 通过；浏览器脚本未运行（当前 Windows Node 20 缺少脚本所需的全局 WebSocket/CDP runner），需在带 CDP 的验收环境做最终视觉回归。下一步进入人工视觉验收，不顺带修改业务功能或部署 VPS。
+- ✅ **T-150 T-149 已同步 GitHub 与 VPS（生产）**：提交 `cc111dd` 已推送到 `tangbei0820/habitat` `main`，并部署至 `https://habitat.beiyan.cc`；生产 `.env` / SQLite / Eventide 工作目录 / nginx 未覆盖，重启前已备份；`habitat-server` / `habitat-eventide` active，本机与公网 health / state 通过，线上入口切换到 Atelier 新 bundle。下一步仅做人工视觉回归，不进入新的业务功能施工。
 
 ### 2026-09-28 当前续建收口
 

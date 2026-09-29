@@ -1373,3 +1373,9 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 以 `designs/habitat-v2-preview/preview.html` 的 Atelier 纸张 / 墨色方向统一重做 AppShell、Home、Chat、Life、LLM、Setting 及 Home 子页表面层；保留现有路由、真实数据、API、schema 与交互语义。
 - Chat、日记、Provider Center、模块卡片、底栏与深浅色 tokens 完成统一视觉收口，新增页面标记用于后续局部主题扩展。
 - `npm run typecheck`、`npm run build`、`git diff --check` 通过；本地 Vite 已对 Home / Chat / Diary / Life / LLM / Setting 做手工视觉验收。未部署 VPS，等待人工确认后再进入生产发布。
+
+### 2026-09-29 · T-150 · T-149 Atelier 前端整体换装部署（生产）
+
+- 提交 `cc111dd` 已推送至 `https://github.com/tangbei0820/habitat` 的 `main`，并同步到 `/srv/habitat`；生产 `.env`、SQLite、Eventide 工作目录与 nginx 配置未覆盖。
+- 重启前备份生产数据库为 `habitat.db.bak-cc111dd-20260929-180425`，环境备份为 `.env.bak-cc111dd-20260929-180425`；`habitat-server` / `habitat-eventide` active。
+- 本机与公网 `/api/health`、`/api/health/state` 通过，公网首页已引用 `index-qzQDlbzJ.js` / `index-C_m5RRjb.css`，远端 `web/dist/index.html` 与本地 SHA-256 一致。

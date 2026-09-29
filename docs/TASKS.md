@@ -3876,3 +3876,16 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm run typecheck` 通过；`npm run build` 通过（仅保留既有 chunk size warning）；`git diff --check` 通过；独立 Preview 已在 Codex 浏览器检查首页、聊天、日记、设置四个关键页面。现有 `verify-*.mjs` 浏览器脚本未运行，原因是当前 Windows Node 20 环境没有脚本要求的全局 WebSocket / CDP runner，不将其冒充为通过。
 
 **待优化 / 明确边界**：生产 VPS 尚未部署本批视觉改动；需要在带 CDP 的验收环境做移动端、宽屏、深色主题、模块滚动和真机 Safe Area 视觉回归。真实业务功能、图片 / 字体资源包、CSS 高级模式与 Widget 拖拽不在本批新增。
+
+### T-150 · 2026-09-29 · T-149 Atelier 前端整体换装部署 VPS 与 GitHub —— **完成（生产）**
+
+**范围**：将 T-149 当前前端与设计资产同步到 `https://habitat.beiyan.cc`，并推送 GitHub `main`；不覆盖生产 `.env`、SQLite、Eventide 工作目录或 nginx 配置。
+
+| 交付 | 结果 |
+| --- | --- |
+| GitHub | 提交 `cc111dd` 已推送到 `https://github.com/tangbei0820/habitat` 的 `main`。 |
+| 代码上机 | 上传排除 `.git`、依赖、`server/data`、`server/.env`、`.workbuddy` 的部署包并解包到 `/srv/habitat`；生产静态入口切换到 `index-qzQDlbzJ.js` / `index-C_m5RRjb.css`。 |
+| 数据安全 | 重启前备份 `/srv/habitat/server/data/habitat.db` 为 `habitat.db.bak-cc111dd-20260929-180425`，生产环境备份为 `/srv/habitat/server/.env.bak-cc111dd-20260929-180425`。 |
+| 服务验收 | `habitat-server`、`habitat-eventide` active；本机与公网 `/api/health`、`/api/health/state` 返回正常，公网首页引用新 bundle，远端 `web/dist/index.html` SHA-256 与本地一致。 |
+
+**明确边界**：本批仅完成前端视觉换装的生产同步；移动端真机 Safe Area、宽屏 / 深色主题人工回归与后续业务功能仍按 T-149 / Later 规划，不在部署动作中顺带施工。
