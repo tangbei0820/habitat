@@ -1,5 +1,5 @@
 /**
- * Phase 3A 记忆端点（**只读**）：前端只到这里；内部统一走 MemoryProvider → ToolGateway → Nocturne MCP。
+ * 记忆 HTTP 端点（**前端只读**）：前端只到这里；内部统一走 MemoryProvider → ToolGateway → Nocturne MCP。
  *
  * ⚠️ 2026-09-24 收敛：原先暴露了六个端点（boot / search / read / POST / PATCH / DELETE）。
  * 但自部署实例没有 URI 概念、也没有更新与删除语义（见 `shared/providers.ts` 的 MemoryProvider），
@@ -7,6 +7,7 @@
  * 而不是留着返回 500 让人以为"配好就能用"。
  *
  * 剩下两个端点对应实例真实工具：`breath`（读全部）与 `trace`（关键词搜）。
+ * 写入不从 HTTP 暴露，只能由 Runtime 的 `memory_write` 确认流程调用 `hold`。
  */
 import type { FastifyInstance } from 'fastify'
 import { ErrorCodes } from '@shared/errors.js'

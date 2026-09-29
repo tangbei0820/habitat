@@ -60,8 +60,8 @@
 
 > **T-108 / T-109 施工边界**：留言板 Widget 只保存 `boardScope` 引用（recent / group / moment），服务端单条读取用于失效检测与原留言回链；不复制正文、不做 Widget 拖拽编排，不顺带进入日记富媒体或其它 Living Apps。
 
-> **当前优先路线（2026-09-29 · T-141）**：后续暂停扩建 Home / Life / Living Apps，优先按
-> `HABITAT_V2_PLAN.md` §23 完成 **Core-0 基线校准 → Core-1 Chat → Core-2 应用内通话 →
+> **当前优先路线（2026-09-29 · T-142）**：Core-0 基线校准已完成；后续暂停扩建 Home / Life / Living Apps，优先按
+> `HABITAT_V2_PLAN.md` §23 完成 **Core-1 Chat → Core-2 应用内通话 →
 > Core-3 Nocturne 记忆 → Core-4 Eventide / Desire 状态 → Core-5 核心联调与生产观察**。
 > 每个 Core 阶段可以拆多个内部提交，但必须整阶段验收、更新文档后再停止；PSTN / CallKit / 原生系统电话不属于 Web 应用内通话完成口径。
 

@@ -52,11 +52,10 @@
 | `autonomous` | AI 可自主调用，无需用户在旁 | 记忆读 / 记忆搜 / 状态读 / 日记的读与列 / 允许·拒绝查看 / 留言板写入与修改 / `tools.list` |
 | `confirm` | 须先过用户确认卡 | **已绑给模型**（P1）：调用不会执行，而是**挂起**成一条待确认事件 |
 | `user-only` | 仅用户可发起 | 保留语义；**不绑** —— 连「怎么调」都不让模型知道 |
-| `unavailable` | 依赖未就绪 / 阶段未实施 | `memory.write`（实例的写工具未接入） |
+| `unavailable` | 依赖未就绪 / 阶段未实施 | 当前没有固定的阶段占位；运行时会按真实依赖返回原因 |
 
-> ⚠️ P0 时 `confirm` 一律不绑（那时协议没落地，放给模型等于没闸门）。
-> **P1 起要绑** —— 不绑模型就永远不知道「我可以请求写日记」，它会以为这件事根本做不到。
-> 闸门从「不给它知道」移到了**执行层**：见 §4.5。
+> `confirm` 工具现在会绑定给模型；执行层负责挂起、过期、撤回和批准后的真实副作用。
+> 这不是“模型已经执行”，而是“模型可以提出一项需要确认的请求”；闸门位于执行层，见 §4.5。
 
 ### 2.2 当前能力表
 
@@ -64,7 +63,7 @@
 | --- | --- | --- | --- | --- |
 | `memory.read` | memory | autonomous | `memory_read` | 可用（需 Nocturne ready） |
 | `memory.search` | memory | autonomous | `memory_search` | 可用（需 Nocturne ready） |
-| `memory.write` | memory | confirm | — | 未实施（本阶段只读接入） |
+| `memory.write` | memory | confirm | `memory_write` | 可用（需 Nocturne ready；调用先挂起确认，批准后才写入） |
 | `state.read` | state | autonomous | `state_read` | 可用（需 Eventide） |
 | `diary.create` | diary | autonomous | `diary_create` | 可用 · 立即写入小栖私密日记 |
 | `diary.update` | diary | autonomous | `diary_update` | 可用 · 立即修改小栖私密日记 |
@@ -320,14 +319,12 @@ P2 负责把它摆到台面上 —— **只动呈现层，执行层一行没改*
 
 ---
 
-## 8. 待办（不在 P0/P1/P2 范围，已记 TASKS）
+## 8. 当前仍待补齐（Core-1～Core-5）
 
 - `FIELD_LABELS` 词典**未与真实 Eventide 的键集核对过**（键名不符时自动回退原键名，不会显示错值）
 - 工具卡片与助手气泡的时间顺序（见 `DATA_MODEL.md` §3.2 末）
-- **`memory.write` 仍未接入** —— Nocturne 实例的写工具（`hold`）没接，所以写记忆还是 `unavailable`。
-  真要写时按 `hold` 的 `kind` 设计入参（见 `docs/MEMORY.md`）
-- 确认卡的**过期 / 撤回**未做：挂了很久的请求会一直留在收件箱里（目前无害，但该有个上限）
-- `docs/PRODUCT_SPEC.md` §9.7「AI 自主工具调用暂不启用」需要随本层落地而订正
-- **记忆与工具仍没有界面**（P2 起在档案页标注「暂无界面」）：记忆是只读的 `breath` / `trace`，
-  工具是 Mini Terminal 与聊天里的工具卡片。要给它们做页面的话，得先想清楚「用户拿它做什么」
-- 确认卡的**前端交互**仍无自动化覆盖（前端脚本不接 mock 上游，触发不了工具调用）
+- `memory.write` 已接入 `hold`，但真实实例写入、失败回灌、去重 / 修正语义和来源审计仍归 Core-3 验收。
+- 确认卡服务端已经支持过期 / 撤回；前端展示、通知和自动化覆盖仍归 Core-1 / Core-3 补齐。
+- 记忆与工具没有独立“管理器”页面：记忆深处进入 Nocturne 原生 Dashboard，工具继续通过 Chat 工具卡 / Mini Terminal 暴露；
+  若未来新增页面，必须先定义用户任务，不能为了显示能力制造假入口。
+- `FIELD_LABELS`、工具卡时序、确认卡前端交互和真实 Provider / Nocturne / Eventide 端到端验收仍需补。

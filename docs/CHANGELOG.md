@@ -1313,3 +1313,10 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 提交 `0bd17b9` 已部署到 `https://habitat.beiyan.cc`，生产 `.env` / SQLite / nginx 配置未覆盖。
 - 重启前备份生产数据库为 `habitat.db.bak-20260929-113646`；`habitat-server` 重启后 active，本机与公网 `/api/health` 均返回 `ok: true`。
 - 服务器执行 `probe:provider-fallback` 9/9；生产 bundle 已检出「聊天失败回退」与最新 `sw.js`。
+
+### 2026-09-29 · T-142 · Core-0 基线与文档校准
+
+- 核对 Chat、应用内通话、Nocturne、Eventide、Desire 与 Provider 的真实实现边界，明确下一阶段只优先 Chat、通话、记忆与状态。
+- 修正 `AI_RUNTIME.md` / `API.md` 中已经过期的“记忆只读 / `memory.write` 未接入”描述：当前由 `memory_write` 进入确认收件箱，批准后调用 Nocturne `hold`；前端 HTTP 仍只读。
+- 记录通话当前仍是应用内逐句半双工，Core-2 的完成口径为流式队列、打断、重连和历史一致性，不把 PSTN / CallKit / 原生系统电话纳入 Web 完成标准。
+- 两端 typecheck、前端 build、Codex Adapter 5/5、Provider fallback 9/9 与 diff check 通过；本轮未新增业务代码或部署生产。

@@ -3730,3 +3730,22 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **完成口径**：现有能力先回归复用，不以重复开发冒充进度；“完整通话”限定为 Habitat 内互联网通话，PSTN / CallKit / 原生系统电话继续延期；每个 Core 阶段允许多个内部提交，但只在整阶段验收后停止。
 
 **计划依据**：详见仓库根目录 `HABITAT_V2_PLAN.md` §23～24。本次没有修改 `PRODUCT_SPEC.md` 的产品语义，也没有更新 `CHANGELOG.md`，因为尚未交付新的产品功能。
+
+### T-142 · 2026-09-29 · Core-0 · 基线与文档校准 —— **完成**
+
+**范围**：核对 Chat、通话、Nocturne、Eventide、Desire、Provider 的当前真实边界，修正能力文档漂移；不新增业务功能，不部署 VPS。
+
+| 领域 | 当前真实基线 | Core-0 结论 |
+| --- | --- | --- |
+| Chat | 已有发送 / 流式、消息对象操作、搜索 / 日期导航、公开思绪三路协议、联网搜索、压缩、贴纸、工具卡、关系暂停 / 恢复、Provider 首包回退。 | 进入 Core-1 做长期消息空间收口；不重复实现已存在能力。 |
+| 通话 | 服务端 `call_session` / `call_turn`、来电收件箱、SSE、接听 / 拒绝 / 挂断、逐句半双工、TTS / ASR、历史与 Life 时长已存在。 | Core-2 补流式队列、插话打断、状态机与断线恢复；PSTN / CallKit / 系统电话仍延期。 |
+| Nocturne | 真实 9 工具面已收敛为 `breath` / `trace` / `hold`；Runtime 绑定 `memory_read` / `memory_search` / `memory_write`，写入先进入确认收件箱；HTTP 仍只暴露 boot / search。 | 文档已从“只读 / 未接入写入”改为准确状态；Core-3 做真实写入、修正、来源与失败验收。 |
+| Eventide | sidecar + SQLite 当前快照 / 历史、状态可读化、每轮上下文注入、聊天后结算和主动行为状态推进已存在。 | `FIELD_LABELS` 仍需真实 payload 校准；Core-4 补完整趋势语义与回放。 |
+| Desire | 规划与分层规则已写入方案，生产代码尚未形成独立持久化动机引擎。 | Core-4 先做影子模式，不直接替换 Eventide。 |
+| Provider | 四能力卡、模型拉取 / 测试 / 方案、Codex Adapter 生命周期、聊天首包回退已存在。 | Core-0 只核对边界；密钥加密 / 轮换、自动熔断、Codex 原生工具映射仍后续处理。 |
+
+**文档同步**：更新 `docs/AI_RUNTIME.md`、`docs/API.md`、记忆 HTTP / Runtime 写入边界与确认卡现状；补充 `AGENTS.md` 当前阶段；`docs/MEMORY.md` 与 `docs/DATA_MODEL.md` 的核心事实与实现一致，无需重写。
+
+**验收**：两端 `npm run typecheck` 通过；前端 `npm run build` 通过（仅保留既有 chunk size warning）；`probe:codex-adapter` **5/5**；`probe:provider-fallback` **9/9**；`git diff --check` 通过。组合式 P1 shell 探针未运行，原因是当前 Windows 环境无 `/bin/bash`，不将其冒充为通过。
+
+**停止边界**：Core-0 已完成；下一步只进入 Core-1 Chat，不能顺带施工通话、记忆或 Home / Life。

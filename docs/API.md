@@ -490,10 +490,9 @@ LLM 页面「能力卡片」的数据来源，也是**用户能自己核对 AI �
       "module": "memory",
       "label": "写入记忆",
       "summary": "把一段新记忆存进长期记忆",
-      "modelHint": "…",
-      "enabled": false,
-      "autonomy": "unavailable",
-      "reason": "本阶段只读接入 Nocturne（实例的写工具 hold 尚未接入）"
+      "enabled": true,
+      "autonomy": "confirm",
+      "toolName": "memory_write"
     }
   ]
 }
@@ -749,7 +748,7 @@ AI 侧的事件**刻意没有 HTTP 决策入口** —— 它只能由 AI 通过 
 
 > `serverId` 传一个不存在的服务**不是错误** —— 返回空页（`total: 0`），因为它是个筛选条件而不是资源标识。
 
-## Phase 3A 已实现（长期记忆 · 经 MCP 单通道 · **只读**）
+## 长期记忆接口（经 MCP 单通道）
 
 前端只走到这里；服务端内部统一走 `MemoryProvider` → `ToolGateway` → Nocturne MCP
 （**不用 Nocturne 的 REST**，见 `AGENTS.md` §3 铁律 4）。
@@ -763,13 +762,15 @@ interface MemoryTextResult { text: string }
 即 Nocturne 工具返回的**给模型阅读的文本** —— 栖息地不解析、不依赖它的内部 schema
 （技术方案 §9 风险 5 的对策）。
 
-⚠️ **只有两个端点，且全是只读**（2026-09-24 对齐自部署实例的真实工具面后收敛）。
+⚠️ **前端 HTTP 端点仍只有两个，且都是只读**（`boot` / `search`）。
 原先的 `GET read` / `POST` / `PATCH` / `DELETE` 四个写端点**已移除** ——
 实例既没有 `uri` 概念，也没有「原地编辑 / 删除」语义，那四个端点从来不可能工作，
 且前端一个都没调用过。留着返回 500 只会让人误以为「配好就能用」。
 
-> 只读是**本阶段的刻意选择**：实例的 `hold` / `wander_mark` / `drive` 都能写，
-> 但 Phase 3A 不做写记忆。详见 `docs/MEMORY.md` 的「定稿映射」。
+> HTTP 端点只读是**前端边界的刻意选择**：实例的 `hold` 能写，但长期记忆写入只允许从 Runtime 的
+> `memory_write` 工具发起，并先进入确认收件箱；批准后由服务端适配器调用 `hold`。
+> `wander_mark` / `drive` 等实例工具仍不接入 Habitat 能力面，
+> 详见 `docs/MEMORY.md` 的「定稿映射」与 `docs/AI_RUNTIME.md` 的能力表。
 
 ### `GET /api/memory/boot`
 
