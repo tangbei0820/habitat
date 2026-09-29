@@ -336,6 +336,8 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
 ```json
 {
   "profileId": "deepseek",
+  "sessionId": "chat-session-id",
+  "interactionId": "chat-message-id",
   "model": "deepseek-chat",
   "messages": [{ "role": "user", "content": "你好" }],
   "temperature": 0.8,
@@ -348,6 +350,8 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
 ```
 
 `profileId` 缺省用注册表里 `isActive` 的方案；`model` 缺省用 `profile.modelMap.chat`。
+`interactionId` 是浏览器为本轮用户消息生成的本地幂等 id；服务端只保存结构化 Eventide 结算的 outbox 状态，
+不保存聊天正文。重连、服务重启或重复提交时，同一 id 不会重复消耗结算模型或重复应用状态；换一个回复仍应使用新的交互 id 或省略该字段。
 `webSearch` 只由聊天“更多功能 → 联网搜索”入口生成；缺省时本轮不会向模型暴露 Web 工具。
 存在时服务端会把 `web.search` 临时提升为本轮可调用能力，先执行公开网页检索，再把带查询、标题、来源链接、摘要、完成时间和成功 / 失败状态的工具结果回灌同一轮模型。网页内容标记为不可信资料，不执行脚本、不登录、不提交表单；搜索失败不得伪造答案。
 
@@ -863,7 +867,15 @@ Eventide 作为**无状态 Python sidecar**运行；habitat-server 持有并持�
 | sidecar 不可达 / 非 2xx / 响应形状损坏 | 502 | `PROVIDER_UPSTREAM_ERROR` |
 
 聊天成功收口后，服务端会在**不阻塞已送达回复**的后台任务里生成结构化互动结算，再交给 Eventide
-归一化、限幅并写回。结算调用同样落 `UsageRecord`；失败只写 `EventLog` 与服务端 warning。
+归一化、限幅并写回。结算调用同样落 `UsageRecord`；结构化结果进入可恢复 outbox，按 `interactionId`
+幂等应用。sidecar 短暂不可达时由下一轮调度扫描重试，失败只影响后效，不撤回已送达的聊天回复。
+
+### Core-5 结算恢复边界
+
+`core_settlement` 只保存 Eventide 已解析的结构化结果、重试次数、错误与 applied 状态，不保存 prompt 或聊天正文。
+`POST /api/chat` 与应用内通话复用同一轮用户消息 id；浏览器刷新、SSE 断线、服务重启后，调度器会重试 pending
+结算，成功后写入 Desire 结构化审计，下一轮上下文继续分别读取 Nocturne 记忆与 Eventide 状态卡。Provider 首段前回退、
+Nocturne / Eventide 不可用时的降级与工具结果回灌仍遵循各自原有边界，不把失败伪装成成功。
 
 ### 主动行为与 BudgetGuard
 

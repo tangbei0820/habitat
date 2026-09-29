@@ -3823,3 +3823,21 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`probe:desire-core4` **11/11**；两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过。生产 Eventide payload 与真实历史回放尚未在 VPS 运行，Core-5 再做受控联调与观察期，不将本地探针冒充生产验收。
 
 **明确延期**：Desire 从 shadow 升级为影响 Chat 语气 / Wake 候选、真实 Eventide payload 长期回放校准、候选的用户可视化决策面、PSTN / 原生通话与其它 Home / Life 大模块；下一步只进入 Core-5。
+
+### T-147 · 2026-09-29 · Core-5 · Chat / Call → State → Memory 核心联调与生产观察 —— **完成**
+
+**范围**：只完成核心链路的可恢复性、幂等与降级观察；不扩建 Home / Life / Living Apps，不把 Desire 升级为第二套 Agent Runtime。
+
+| 交付 | 结果 |
+| --- | --- |
+| 交互幂等 | `ChatStreamRequest.interactionId` 由浏览器绑定本轮用户消息；聊天与应用内通话复用同一结算边界，重复提交 / 重连不会重复结算。 |
+| 结构化 outbox | 新增服务端 SQLite `core_settlement`，只保存 Eventide JSON 结果、状态、重试次数与错误，不保存 prompt 或聊天正文；应用成功后标记 `applied`。 |
+| 失败恢复 | Eventide / sidecar 暂时失败时保留 `pending`；Automation 每轮扫描稳定超过 5 秒的 pending，服务重启后只重试已解析结果，不再次调用结算模型；Desire 观察失败不会把已成功的 Eventide 误报为失败。 |
+| 下一轮召回 | 恢复成功追加 `core.settlement.recovered` 与 Desire 结构化审计；下一轮上下文仍分别注入 Nocturne 记忆、能力快照与 Eventide 状态卡，单条增强链故障不吞掉用户对话。 |
+| 生产边界 | 部署前备份 VPS SQLite / `.env`，重启后检查 habitat-server、Eventide / Nocturne 健康、公网健康、线上 bundle 与 Core-5 探针；不以模拟 Provider 结果冒充真实聊天内容。 |
+
+**参考取舍**：本批是可靠性 / 运维闭环，不新增产品交互，因此不引入新的外部参考项目；复用已有 Provider 首段回退、Nocturne MCP、Eventide sidecar 与 Core-4 Desire shadow 事实源。
+
+**验收**：`probe:core5` **12/12**（结算 outbox、重复交互、sidecar 失败恢复、服务重启读回、聊天结算、Nocturne / Eventide 降级与下一轮上下文）；`probe:desire-core4` **11/11**；两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；生产部署后服务健康与公网 API 验收通过。
+
+**明确延期**：真实硬件通话 / 麦克风授权、PSTN / CallKit / WebRTC 全双工、Nocturne 原生编辑 / 删除 / 回滚、Desire 影响语气与主动行为、Home / Life 其它大模块仍不在 Core-5；本阶段完成后停止。

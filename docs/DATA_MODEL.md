@@ -531,3 +531,19 @@ Eventide 调度事件，保存结构化 signal 与倾向变化。
 
 该表由服务端启动期 `CREATE TABLE IF NOT EXISTS` 追加，不改 Dexie、不升前端备份版本；普通 UI
 只显示生活化摘要与 shadow 标记，高级 raw 视图才显示完整结构化快照。
+
+## 17. Core-5 结构化结算 outbox（服务端 SQLite）
+
+`core_settlement` 是聊天 / 通话后 Eventide 互动结算的可恢复边界，不是聊天记录，也不是第二套状态模型。
+模型只在首次结算时生成结构化 JSON；Eventide 失败时保留 pending，下一次调度或服务重启后只重试已生成的结果，
+不重复调用结算模型。
+
+| 字段 | 说明 |
+|---|---|
+| `interaction_id` | 浏览器本轮用户消息 id，主键；同一轮重复请求只能应用一次 |
+| `result_json` | Eventide 结算结构化结果；不含 prompt、用户消息或助手正文 |
+| `status` / `attempt_count` | `pending` / `applied` 与失败重试次数 |
+| `last_error` / `created_at` / `updated_at` / `applied_at` | 诊断与恢复扫描所需的最小状态 |
+
+该表由启动期 `CREATE TABLE IF NOT EXISTS` 追加，不改 Dexie、不升前端备份版本。调度器每分钟扫描稳定超过 5 秒的
+pending 项；恢复成功后追加 `core.settlement.recovered` 与 Desire 结构化审计，重复应用只追加 duplicate 事实。

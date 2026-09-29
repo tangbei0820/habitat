@@ -219,6 +219,12 @@ function parseBody(raw: unknown): ChatStreamRequest {
 
   const profileId = typeof record.profileId === 'string' && record.profileId !== '' ? record.profileId : undefined
   const sessionId = typeof record.sessionId === 'string' && record.sessionId !== '' ? record.sessionId : undefined
+  const interactionId = typeof record.interactionId === 'string' && record.interactionId.trim() !== ''
+    ? record.interactionId.trim()
+    : undefined
+  if (interactionId !== undefined && interactionId.length > 160) {
+    throw new ProviderError(ErrorCodes.BadRequest, 'interactionId 最长 160 字符')
+  }
   const model = typeof record.model === 'string' && record.model !== '' ? record.model : undefined
   const temperature = parseNumber(record.temperature, 'temperature')
   const maxTokens = parseNumber(record.maxTokens, 'maxTokens')
@@ -238,6 +244,7 @@ function parseBody(raw: unknown): ChatStreamRequest {
   return {
     ...(profileId === undefined ? {} : { profileId }),
     ...(sessionId === undefined ? {} : { sessionId }),
+    ...(interactionId === undefined ? {} : { interactionId }),
     ...(model === undefined ? {} : { model }),
     messages: parseMessages(record.messages),
     ...(temperature === undefined ? {} : { temperature }),
@@ -737,6 +744,8 @@ export function registerChatRoutes(
         messages: body.messages,
         assistantText,
         logger: request.log,
+        ...(body.interactionId === undefined ? {} : { interactionId: body.interactionId }),
+        desire,
       })
     }
 

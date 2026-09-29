@@ -29,6 +29,7 @@ import { createSurfRecord, fingerprintOf, getSurfFeeds, recentSurfFingerprints }
 import { getRelationshipSnapshot } from '../db/relationship.js'
 import { sendWebPush } from './push.js'
 import { DesireEngine } from './desire.js'
+import { retryPendingCoreSettlements } from './settlement.js'
 
 export interface AutomationActionResult {
   kind: AutomationKind | 'event'
@@ -254,6 +255,11 @@ export class AutomationService {
       this.desire.tick(now.getTime())
     } catch (error) {
       this.logger.warn({ err: error }, 'Desire 影子 tick 失败；不影响主动行为调度')
+    }
+    try {
+      await retryPendingCoreSettlements(this.state, this.desire, this.logger, now.getTime())
+    } catch (error) {
+      this.logger.warn({ err: error }, 'Core-5 结算 outbox 扫描失败；不影响主动行为调度')
     }
     if (this.state !== null) {
       try {

@@ -532,7 +532,7 @@ export function ChatWindowPage() {
   async function runGeneration(
     history: LlmChatMessage[],
     targetId: string | null,
-    options: { webSearchQuery?: string; onReplyChunk?: (text: string) => void } = {},
+    options: { webSearchQuery?: string; onReplyChunk?: (text: string) => void; interactionId?: string } = {},
   ): Promise<string> {
     if (sessionId === undefined) return ''
     const controller = new AbortController()
@@ -596,6 +596,7 @@ export function ChatWindowPage() {
       await streamChat(
         {
           ...(sessionId === undefined ? {} : { sessionId }),
+          ...(options.interactionId === undefined ? {} : { interactionId: options.interactionId }),
           messages: history,
           ...(options.webSearchQuery === undefined ? {} : { webSearch: { query: options.webSearchQuery } }),
           ...(stickerCatalog.length === 0 ? {} : {
@@ -767,6 +768,7 @@ export function ChatWindowPage() {
       {
         ...(input.webSearchQuery === undefined ? {} : { webSearchQuery: input.webSearchQuery }),
         ...(input.onReplyChunk === undefined ? {} : { onReplyChunk: input.onReplyChunk }),
+        interactionId: userMessage.id,
       },
     )
   }
@@ -808,7 +810,10 @@ export function ChatWindowPage() {
     const summary = currentContextSummary()
     const list = summary === null ? messagesRef.current : await listMessages(sessionId)
     if (list.length === 0) return
-    await runGeneration(historyUpTo(list, list.length - 1, summary), null)
+    const lastUser = [...list].reverse().find((message) => message.role === 'user')
+    await runGeneration(historyUpTo(list, list.length - 1, summary), null, {
+      ...(lastUser === undefined ? {} : { interactionId: lastUser.id }),
+    })
   }
 
   /** 语音条（SPEC §2.4.4）：与文本消息同一套发送规则，只是块是音频 */
@@ -1199,7 +1204,7 @@ export function ChatWindowPage() {
     if (sending) return
     const history = await buildHistoryThrough(userMessageId, messages)
     if (history.length === 0) return
-    await runGeneration(history, null)
+    await runGeneration(history, null, { interactionId: userMessageId })
   }
 
   /** 换一个：重新生成同一条回复，旧正文进版本历史（可切回） */

@@ -443,6 +443,21 @@ CREATE TABLE IF NOT EXISTS eventide_history (
 CREATE INDEX IF NOT EXISTS idx_eventide_history_at ON eventide_history (settled_at DESC, id DESC);
 `)
 
+// Core-5 聊天 → Eventide 结构化结算 outbox：可重试、可恢复、按交互 id 幂等，不存聊天正文。
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS core_settlement (
+  interaction_id TEXT PRIMARY KEY,
+  result_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'applied')),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  applied_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_core_settlement_pending ON core_settlement (status, updated_at ASC);
+`)
+
 // Core-4 Desire 影子动机：结构化状态与审计，不复制聊天正文，也不替代 Eventide。
 sqlite.exec(`
 CREATE TABLE IF NOT EXISTS desire_state (

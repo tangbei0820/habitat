@@ -1351,3 +1351,11 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - Wake / Solitude 只有真实完成结果才 satisfy；失败、取消、阻断、权限拒绝和 no-op 不伪装成满足。Desire 不注入 Chat、不调用 LLM、不直接执行行动。
 - 新增 `/api/desire`、`POST /api/desire/tick`、Life Runtime / Eventide shadow 视图与 `probe:desire-core4` **11/11**；两端 typecheck、前端 build、diff check 通过，尚未部署 VPS。
 - 参考 [Drivesoid](https://github.com/A1batr055/Drivesoid) 的事件驱动连续维度和 [jiwen](https://github.com/ClaraShafiq/jiwen) 的确定性 tick / 候选意图；不替换 Eventide，不复制外部项目真相源。
+
+### 2026-09-29 · T-147 · Core-5 Chat / Call → State → Memory（生产）
+
+- 聊天流请求新增本地 `interactionId`；应用内通话复用同一轮用户消息边界，重复提交 / 重连不会重复触发 Eventide 结算。
+- 新增 SQLite `core_settlement` 结构化 outbox：只保存 Eventide 结果与恢复状态，不保存聊天正文；sidecar 故障、网络中断或服务重启后由 Automation 扫描 pending 并只重试已解析结果。
+- 结算成功进入 Desire 结构化审计，下一轮上下文继续独立召回 Nocturne 与 Eventide；Nocturne / Eventide 任一不可用时只降级对应增强链，不影响已送达聊天。
+- `probe:core5` **12/12**、`probe:desire-core4` **11/11**；两端 typecheck、前端 build、diff check 通过。已完成 VPS 备份、部署、服务重启与公网健康 / 线上 bundle / Core-5 探针验收。
+- Core-5 到此停止；不进入新的 Home / Life 或其它功能施工。

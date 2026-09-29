@@ -519,6 +519,23 @@ export const eventideHistory = sqliteTable('eventide_history', {
 export type EventideHistoryRow = typeof eventideHistory.$inferSelect
 export type NewEventideHistoryRow = typeof eventideHistory.$inferInsert
 
+/**
+ * Core-5 聊天 → Eventide 结算 outbox：只保存已经交给 Eventide 的结构化结果，
+ * 不保存结算 prompt 或聊天正文；`interaction_id` 唯一用于防重复应用。
+ */
+export const coreSettlement = sqliteTable('core_settlement', {
+  interactionId: text('interaction_id').primaryKey(),
+  resultJson: text('result_json', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  status: text('status', { enum: ['pending', 'applied'] }).notNull(),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  lastError: text('last_error'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+  appliedAt: integer('applied_at'),
+})
+
+export type CoreSettlementRow = typeof coreSettlement.$inferSelect
+
 /** Core-4 Desire 影子状态：只保存结构化倾向与候选，不保存原始聊天正文。 */
 export const desireState = sqliteTable('desire_state', {
   id: text('id').primaryKey(),

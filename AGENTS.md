@@ -72,6 +72,8 @@
 
 > **Core-4 当前结果（2026-09-29 · T-146）**：Eventide 继续作为身体 / 情绪状态真相源；状态页改用统一 payload 可读化，动态字段标签有通用校准与安全回退，趋势 / 按天 / 最近变化 / raw 高级视图保持真实数据边界；新增 Desire 影子动机层，接收聊天、通话与 Eventide 结构化事件，保存八维倾向、闪念 / 执念、候选意图、衰减、阻断、行动满足与审计，但不注入 Chat、不调用 LLM、不直接执行行动；`probe:desire-core4` 11/11，两端 typecheck、前端 build、diff check 通过，尚未部署 VPS。生产 Eventide payload 与真实回放仍需 Core-5 观察期受控验证；下一步只进入 Core-5。
 
+> **Core-5 当前结果（2026-09-29 · T-147）**：聊天与应用内通话继续复用现有 Provider / SSE / 状态 / 记忆链路；本轮新增 `interactionId` 幂等边界与 SQLite `core_settlement` 结构化 outbox。Eventide 结算结果在 sidecar / 网络 / 服务重启后可恢复，重复交互不会重复消耗结算模型或重复应用状态；恢复成功会进入 Desire 结构化审计，下一轮上下文继续独立召回 Nocturne 与 Eventide，任一增强链失败只降级自身。`probe:core5` 12/12，生产部署与公网健康 / outbox 恢复观察已完成；下一阶段停止在 Core-5，不进入其它 Home / Life 功能。
+
 **历史阶段路线（仅用于解释旧任务编号）**：P0 基座可视化 → P1 Chat MVP → P2 Home → P3A 记忆 → P3B 状态 → P4 Life → P5 高级能力 → P6 打磨。当前施工顺序以 T-141 / `HABITAT_V2_PLAN.md` §23 为准。
 
 **目录结构**
