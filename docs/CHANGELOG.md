@@ -1307,3 +1307,9 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 服务端复用 `app_kv` 持久化策略，兼容读取旧 `HABITAT_CHAT_FALLBACK_PROFILE_ID` 环境变量；设置保存后由服务端策略接管。
 - 聊天首个 SSE 内容前按顺序尝试备用 Provider，流式开始后不切换、不重放；删除被备用链引用的连接会被阻止。
 - 延期自动熔断 / 冷却、模型级权重路由、密钥加密轮换与 Codex 原生工具事件映射。
+
+### 2026-09-29 · T-140 · T-139 全量部署 VPS（生产）
+
+- 提交 `0bd17b9` 已部署到 `https://habitat.beiyan.cc`，生产 `.env` / SQLite / nginx 配置未覆盖。
+- 重启前备份生产数据库为 `habitat.db.bak-20260929-113646`；`habitat-server` 重启后 active，本机与公网 `/api/health` 均返回 `ok: true`。
+- 服务器执行 `probe:provider-fallback` 9/9；生产 bundle 已检出「聊天失败回退」与最新 `sw.js`。

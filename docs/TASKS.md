@@ -3699,3 +3699,16 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`probe:provider-fallback` **9/9**、两端 `npm run typecheck`、`npm run build`、`git diff --check` 通过；未部署 VPS。
 
 **明确延期**：按失败次数自动熔断 / 冷却、模型级权重路由、Provider 密钥加密与轮换、Codex 原生工具事件映射、多线程持久化仍留在后续 Provider 阶段。
+
+### T-140 · 2026-09-29 · V2-A · T-139 全量部署 VPS —— **完成（生产）**
+
+**范围**：将提交 `0bd17b9` 的 Provider Center 可视化聊天回退策略与配套文档 / 前端构建产物更新至 `https://habitat.beiyan.cc`；保留生产 `.env`、SQLite、依赖与 nginx 配置。
+
+| 交付 | 结果 |
+| --- | --- |
+| 代码上机 | 本地构建包 `habitat-0bd17b9-deploy.tar.gz` 上传并解包到 `/srv/habitat`；生产 `server/src/db/provider-fallback.ts` 与本地 SHA-256 一致。 |
+| 数据安全 | 停服后备份生产数据库为 `server/data/habitat.db.bak-20260929-113646`；`.env` 与 `server/data` 未进入部署包。 |
+| 服务恢复 | `habitat-server` 重启后 `active`，本机 `/api/health` 与公网 `https://habitat.beiyan.cc/api/health` 均返回 `ok: true`。 |
+| 功能验收 | 服务器执行 `probe:provider-fallback` **9/9**；生产 bundle 含「聊天失败回退」，`sw.js` 存在。 |
+
+**阶段边界**：本次只部署已完成的 T-139，不进入下一功能；Codex 原生工具事件映射、自动熔断 / 冷却与密钥轮换仍按 T-139 延期项保留。

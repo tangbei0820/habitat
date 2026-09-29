@@ -425,5 +425,6 @@ habitat/
 - ✅ **T-136 共读状态工具**：新增 `reading_status`，返回本轮进度、书签、累计阅读时长、批注 / 生词数量和窗口边界；探针 11/11、两端 typecheck 与前端 build 通过，未部署 VPS。
 - ✅ **T-137 共读窗口搜索与生词解释工具**：新增 `reading_search`、`reading_vocab`、`reading_annotate_vocab`，限定当前浏览器窗口并复用本地生词本更新；探针 15/15、两端 typecheck 与前端 build 通过，未部署 VPS。
 - ✅ **T-138 Codex Subscription Adapter 生命周期收口**：按 turn 隔离并发事件，补齐 usage、取消、旧进程退出保护与懒重启恢复；`probe:codex-adapter` 5/5，服务端 / 前端 typecheck 与 build 通过，未部署 VPS。
-- ✅ **T-139 Provider Center 可视化聊天回退策略**：设置页支持最多 3 个有序备用连接、启停、保存与恢复；服务端复用 `app_kv`，首个 SSE 内容前按序回退，删除被备用链引用的连接会被阻止；`probe:provider-fallback` 9/9、两端 typecheck 与 build 通过，未部署 VPS。
+- ✅ **T-139 Provider Center 可视化聊天回退策略**：设置页支持最多 3 个有序备用连接、启停、保存与恢复；服务端复用 `app_kv`，首个 SSE 内容前按序回退，删除被备用链引用的连接会被阻止；`probe:provider-fallback` 9/9、两端 typecheck 与 build 通过。
+- ✅ **T-140 T-139 全量部署 VPS**：提交 `0bd17b9` 已更新至 `https://habitat.beiyan.cc`；生产数据库备份为 `habitat.db.bak-20260929-113646`，`habitat-server` active，本机 / 公网 health 均通过，服务器回退探针 9/9。
 - 共读仍明确缺 Tasogare 风格全文 MCP、PDF 原版分页 / OCR、EPUB 精确排版与图片、跨设备同步。
