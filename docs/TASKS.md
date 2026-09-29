@@ -3842,7 +3842,7 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 
 **明确延期**：真实硬件通话 / 麦克风授权、PSTN / CallKit / WebRTC 全双工、Nocturne 原生编辑 / 删除 / 回滚、Desire 影响语气与主动行为、Home / Life 其它大模块仍不在 Core-5；本阶段完成后停止。
 
-### T-148 · 2026-09-29 · Core-6 · Runtime 信任与审计收口 —— **完成（待生产部署）**
+### T-148 · 2026-09-29 · Core-6 · Runtime 信任与审计收口 —— **完成（生产）**
 
 **范围**：只收口核心 Runtime 的确认事件、状态可读化与工具时序信任边界；不进入 Home / Life 新模块，
 不代理 Nocturne 原生编辑 / 删除 / 回滚，不把 Desire 升级成第二套 Agent Runtime。
@@ -3854,6 +3854,8 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 | 生命周期 | 既有过期 / 撤回 / 单次决策继续保留审计；确认卡始终从服务端读取真实状态，不做乐观成功。 |
 | Eventide 可读化 | 依据生产 sidecar `5d8bef9` 的 `heat / pressure / control / sensitivity / reserve / possessiveness / fatigue` 校准字段标签；动态 `{value, level, description}` 展示真实值与描述，未知键安全回退。 |
 | 工具顺序 | 回归同一助手消息 `blocks.order` 的正文 → 工具 → 后续正文协议；不新增第二套消息 / 工具模型。 |
-| 验收 | `probe:core6` **7/7**；Core-4 / Core-5 探针通过；两端 typecheck、前端 build、diff check 通过。 |
+| 验收 | `probe:core6` **7/7**；Core-4 / Core-5 探针通过；两端 typecheck、前端 build、diff check 通过；已部署 VPS 并完成公网健康 / 状态 / bundle 验收。 |
 
 **明确延期**：Nocturne 原生 URI 管理代理、Desire 对语气 / Wake 的真实影响、PSTN / CallKit / WebRTC 全双工、Home / Life / Living Apps 继续留在 Later。
+
+**生产记录**：部署提交 `f65bcf5`；生产 SQLite 备份 `/srv/habitat/server/data/habitat.db.bak-20260929-160650`，环境备份 `/srv/habitat/server/.env.bak-20260929-160650`；`habitat-server` / `habitat-eventide` 均 active，公网 `/api/health`、`/api/health/state` 与线上 Core-6 / Core-5 / Core-4 探针通过。
