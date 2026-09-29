@@ -419,3 +419,5 @@ habitat/
 - 共读仍明确缺 PDF 原版分页与扫描 OCR、EPUB 精确排版 / 图片、Tasogare 风格阅读 MCP、AI 翻页 / 生词工具、批注收藏和跨设备同步。
 - ✅ **T-132 共读 Runtime 接入**：Chat 每轮从本地书架裁出临时阅读窗口，新增 `reading_context` / `reading_read` / `reading_annotate`；小栖批注由浏览器写回原书并进入 Life，服务端不持久化书籍正文。两端 typecheck、前端 build、`probe:reading-tools` 6/6 通过，未部署 VPS。
 - 共读仍明确缺原版 PDF 分页 / OCR、EPUB 精确排版、Tasogare 风格全文 MCP、AI 翻页 / 生词工具、批注收藏和跨设备同步；T-132 不把临时窗口工具称成完整远程书架。
+- ✅ **T-133 共读 AI 翻页与生词工具**：新增 `reading_advance` / `reading_vocabulary`，浏览器复用原书进度 / 生词本并投影 Life；探针 9/9、两端 typecheck 与前端 build 通过，未部署 VPS。
+- 共读仍明确缺 Tasogare 风格全文 MCP / recent activity、PDF 原版分页 / OCR、EPUB 精确排版与图片、批注收藏和跨设备同步。

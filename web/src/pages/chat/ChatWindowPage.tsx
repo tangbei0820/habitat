@@ -25,9 +25,11 @@ import {
   createMessageBookmark,
   createMessagePhotos,
   addReadingAnnotation,
+  addReadingVocabulary,
   getReadingBook,
   listReadingNotes,
   listMusicTracks,
+  updateReadingBookState,
 } from '../../db/home'
 import {
   addVersion,
@@ -211,6 +213,13 @@ async function buildChatReadingCatalog(): Promise<ChatReadingBookItem[]> {
         note: annotation.note,
         author: annotation.author,
         createdAt: annotation.createdAt,
+      })),
+      vocabulary: reader.vocabulary.slice(-40).map((word) => ({
+        id: word.id,
+        paragraphIndex: word.paragraphIndex,
+        term: word.term,
+        note: word.note,
+        createdAt: word.createdAt,
       })),
     })
   }
@@ -1047,6 +1056,67 @@ export function ChatWindowPage() {
       } catch (err) {
         log.error('保存 AI 共读批注失败', err)
         setErrorText('AI 的共读批注保存失败')
+      }
+    }
+    if (call.ok && call.readingNavigation !== undefined) {
+      const { bookId, paragraphIndex } = call.readingNavigation
+      try {
+        const books = await listReadingNotes()
+        const book = books.find((item) => item.id === bookId)
+        const reader = book === undefined ? null : getReadingBook(book)
+        const totalParagraphs = reader?.content.split('\n').length ?? 0
+        if (book === undefined || reader === null || paragraphIndex < 0 || paragraphIndex >= totalParagraphs) {
+          setErrorText('AI 的共读翻页位置无效，未改动本地进度')
+          return
+        }
+        const updated = await updateReadingBookState(bookId, { currentParagraph: paragraphIndex })
+        const updatedReader = getReadingBook(updated)
+        void appendReadingLifeEvent({
+          eventType: 'reading.progress',
+          bookId,
+          bookTitle: book.bookTitle,
+          paragraphIndex,
+          mode: 'reader',
+          ...(updatedReader === null ? {} : {
+            progressPercent: totalParagraphs <= 0 ? 0 : Math.round(((paragraphIndex + 1) / totalParagraphs) * 100),
+            readingSecondsTotal: updatedReader.readingSeconds,
+          }),
+        }).catch((err) => log.error('记录 AI 共读翻页 Life 事实失败', err))
+        showToast(`小栖把《${book.bookTitle}》翻到第 ${paragraphIndex + 1} 段`)
+      } catch (err) {
+        log.error('保存 AI 共读翻页失败', err)
+        setErrorText('AI 的共读翻页保存失败')
+      }
+    }
+    if (call.ok && call.readingVocabulary !== undefined) {
+      const { bookId, paragraphIndex, term, note } = call.readingVocabulary
+      try {
+        const books = await listReadingNotes()
+        const book = books.find((item) => item.id === bookId)
+        const reader = book === undefined ? null : getReadingBook(book)
+        if (book === undefined || reader === null) {
+          setErrorText('AI 的共读生词找不到对应书籍，未写入本地书架')
+          return
+        }
+        const duplicate = reader.vocabulary.some((word) => word.paragraphIndex === paragraphIndex && word.term === term)
+        if (duplicate) {
+          showToast(`「${term}」已经在生词本里`)
+          return
+        }
+        const updated = await addReadingVocabulary(bookId, paragraphIndex, term, note)
+        const updatedReader = getReadingBook(updated)
+        void appendReadingLifeEvent({
+          eventType: 'reading.vocabulary',
+          bookId,
+          bookTitle: book.bookTitle,
+          paragraphIndex,
+          mode: 'reader',
+          ...(updatedReader === null ? {} : { readingSecondsTotal: updatedReader.readingSeconds }),
+        }).catch((err) => log.error('记录 AI 共读生词 Life 事实失败', err))
+        showToast(`小栖把「${term}」记进了《${book.bookTitle}》生词本`)
+      } catch (err) {
+        log.error('保存 AI 共读生词失败', err)
+        setErrorText('AI 的共读生词保存失败')
       }
     }
   }

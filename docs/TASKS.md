@@ -3588,3 +3588,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：服务端 `npm run probe:reading-tools` **6/6**；两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过。未新增 Dexie / 备份版本，未部署 VPS。
 
 **明确延期**：Tasogare 风格翻页 / 搜索 MCP、AI 翻页与生词工具、PDF 原版分页 / OCR、EPUB 精确排版与图片、批注收藏、跨设备书籍同步；本批不提前施工。
+
+### T-133 · 2026-09-29 · V2-D · 共读 AI 翻页与生词工具—— **完成（本地，未部署）**
+
+**范围**：在 T-132 的本地书架临时窗口上补齐“AI 可以选择翻页 / 记生词”的最小真实闭环；不引入第二套书库、不把整本书传到服务端、不冒充完整 Tasogare MCP。
+
+| 交付 | 说明 |
+| --- | --- |
+| AI 翻页 | 新增 `reading_advance`；支持当前窗口内的上一段 / 下一段或指定段落，浏览器复用 `currentParagraph` 写回原书，窗口外和边界动作有明确反馈。 |
+| AI 生词 | 新增 `reading_vocabulary`；只接受目标段落中真实出现的词，浏览器复用 `ReadingBookState.vocabulary` 写回原书，重复词幂等。 |
+| Life / 审计 | 翻页追加 `reading.progress`，生词追加 `reading.vocabulary`；工具卡保留“共读”来源，服务端只回传书籍 id / 段落 / 结果，不保存正文。 |
+| 目录边界 | Chat 临时目录增加最近生词快照；同一轮翻页 / 生词键与浏览器本地现状双重去重，保持无新 Dexie / 备份版本。 |
+| 参考取舍 | 继续借 [Tasogare](https://github.com/EnhydrInk/tasogare) 的 AI 翻页、阅读状态与生词工具边界；不搬运其服务端 JSON 书库、完整页渲染或 MCP 认证层。 |
+
+**验收**：服务端 `npm run probe:reading-tools` **9/9**；两端 `npm run typecheck`、前端生产构建、`git diff --check` 通过。未新增 schema / 备份版本，未部署 VPS。
+
+**明确延期**：Tasogare 风格全文 MCP / recent activity、PDF 原版页渲染与 OCR、EPUB 图片 / CSS 精排、批注收藏、跨设备同步；本批不提前施工。

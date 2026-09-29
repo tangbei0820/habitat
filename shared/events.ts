@@ -27,6 +27,15 @@ export interface ChatReadingAnnotationItem {
   createdAt: number
 }
 
+/** 本轮共读目录中的生词快照；与原书的 ReadingBookState.vocabulary 同构但不持久化。 */
+export interface ChatReadingVocabularyItem {
+  id: string
+  paragraphIndex: number
+  term: string
+  note: string
+  createdAt: number
+}
+
 /** 共读 Runtime 的轻量目录：正文是当前段落附近的窗口，不是整本书的上传。 */
 export interface ChatReadingBookItem {
   id: string
@@ -40,6 +49,7 @@ export interface ChatReadingBookItem {
   paragraphOffset: number
   paragraphs: string[]
   annotations: ChatReadingAnnotationItem[]
+  vocabulary: ChatReadingVocabularyItem[]
 }
 
 export type SseEventType =
@@ -154,6 +164,18 @@ export interface ChatToolCallPayload {
     bookId: string
     paragraphIndex: number
     text: string
+    note: string
+  }
+  /** `reading_advance` 成功时由浏览器更新原书阅读位置。 */
+  readingNavigation?: {
+    bookId: string
+    paragraphIndex: number
+  }
+  /** `reading_vocabulary` 成功时由浏览器写回原书生词本。 */
+  readingVocabulary?: {
+    bookId: string
+    paragraphIndex: number
+    term: string
     note: string
   }
 }

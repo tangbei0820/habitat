@@ -93,6 +93,16 @@ export interface ToolOutcome {
     text: string
     note: string
   }
+  readingNavigation?: {
+    bookId: string
+    paragraphIndex: number
+  }
+  readingVocabulary?: {
+    bookId: string
+    paragraphIndex: number
+    term: string
+    note: string
+  }
 }
 
 /** 工具正文进模型上下文的上限：记忆全文可能很长，但也不能无界 */
@@ -166,6 +176,10 @@ export interface ToolRuntime {
   readingCatalog?: readonly ChatReadingBookItem[]
   /** 本轮已经返回给浏览器的批注键；防止工具循环重复发起同一写回。 */
   readingAnnotationKeys?: Set<string>
+  /** 本轮已经返回给浏览器的阅读位置键；防止工具循环重复翻到同一段。 */
+  readingNavigationKeys?: Set<string>
+  /** 本轮已经返回给浏览器的生词键；防止工具循环重复写回。 */
+  readingVocabularyKeys?: Set<string>
   /** 本次聊天请求已发送的表情；防止模型在多轮工具循环里重复发图。 */
   stickerSentId?: string
   /** 当前聊天会话 id；仅用于将 AI 发起的来电绑定到原会话。 */
@@ -558,7 +572,7 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
         if (books.length === 0) return { ok: true, text: '(本轮没有提供共读书架)', summary: '本轮没有可用书架' }
         const lines = books.map((book) => {
           const progress = book.totalParagraphs <= 0 ? 0 : Math.min(100, Math.round(((book.currentParagraph + 1) / book.totalParagraphs) * 100))
-          return `- 《${book.title}》${book.author === null ? '' : ` · ${book.author}`}（${book.format.toUpperCase()}，id: ${book.id}）进度 ${progress}%（第 ${book.currentParagraph + 1}/${book.totalParagraphs} 段，${book.annotations.length} 条批注${book.bookmarkParagraph === null ? '' : `，书签第 ${book.bookmarkParagraph + 1} 段`}）`
+          return `- 《${book.title}》${book.author === null ? '' : ` · ${book.author}`}（${book.format.toUpperCase()}，id: ${book.id}）进度 ${progress}%（第 ${book.currentParagraph + 1}/${book.totalParagraphs} 段，${book.annotations.length} 条批注，${book.vocabulary.length} 个生词${book.bookmarkParagraph === null ? '' : `，书签第 ${book.bookmarkParagraph + 1} 段`}）`
         })
         const text = `# 本轮共读书架\n\n${lines.join('\n')}\n\n正文只能通过 reading_read 读取当前窗口；本轮没有上传整本书。`
         return { ok: true, text, summary: `已读取 ${books.length} 本共读书`, detail: clip(text, DETAIL_LIMIT) }
@@ -583,6 +597,36 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
         }
         const text = `《${book.title}》${book.author === null ? '' : ` · ${book.author}`}（${book.format.toUpperCase()}）\n${rows.join('\n\n')}`
         return { ok: true, text: clip(text, TOOL_TEXT_LIMIT), summary: `读了《${book.title}》第 ${requested + 1} 段`, detail: clip(text, DETAIL_LIMIT) }
+      }
+
+      case 'reading.advance': {
+        const book = readingBook(runtime, value.bookId)
+        if (book === null) return failure(tool, '找不到这本书；请先调用 reading_context')
+        const hasDirection = value.direction !== undefined
+        const hasTarget = value.paragraphIndex !== undefined
+        if (hasDirection && hasTarget) return failure(tool, 'direction 与 paragraphIndex 只能传一个')
+        let target: number
+        if (hasTarget) {
+          if (typeof value.paragraphIndex !== 'number' || !Number.isInteger(value.paragraphIndex)) return failure(tool, 'paragraphIndex 必须是整数')
+          target = value.paragraphIndex
+        } else if (value.direction === 'next' || value.direction === 'previous') {
+          target = book.currentParagraph + (value.direction === 'next' ? 1 : -1)
+        } else {
+          return failure(tool, '需要 direction=next/previous 或 paragraphIndex')
+        }
+        if (target < 0 || target >= book.totalParagraphs) return { ok: true, text: `《${book.title}》已经在${target < 0 ? '第一' : '最后'}段，阅读位置没有改变。`, summary: '已在阅读边界' }
+        const range = readingRange(book)
+        if (target < range.start || target > range.end) return failure(tool, `第 ${target + 1} 段不在本轮阅读窗口内；当前窗口为第 ${range.start + 1}–${range.end + 1} 段`)
+        const key = `${book.id}:${target}`
+        if (runtime.readingNavigationKeys?.has(key)) return { ok: true, text: `阅读位置已经指向《${book.title}》第 ${target + 1} 段，本轮不重复移动。`, summary: '阅读位置已更新' }
+        runtime.readingNavigationKeys?.add(key)
+        appendEventLog('capability.reading.advance', { bookId: book.id, paragraphIndex: target }, book.id)
+        return {
+          ok: true,
+          text: `已把《${book.title}》的阅读位置移到第 ${target + 1} 段。浏览器会写回本地进度。`,
+          summary: `翻到《${book.title}》第 ${target + 1} 段`,
+          readingNavigation: { bookId: book.id, paragraphIndex: target },
+        }
       }
 
       case 'reading.annotate': {
@@ -611,6 +655,7 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
           return { ok: true, text: `《${book.title}》第 ${requested + 1} 段已经有相同的小栖批注，本次没有重复写入。`, summary: '已有相同共读批注' }
         }
         runtime.readingAnnotationKeys?.add(annotationKey)
+        appendEventLog('capability.reading.annotate', { bookId: book.id, paragraphIndex: requested, author: 'companion' }, book.id)
         const annotation = { bookId: book.id, paragraphIndex: requested, text, note }
         return {
           ok: true,
@@ -618,6 +663,36 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
           summary: `为《${book.title}》留下共读批注`,
           detail: `${text}\n${note}`,
           readingAnnotation: annotation,
+        }
+      }
+
+      case 'reading.vocabulary': {
+        const book = readingBook(runtime, value.bookId)
+        if (book === null) return failure(tool, '找不到这本书；请先调用 reading_context')
+        const requested = value.paragraphIndex === undefined ? book.currentParagraph : value.paragraphIndex
+        if (typeof requested !== 'number' || !Number.isInteger(requested) || requested < 0 || requested >= book.totalParagraphs) return failure(tool, 'paragraphIndex 必须是有效的全局段落序号')
+        const paragraph = readingParagraph(book, requested)
+        if (paragraph === null) {
+          const range = readingRange(book)
+          return failure(tool, `第 ${requested + 1} 段不在本轮阅读窗口内；当前窗口为第 ${range.start + 1}–${range.end + 1} 段`)
+        }
+        const term = typeof value.term === 'string' ? value.term.trim() : ''
+        if (term === '') return failure(tool, '缺少必填参数 term')
+        if (term.length > 120) return failure(tool, 'term 最多 120 字')
+        const note = typeof value.note === 'string' ? value.note.trim().slice(0, 1_000) : ''
+        if (!paragraph.includes(term)) return failure(tool, 'term 不在目标段落原文中，未写入生词本')
+        const key = `${book.id}:${requested}:${term}`
+        if (book.vocabulary.some((word) => word.paragraphIndex === requested && word.term === term) || runtime.readingVocabularyKeys?.has(key)) {
+          return { ok: true, text: `《${book.title}》第 ${requested + 1} 段的「${term}」已经在生词本里，本次没有重复写入。`, summary: '已有相同生词' }
+        }
+        runtime.readingVocabularyKeys?.add(key)
+        appendEventLog('capability.reading.vocabulary', { bookId: book.id, paragraphIndex: requested, term }, book.id)
+        return {
+          ok: true,
+          text: `已把「${term}」记入《${book.title}》第 ${requested + 1} 段的生词本。浏览器会写回原书，并记录一条共读生活事实。`,
+          summary: `记下生词「${term}」`,
+          detail: note === '' ? term : `${term}：${note}`,
+          readingVocabulary: { bookId: book.id, paragraphIndex: requested, term, note },
         }
       }
 

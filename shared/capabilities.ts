@@ -71,7 +71,9 @@ export type CapabilityId =
   /* —— 共读（本轮书架窗口 / Companion 批注） —— */
   | 'reading.context'
   | 'reading.read'
+  | 'reading.advance'
   | 'reading.annotate'
+  | 'reading.vocabulary'
   /* —— 聊天表情包（图库来自本轮前端，不把图片原文塞进模型上下文） —— */
   | 'sticker.search'
   | 'sticker.send'
@@ -593,6 +595,51 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
           note: { type: 'string', description: '小栖要留下的批注，不超过 2000 字' },
         },
         required: ['bookId', 'note'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'reading.advance',
+    module: 'reading',
+    label: '翻到共读段落',
+    summary: '把共读阅读位置移动到附近段落',
+    modelHint: '如果需要和北北一起继续读，可以把原书阅读位置向前或向后移动；不要为了回应每轮都翻页。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'reading_advance',
+      description: '移动本轮共读书籍的本地阅读位置。优先使用 direction=next/previous；也可指定当前窗口内的 paragraphIndex。浏览器会写回原书进度。',
+      parameters: {
+        type: 'object',
+        properties: {
+          bookId: { type: 'string', description: '书籍 id（先用 reading_context 查看）' },
+          direction: { type: 'string', enum: ['next', 'previous'], description: '相对当前段落移动一段；与 paragraphIndex 二选一' },
+          paragraphIndex: { type: 'number', description: '要跳到的全局段落序号；必须在本轮窗口内' },
+        },
+        required: ['bookId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'reading.vocabulary',
+    module: 'reading',
+    label: '记下共读生词',
+    summary: '把小栖认为值得记住的词写入生词本',
+    modelHint: '遇到确实值得记住的词，可以为当前书籍段落添加一个生词和简短解释；不确定或没有需要时不要调用。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'reading_vocabulary',
+      description: '为本轮共读书籍的一个段落记录生词。浏览器会写回原书生词本并记录 Life 事实；同一段落同一词不会重复写入。',
+      parameters: {
+        type: 'object',
+        properties: {
+          bookId: { type: 'string', description: '书籍 id（先用 reading_context 查看）' },
+          paragraphIndex: { type: 'number', description: '生词所在的全局段落序号；省略则使用当前段落' },
+          term: { type: 'string', description: '要记下的词，不超过 120 字' },
+          note: { type: 'string', description: '词义、例句或小栖的解释，不超过 1000 字' },
+        },
+        required: ['bookId', 'term'],
         additionalProperties: false,
       },
     },

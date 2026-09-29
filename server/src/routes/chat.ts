@@ -198,7 +198,17 @@ function parseReadingCatalog(raw: unknown): ChatStreamRequest['readingCatalog'] 
       if (value.id.length > 160 || value.text.length > 500 || value.note.length > 2_000) throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}].annotations[${annotationIndex}] 字段超出限制`)
       return { id: value.id, paragraphIndex: value.paragraphIndex, text: value.text, note: value.note, author: value.author as 'user' | 'companion', createdAt: value.createdAt }
     })
-    return { id, title, author, format, currentParagraph, bookmarkParagraph, readingSeconds, totalParagraphs, paragraphOffset, paragraphs, annotations }
+    if (!Array.isArray(record.vocabulary) || record.vocabulary.length > 80) throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}].vocabulary 超出限制`)
+    const vocabulary = record.vocabulary.map((word, wordIndex) => {
+      const value = asRecord(word)
+      if (value === null || typeof value.id !== 'string' || typeof value.paragraphIndex !== 'number' || !Number.isInteger(value.paragraphIndex) || value.paragraphIndex < 0 ||
+        typeof value.term !== 'string' || typeof value.note !== 'string' || typeof value.createdAt !== 'number') {
+        throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}].vocabulary[${wordIndex}] 非法`)
+      }
+      if (value.id.length > 160 || value.term.length > 120 || value.note.length > 1_000) throw new ProviderError(ErrorCodes.BadRequest, `readingCatalog[${index}].vocabulary[${wordIndex}] 字段超出限制`)
+      return { id: value.id, paragraphIndex: value.paragraphIndex, term: value.term, note: value.note, createdAt: value.createdAt }
+    })
+    return { id, title, author, format, currentParagraph, bookmarkParagraph, readingSeconds, totalParagraphs, paragraphOffset, paragraphs, annotations, vocabulary }
   })
 }
 
@@ -315,6 +325,8 @@ async function runToolCall(
       ...(outcome.detail === undefined ? {} : { detail: outcome.detail }),
       ...(outcome.stickerId === undefined ? {} : { stickerId: outcome.stickerId }),
       ...(outcome.readingAnnotation === undefined ? {} : { readingAnnotation: outcome.readingAnnotation }),
+      ...(outcome.readingNavigation === undefined ? {} : { readingNavigation: outcome.readingNavigation }),
+      ...(outcome.readingVocabulary === undefined ? {} : { readingVocabulary: outcome.readingVocabulary }),
       // 挂起的事件 id：前端据此渲染确认卡按钮（见 ChatToolCallPayload.eventId 注释）
       ...(outcome.eventId === undefined ? {} : { eventId: outcome.eventId }),
     },
@@ -454,6 +466,8 @@ export function registerChatRoutes(
       listeningCatalog: body.listeningCatalog ?? [],
       readingCatalog: body.readingCatalog ?? [],
       readingAnnotationKeys: new Set<string>(),
+      readingNavigationKeys: new Set<string>(),
+      readingVocabularyKeys: new Set<string>(),
       ...(body.sessionId === undefined ? {} : { chatSessionId: body.sessionId }),
     }
 

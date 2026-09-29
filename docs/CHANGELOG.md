@@ -3,6 +3,14 @@
 > 本文件记「改了什么」（面向版本，按 Phase 组织）。
 > 「做到哪、还欠什么」在 `docs/TASKS.md`。
 
+## 2026-09-29 · V2-D · 共读动作扩展
+
+### T-133 · 共读 AI 翻页与生词工具
+
+- 在 T-132 的临时书架窗口上增加 `reading_advance` 与 `reading_vocabulary`；小栖可选择翻到当前窗口附近的下一 / 上一段，或把确实值得记住的原文词语写入生词本。
+- 浏览器复用现有 `ReadingBookState.currentParagraph` / `vocabulary` 写回原书，并追加 `reading.progress` / `reading.vocabulary` Life 事实；服务端不保存正文或另建书库。
+- 对窗口外段落、非原文生词、重复翻页 / 重复生词给出可读反馈；探针扩展至 9/9。未部署 VPS。
+
 ## 2026-09-28 · V2-D · 共读 Runtime 接入
 
 ### T-132 · 共读书架与聊天工具闭环

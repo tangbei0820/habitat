@@ -36,6 +36,7 @@ const book: ChatReadingBookItem = {
   paragraphOffset: 0,
   paragraphs: ['第一段。', '第二段写着一盏灯。', '第三段。'],
   annotations: [],
+  vocabulary: [],
 }
 const runtime: ToolRuntime = {
   memory: null,
@@ -43,6 +44,8 @@ const runtime: ToolRuntime = {
   capabilities: {} as CapabilityService,
   readingCatalog: [book],
   readingAnnotationKeys: new Set<string>(),
+  readingNavigationKeys: new Set<string>(),
+  readingVocabularyKeys: new Set<string>(),
 }
 
 async function call(name: string, args: Record<string, unknown>) {
@@ -52,7 +55,7 @@ async function call(name: string, args: Record<string, unknown>) {
 }
 
 console.log('\n=== Reading Runtime tools probe ===')
-check('三项共读能力都绑定为模型工具', ['reading_context', 'reading_read', 'reading_annotate'].every((name) => tools.some((tool) => tool.name === name)))
+check('五项共读能力都绑定为模型工具', ['reading_context', 'reading_read', 'reading_annotate', 'reading_advance', 'reading_vocabulary'].every((name) => tools.some((tool) => tool.name === name)))
 
 const context = await call('reading_context', {})
 check('reading_context 返回书架与进度', context.ok && context.text.includes('探针之书') && context.text.includes('第 2/3 段'))
@@ -63,11 +66,20 @@ check('reading_read 返回指定段落原文', read.ok && read.text.includes('�
 const outside = await call('reading_read', { bookId: book.id, paragraphIndex: 4 })
 check('reading_read 拒绝超出全局范围的位置', !outside.ok)
 
+const advance = await call('reading_advance', { bookId: book.id, direction: 'previous' })
+check('reading_advance 返回浏览器写回所需的目标段落', advance.ok && advance.readingNavigation?.paragraphIndex === 0)
+
 const annotation = await call('reading_annotate', { bookId: book.id, paragraphIndex: 1, text: '第二段写着一盏灯。', note: '这盏灯像是给夜路留下的方向。' })
 check('reading_annotate 返回浏览器写回所需的批注锚点', annotation.ok && annotation.readingAnnotation?.bookId === book.id && annotation.readingAnnotation.note.includes('夜路'))
 
 const duplicate = await call('reading_annotate', { bookId: book.id, paragraphIndex: 1, text: '第二段写着一盏灯。', note: '这盏灯像是给夜路留下的方向。' })
 check('相同批注在同一轮内不会重复写入', duplicate.ok && duplicate.readingAnnotation === undefined && duplicate.summary.includes('相同'))
+
+const vocabulary = await call('reading_vocabulary', { bookId: book.id, paragraphIndex: 1, term: '灯', note: '夜里照亮方向的东西。' })
+check('reading_vocabulary 返回浏览器写回所需的生词', vocabulary.ok && vocabulary.readingVocabulary?.term === '灯')
+
+const duplicateVocabulary = await call('reading_vocabulary', { bookId: book.id, paragraphIndex: 1, term: '灯', note: '夜里照亮方向的东西。' })
+check('相同生词在同一轮内不会重复写入', duplicateVocabulary.ok && duplicateVocabulary.readingVocabulary === undefined && duplicateVocabulary.summary.includes('相同'))
 
 console.log(`\nReading Runtime probe: ${passed} passed, ${failed} failed`)
 if (failed > 0) process.exitCode = 1
