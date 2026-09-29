@@ -3859,3 +3859,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **明确延期**：Nocturne 原生 URI 管理代理、Desire 对语气 / Wake 的真实影响、PSTN / CallKit / WebRTC 全双工、Home / Life / Living Apps 继续留在 Later。
 
 **生产记录**：部署提交 `f65bcf5`；生产 SQLite 备份 `/srv/habitat/server/data/habitat.db.bak-20260929-160650`，环境备份 `/srv/habitat/server/.env.bak-20260929-160650`；`habitat-server` / `habitat-eventide` 均 active，公网 `/api/health`、`/api/health/state` 与线上 Core-6 / Core-5 / Core-4 探针通过。
+### T-149 · 2026-09-29 · Habitat v2 Atelier 前端整体换装 —— **完成（本地，待人工视觉验收）**
+
+**范围**：只做前端视觉与共享外壳重做；不改数据库、API、路由、Runtime、Provider 语义或现有 `data-testid`。设计输入为 `D:/我搓/Kimi Code/design.md`，结构与真实数据边界继续沿用 qixi 原型与 PRODUCT_SPEC。
+
+| 交付 | 结果 |
+| --- | --- |
+| 共享外壳 | AppShell 增加 Atelier 纸面容器；宽屏仍保持单列手机感，移动端保留 Safe Area 与浮起底栏。 |
+| 视觉令牌 | 暖白纸面、近黑唯一强调、纸张细线、低饱和灰阶、字体与暗色模式统一切换。 |
+| Home / 模块 | Home Bento、入口胶囊、模块子页顶栏统一换装；保持所有真实数据与空态，不搬预览假数据。 |
+| Chat | 会话列表、沉浸式聊天、气泡、思绪折叠卡、工具卡、输入胶囊与关系条统一到纸张 / 墨色语言。 |
+| Life / LLM / Setting | 月历与生活时间线、能力档案、四通道 Provider Center、身份 / 外观 / 高级设置统一卡片层级。 |
+| AI 日记 | 保留原有锁定 / 请求查看权限语义，将时间线条目改成拟真纸页、横线纹理与书写感排版。 |
+| 预览资产 | 独立预览保留在 `designs/habitat-v2-preview/preview.html`，用于后续视觉回归与人工比对。 |
+
+**验收**：`npm run typecheck` 通过；`npm run build` 通过（仅保留既有 chunk size warning）；`git diff --check` 通过；独立 Preview 已在 Codex 浏览器检查首页、聊天、日记、设置四个关键页面。现有 `verify-*.mjs` 浏览器脚本未运行，原因是当前 Windows Node 20 环境没有脚本要求的全局 WebSocket / CDP runner，不将其冒充为通过。
+
+**待优化 / 明确边界**：生产 VPS 尚未部署本批视觉改动；需要在带 CDP 的验收环境做移动端、宽屏、深色主题、模块滚动和真机 Safe Area 视觉回归。真实业务功能、图片 / 字体资源包、CSS 高级模式与 Widget 拖拽不在本批新增。

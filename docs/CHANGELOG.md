@@ -1367,3 +1367,9 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 确认卡继续以服务端状态为准，过期 / 撤回 / 失败保留审计；工具卡与助手正文沿用同一消息 `blocks.order` 时序协议。
 - 新增 `probe:core6` **7/7**；Core-4 / Core-5 探针、两端 typecheck、前端 build 通过。
 - 提交 `f65bcf5` 已部署 VPS；重启前备份生产 SQLite / `.env`，`habitat-server` 与 `habitat-eventide` active；本机与公网 `/api/health`、`/api/health/state` 通过，线上 Core-6 / Core-5 / Core-4 探针通过，线上 bundle 与本地构建哈希一致。
+
+### 2026-09-29 · T-149 · Habitat v2 Atelier 前端整体换装（本地）
+
+- 以 `designs/habitat-v2-preview/preview.html` 的 Atelier 纸张 / 墨色方向统一重做 AppShell、Home、Chat、Life、LLM、Setting 及 Home 子页表面层；保留现有路由、真实数据、API、schema 与交互语义。
+- Chat、日记、Provider Center、模块卡片、底栏与深浅色 tokens 完成统一视觉收口，新增页面标记用于后续局部主题扩展。
+- `npm run typecheck`、`npm run build`、`git diff --check` 通过；本地 Vite 已对 Home / Chat / Diary / Life / LLM / Setting 做手工视觉验收。未部署 VPS，等待人工确认后再进入生产发布。

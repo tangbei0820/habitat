@@ -52,7 +52,7 @@ export function SettingPage() {
   const mcp = useHealth<McpHealth>(getMcpHealth)
 
   return (
-    <div>
+    <div data-page="setting">
       <div className="topbar">
         <h1 className="t-h1">设置</h1>
       </div>

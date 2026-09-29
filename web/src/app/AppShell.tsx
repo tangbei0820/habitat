@@ -48,7 +48,7 @@ export function AppShell() {
   return (
     // ⚠️ `relative` 是必需的：底栏是**浮起**的绝对定位胶囊（`.bottom-nav`），
     // 没有这个定位祖先，它会相对视口展开、在桌面宽屏上横跨整个屏幕而不是这个 448px 列。
-    <div className="relative mx-auto flex h-full max-w-md flex-col" data-habitat-theme-root>
+    <div className="habitat-shell relative mx-auto flex h-full max-w-md flex-col" data-habitat-theme-root>
       <AppearanceRuntime />
       {/* 新版本 / 可离线横幅：放文档流里，出现时把内容推下去而不是盖住 */}
       <UpdatePrompt />

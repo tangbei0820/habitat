@@ -424,6 +424,10 @@ habitat/
 - 版本历史 → `docs/CHANGELOG.md`
 - 本地启动与验收命令 → `README.md`（含 Node 版本双轨约束、端口隔离等前置条件）
 
+### 2026-09-29 当前续建收口
+
+- ✅ **T-149 Habitat v2 Atelier 前端整体换装已完成（本地）**：按 `D:/我搓/Kimi Code/design.md` 完成共享外壳、暖纸 / 墨色令牌、浮起底栏、Home Bento、Chat 气泡 / 思绪 / 工具卡、Life、LLM 能力档案、Provider Center、设置与 Home 模块子页的统一视觉重做；AI 日记列表改为拟真纸页与锁定 / 请求查看表现。只改前端样式与页面标记，不改数据 / API / 路由 / `data-testid`，独立预览保留在 `designs/habitat-v2-preview/`。两端 typecheck、前端 build、diff check 通过；浏览器脚本未运行（当前 Windows Node 20 缺少脚本所需的全局 WebSocket/CDP runner），需在带 CDP 的验收环境做最终视觉回归。下一步进入人工视觉验收，不顺带修改业务功能或部署 VPS。
+
 ### 2026-09-28 当前续建收口
 
 - ✅ **T-127 Provider Center 草稿配置收口**：四张能力卡在拉取模型后提供可见下拉选择，并保留手填；自定义 Headers 提供键值编辑器与 JSON 兼容入口。未新增 schema / API，未部署 VPS。

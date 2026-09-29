@@ -424,7 +424,7 @@ export function ChatListPage() {
   const empty = !loading && (sessions ?? []).length === 0 && (groups ?? []).length === 0
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col" data-page="chat-list">
       {/* 顶栏沿用设计的 `.topbar`（低存在感）：标题 + 两枚胶囊按钮，不放任何色块横幅 */}
       <div className="topbar">
         <h1 className="topbar-title">对话</h1>

@@ -347,7 +347,7 @@ export function LifePage() {
     else setParams({})
   }
   return (
-    <div>
+    <div data-page="life">
       <div className="topbar">
         <div>
           <div className="t-h1">生活</div>

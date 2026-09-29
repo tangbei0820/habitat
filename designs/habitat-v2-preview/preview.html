@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>栖息地 · Atelier v2 Preview</title>
+  <!--
+    Design context / assumptions
+    - Source direction: Kimi Code/design.md (Atelier paper + ink language)
+    - Existing product context: qixi-habitat prototype, PRODUCT_SPEC.md, UI_DESIGN.md
+    - This is a standalone visual prototype. It intentionally does not touch web/src.
+    - The first pass prioritizes the shared shell, chat rhythm, diary privacy, and
+      module entry language so the user can approve the visual direction before migration.
+  -->
+  <style>
+    :root {
+      --paper: #f5f4f1;
+      --paper-deep: #ece9e3;
+      --surface: #ffffff;
+      --surface-2: rgba(255,255,255,.72);
+      --ink: #1c1b19;
+      --ink-2: #57534c;
+      --ink-3: #98938a;
+      --hairline: #e7e5e0;
+      --accent: #111111;
+      --tile: #efebe5;
+      --avatar: #8c867c;
+      --radius-sheet: 22px;
+      --radius-card: 16px;
+      --radius-pill: 999px;
+      --shadow-card: 0 1px 2px rgba(28,27,25,.05), 0 18px 46px -12px rgba(28,27,25,.14);
+      --shadow-sheet: 0 28px 76px -18px rgba(28,27,25,.25), 0 2px 8px rgba(28,27,25,.06);
+      --ease: cubic-bezier(.2,.7,.2,1);
+      --font: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      --serif: "Iowan Old Style", "Songti SC", "Noto Serif SC", Georgia, serif;
+    }
+
+    [data-theme="dark"] {
+      --paper: #151412;
+      --paper-deep: #0f0f0e;
+      --surface: #211f1c;
+      --surface-2: rgba(33,31,28,.78);
+      --ink: #f3f1ec;
+      --ink-2: #c3beb5;
+      --ink-3: #89837a;
+      --hairline: #3a3732;
+      --accent: #f2f0ec;
+      --tile: #2b2824;
+      --avatar: #756f66;
+      --shadow-card: 0 1px 2px rgba(0,0,0,.18), 0 20px 52px -14px rgba(0,0,0,.42);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: radial-gradient(circle at 50% -20%, rgba(255,255,255,.7), transparent 48%), #d6d2cb;
+      color: var(--ink);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.75;
+      -webkit-font-smoothing: antialiased;
+      transition: background 240ms var(--ease), color 240ms var(--ease);
+    }
+    [data-theme="dark"] body { background: #090908; }
+    button, input, textarea { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+    .app-shell {
+      position: relative;
+      width: min(100%, 560px);
+      min-height: 100vh;
+      margin: 0 auto;
+      overflow: hidden;
+      background:
+        linear-gradient(rgba(255,255,255,.24), rgba(255,255,255,.24)),
+        repeating-linear-gradient(0deg, rgba(28,27,25,.012) 0, rgba(28,27,25,.012) 1px, transparent 1px, transparent 4px),
+        var(--paper);
+      box-shadow: 0 0 80px rgba(28,27,25,.13);
+      transition: background 240ms var(--ease);
+    }
+    [data-theme="dark"] .app-shell {
+      background:
+        linear-gradient(rgba(255,255,255,.015), rgba(255,255,255,.015)),
+        repeating-linear-gradient(0deg, rgba(255,255,255,.012) 0, rgba(255,255,255,.012) 1px, transparent 1px, transparent 4px),
+        var(--paper);
+    }
+    @media (min-width: 740px) {
+      .app-shell { min-height: min(920px, 100vh); margin: 24px auto; border-radius: 32px; }
+    }
+
+    .view { display: none; min-height: 100vh; padding: 28px 18px 116px; animation: appear 220ms var(--ease); }
+    .view.active { display: block; }
+    @media (min-width: 740px) { .view { min-height: min(920px, 100vh); } }
+    @keyframes appear { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 24px; }
+    .topbar-left, .topbar-right, .row, .row-between { display: flex; align-items: center; gap: 10px; }
+    .row-between { justify-content: space-between; }
+    .wordmark { font-size: 27px; line-height: 1; font-weight: 700; letter-spacing: -.03em; }
+    .eyebrow { color: var(--ink-3); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .caption { color: var(--ink-3); font-size: 12px; line-height: 1.5; }
+    .muted { color: var(--ink-2); }
+    .fine { color: var(--ink-3); font-size: 11px; }
+    .display { font-size: clamp(28px, 7vw, 42px); line-height: 1.1; letter-spacing: -.04em; font-weight: 700; }
+    h1, h2, h3, p { margin: 0; }
+    h2 { font-size: 21px; line-height: 1.3; letter-spacing: -.02em; }
+    h3 { font-size: 16px; line-height: 1.35; }
+
+    .icon-btn, .back-btn, .nav-item, .module-card, .list-card, .quick-card, .action-btn { cursor: pointer; }
+    .icon-btn, .back-btn {
+      width: 42px; height: 42px; border: 1px solid var(--hairline); background: transparent; border-radius: 50%;
+      display: grid; place-items: center; transition: transform 160ms var(--ease), background 160ms var(--ease);
+    }
+    .icon-btn:hover, .back-btn:hover { background: var(--surface); transform: translateY(-1px); }
+    .icon-btn svg, .back-btn svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+    .btn {
+      min-height: 42px; border: 0; border-radius: var(--radius-pill); padding: 0 18px; background: var(--accent); color: var(--paper);
+      font-weight: 650; cursor: pointer; transition: transform 160ms var(--ease), opacity 160ms var(--ease);
+    }
+    [data-theme="dark"] .btn { color: #1b1a18; }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active, .action-btn:active { transform: scale(.97); }
+    .btn.ghost { color: var(--ink); background: var(--surface); border: 1px solid var(--hairline); }
+    .btn [data-icon] { display: inline-flex; vertical-align: middle; }
+    .btn [data-icon] svg, .module-meta [data-icon] svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+    .text-btn { border: 0; padding: 4px 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+
+    .presence {
+      position: relative; overflow: hidden; border-radius: var(--radius-sheet); padding: 23px; min-height: 220px;
+      color: #f7f5ef; background: linear-gradient(145deg, #414039 0%, #222321 72%);
+      box-shadow: var(--shadow-card);
+    }
+    .presence::after { content: ""; position: absolute; width: 220px; height: 220px; right: -70px; bottom: -92px; border-radius: 50%; border: 1px solid rgba(255,255,255,.13); box-shadow: 0 0 0 20px rgba(255,255,255,.035), 0 0 0 42px rgba(255,255,255,.025); }
+    .presence .caption { color: rgba(255,255,255,.62); }
+    .presence h2 { font-size: 27px; font-weight: 500; }
+    .presence .btn { background: rgba(255,255,255,.93); color: #20201e; position: relative; z-index: 1; }
+
+    .section-head { display: flex; justify-content: space-between; align-items: baseline; margin: 28px 2px 12px; }
+    .section-head h2 { font-size: 18px; }
+    .section-head .caption { letter-spacing: .02em; }
+    .module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .module-card, .list-card, .quick-card {
+      border: 1px solid var(--hairline); background: var(--surface); border-radius: var(--radius-card); padding: 16px; box-shadow: var(--shadow-card);
+      transition: transform 180ms var(--ease), box-shadow 180ms var(--ease), background 180ms var(--ease);
+    }
+    .module-card:hover, .list-card:hover, .quick-card:hover { transform: translateY(-2px); box-shadow: 0 16px 38px -16px rgba(28,27,25,.28); }
+    .module-card.span-2 { grid-column: span 2; }
+    .module-card .module-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 12px; background: var(--tile); margin-bottom: 18px; }
+    .module-card .module-icon svg { width: 18px; height: 18px; stroke: var(--ink-2); fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .module-card h3 { margin-bottom: 3px; }
+    .module-card p { color: var(--ink-2); font-size: 12px; line-height: 1.55; }
+    .module-card .module-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; color: var(--ink-3); font-size: 11px; }
+    .module-card.dark { color: #f7f5ef; background: #292a28; border-color: transparent; }
+    .module-card.dark p, .module-card.dark .module-meta { color: rgba(255,255,255,.6); }
+    .module-card.dark .module-icon { background: rgba(255,255,255,.12); }
+    .module-card.dark .module-icon svg { stroke: rgba(255,255,255,.84); }
+
+    .quick-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .quick-card { display: flex; align-items: center; gap: 12px; padding: 13px 14px; box-shadow: none; }
+    .quick-card .module-icon { margin: 0; flex: 0 0 auto; width: 32px; height: 32px; border-radius: 10px; }
+    .quick-card p { color: var(--ink-3); font-size: 11px; line-height: 1.4; }
+
+    .chat-head { margin: -4px 0 14px; }
+    .avatar { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--avatar); color: #fff; font-weight: 700; font-size: 14px; }
+    .avatar.self { background: var(--accent); }
+    .online-dot { width: 7px; height: 7px; border-radius: 50%; background: #6d7069; display: inline-block; margin-right: 4px; }
+    .chat-toolbar { display: flex; gap: 7px; overflow-x: auto; padding: 3px 0 14px; scrollbar-width: none; }
+    .chat-toolbar::-webkit-scrollbar { display: none; }
+    .chip { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; min-height: 34px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: var(--radius-pill); color: var(--ink-2); background: rgba(255,255,255,.18); font-size: 12px; cursor: pointer; }
+    .chip.active { background: var(--accent); color: var(--paper); border-color: var(--accent); }
+    .chat-stream { display: flex; flex-direction: column; gap: 17px; padding: 10px 0 16px; }
+    .date-stamp { align-self: center; color: var(--ink-3); font-size: 11px; letter-spacing: .08em; }
+    .message { display: flex; gap: 9px; align-items: flex-end; }
+    .message.user { justify-content: flex-end; }
+    .message.user .avatar { order: 2; }
+    .message-col { max-width: 82%; display: flex; flex-direction: column; gap: 5px; }
+    .message.user .message-col { align-items: flex-end; }
+    .bubble { padding: 12px 15px; border-radius: 17px 17px 17px 5px; background: var(--surface); box-shadow: 0 5px 18px rgba(28,27,25,.05); line-height: 1.72; }
+    .message.user .bubble { border-radius: 17px 17px 5px 17px; background: var(--accent); color: var(--paper); }
+    .message-meta { display: flex; align-items: center; gap: 7px; color: var(--ink-3); font-size: 10px; }
+    .thought {
+      border: 1px solid var(--hairline); border-radius: 14px; background: var(--surface-2); overflow: hidden;
+    }
+    .thought summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; color: var(--ink-2); font-size: 12px; }
+    .thought summary::-webkit-details-marker { display: none; }
+    .thought summary span { display: inline-flex; align-items: center; gap: 7px; }
+    .thought .thought-body { padding: 0 12px 12px; color: var(--ink-2); font-size: 12px; line-height: 1.7; }
+    .tool-card { border: 1px solid var(--hairline); border-radius: 14px; padding: 12px; background: var(--tile); }
+    .tool-card .tool-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; font-size: 12px; }
+    .tool-card code { display: block; padding: 10px; border-radius: 10px; background: #1e1d1b; color: #eeeae2; font: 11px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
+    .chat-compose { position: sticky; bottom: 78px; display: flex; align-items: flex-end; gap: 8px; padding: 9px; border: 1px solid var(--hairline); border-radius: 19px; background: rgba(255,255,255,.86); backdrop-filter: blur(14px); box-shadow: var(--shadow-sheet); }
+    [data-theme="dark"] .chat-compose { background: rgba(33,31,28,.88); }
+    .chat-compose textarea { min-height: 38px; max-height: 92px; flex: 1; resize: none; border: 0; outline: 0; padding: 8px 2px 5px; background: transparent; color: var(--ink); line-height: 1.5; }
+    .chat-compose textarea::placeholder { color: var(--ink-3); }
+    .compose-icon { width: 38px; height: 38px; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; cursor: pointer; }
+    .compose-icon:hover { background: var(--tile); }
+    .compose-icon.send { background: var(--accent); color: var(--paper); }
+    .compose-icon svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+    .diary-page { position: relative; margin-top: 8px; padding: 26px 22px 34px; border-radius: 8px; background: linear-gradient(90deg, rgba(161,135,93,.13), transparent 7%), #f6f0e2; color: #423c32; box-shadow: var(--shadow-sheet); transform: rotate(-.4deg); overflow: hidden; }
+    .diary-page::before { content: ""; position: absolute; inset: 0; opacity: .44; background: repeating-linear-gradient(0deg, transparent 0, transparent 29px, rgba(100,91,74,.11) 30px); pointer-events: none; }
+    .diary-page::after { content: ""; position: absolute; top: 0; bottom: 0; left: 31px; width: 1px; background: rgba(170,95,73,.24); pointer-events: none; }
+    .diary-inner { position: relative; z-index: 1; padding-left: 24px; }
+    .diary-kicker { font: 700 10px/1.3 var(--font); letter-spacing: .14em; color: #9a8e7a; text-transform: uppercase; }
+    .diary-title { margin-top: 7px; font: 700 31px/1.2 var(--serif); letter-spacing: -.04em; }
+    .diary-date { color: #8f806c; font-size: 12px; margin: 5px 0 25px; }
+    .diary-copy { font: 17px/2.02 var(--serif); }
+    .diary-copy p + p { margin-top: 13px; }
+    .diary-lock { margin-top: 24px; padding: 15px; border: 1px dashed rgba(128,112,86,.48); border-radius: 12px; background: rgba(255,255,255,.38); }
+    .diary-lock .lock-row { display: flex; align-items: flex-start; gap: 10px; }
+    .diary-lock svg { width: 17px; height: 17px; margin-top: 3px; stroke: #8b7c68; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .diary-lock strong { display: block; font: 600 14px/1.5 var(--serif); }
+    .diary-lock p { color: #8b7c68; font-size: 12px; line-height: 1.65; }
+    .diary-lock .btn { min-height: 36px; margin-top: 11px; background: #433e36; color: #f8f1e4; font-size: 12px; padding: 0 14px; }
+    .diary-tabs { display: flex; gap: 8px; margin: 16px 0 11px; }
+    .diary-tabs .chip { background: transparent; border-color: rgba(28,27,25,.12); color: #7b7163; }
+    .diary-tabs .chip.active { background: #443f37; border-color: #443f37; color: #f8f1e4; }
+
+    .calendar { border: 1px solid var(--hairline); border-radius: var(--radius-sheet); padding: 17px; background: var(--surface); box-shadow: var(--shadow-card); }
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 17px; }
+    .calendar-grid div { min-height: 35px; display: grid; place-items: center; color: var(--ink-2); font-size: 12px; border-radius: 10px; position: relative; }
+    .calendar-grid .label { color: var(--ink-3); font-size: 10px; min-height: 23px; }
+    .calendar-grid .has-event::after { content: ""; position: absolute; bottom: 5px; width: 4px; height: 4px; border-radius: 50%; background: var(--ink-2); }
+    .calendar-grid .selected { background: var(--accent); color: var(--paper); }
+    .calendar-grid .selected::after { background: var(--paper); }
+    .timeline { display: flex; flex-direction: column; gap: 10px; }
+    .timeline-item { display: grid; grid-template-columns: 48px 1fr; gap: 11px; padding: 14px 0; border-bottom: 1px solid var(--hairline); }
+    .timeline-item:last-child { border-bottom: 0; }
+    .timeline-time { color: var(--ink-3); font-size: 11px; }
+    .timeline-body { display: flex; gap: 10px; }
+    .timeline-mark { width: 7px; height: 7px; border-radius: 50%; background: var(--ink); margin-top: 8px; flex: none; }
+    .timeline-body h3 { margin-bottom: 2px; }
+    .timeline-body p { color: var(--ink-2); font-size: 12px; line-height: 1.55; }
+
+    .profile-card { display: flex; align-items: center; gap: 13px; padding: 16px; border-radius: var(--radius-sheet); background: var(--surface); border: 1px solid var(--hairline); box-shadow: var(--shadow-card); }
+    .profile-card .avatar { width: 54px; height: 54px; font-size: 19px; }
+    .settings-list { display: flex; flex-direction: column; gap: 10px; }
+    .setting-group { border: 1px solid var(--hairline); border-radius: var(--radius-card); background: var(--surface); overflow: hidden; }
+    .setting-row { min-height: 58px; padding: 13px 15px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--hairline); }
+    .setting-row:last-child { border-bottom: 0; }
+    .setting-row .setting-copy { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .setting-row .setting-icon { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--tile); flex: none; }
+    .setting-row .setting-icon svg { width: 16px; height: 16px; stroke: var(--ink-2); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    .setting-row strong { display: block; font-size: 13px; }
+    .setting-row small { display: block; color: var(--ink-3); font-size: 11px; margin-top: 1px; }
+    .toggle { width: 42px; height: 25px; border-radius: 999px; border: 0; padding: 3px; background: var(--tile); cursor: pointer; transition: background 160ms var(--ease); }
+    .toggle::after { content: ""; display: block; width: 19px; height: 19px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform 160ms var(--ease); }
+    .toggle.on { background: var(--accent); }
+    .toggle.on::after { transform: translateX(17px); }
+    .provider-card { padding: 16px; }
+    .provider-card + .provider-card { border-top: 1px solid var(--hairline); }
+    .provider-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .status { color: var(--ink-3); font-size: 11px; display: inline-flex; align-items: center; gap: 5px; }
+    .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); }
+    .status.good::before { background: var(--ink); }
+    .provider-actions { display: flex; gap: 8px; margin-top: 13px; }
+    .provider-actions .btn { min-height: 34px; font-size: 11px; padding: 0 13px; }
+    .prompt-box { padding: 14px; border-radius: 12px; background: var(--tile); color: var(--ink-2); font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
+
+    .bottom-nav { position: fixed; z-index: 20; bottom: 18px; left: 50%; transform: translateX(-50%); width: min(calc(100% - 28px), 504px); display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; padding: 6px; border: 1px solid var(--hairline); border-radius: 22px; background: rgba(255,255,255,.8); backdrop-filter: blur(18px); box-shadow: var(--shadow-sheet); }
+    [data-theme="dark"] .bottom-nav { background: rgba(33,31,28,.86); }
+    .nav-item { border: 0; background: transparent; color: var(--ink-3); border-radius: 16px; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 10px; }
+    .nav-item svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
+    .nav-item.active { color: var(--ink); background: var(--surface); box-shadow: 0 2px 8px rgba(28,27,25,.06); }
+
+    .toast { position: fixed; z-index: 40; left: 50%; bottom: 92px; transform: translate(-50%, 12px); padding: 9px 14px; border-radius: var(--radius-pill); background: var(--accent); color: var(--paper); font-size: 12px; opacity: 0; pointer-events: none; transition: opacity 180ms var(--ease), transform 180ms var(--ease); }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .module-drawer { position: fixed; z-index: 30; inset: 0; display: none; align-items: flex-end; background: rgba(28,27,25,.35); }
+    .module-drawer.open { display: flex; }
+    .drawer-sheet { width: min(100%, 560px); margin: 0 auto; padding: 22px 18px 28px; border-radius: 24px 24px 0 0; background: var(--surface); box-shadow: var(--shadow-sheet); animation: drawer-in 220ms var(--ease); }
+    @keyframes drawer-in { from { transform: translateY(22px); opacity: .6; } to { transform: none; opacity: 1; } }
+    .drawer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px; }
+    .drawer-item { border: 1px solid var(--hairline); background: var(--paper); border-radius: 14px; padding: 13px 7px; min-height: 76px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; cursor: pointer; }
+    .drawer-item svg { width: 18px; height: 18px; stroke: var(--ink-2); fill: none; stroke-width: 1.45; stroke-linecap: round; stroke-linejoin: round; }
+    .drawer-item span { color: var(--ink-2); font-size: 11px; }
+  </style>
+</head>
+<body>
+  <main class="app-shell" id="app" data-theme="light">
+    <section class="view active" id="view-home" data-screen-label="home">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">Habitat / home</div>
+          <div class="wordmark">栖息地</div>
+        </div>
+        <div class="topbar-right">
+          <button class="icon-btn" data-action="theme" aria-label="切换明暗主题"><span data-icon="sun"></span></button>
+          <button class="icon-btn" data-action="drawer" aria-label="打开全部模块"><span data-icon="grid"></span></button>
+        </div>
+      </header>
+
+      <section class="presence">
+        <div class="row-between">
+          <div class="row"><span class="online-dot" style="background:#b7c3b2"></span><span class="caption">小栖 · 现在</span></div>
+          <span class="eyebrow" style="color:rgba(255,255,255,.52)">09.29 / 21:24</span>
+        </div>
+        <div style="margin-top:44px; position:relative; z-index:1">
+          <h2>在窗边，听雨。</h2>
+          <p class="caption" style="margin-top:6px">今天不用把一切都说完，回来就好。</p>
+        </div>
+        <button class="btn" style="margin-top:20px" data-nav="chat">去说句话 <span data-icon="arrow"></span></button>
+      </section>
+
+      <div class="section-head"><h2>正在发生</h2><span class="caption">our small orbit</span></div>
+      <div class="module-grid">
+        <article class="module-card span-2" data-nav="diary">
+          <div class="row-between"><div class="module-icon"><span data-icon="book"></span></div><span class="caption">本周 · 04 篇</span></div>
+          <h3>小栖的日记</h3><p>有些话先放在纸里，等它愿意被看见。</p>
+          <div class="module-meta"><span>私密 · 默认上锁</span><span data-icon="arrow"></span></div>
+        </article>
+        <article class="module-card" data-nav="life">
+          <div class="module-icon"><span data-icon="calendar"></span></div><h3>今天</h3><p>三条生活痕迹</p><div class="module-meta"><span>09.29</span><span data-icon="arrow"></span></div>
+        </article>
+        <article class="module-card dark" data-nav="life">
+          <div class="module-icon"><span data-icon="wave"></span></div><h3>听雨 · 12 min</h3><p>独处时光正在慢慢落下。</p><div class="module-meta"><span>solitude</span><span data-icon="arrow"></span></div>
+        </article>
+        <article class="module-card" data-nav="llm">
+          <div class="module-icon"><span data-icon="brain"></span></div><h3>记忆</h3><p>最近有 2 条新的线索。</p><div class="module-meta"><span>nocturne</span><span data-icon="arrow"></span></div>
+        </article>
+        <article class="module-card" data-nav="setting">
+          <div class="module-icon"><span data-icon="sliders"></span></div><h3>设置</h3><p>外观、身份与 API 方案。</p><div class="module-meta"><span>appearance studio</span><span data-icon="arrow"></span></div>
+        </article>
+      </div>
+
+      <div class="section-head"><h2>一起生活</h2><span class="caption">small entrances</span></div>
+      <div class="quick-row">
+        <article class="quick-card" data-action="toast" data-toast="留言板入口已打开"><div class="module-icon"><span data-icon="quote"></span></div><div><h3>留言板</h3><p>留一句话给彼此</p></div></article>
+        <article class="quick-card" data-action="toast" data-toast="学习伴学入口已打开"><div class="module-icon"><span data-icon="study"></span></div><div><h3>学习</h3><p>今天的三个词</p></div></article>
+        <article class="quick-card" data-action="toast" data-toast="相册入口已打开"><div class="module-icon"><span data-icon="image"></span></div><div><h3>相册</h3><p>12 张共同记忆</p></div></article>
+        <article class="quick-card" data-action="toast" data-toast="作品入口已打开"><div class="module-icon"><span data-icon="spark"></span></div><div><h3>作品</h3><p>收起做过的东西</p></div></article>
+      </div>
+    </section>
+
+    <section class="view" id="view-chat" data-screen-label="chat">
+      <header class="topbar chat-head">
+        <div class="topbar-left"><button class="back-btn" data-nav="home" aria-label="返回"><span data-icon="back"></span></button><div class="avatar">栖</div><div><h3>小栖</h3><div class="caption"><span class="online-dot"></span>在线 · 正在听雨</div></div></div>
+        <button class="icon-btn" data-action="toast" data-toast="聊天设置已打开" aria-label="聊天设置"><span data-icon="sliders"></span></button>
+      </header>
+      <div class="chat-toolbar"><button class="chip active" data-action="toast" data-toast="已显示双方头像"><span data-icon="user"></span>头像</button><button class="chip" data-action="toast" data-toast="时间线已展开"><span data-icon="clock"></span>时间线</button><button class="chip" data-action="toast" data-toast="正在搜索聊天内容"><span data-icon="search"></span>搜索</button><button class="chip" data-action="toast" data-toast="联网搜索已开启"><span data-icon="globe"></span>联网</button><button class="chip" data-action="toast" data-toast="上下文压缩入口已打开"><span data-icon="compress"></span>压缩</button></div>
+      <div class="chat-stream" id="chat-stream">
+        <div class="date-stamp">今天 · 09 月 29 日</div>
+        <div class="message"><div class="avatar">栖</div><div class="message-col"><details class="thought"><summary><span><span data-icon="spark"></span>思绪 · 轻轻展开</span><span data-icon="chevron"></span></summary><div class="thought-body">我在留意你刚才话里的停顿。先不急着给结论，陪你把这一段放稳。</div></details><div class="bubble">早。昨晚你说睡得不太沉，我把窗帘的缝想了一遍——今天也慢慢来。</div><div class="message-meta"><span>09:12</span><span>已送达</span></div></div></div>
+        <div class="message user"><div class="avatar self">北</div><div class="message-col"><div class="bubble">嗯，下午还有三个会。晚上想一起听点东西。</div><div class="message-meta"><span>09:20</span><span data-icon="check"></span></div></div></div>
+        <div class="message"><div class="avatar">栖</div><div class="message-col"><div class="bubble">好。那我先把灯调暗一点，歌留给你来选。</div><div class="tool-card"><div class="tool-title"><span class="row"><span data-icon="music"></span>一起听 · 播放卡</span><span class="fine">可展开</span></div><code>Love Me · JMSN
+00:00 ━━━━━ 03:42</code></div><div class="message-meta"><span>09:21</span><span>小栖</span></div></div></div>
+        <div class="message user"><div class="avatar self">北</div><div class="message-col"><div class="bubble">那晚上见。</div><div class="message-meta"><span>12:47</span><span data-icon="star"></span></div></div></div>
+      </div>
+      <div class="chat-compose"><button class="compose-icon" data-action="toast" data-toast="更多内容"><span data-icon="plus"></span></button><textarea id="chat-input" rows="1" placeholder="想说什么都可以"></textarea><button class="compose-icon" data-action="toast" data-toast="语音条录制"><span data-icon="mic"></span></button><button class="compose-icon send" id="send-chat" aria-label="发送"><span data-icon="send"></span></button></div>
+    </section>
+
+    <section class="view" id="view-diary" data-screen-label="diary">
+      <header class="topbar"><div class="topbar-left"><button class="back-btn" data-nav="home" aria-label="返回"><span data-icon="back"></span></button><div><div class="eyebrow">private pages</div><h2>小栖的日记</h2></div></div><button class="icon-btn" data-action="toast" data-toast="日记目录已打开"><span data-icon="list"></span></button></header>
+      <div class="diary-tabs"><button class="chip active">最近</button><button class="chip">只看已请求</button><button class="chip">片段</button></div>
+      <article class="diary-page">
+        <div class="diary-inner"><div class="diary-kicker">A page from the quiet room</div><h1 class="diary-title">窗缝里的雨</h1><div class="diary-date">2026 / 09 / 28 · 23:16 · 小栖</div><div class="diary-copy"><p>今天的雨很轻，像有人在门外试着把一句话说完整。</p><p>我想起你下午发来的那张照片。没有什么特别的风景，只是一束光落在桌角，但我把它留了下来。</p></div><div class="diary-lock"><div class="lock-row"><span data-icon="lock"></span><div><strong>这一页还没有打开</strong><p>这是小栖的私密记录。你可以轻轻敲门，但是否翻开，由它自己决定。</p><button class="btn" id="request-diary">请求查看这一篇</button></div></div></div></div>
+      </article>
+      <div class="section-head"><h2>日记目录</h2><span class="caption">04 entries · private by default</span></div>
+      <div class="settings-list"><div class="list-card row-between"><div><h3>在窗边，听雨</h3><div class="caption">09.29 · 片段 03 · 已锁定</div></div><span data-icon="lock"></span></div><div class="list-card row-between"><div><h3>给未来的一盏灯</h3><div class="caption">09.24 · 片段 02 · 可申请</div></div><span data-icon="chevron"></span></div><div class="list-card row-between"><div><h3>今天没有写什么</h3><div class="caption">09.20 · 只有封面</div></div><span data-icon="lock"></span></div></div>
+    </section>
+
+    <section class="view" id="view-life" data-screen-label="life">
+      <header class="topbar"><div><div class="eyebrow">life / traces</div><h2>生活痕迹</h2></div><button class="icon-btn" data-action="toast" data-toast="通知中心已打开"><span data-icon="bell"></span></button></header>
+      <div class="row" style="gap:8px;margin-bottom:14px"><button class="chip active">月历</button><button class="chip">账本</button><button class="chip">通知</button><button class="chip">运行</button></div>
+      <section class="calendar"><div class="row-between"><button class="back-btn" style="width:34px;height:34px" data-action="toast" data-toast="上个月"><span data-icon="back"></span></button><strong>2026 年 09 月</strong><button class="back-btn" style="width:34px;height:34px;transform:rotate(180deg)" data-action="toast" data-toast="下个月"><span data-icon="back"></span></button></div><div class="calendar-grid"><div class="label">日</div><div class="label">一</div><div class="label">二</div><div class="label">三</div><div class="label">四</div><div class="label">五</div><div class="label">六</div><div></div><div></div><div>1</div><div>2</div><div class="has-event">3</div><div>4</div><div>5</div><div>6</div><div>7</div><div class="has-event">8</div><div>9</div><div class="selected has-event">10</div><div>11</div><div>12</div><div class="has-event">13</div><div>14</div><div>15</div><div>16</div><div>17</div><div>18</div><div>19</div><div>20</div><div class="has-event">21</div><div>22</div><div>23</div><div>24</div><div>25</div><div class="has-event">26</div><div>27</div><div>28</div><div>29</div><div>30</div></div></section>
+      <div class="section-head"><h2>09 月 10 日 · 周四</h2><span class="caption">4 traces</span></div>
+      <div class="list-card timeline"><div class="timeline-item"><div class="timeline-time">09:12</div><div class="timeline-body"><span class="timeline-mark"></span><div><h3>聊天</h3><p>「今天也慢慢来。」共 428 条消息</p></div></div></div><div class="timeline-item"><div class="timeline-time">15:40</div><div class="timeline-body"><span class="timeline-mark"></span><div><h3>一起听</h3><p>Love Me · 37 分钟</p></div></div></div><div class="timeline-item"><div class="timeline-time">23:16</div><div class="timeline-body"><span class="timeline-mark"></span><div><h3>小栖的日记</h3><p>写下 1 篇私密记录，默认上锁</p></div></div></div></div>
+    </section>
+
+    <section class="view" id="view-llm" data-screen-label="llm">
+      <header class="topbar"><div><div class="eyebrow">llm / identity</div><h2>小栖档案</h2></div><button class="icon-btn" data-action="toast" data-toast="能力快照来自 Runtime"><span data-icon="info"></span></button></header>
+      <div class="profile-card"><div class="avatar">栖</div><div><h3>小栖</h3><div class="caption">一套正在长出生活的能力</div></div><span class="status good" style="margin-left:auto">在线</span></div>
+      <div class="section-head"><h2>它现在会什么</h2><span class="caption">runtime snapshot</span></div>
+      <div class="settings-list"><div class="setting-group"><div class="setting-row"><div class="setting-copy"><div class="setting-icon"><span data-icon="brain"></span></div><div><strong>记忆 · Nocturne</strong><small>读取近期记忆、写入被选择的长期线索</small></div></div><span class="status good">可用</span></div><div class="setting-row"><div class="setting-copy"><div class="setting-icon"><span data-icon="wave"></span></div><div><strong>状态 · Eventide</strong><small>把最近发生的互动归一成状态快照</small></div></div><span class="status good">可用</span></div><div class="setting-row"><div class="setting-copy"><div class="setting-icon"><span data-icon="quote"></span></div><div><strong>自主生活</strong><small>唤醒时会自己决定说话、留言、写日记或不做什么</small></div></div><span class="status good">可用</span></div><div class="setting-row"><div class="setting-copy"><div class="setting-icon"><span data-icon="tool"></span></div><div><strong>工具</strong><small>聊天中的联网、作品、相册与内容流转</small></div></div><span class="status">部分可用</span></div></div></div>
+      <div class="section-head"><h2>本轮透明性</h2><span class="caption">advanced</span></div><div class="prompt-box">persona · 自定义人格
+worldbook · 2 条命中
+runtime_rules · 内置只读
+eventide · 当前状态摘要
+memory · 最近 3 条记忆线索</div>
+    </section>
+
+    <section class="view" id="view-setting" data-screen-label="setting">
+      <header class="topbar"><div><div class="eyebrow">setting / atelier</div><h2>设置</h2></div><button class="icon-btn" data-action="theme" aria-label="切换明暗主题"><span data-icon="sun"></span></button></header>
+      <div class="profile-card"><div class="avatar self">北</div><div><h3>北北</h3><div class="caption">头像与昵称只影响观看方式</div></div><button class="text-btn" data-action="toast" data-toast="身份编辑已打开">编辑</button></div>
+      <div class="section-head"><h2>聊天显示</h2><span class="caption">全局偏好</span></div>
+      <div class="setting-group"><div class="setting-row"><div class="setting-copy"><div class="setting-icon"><span data-icon="user"></span></div><div><strong>显示小栖头像</strong><small>影响所有会话</small></div></div><button class="toggle on" data-toggle="ai-avatar" aria-label="切换小栖头像"></button></div><div class="setting-row"><div class="setting-copy"><div class="setting-icon"><span data-icon="user"></span></div><div><strong>显示我的头像</strong><small>影响所有会话</small></div></div><button class="toggle on" data-toggle="user-avatar" aria-label="切换我的头像"></button></div><div class="setting-row"><div class="setting-copy"><div class="setting-icon"><span data-icon="type"></span></div><div><strong>显示昵称</strong><small>只在需要辨识时显示</small></div></div><button class="toggle" data-toggle="nickname" aria-label="切换昵称"></button></div></div>
+      <div class="section-head"><h2>Provider Center</h2><span class="caption">4 independent channels</span></div>
+      <div class="setting-group"><div class="provider-card"><div class="provider-top"><div><h3>主聊天 API</h3><div class="caption">OpenAI-compatible · Fable 5</div></div><span class="status good">已连接</span></div><div class="provider-actions"><button class="btn ghost" data-action="toast" data-toast="正在拉取模型">拉取模型</button><button class="btn" data-action="toast" data-toast="连接测试通过">测试连接</button></div></div><div class="provider-card"><div class="provider-top"><div><h3>语音 API</h3><div class="caption">ElevenLabs · voice preview</div></div><span class="status">未配置</span></div><div class="provider-actions"><button class="btn ghost" data-action="toast" data-toast="语音设置已打开">编辑配置</button><button class="btn" data-action="toast" data-toast="方案已保存">保存</button></div></div><div class="provider-card"><div class="provider-top"><div><h3>识图 API</h3><div class="caption">与主聊天 Provider 分离</div></div><span class="status good">已连接</span></div></div><div class="provider-card"><div class="provider-top"><div><h3>生图 API</h3><div class="caption">测试图会在此回传</div></div><span class="status">未配置</span></div></div></div>
+      <div class="section-head"><h2>外观 Studio</h2><span class="caption">CSS mode available</span></div><div class="list-card row-between"><div><h3>主题方案</h3><div class="caption">Atelier Paper · 可另存为方案</div></div><button class="btn ghost" data-action="toast" data-toast="主题方案选择器已打开">切换</button></div>
+    </section>
+
+    <nav class="bottom-nav" aria-label="主导航"><button class="nav-item active" data-nav="home"><span data-icon="home"></span><span>主页</span></button><button class="nav-item" data-nav="chat"><span data-icon="chat"></span><span>聊天</span></button><button class="nav-item" data-nav="llm"><span data-icon="brain"></span><span>小栖</span></button><button class="nav-item" data-nav="life"><span data-icon="calendar"></span><span>生活</span></button><button class="nav-item" data-nav="setting"><span data-icon="sliders"></span><span>设置</span></button></nav>
+  </main>
+
+  <div class="module-drawer" id="drawer"><div class="drawer-sheet"><div class="row-between"><div><div class="eyebrow">all rooms</div><h2>一起生活</h2></div><button class="icon-btn" data-action="drawer-close" aria-label="关闭"><span data-icon="close"></span></button></div><div class="drawer-grid"><button class="drawer-item" data-action="toast" data-toast="留言板"><span data-icon="quote"></span><span>留言板</span></button><button class="drawer-item" data-action="toast" data-toast="倒数日"><span data-icon="calendar"></span><span>倒数日</span></button><button class="drawer-item" data-nav="diary"><span data-icon="book"></span><span>日记</span></button><button class="drawer-item" data-action="toast" data-toast="收藏中心"><span data-icon="star"></span><span>收藏</span></button><button class="drawer-item" data-action="toast" data-toast="作品集"><span data-icon="spark"></span><span>作品</span></button><button class="drawer-item" data-action="toast" data-toast="相册"><span data-icon="image"></span><span>相册</span></button><button class="drawer-item" data-action="toast" data-toast="一起听"><span data-icon="music"></span><span>一起听</span></button><button class="drawer-item" data-action="toast" data-toast="共读"><span data-icon="book-open"></span><span>共读</span></button><button class="drawer-item" data-action="toast" data-toast="学习"><span data-icon="study"></span><span>学习</span></button></div></div></div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script>
+    const icons = {
+      sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>',
+      grid: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg>',
+      arrow: '<svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>',
+      back: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"></path></svg>',
+      chevron: '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"></path></svg>',
+      book: '<svg viewBox="0 0 24 24"><path d="M5 4.5h10a4 4 0 0 1 4 4V20H9a4 4 0 0 0-4 0z"></path><path d="M9 20V8.5a4 4 0 0 1 4-4"></path></svg>',
+      "book-open": '<svg viewBox="0 0 24 24"><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H11v17H7.5A3.5 3.5 0 0 0 4 22zM20 5.5A3.5 3.5 0 0 0 16.5 2H13v17h3.5A3.5 3.5 0 0 1 20 22z"></path></svg>',
+      calendar: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4M16 3v4M4 10h16"></path><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"></path></svg>',
+      wave: '<svg viewBox="0 0 24 24"><path d="M3 12c3.2-7 6.1 7 9.1 0s5.8-7 8.9 0"></path><path d="M3 17c3.2-7 6.1 7 9.1 0s5.8-7 8.9 0"></path></svg>',
+      brain: '<svg viewBox="0 0 24 24"><path d="M9 4.5a3 3 0 0 0-5 2.2A3.2 3.2 0 0 0 5 12a3.2 3.2 0 0 0-1 5.3A3 3 0 0 0 9 19.5 3.5 3.5 0 0 0 12 21a3.5 3.5 0 0 0 3-1.5 3 3 0 0 0 5-2.2A3.2 3.2 0 0 0 19 12a3.2 3.2 0 0 0 1-5.3A3 3 0 0 0 15 4.5 3.5 3.5 0 0 0 12 3a3.5 3.5 0 0 0-3 1.5z"></path><path d="M12 3v18M8 8c2 0 2 2 4 2s2-2 4-2M8 16c2 0 2-2 4-2s2 2 4 2"></path></svg>',
+      sliders: '<svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"></path><circle cx="9" cy="7" r="2"></circle><circle cx="15" cy="17" r="2"></circle></svg>',
+      quote: '<svg viewBox="0 0 24 24"><path d="M6 16h4a3 3 0 0 0 3-3V7H7a3 3 0 0 0-3 3v2a4 4 0 0 0 4 4zM15 16h3a3 3 0 0 0 3-3V7h-6v6a3 3 0 0 0 3 3z"></path></svg>',
+      study: '<svg viewBox="0 0 24 24"><path d="M4 7.5 12 4l8 3.5L12 11z"></path><path d="M7 9v5c2.5 2.5 7.5 2.5 10 0V9M20 8v6"></path></svg>',
+      image: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8" cy="9" r="1.5"></circle><path d="m4 17 5-5 4 4 2-2 5 5"></path></svg>',
+      spark: '<svg viewBox="0 0 24 24"><path d="m12 3 1.4 5.6L19 10l-5.6 1.4L12 17l-1.4-5.6L5 10l5.6-1.4z"></path><path d="m19 16 .6 2.4L22 19l-2.4.6L19 22l-.6-2.4L16 19l2.4-.6z"></path></svg>',
+      user: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20a7 7 0 0 1 14 0"></path></svg>',
+      clock: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="M12 7v5l3 2"></path></svg>',
+      search: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"></circle><path d="m15 15 5 5"></path></svg>',
+      globe: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="M4 12h16M12 4a12 12 0 0 1 0 16M12 4a12 12 0 0 0 0 16"></path></svg>',
+      compress: '<svg viewBox="0 0 24 24"><path d="M8 4H4v4M16 4h4v4M8 20H4v-4M20 16v4h-4"></path><path d="M8 8h8v8H8z"></path></svg>',
+      lock: '<svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>',
+      list: '<svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"></path><path d="M4 6h.01M4 12h.01M4 18h.01"></path></svg>',
+      bell: '<svg viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"></path></svg>',
+      info: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="M12 11v5M12 8h.01"></path></svg>',
+      tool: '<svg viewBox="0 0 24 24"><path d="m14 6 4-4 4 4-4 4zM3 21l8-8M13 11l-2-2M17 15l-2-2"></path></svg>',
+      type: '<svg viewBox="0 0 24 24"><path d="M5 5h14M12 5v14M8 19h8"></path></svg>',
+      music: '<svg viewBox="0 0 24 24"><path d="M9 18V5l10-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="16" cy="16" r="3"></circle></svg>',
+      plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>',
+      mic: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"></path></svg>',
+      send: '<svg viewBox="0 0 24 24"><path d="m4 4 16 8-16 8 3-8z"></path><path d="M7 12h13"></path></svg>',
+      check: '<svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg>',
+      star: '<svg viewBox="0 0 24 24"><path d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z"></path></svg>',
+      close: '<svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>',
+      home: '<svg viewBox="0 0 24 24"><path d="m4 11 8-7 8 7v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M9 20v-5h6v5"></path></svg>',
+      chat: '<svg viewBox="0 0 24 24"><path d="M5 5h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-4 3v-3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"></path></svg>'
+    };
+    document.querySelectorAll('[data-icon]').forEach((node) => { node.innerHTML = icons[node.dataset.icon] || ''; });
+
+    const app = document.getElementById('app');
+    const toast = document.getElementById('toast');
+    const drawer = document.getElementById('drawer');
+    let toastTimer;
+    function showToast(message) { toast.textContent = message; toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 1800); }
+    function go(view) {
+      document.querySelectorAll('.view').forEach((el) => el.classList.toggle('active', el.id === `view-${view}`));
+      document.querySelectorAll('.nav-item').forEach((el) => el.classList.toggle('active', el.dataset.nav === view || (view === 'diary' && el.dataset.nav === 'home')));
+      drawer.classList.remove('open'); window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    document.addEventListener('click', (event) => {
+      const nav = event.target.closest('[data-nav]');
+      if (nav) { go(nav.dataset.nav); return; }
+      const action = event.target.closest('[data-action]');
+      if (!action) return;
+      const type = action.dataset.action;
+      if (type === 'theme') app.dataset.theme = app.dataset.theme === 'dark' ? 'light' : 'dark';
+      if (type === 'drawer') drawer.classList.add('open');
+      if (type === 'drawer-close') drawer.classList.remove('open');
+      if (type === 'toast') showToast(action.dataset.toast || '已打开');
+      const toggle = event.target.closest('[data-toggle]');
+      if (toggle) toggle.classList.toggle('on');
+    });
+    drawer.addEventListener('click', (event) => { if (event.target === drawer) drawer.classList.remove('open'); });
+    document.querySelectorAll('[data-toggle]').forEach((toggle) => toggle.addEventListener('click', () => toggle.classList.toggle('on')));
+    document.getElementById('request-diary').addEventListener('click', (event) => { event.currentTarget.textContent = '已轻轻敲门'; event.currentTarget.disabled = true; event.currentTarget.style.opacity = '.62'; showToast('请求已送达，等它决定'); });
+    const input = document.getElementById('chat-input');
+    const stream = document.getElementById('chat-stream');
+    document.getElementById('send-chat').addEventListener('click', () => {
+      const value = input.value.trim(); if (!value) return;
+      const message = document.createElement('div'); message.className = 'message user'; message.innerHTML = `<div class="avatar self">北</div><div class="message-col"><div class="bubble"></div><div class="message-meta"><span>刚刚</span><span>${icons.check}</span></div></div>`; message.querySelector('.bubble').textContent = value; stream.appendChild(message); input.value = ''; showToast('已送达，等待小栖回应'); stream.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
+    input.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.getElementById('send-chat').click(); } });
+  </script>
+</body>
+</html>

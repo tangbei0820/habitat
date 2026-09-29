@@ -11,24 +11,25 @@
 
 :root {
   /* ---- §3.2 Light Mode ---- */
-  --bg-base: #f3f3f5;
-  --bg-surface: rgba(255, 255, 255, 0.88);
+  --bg-base: #f5f4f1;
+  --bg-surface: rgba(255, 255, 255, 0.84);
   --bg-surface-solid: #ffffff;
-  --bg-subtle: #ececef;
+  --bg-subtle: #efebe5;
+  --avatar-gray: #8c867c;
 
-  --text-primary: #1a1a1a;
-  --text-secondary: #8d8d92;
-  --text-tertiary: #b0b0b5;
+  --text-primary: #1c1b19;
+  --text-secondary: #57534c;
+  --text-tertiary: #98938a;
 
-  --border-soft: rgba(0, 0, 0, 0.06);
+  --border-soft: #e7e5e0;
   --overlay-soft: rgba(255, 255, 255, 0.72);
 
   --accent-strong: #111111;
   --accent-on-strong: #ffffff;
 
-  --success: #34c759;
-  --warning: #c99543;
-  --danger: #c75c5c;
+  --success: #687469;
+  --warning: #817563;
+  --danger: #8b625b;
 
   /* ---- Tears & Glass 玻璃表面（§2.2 / 参考分析）---- */
   --glass-surface: rgba(255, 255, 255, 0.55);
@@ -56,9 +57,12 @@
 
   /* ---- §4.1 字体 ---- */
   --font-main:
+    "Helvetica Neue",
+    Helvetica,
+    Arial,
     "PingFang SC",
-    "SF Pro Display",
-    "Inter",
+    "Hiragino Sans GB",
+    "Noto Sans SC",
     "Microsoft YaHei",
     sans-serif;
 
@@ -84,17 +88,18 @@
    ⚠️ 原型里的 `--rain-opacity` 只在浅色定义（深色继承 1），保持一致。 */
 [data-theme="dark"] {
   /* ---- §3.3 Dark Mode（避免纯黑+纯白）---- */
-  --bg-base: #121212;
-  --bg-surface: rgba(32, 32, 34, 0.88);
-  --bg-surface-solid: #202022;
-  --bg-subtle: #29292c;
+  --bg-base: #151412;
+  --bg-surface: rgba(33, 31, 28, 0.88);
+  --bg-surface-solid: #211f1c;
+  --bg-subtle: #2b2824;
+  --avatar-gray: #756f66;
 
-  --text-primary: #ebebed;
-  --text-secondary: #8b8b90;
-  --text-tertiary: #66666b;
+  --text-primary: #f3f1ec;
+  --text-secondary: #c3beb5;
+  --text-tertiary: #89837a;
 
-  --border-soft: rgba(255, 255, 255, 0.07);
-  --overlay-soft: rgba(28, 30, 34, 0.72);
+  --border-soft: #3a3732;
+  --overlay-soft: rgba(33, 31, 28, 0.72);
 
   --accent-strong: #f2f2f2;
   --accent-on-strong: #111111;

@@ -13,10 +13,18 @@ body,
 }
 
 body {
-  background-color: var(--bg-base);
+  background:
+    radial-gradient(circle at 50% -16%, rgba(255, 255, 255, 0.7), transparent 48%),
+    #d6d2cb;
   color: var(--text-primary);
   font-family: var(--font-main);
+  font-size: 15px;
+  line-height: 1.75;
   -webkit-font-smoothing: antialiased;
+}
+
+[data-theme='dark'] body {
+  background: #090908;
 }
 
 .safe-bottom {

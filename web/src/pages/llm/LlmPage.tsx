@@ -62,7 +62,7 @@ export function LlmPage() {
   const enabledCount = capabilities.filter((capability) => capability.enabled).length
 
   return (
-    <div className="px-4 py-6">
+    <div className="px-4 py-6" data-page="llm">
       <h1 className="text-lg font-semibold">小栖档案</h1>
       <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
         小栖现在会做的事，以及你能去哪里看。

@@ -50,7 +50,7 @@ export function HomeModulePage() {
   return (
     // key={module}：换模块时强制重挂，进场动画才会重播
     // （同一个组件实例改 class 不会重放 animation）
-    <div key={module} className={slide}>
+    <div key={module} className={slide} data-page="home-module">
       {/* 顶栏与对话页同一套低存在感帽子：返回是图标按钮，不占一行文字 */}
       <div className="topbar">
         <Link
