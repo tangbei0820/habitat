@@ -88,6 +88,7 @@ npm --prefix server run dev:mock-openai   # :3334  mock OpenAI 兼容上游
 | `npm run probe:eventide` | Eventide sidecar :8234；可选 `PROBE_SERVER` | 真实 Eventide revision / 建态 / 时间推进 / 并发串行 / SQLite 恢复 / 故障降级；配置 server 时共 19 项 |
 | `npm run probe:chat-context` | mock OpenAI + server；注入态另需 Eventide | 读取 mock 收到的真实报文，验证状态卡顺序 / 历史不变 / 持久化；注入 7 项、降级 3 项 |
 | `npm run probe:core5` | 使用隔离 DB 的 server | **Core-5 Chat / Call → Eventide outbox → Desire / 下一轮上下文**：结构化结算、断线 / 重启恢复、交互幂等、Nocturne / Eventide 降级（12 项） |
+| `npm run probe:core6` | 使用隔离 DB 的 server | **Core-6 Runtime 信任与审计**：确认事件幂等 / 通知 / 撤回 / 过期、生产 Eventide 动态字段可读化（7 项） |
 | `npm run probe:phase3b` | Eventide + mock OpenAI + 使用隔离 DB 的 server | Phase 3B 全链：结算 / 事件 / 梦境 / BudgetGuard / 唤醒 / 独处 / 通知 / 钱包（21 项） |
 | `npm run probe:phase4` | mock OpenAI + 使用隔离 DB 的 server | Phase 4 全链：月历 / 补价 / 历史价格 / 钱包 / 通知 / 运行 / Push 降级（16 项） |
 | `npm run probe:phase5` | mock OpenAI + 使用隔离 DB 的 server | Phase 5 媒体 / 工具 API：ASR、视觉描述、图片生成、TTS 音频流、上传大小与 MIME 拒绝、无 MCP 空态与非法工具调用（8 项） |

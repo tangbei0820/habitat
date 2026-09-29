@@ -319,16 +319,16 @@ P2 负责把它摆到台面上 —— **只动呈现层，执行层一行没改*
 
 ---
 
-## 8. 当前仍待补齐（Core-6 以后）
+## 8. 当前仍待补齐（Core-7 / Later）
 
-- Eventide payload 的字段集合仍由 sidecar 决定；共享可读化层已覆盖常见身体 / 情绪键并对未知键安全回退，生产真实 payload 仍按运维观察持续校准
+- Eventide payload 的字段集合仍由 sidecar 决定；Core-6 已按生产 payload 校准身体周期字段，未知键继续安全回退，新增 sidecar 字段仍按运维观察补充
 - Desire 已进入 shadow：聊天 / 通话 / Eventide 事件只落结构化 signal 与审计，不把正文写进动机表，也不直接影响 Chat 或主动行动
-- 工具卡片与助手气泡的时间顺序（见 `DATA_MODEL.md` §3.2 末）
+- 工具卡片与助手气泡的时间顺序已由 Core-1 的同消息 `blocks.order` 协议固定；后续只在新增块类型时补回归
 - `memory.write` 已完成 Core-3：真实实例 `hold`、失败回灌、去重、修正追加、来源审计与记忆页回链均已接入；Nocturne 原生编辑 / 删除仍只在 Dashboard。
-- 确认卡服务端已经支持过期 / 撤回；前端展示、通知和自动化覆盖仍归后续高风险写能力补齐，Core-3 的记忆自主写入不走确认卡。
+- 确认卡服务端支持过期 / 撤回；Core-6 已补待决幂等、站内通知、Push 深链与前端真实状态展示。Core-3 的记忆自主写入不走确认卡。
 - 记忆与工具没有独立“管理器”页面：记忆深处进入 Nocturne 原生 Dashboard，工具继续通过 Chat 工具卡 / Mini Terminal 暴露；
   若未来新增页面，必须先定义用户任务，不能为了显示能力制造假入口。
-- `FIELD_LABELS` 的长期词典、工具卡更细的时间线、确认卡前端交互和 Nocturne 原生编辑 / 删除仍是后续工作；Core-5 的 Provider 回退、结算 outbox、状态降级与下一轮召回闭环已完成。
+- Nocturne 原生编辑 / 删除 / 合并 / 迁移与 URI 级权限仍由其 Dashboard 承担；Core-5 的 Provider 回退、结算 outbox、状态降级与下一轮召回、Core-6 的 Runtime 信任收口均已完成。
 
 ### 8.1 Core-4 Eventide / Desire 边界
 

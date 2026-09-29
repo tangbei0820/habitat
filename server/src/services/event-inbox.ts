@@ -188,6 +188,13 @@ export function requestToolConfirm(input: {
 
   if (!validated.ok) return { ok: false, error: validated.error }
 
+  // 同一轮重连 / 模型重复提交同一高风险动作时复用待决事件，避免
+  // 收件箱里出现两张一模一样的确认卡，也避免重复推送打扰。
+  const existing = findPendingEvent('tool_confirm', (payload) =>
+    payload.toolName === input.toolName && JSON.stringify(payload.args) === JSON.stringify(validated.payload),
+  )
+  if (existing !== null) return { ok: true, event: existing }
+
   const event = createEvent({
     kind: 'tool_confirm',
     decider: 'user',
@@ -198,6 +205,18 @@ export function requestToolConfirm(input: {
     // 改日记时指向那一篇；写日记 / 写留言还没有目标对象，就没有
     ...(typeof validated.payload.id === 'string' ? { targetId: validated.payload.id } : {}),
   })
+  const notice = createNotification(
+    'system',
+    '有一件事等你确认',
+    event.title,
+    {
+      category: 'task',
+      eventId: event.id,
+      status: event.status,
+      route: '/life?view=records&tab=events',
+    },
+  )
+  void sendWebPush(notice).catch(() => undefined)
   return { ok: true, event }
 }
 

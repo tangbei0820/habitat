@@ -1640,13 +1640,13 @@ breath / trace / hold / wander / wander_mark / drive / undercurrent / trail_delt
 现在改成「按名字认出注入段、只看剩下那部分」，并补了两条：顺序正确、
 **能力清单里不含任何未启用的能力**（不伪造）。
 
-**遗留（不在本轮范围，已记录不顺手处理）**
+**当时遗留（已由后续任务处理；保留在历史记录中）**
 
-- ⏳ `shared/state-summary.ts` 的 `FIELD_LABELS` 词典**未与真实 Eventide 的键集核对过**（键名不符时自动回退原键名）
-- ⏳ 工具卡片总排在助手气泡之后；模型若在工具调用后又说话，顺序会相反 → 需把一次回复拆成多段气泡
-- ⏳ `docs/PRODUCT_SPEC.md` §9.7 需要随本层落地而订正（本轮未改产品规格正文）
-- ⏳ P1：Event Inbox、`diary_access_request` 流转、日记/留言板迁服务端（Dexie v11 + 备份格式升级）
-- ⏳ P2：LLM 页面 App Launcher、Chat 头像开关
+- ✅ `FIELD_LABELS` 已在 Core-6 依据生产 Eventide payload 校准；未知键仍安全回退
+- ✅ 工具卡与助手正文已统一使用同一条消息 `blocks.order`，Core-6 补充重复调用回归
+- ✅ `docs/PRODUCT_SPEC.md` §9.7 已记录自主工具、确认级别与结果回灌契约
+- ✅ Event Inbox、`diary_access_request` 流转、日记 / 留言板服务端迁移已由 T-036～T-037 完成
+- ✅ LLM 能力页 / Chat 头像开关已由后续 V2 切片完成；本条不再作为当前待办
 
 ---
 
@@ -3841,3 +3841,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`probe:core5` **12/12**（结算 outbox、重复交互、sidecar 失败恢复、服务重启读回、聊天结算、Nocturne / Eventide 降级与下一轮上下文）；`probe:desire-core4` **11/11**；两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；生产部署后服务健康与公网 API 验收通过。
 
 **明确延期**：真实硬件通话 / 麦克风授权、PSTN / CallKit / WebRTC 全双工、Nocturne 原生编辑 / 删除 / 回滚、Desire 影响语气与主动行为、Home / Life 其它大模块仍不在 Core-5；本阶段完成后停止。
+
+### T-148 · 2026-09-29 · Core-6 · Runtime 信任与审计收口 —— **完成（待生产部署）**
+
+**范围**：只收口核心 Runtime 的确认事件、状态可读化与工具时序信任边界；不进入 Home / Life 新模块，
+不代理 Nocturne 原生编辑 / 删除 / 回滚，不把 Desire 升级成第二套 Agent Runtime。
+
+| 交付 | 说明 |
+| --- | --- |
+| 确认事件幂等 | 相同 `tool_confirm` 参数复用待决事件，重连 / 重试不新增确认卡，也不重复推送。 |
+| 通知与深链 | 新确认事件写入 `category=task` 站内通知；Web Push 按现有总开关 / Quiet Hours 尽力发送，点击深链进入 Life → 事件。 |
+| 生命周期 | 既有过期 / 撤回 / 单次决策继续保留审计；确认卡始终从服务端读取真实状态，不做乐观成功。 |
+| Eventide 可读化 | 依据生产 sidecar `5d8bef9` 的 `heat / pressure / control / sensitivity / reserve / possessiveness / fatigue` 校准字段标签；动态 `{value, level, description}` 展示真实值与描述，未知键安全回退。 |
+| 工具顺序 | 回归同一助手消息 `blocks.order` 的正文 → 工具 → 后续正文协议；不新增第二套消息 / 工具模型。 |
+| 验收 | `probe:core6` **7/7**；Core-4 / Core-5 探针通过；两端 typecheck、前端 build、diff check 通过。 |
+
+**明确延期**：Nocturne 原生 URI 管理代理、Desire 对语气 / Wake 的真实影响、PSTN / CallKit / WebRTC 全双工、Home / Life / Living Apps 继续留在 Later。

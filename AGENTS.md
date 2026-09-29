@@ -60,8 +60,8 @@
 
 > **T-108 / T-109 施工边界**：留言板 Widget 只保存 `boardScope` 引用（recent / group / moment），服务端单条读取用于失效检测与原留言回链；不复制正文、不做 Widget 拖拽编排，不顺带进入日记富媒体或其它 Living Apps。
 
-> **当前优先路线（2026-09-29 · T-146）**：Core-0 基线校准、Core-1 Chat 完整消息空间、Core-2 应用内通话、Core-3 Nocturne 记忆闭环与 **Core-4 Eventide / Desire 状态影子层**已完成；后续暂停扩建 Home / Life / Living Apps，下一阶段只进入
-> `HABITAT_V2_PLAN.md` §23 的 **Core-5 核心联调与生产观察**。
+> **当前优先路线（2026-09-29 · T-148）**：Core-0 基线校准、Core-1 Chat 完整消息空间、Core-2 应用内通话、Core-3 Nocturne 记忆闭环、Core-4 Eventide / Desire 状态影子层、Core-5 核心联调与生产观察已完成；后续暂停扩建 Home / Life / Living Apps，当前完成
+> `HABITAT_V2_PLAN.md` §23 的 **Core-6 Runtime 信任与审计收口**。
 > 每个 Core 阶段可以拆多个内部提交，但必须整阶段验收、更新文档后再停止；PSTN / CallKit / 原生系统电话不属于 Web 应用内通话完成口径。
 
 > **Core-1 当前结果（2026-09-29 · T-143）**：Chat 长会话定位已改为有限窗口 + 双向复合游标分页；搜索结果支持命中高亮与今天 / 昨天 / 月级导航；导出剥离公开思绪与 Provider reasoning；富内容 iframe CSP 与 tab-group 叶子渲染已收紧。两端 typecheck、前端 build、`probe:chat-compact` 5/5 与本地 PWA targeted 回归通过，尚未部署 VPS。下一步只进入 Core-2，不顺带修改记忆、状态或 Home / Life。
@@ -72,7 +72,9 @@
 
 > **Core-4 当前结果（2026-09-29 · T-146）**：Eventide 继续作为身体 / 情绪状态真相源；状态页改用统一 payload 可读化，动态字段标签有通用校准与安全回退，趋势 / 按天 / 最近变化 / raw 高级视图保持真实数据边界；新增 Desire 影子动机层，接收聊天、通话与 Eventide 结构化事件，保存八维倾向、闪念 / 执念、候选意图、衰减、阻断、行动满足与审计，但不注入 Chat、不调用 LLM、不直接执行行动；`probe:desire-core4` 11/11，两端 typecheck、前端 build、diff check 通过，尚未部署 VPS。生产 Eventide payload 与真实回放仍需 Core-5 观察期受控验证；下一步只进入 Core-5。
 
-> **Core-5 当前结果（2026-09-29 · T-147）**：聊天与应用内通话继续复用现有 Provider / SSE / 状态 / 记忆链路；本轮新增 `interactionId` 幂等边界与 SQLite `core_settlement` 结构化 outbox。Eventide 结算结果在 sidecar / 网络 / 服务重启后可恢复，重复交互不会重复消耗结算模型或重复应用状态；恢复成功会进入 Desire 结构化审计，下一轮上下文继续独立召回 Nocturne 与 Eventide，任一增强链失败只降级自身。`probe:core5` 12/12，生产部署与公网健康 / outbox 恢复观察已完成；下一阶段停止在 Core-5，不进入其它 Home / Life 功能。
+> **Core-5 当前结果（2026-09-29 · T-147）**：聊天与应用内通话继续复用现有 Provider / SSE / 状态 / 记忆链路；本轮新增 `interactionId` 幂等边界与 SQLite `core_settlement` 结构化 outbox。Eventide 结算结果在 sidecar / 网络 / 服务重启后可恢复，重复交互不会重复消耗结算模型或重复应用状态；恢复成功会进入 Desire 结构化审计，下一轮上下文继续独立召回 Nocturne 与 Eventide，任一增强链失败只降级自身。`probe:core5` 12/12，生产部署与公网健康 / outbox 恢复观察已完成。
+
+> **Core-6 当前结果（2026-09-29 · T-148）**：以生产 Eventide `heat / pressure / control / sensitivity / reserve / possessiveness / fatigue` payload 校准统一状态摘要；动态 `{value, level, description}` 不再只显示标签或泄漏 `[object Object]`。`confirm` 事件增加待决幂等、站内通知、Push 深链与既有过期 / 撤回审计；`probe:core6` 7/7，两端 typecheck、前端 build 与 Core-4 / Core-5 回归通过。VPS 部署与公网状态 / 通知入口验收已完成后，本阶段停止，不进入 Later。
 
 **历史阶段路线（仅用于解释旧任务编号）**：P0 基座可视化 → P1 Chat MVP → P2 Home → P3A 记忆 → P3B 状态 → P4 Life → P5 高级能力 → P6 打磨。当前施工顺序以 T-141 / `HABITAT_V2_PLAN.md` §23 为准。
 

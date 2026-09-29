@@ -904,6 +904,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | `PATCH /api/notifications/read-all` | 原子标记全部未读通知为已读，返回 `updated` 数量 |
 | `GET /api/notifications/preferences` | 返回总开关、分类开关与 Quiet Hours；不改变通知收件箱 |
 | `PATCH /api/notifications/preferences` | 局部更新 `{ enabled?, quietHoursEnabled?, quietStart?, quietEnd?, categories? }`；时间为 `HH:mm` |
+| 确认事件 | 新建 `tool_confirm` 时按工具参数幂等复用待决事件，并写入 `category=task` 的站内通知；按现有偏好尽力发送 Web Push，metadata 带 `eventId / route=/life?view=records&tab=events`，不绕过确认 |
 | 日记授权结果 | AI 处理 `diary_access_request` 后写入 `category=diary` 的站内通知，并按现有偏好尽力发送 Web Push；通知 metadata 带 `diaryId / fragmentId / route` |
 | `GET /api/solitude?limit=` | AI 私有的独处记录；梦卡以 `metadata.kind="dream"` 区分 |
 

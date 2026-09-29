@@ -34,6 +34,7 @@
     "probe:memory-core3": "tsx scripts/probe-memory-core3.ts",
     "probe:desire-core4": "tsx scripts/probe-desire-core4.ts",
     "probe:core5": "tsx scripts/probe-core5.ts",
+    "probe:core6": "tsx scripts/probe-core6.ts",
     "probe:nocturne-tools-standalone": "node scripts/probe-nocturne-tools-standalone.mjs",
     "probe:phase3b": "tsx scripts/probe-phase3b.ts",
     "probe:phase4": "tsx scripts/probe-phase4.ts",

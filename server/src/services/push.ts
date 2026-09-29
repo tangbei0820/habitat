@@ -48,7 +48,10 @@ export async function sendWebPush(notification: NotificationRecord, options: { f
     title: notification.title,
     body: notification.body,
     tag: notification.id,
-    url: '/life?tab=notifications',
+    // 需要行动的通知可以把用户直接送到对应入口；旧通知没有 route 时仍回到通知中心。
+    url: typeof notification.metadata.route === 'string' && notification.metadata.route.startsWith('/')
+      ? notification.metadata.route
+      : '/life?view=records&tab=notifications',
   })
   let sent = 0
   const subscriptions = listPushSubscriptions()

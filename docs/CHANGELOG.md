@@ -1359,3 +1359,10 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 结算成功进入 Desire 结构化审计，下一轮上下文继续独立召回 Nocturne 与 Eventide；Nocturne / Eventide 任一不可用时只降级对应增强链，不影响已送达聊天。
 - `probe:core5` **12/12**、`probe:desire-core4` **11/11**；两端 typecheck、前端 build、diff check 通过。已完成 VPS 备份、部署、服务重启与公网健康 / 线上 bundle / Core-5 探针验收。
 - Core-5 到此停止；不进入新的 Home / Life 或其它功能施工。
+
+### 2026-09-29 · T-148 · Core-6 Runtime 信任与审计收口（本地）
+
+- `confirm` 级工具事件按工具参数幂等复用待决记录；新事件写入 `category=task` 站内通知，并按现有偏好尽力发送带 Life 事件深链的 Web Push。
+- 生产 Eventide sidecar 当前真实字段已校准到共享状态摘要；动态 `{value, level, description}` 会展示真实数值 / 等级 / 描述，未知字段安全回退，普通 UI 不出现 `[object Object]`。
+- 确认卡继续以服务端状态为准，过期 / 撤回 / 失败保留审计；工具卡与助手正文沿用同一消息 `blocks.order` 时序协议。
+- 新增 `probe:core6` **7/7**；Core-4 / Core-5 探针、两端 typecheck、前端 build 通过。生产部署与公网状态 / 通知入口验收待本阶段最后一步完成。

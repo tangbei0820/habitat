@@ -21,11 +21,18 @@ import type { BodyStateSnapshot } from './types'
 /**
  * 已知字段 → 中文名（**显示用翻译，不是语义定义**）。
  *
- * ⚠️ 这份词典**未与真实 Eventide sidecar 的键集核对过** —— 是按键名惯例先写的。
- * 键名不符时自动退回原键名显示，所以最坏情况只是「没翻译」，不会显示错的值。
- * 拿到真实键集后应订正本表（`docs/AI_RUNTIME.md` 已记为待办）。
+ * Core-6 已用生产 Eventide sidecar 的真实 payload 校准身体周期字段；
+ * 新增键仍自动退回原键名显示，所以最坏情况只是「没翻译」，不会显示错的值。
  */
 const FIELD_LABELS: Readonly<Record<string, string>> = {
+  // Eventide 生产 sidecar（5d8bef9）当前使用的身体周期字段。
+  // 这些是显示标签，不是状态语义；未知键仍然回退原键名。
+  heat: '热度',
+  pressure: '压抑感',
+  control: '控制力',
+  sensitivity: '敏感度',
+  reserve: '蓄积感',
+  possessiveness: '占有欲',
   energy: '精力',
   fatigue: '疲劳',
   mood: '情绪',
@@ -75,6 +82,14 @@ export function describeValue(value: unknown, depth = 0): string {
   }
   if (typeof value === 'object') {
     const record = value as Record<string, unknown>
+    // Eventide 的动态字段通常是 { value, level, description, label }。
+    // 先把数值和生活化等级拼成一行，避免只显示「热度」而丢掉真正的状态值。
+    if ('value' in record) {
+      const valueText = describeValue(record.value, depth + 1)
+      const level = typeof record.level === 'string' ? record.level.trim() : ''
+      const description = typeof record.description === 'string' ? record.description.trim() : ''
+      return clip([valueText, level, description].filter((item) => item !== '').join(' · '), VALUE_LIMIT)
+    }
     // 有些内部对象自带可读投影，优先用（典型：{ label: '有些疲倦', value: 62 }）
     for (const key of ['label', 'text', 'summary', 'name', 'title', 'description']) {
       const candidate = record[key]
@@ -122,9 +137,15 @@ export function describePayload(payload: Record<string, unknown>): StateFieldVie
     .slice(0, FIELD_LIMIT)
     .map((key) => ({
       key,
-      label: FIELD_LABELS[key] ?? key,
+      label: FIELD_LABELS[key] ?? objectLabel(payload[key]) ?? key,
       value: describeValue(payload[key]),
     }))
+}
+
+function objectLabel(value: unknown): string | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
+  const label = (value as Record<string, unknown>).label
+  return typeof label === 'string' && label.trim() !== '' ? label.trim() : null
 }
 
 /** 没状态时的统一答复 —— 与 `available: false` 配套，避免各调用点各写一份文案。 */
