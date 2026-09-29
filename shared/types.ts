@@ -1130,6 +1130,54 @@ export interface BodyStateSnapshot {
   settledAt: number
 }
 
+/** Core-4 Desire 影子动机层：只描述倾向，不直接授权任何行动。 */
+export type DesireDimension = 'attachment' | 'curiosity' | 'reflection' | 'duty' | 'social' | 'fatigue' | 'libido' | 'stress'
+export type DesireImpulseKind = 'flash' | 'longing'
+export type DesireSource = 'chat' | 'call' | 'eventide' | 'wake' | 'solitude' | 'manual'
+export type DesireActionType = 'message' | 'messageboard' | 'diary' | 'surf'
+
+export interface DesireImpulse {
+  id: string
+  kind: DesireImpulseKind
+  dimension: DesireDimension
+  label: string
+  strength: number
+  touchedAt: number
+  expiresAt: number
+}
+
+export interface DesireCandidate {
+  id: string
+  action: DesireActionType
+  dimension: DesireDimension
+  strength: number
+  reason: string
+  status: 'candidate' | 'satisfied' | 'expired'
+  blockedBy: string[]
+  createdAt: number
+  expiresAt: number
+  satisfiedAt: number | null
+}
+
+export interface DesireSnapshot {
+  mode: 'shadow'
+  values: Record<DesireDimension, number>
+  impulses: DesireImpulse[]
+  candidates: DesireCandidate[]
+  lastObservedAt: number | null
+  updatedAt: number
+}
+
+export interface DesireAuditRecord {
+  id: number
+  source: DesireSource
+  signal: string
+  delta: Partial<Record<DesireDimension, number>>
+  values: Record<DesireDimension, number>
+  refId: string | null
+  at: number
+}
+
 export interface StateProviderHealth {
   ok: boolean
   configured: boolean
@@ -1424,6 +1472,8 @@ export interface LifeRuntimeView {
   eventide: StateProviderHealth
   /** Life 只消费 UI payload，不下发 Eventide 往返 state 或隐藏状态卡。 */
   bodyState: { payload: Record<string, unknown>; settledAt: number } | null
+  /** Desire 只以 shadow snapshot 展示；候选不会在此接口触发行动。 */
+  desire: DesireSnapshot
   mcp: McpHealth
   automation: {
     policy: AutomationPolicy

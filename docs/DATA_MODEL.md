@@ -512,3 +512,22 @@ MCP 连接配置由服务端持有，浏览器只拿脱敏视图；不改 Dexie�
 
 这是服务端启动期 `CREATE TABLE IF NOT EXISTS` 的追加表，不改 Dexie，不升前端备份版本；与 `event_log`
 同时追加 `memory.write.completed` / `memory.write.failed` 事实，Life 可按事件聚合但不读取记忆正文。
+
+## 16. Core-4 Desire 影子状态（服务端 SQLite）
+
+Desire 是 Eventide 之上的**候选动机观察层**，不是第二套状态真相源，也不是 Agent Runtime。
+Eventide 继续负责身体 / 情绪底色与互动结算；Desire 只接收服务端已经确认发生的聊天、通话、
+Eventide 调度事件，保存结构化 signal 与倾向变化。
+
+| 表 | 字段 / 语义 | 关键不变量 |
+| --- | --- | --- |
+| `desire_state` | 单行 `id='primary'`；`values_json` 八维倾向；`impulses_json` 闪念 / 执念；`candidates_json` 候选意图；时间字段 | 只有 shadow 快照；不落原始聊天正文，不直接改变 Chat / Wake / Solitude |
+| `desire_audit` | `source` / `signal` / `delta_json` / `values_json` / `ref_id` / `at` | 只记结构化输入与状态快照；最多保留 5000 条，失败 / no-op / blocked 也可追溯 |
+
+八维初始基线均为 `0.5`，按时间向基线衰减；闪念强度衰减后可晋升为执念，候选只保留
+`message` / `messageboard` / `diary` / `surf` 四类意图。fatigue / stress 会产生阻断标记，
+没有候选、候选过期、行动失败 / 取消或权限拒绝都不调用 satisfy。只有真实执行器报告 `completed`
+才会降低对应倾向并追加 `desire.satisfy.completed`；任何其它情况追加 `desire.satisfy.skipped`。
+
+该表由服务端启动期 `CREATE TABLE IF NOT EXISTS` 追加，不改 Dexie、不升前端备份版本；普通 UI
+只显示生活化摘要与 shadow 标记，高级 raw 视图才显示完整结构化快照。

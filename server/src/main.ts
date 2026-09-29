@@ -38,8 +38,10 @@ import { registerListeningRoutes } from './routes/listening.js'
 import { registerToolRoutes } from './routes/tools.js'
 import { registerWorldbookRoutes } from './routes/worldbook.js'
 import { registerRelationshipRoutes } from './routes/relationship.js'
+import { registerDesireRoutes } from './routes/desire.js'
 import { AutomationService, startAutomationScheduler } from './services/automation.js'
 import { registerMemoryWriteExecutor } from './services/event-inbox.js'
+import { DesireEngine } from './services/desire.js'
 
 const app = Fastify({
   // Phase 5 媒体仍走受控 data URL；给 8 MB 音频的 base64 膨胀留空间，具体端点再按类型收紧。
@@ -96,12 +98,14 @@ const memoryProvider = new NocturneMemoryProvider(gateway)
 // 记忆写入门：Core-3 新调用在 Runtime 直接执行；这里保留旧 confirm 事件批准后的 hold 兼容执行体
 registerMemoryWriteExecutor((input) => memoryProvider.write(input))
 const stateProvider = loadEventideStateProvider()
+const desire = new DesireEngine()
 // 能力面：静态声明（shared/capabilities.ts）+ 运行时依赖探测，合成 AI「现在真能做什么」的快照
 const capabilityService = new CapabilityService(gateway, memoryProvider, stateProvider)
 registerHealthRoutes(app, gateway, stateProvider)
 registerDiagnosticRoutes(app)
 registerMemoryRoutes(app, memoryProvider)
 registerStateRoutes(app, stateProvider)
+registerDesireRoutes(app, desire)
 registerCapabilityRoutes(app, capabilityService)
 // 共同生活数据（Phase 6.5 起服务端权威）：AI 也在服务端跑，日记 / 留言板放这里才谈得上共用一份数据
 registerDiaryRoutes(app)
@@ -122,16 +126,16 @@ const llmRegistry = new LlmRegistry()
 registerProviderRoutes(app, llmRegistry)
 registerMcpRoutes(app, gateway)
 registerNocturneDashboardRoutes(app)
-registerChatRoutes(app, llmRegistry, stateProvider, memoryProvider, capabilityService)
-registerCallRoutes(app)
+registerChatRoutes(app, llmRegistry, stateProvider, memoryProvider, capabilityService, desire)
+registerCallRoutes(app, desire)
 registerMediaRoutes(app, llmRegistry)
 registerStudyRoutes(app, llmRegistry)
 registerReadingRoutes(app, llmRegistry)
 registerListeningRoutes(app)
 registerToolRoutes(app, gateway)
-const automationService = new AutomationService(llmRegistry, stateProvider, memoryProvider, app.log)
+const automationService = new AutomationService(llmRegistry, stateProvider, memoryProvider, app.log, undefined, desire)
 registerAutomationRoutes(app, automationService)
-registerLifeRoutes(app, gateway, stateProvider)
+registerLifeRoutes(app, gateway, stateProvider, desire)
 const stopAutomationScheduler = startAutomationScheduler(automationService, app.log)
 if (!envFileLoaded) app.log.info('未发现 server/.env，按进程环境变量运行')
 for (const problem of problems) app.log.warn({ problem }, 'LLM 方案配置被跳过')

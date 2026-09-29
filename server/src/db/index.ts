@@ -443,6 +443,28 @@ CREATE TABLE IF NOT EXISTS eventide_history (
 CREATE INDEX IF NOT EXISTS idx_eventide_history_at ON eventide_history (settled_at DESC, id DESC);
 `)
 
+// Core-4 Desire 影子动机：结构化状态与审计，不复制聊天正文，也不替代 Eventide。
+sqlite.exec(`
+CREATE TABLE IF NOT EXISTS desire_state (
+  id TEXT PRIMARY KEY,
+  values_json TEXT NOT NULL,
+  impulses_json TEXT NOT NULL,
+  candidates_json TEXT NOT NULL,
+  last_observed_at INTEGER,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS desire_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  signal TEXT NOT NULL,
+  delta_json TEXT NOT NULL,
+  values_json TEXT NOT NULL,
+  ref_id TEXT,
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_desire_audit_at ON desire_audit (at DESC, id DESC);
+`)
+
 // 自主行动审计（Phase 7B）：决策契约的 outcome 落点。(run_id, idx) 唯一 = 行动幂等
 sqlite.exec(`
 CREATE TABLE IF NOT EXISTS automation_action (

@@ -28,6 +28,7 @@ import { fetchPageText } from '../lib/web-fetch.js'
 import { createSurfRecord, fingerprintOf, getSurfFeeds, recentSurfFingerprints } from '../db/surf.js'
 import { getRelationshipSnapshot } from '../db/relationship.js'
 import { sendWebPush } from './push.js'
+import { DesireEngine } from './desire.js'
 
 export interface AutomationActionResult {
   kind: AutomationKind | 'event'
@@ -231,6 +232,7 @@ export class AutomationService {
     private readonly memory: MemoryProvider,
     private readonly logger: FastifyBaseLogger,
     private readonly guard = new BudgetGuard(),
+    private readonly desire = new DesireEngine(),
   ) {}
 
   async checkNow(now = new Date()): Promise<AutomationActionResult[]> {
@@ -247,6 +249,12 @@ export class AutomationService {
     const results: AutomationActionResult[] = []
     const policy = getAutomationPolicy()
     const runtime = getAutomationRuntimeState()
+    try {
+      // Desire 影子层只推进自己的衰减与审计；自主行为开关关闭时也不触发 LLM 或行动。
+      this.desire.tick(now.getTime())
+    } catch (error) {
+      this.logger.warn({ err: error }, 'Desire 影子 tick 失败；不影响主动行为调度')
+    }
     if (this.state !== null) {
       try {
         const event = await this.state.checkEvents(now, {
@@ -257,6 +265,11 @@ export class AutomationService {
         if (event.started) {
           appendEventLog('eventide.event.started', { eventKey: event.eventKey })
           results.push({ kind: 'event', status: 'completed', reason: event.eventKey, refId: null })
+        }
+        try {
+          this.desire.observe({ source: 'eventide', signal: event.started ? 'eventide.event' : 'eventide.tick', statePayload: event.snapshot.payload })
+        } catch (error) {
+          this.logger.warn({ err: error }, 'Desire Eventide 输入记录失败；不影响状态调度')
         }
       } catch (error) {
         const reason = errorMessage(error)
@@ -321,6 +334,11 @@ export class AutomationService {
       let disturbed = false
       for (const action of actions) {
         const outcome = await executeWakeAction(runId, action.idx, action, now, this.logger)
+        try {
+          this.desire.satisfyAction(action.type, outcome.status === 'completed' ? 'completed' : 'failed', now.getTime())
+        } catch (error) {
+          this.logger.warn({ err: error, action: action.type }, 'Desire 行动满足记录失败；不影响行动结果')
+        }
         if (outcome.status === 'completed' && action.type === 'message') disturbed = true
       }
       markWakeDecision(now.getTime(), disturbed)
@@ -355,6 +373,11 @@ export class AutomationService {
       }
       if (outcome === null) {
         outcome = await this.runReflection(runId, now)
+      }
+      try {
+        this.desire.satisfyAction(outcome.kind === 'surf' ? 'surf' : 'diary', 'completed', now.getTime())
+      } catch (error) {
+        this.logger.warn({ err: error, action: outcome.kind }, 'Desire 独处满足记录失败；不影响独处结果')
       }
       const dayKey = localClock(now, policy.timeZone).dayKey
       markSolitudeCompleted(dayKey, now.getTime())

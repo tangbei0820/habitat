@@ -15,6 +15,7 @@ import { eventideHistory } from '../db/schema.js'
 import { RequestError } from '../lib/errors.js'
 import type { McpGateway } from '../mcp/gateway.js'
 import { getPushStatus } from '../services/push.js'
+import type { DesireEngine } from '../services/desire.js'
 
 function objectBody(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -320,7 +321,7 @@ function wishlistEventBody(value: unknown): {
   }
 }
 
-export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, state: StateProvider | null): void {
+export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, state: StateProvider | null, desire?: DesireEngine): void {
   app.get('/api/life/month', async (request) => {
     const query = request.query as Record<string, unknown>
     return getLifeMonthSummary(monthParam(query.month))
@@ -383,6 +384,14 @@ export function registerLifeRoutes(app: FastifyInstance, gateway: McpGateway, st
         const snapshot = state?.current() ?? null
         return snapshot === null ? null : { payload: snapshot.payload, settledAt: snapshot.settledAt }
       })(),
+      desire: desire?.current() ?? {
+        mode: 'shadow' as const,
+        values: {
+          attachment: 0.5, curiosity: 0.5, reflection: 0.5, duty: 0.5,
+          social: 0.5, fatigue: 0.5, libido: 0.5, stress: 0.5,
+        },
+        impulses: [], candidates: [], lastObservedAt: null, updatedAt: Date.now(),
+      },
       mcp,
       automation: {
         policy: getAutomationPolicy(),

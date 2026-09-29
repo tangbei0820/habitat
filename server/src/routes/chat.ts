@@ -50,6 +50,7 @@ import { ToolCallAccumulator } from '../lib/tool-call-accumulator.js'
 import { ProviderError } from '../providers/errors.js'
 import type { LlmRegistry } from '../providers/registry.js'
 import { settleChatInteraction } from '../services/settlement.js'
+import { DesireEngine } from '../services/desire.js'
 import { PublicThoughtParser } from '../lib/public-thought.js'
 import { runBackgroundLlm } from '../lib/llm-call.js'
 
@@ -340,6 +341,7 @@ export function registerChatRoutes(
   state: StateProvider | null,
   memory: MemoryProvider | null,
   capabilities: CapabilityService,
+  desire = new DesireEngine(),
 ): void {
   app.post('/api/chat/compact', async (request): Promise<ChatContextCompactResponse> => {
     const body = parseCompactBody(request.body)
@@ -409,6 +411,12 @@ export function registerChatRoutes(
     const counterpartAt = new Date()
     noteCounterpartActivity(counterpartAt.getTime())
     const latestUserText = [...body.messages].reverse().find((message) => message.role === 'user')?.content ?? ''
+    try {
+      // Desire 只记录归类后的倾向变化，不保存聊天正文，也不改变本轮上下文或工具面。
+      desire.observe({ source: 'chat', speaker: 'user', text: latestUserText, refId: body.sessionId, at: counterpartAt.getTime() })
+    } catch (error) {
+      request.log.warn({ err: error }, 'Desire 影子输入记录失败；不影响聊天')
+    }
     const policy = getAutomationPolicy()
     // 能力快照与 LLM 页面卡片、tool schemas 是同一份数据 —— 三方共用，不可能对不上
     const allCapabilities = await capabilities.snapshot(counterpartAt)
@@ -699,6 +707,12 @@ export function registerChatRoutes(
       request.log.error({ err, profileId: profile.id }, 'UsageRecord 写入失败')
     }
     finishAutomationRun(chatRunId, 'completed', null, usageRecordId)
+
+    try {
+      desire.observe({ source: 'chat', speaker: 'companion', text: assistantText, refId: body.sessionId })
+    } catch (error) {
+      request.log.warn({ err: error }, 'Desire 助手回合记录失败；不影响聊天')
+    }
 
     // ChatMessage 正文归浏览器本地；Life 只需要一条不含正文的共同生活事实。
     // 记录失败不能反过来让已经完成的聊天失败，因此只留日志并继续收尾。

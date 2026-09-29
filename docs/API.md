@@ -898,6 +898,17 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 调度器默认每分钟检查。Eventide 状态即使主动总开关关闭也可推进；真正的 wake / solitude / dream
 只有分别开启且通过 BudgetGuard 才会调用 LLM。用户真实发言会清零连续未回复计数。
 
+### Core-4 Desire 影子层
+
+| 接口 | 说明 |
+|---|---|
+| `GET /api/desire?limit=` | 返回 shadow 快照（八维倾向、闪念 / 执念、候选意图）与结构化审计；不返回聊天正文 |
+| `POST /api/desire/tick` | 显式推进衰减与候选过期；不调用 LLM、不发消息、不执行候选行动 |
+
+Desire 的输入由服务端在聊天、通话和 Eventide 调度链内部记录；候选只作为观察结果，
+只有真实行动执行器报告 `completed` 才能 satisfy。fatigue / stress、BudgetGuard、Quiet Hours、
+关系暂停与能力可用性仍是最终否决层。
+
 ### 钱包
 
 | 接口 | 说明 |
@@ -920,7 +931,7 @@ API / Token / 费用上限；拒绝时返回 `429 BUDGET_EXCEEDED`。费用上�
 | `POST /api/life/events/bookmark` | 收藏行为投影：新增、删除、分类变化、标签变化；写入 EventLog，失败不影响本地收藏 |
 | `POST /api/life/events/wishlist` | 愿望行为投影：创建、编辑、状态变化、进展、删除；只写标题 / 状态 / 目标日等摘要，失败不影响本地愿望 |
 | `GET /api/life/ledger?month=YYYY-MM` | 用量总计、按服务 / 模型聚合、价格快照、钱包与最近流水 |
-| `GET /api/life/runtime` | 聚合 server、Eventide、MCP、当前状态、主动策略 / 运行态 / 最近任务 |
+| `GET /api/life/runtime` | 聚合 server、Eventide、当前状态、Desire shadow、MCP、主动策略 / 运行态 / 最近任务 |
 | `GET /api/prices` | 全部不可变 PriceSnapshot，按生效时间倒序 |
 | `POST /api/prices` | 新增 `{ provider, model, promptCentsPerMillion, completionCentsPerMillion, validFrom }` |
 | `GET /api/push/status` | VAPID 是否配置、公钥、订阅数与最近错误 |

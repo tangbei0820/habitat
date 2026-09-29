@@ -519,6 +519,30 @@ export const eventideHistory = sqliteTable('eventide_history', {
 export type EventideHistoryRow = typeof eventideHistory.$inferSelect
 export type NewEventideHistoryRow = typeof eventideHistory.$inferInsert
 
+/** Core-4 Desire 影子状态：只保存结构化倾向与候选，不保存原始聊天正文。 */
+export const desireState = sqliteTable('desire_state', {
+  id: text('id').primaryKey(),
+  valuesJson: text('values_json', { mode: 'json' }).$type<Record<string, number>>().notNull(),
+  impulsesJson: text('impulses_json', { mode: 'json' }).$type<unknown[]>().notNull(),
+  candidatesJson: text('candidates_json', { mode: 'json' }).$type<unknown[]>().notNull(),
+  lastObservedAt: integer('last_observed_at'),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+/** Desire 的输入与状态快照审计；只保留 signal / delta，不落原文。 */
+export const desireAudit = sqliteTable('desire_audit', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  source: text('source').notNull(),
+  signal: text('signal').notNull(),
+  deltaJson: text('delta_json', { mode: 'json' }).$type<Record<string, number>>().notNull(),
+  valuesJson: text('values_json', { mode: 'json' }).$type<Record<string, number>>().notNull(),
+  refId: text('ref_id'),
+  at: integer('at').notNull(),
+})
+
+export type DesireStateRow = typeof desireState.$inferSelect
+export type DesireAuditRow = typeof desireAudit.$inferSelect
+
 /**
  * 自主行动审计（Phase 7B · 决策契约）：一次后台运行（wake/solitude）的 outcome 拆到行动级。
  * `(run_id, idx)` 唯一 —— 行动执行器靠它做幂等：同一运行重放时，已存在的行动直接跳过。

@@ -321,10 +321,18 @@ P2 负责把它摆到台面上 —— **只动呈现层，执行层一行没改*
 
 ## 8. 当前仍待补齐（Core-1～Core-5）
 
-- `FIELD_LABELS` 词典**未与真实 Eventide 的键集核对过**（键名不符时自动回退原键名，不会显示错值）
+- Eventide payload 的字段集合仍由 sidecar 决定；当前共享可读化层已覆盖常见身体 / 情绪键并对未知键安全回退，生产真实 payload 与趋势回放需要在 Core-5 观察期再核对
+- Desire 已进入 shadow：聊天 / 通话 / Eventide 事件只落结构化 signal 与审计，不把正文写进动机表，也不直接影响 Chat 或主动行动
 - 工具卡片与助手气泡的时间顺序（见 `DATA_MODEL.md` §3.2 末）
 - `memory.write` 已完成 Core-3：真实实例 `hold`、失败回灌、去重、修正追加、来源审计与记忆页回链均已接入；Nocturne 原生编辑 / 删除仍只在 Dashboard。
 - 确认卡服务端已经支持过期 / 撤回；前端展示、通知和自动化覆盖仍归后续高风险写能力补齐，Core-3 的记忆自主写入不走确认卡。
 - 记忆与工具没有独立“管理器”页面：记忆深处进入 Nocturne 原生 Dashboard，工具继续通过 Chat 工具卡 / Mini Terminal 暴露；
   若未来新增页面，必须先定义用户任务，不能为了显示能力制造假入口。
 - `FIELD_LABELS`、工具卡时序、确认卡前端交互和真实 Provider / Eventide 端到端验收仍需补；Nocturne Core-3 真实链路需在生产配置下再跑一次同一验收脚本。
+
+### 8.1 Core-4 Eventide / Desire 边界
+
+- Eventide 仍负责身体 / 情绪底色、互动结算、事件与梦境；`stateCard` 进入每轮上下文，`payload` 只进入生活化 UI，`state` 只在 raw 高级视图中保留。
+- `/api/desire` 提供 shadow 快照与有限审计；八维倾向、闪念 / 执念和候选意图均是结构化数据，不是 Prompt 指令。候选可被 fatigue / stress 标记阻断，no-op 永远合法。
+- 真实行动只有在执行器报告 `completed` 后才会调用 satisfy；失败、取消、权限拒绝或未找到候选都只记 skipped，不降低倾向冒充满足。
+- Core-4 不把 Desire 注入模型上下文、不替换 Eventide、不复用外部项目 JSON 文件作为生产真相源；Core-5 才做真实 Eventide payload、状态回放与 Chat → 状态 → 记忆联调。

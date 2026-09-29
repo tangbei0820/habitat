@@ -9,9 +9,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { IconChevronLeft } from '../../components/qixi/Icons'
 import { useSlideIn } from '../../components/qixi/useSlideIn'
-import type { EventideHistoryPoint } from '@shared/types'
+import type { DesireDimension, DesireSnapshot, EventideHistoryPoint } from '@shared/types'
+import { describePayload, describeValue } from '@shared/state-summary'
 import { ApiRequestError, fetchJson } from '../../lib/api'
-import { stateValue } from '../../lib/format'
 import { log } from '../../lib/log'
 
 interface CurrentSnapshot {
@@ -23,6 +23,21 @@ interface CurrentSnapshot {
 
 interface HistoryResponse {
   points: EventideHistoryPoint[]
+}
+
+interface DesireResponse {
+  snapshot: DesireSnapshot
+}
+
+const DESIRE_LABELS: Record<DesireDimension, string> = {
+  attachment: '保持联系',
+  curiosity: '好奇心',
+  reflection: '自我整理',
+  duty: '照看事情',
+  social: '共同空间',
+  fatigue: '疲劳',
+  libido: '亲密靠近',
+  stress: '紧绷',
 }
 
 function isNumber(value: unknown): value is number {
@@ -60,6 +75,7 @@ export function EventidePage() {
   const slide = useSlideIn()
   const [current, setCurrent] = useState<CurrentSnapshot | null>(null)
   const [points, setPoints] = useState<EventideHistoryPoint[]>([])
+  const [desire, setDesire] = useState<DesireSnapshot | null>(null)
   const [empty, setEmpty] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -70,10 +86,12 @@ export function EventidePage() {
     Promise.all([
       fetchJson<CurrentSnapshot>('/api/life/eventide/current'),
       fetchJson<HistoryResponse>('/api/life/eventide/history?limit=200'),
+      fetchJson<DesireResponse>('/api/desire?limit=30'),
     ])
-      .then(([snapshot, history]) => {
+      .then(([snapshot, history, desireResponse]) => {
         setCurrent(snapshot)
         setPoints(history.points)
+        setDesire(desireResponse.snapshot)
         setEmpty(false)
         setError(null)
       })
@@ -121,6 +139,7 @@ export function EventidePage() {
   }, [points])
 
   const activeTrend = trendKey ?? numericKeys[0] ?? null
+  const currentFields = current === null ? [] : describePayload(current.payload)
 
   /** 趋势视图模式：快照 = 逐点连线（原样）；按天 = 跨天聚合（T-055），每天首→末值与波动幅度 */
   const [mode, setMode] = useState<'snapshot' | 'daily'>('snapshot')
@@ -174,10 +193,10 @@ export function EventidePage() {
             <section className="rounded-xl border p-3" style={{ borderColor: 'var(--border-soft)' }} data-testid="eventide-summary">
               <h2 className="text-sm font-medium">当前状态</h2>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                {Object.entries(current.payload).map(([key, value]) => (
-                  <div key={key}>
-                    <span style={{ color: 'var(--text-secondary)' }}>{key}</span>
-                    <strong className="ml-2">{stateValue(value)}</strong>
+                {currentFields.map((field) => (
+                  <div key={field.key}>
+                    <span style={{ color: 'var(--text-secondary)' }}>{field.label}</span>
+                    <strong className="ml-2">{field.value}</strong>
                   </div>
                 ))}
               </div>
@@ -185,6 +204,45 @@ export function EventidePage() {
                 快照时间：{new Date(current.settledAt).toLocaleString()}
               </p>
             </section>
+
+            {/* Desire 影子层：展示倾向，不把候选伪装成已执行行动。 */}
+            {desire !== null && (
+              <section className="mt-4 rounded-xl border p-3" style={{ borderColor: 'var(--border-soft)' }} data-testid="desire-shadow">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-medium">此刻的倾向</h2>
+                    <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      影子模式：只观察和记录，不会直接发消息、写日记或改变聊天。
+                    </p>
+                  </div>
+                  <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>shadow</span>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {(Object.entries(desire.values) as Array<[DesireDimension, number]>).map(([dimension, value]) => (
+                    <div key={dimension} data-testid={`desire-value-${dimension}`}>
+                      <div className="flex justify-between text-xs"><span>{DESIRE_LABELS[dimension]}</span><span style={{ color: 'var(--text-secondary)' }}>{Math.round(value * 100)}%</span></div>
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: 'var(--bg-subtle)' }}><div className="h-full rounded-full" style={{ width: `${Math.round(value * 100)}%`, background: 'var(--accent-strong)' }} /></div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-2">
+                  <h3 className="text-xs font-medium">候选意图（尚未执行）</h3>
+                  {desire.candidates.filter((candidate) => candidate.status === 'candidate').length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>目前没有需要考虑的方向，保持安静也是正常结果。</p>
+                  ) : desire.candidates.filter((candidate) => candidate.status === 'candidate').map((candidate) => (
+                    <div key={candidate.id} className="rounded-lg p-2 text-xs" style={{ background: 'var(--bg-subtle)' }} data-testid="desire-candidate">
+                      <div className="flex justify-between gap-2"><strong>{candidate.reason}</strong><span style={{ color: 'var(--text-secondary)' }}>{Math.round(candidate.strength * 100)}%</span></div>
+                      {candidate.blockedBy.length > 0 && <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>当前受 {candidate.blockedBy.join('、')} 牵制，不会自动执行。</p>}
+                    </div>
+                  ))}
+                </div>
+                {desire.impulses.length > 0 && <p className="mt-3 text-xs" style={{ color: 'var(--text-secondary)' }}>最近念头：{desire.impulses.map((impulse) => `${impulse.kind === 'longing' ? '执念' : '闪念'} · ${impulse.label}`).join('、')}</p>}
+                <details className="mt-3 text-xs" data-testid="desire-raw">
+                  <summary className="cursor-pointer" style={{ color: 'var(--text-secondary)' }}>查看影子审计快照</summary>
+                  <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>{JSON.stringify(desire, null, 2)}</pre>
+                </details>
+              </section>
+            )}
 
             {/* 数值趋势 */}
             <section className="mt-4 rounded-xl border p-3" style={{ borderColor: 'var(--border-soft)' }} data-testid="eventide-trend">
@@ -284,9 +342,9 @@ export function EventidePage() {
                   {changes.map(({ key, from, to }) => (
                     <div key={key}>
                       <span style={{ color: 'var(--text-secondary)' }}>{key}</span>
-                      <span className="ml-2">{stateValue(from)}</span>
+                      <span className="ml-2">{describeValue(from)}</span>
                       <span className="mx-1">→</span>
-                      <strong>{stateValue(to)}</strong>
+                      <strong>{describeValue(to)}</strong>
                     </div>
                   ))}
                 </div>

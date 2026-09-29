@@ -1343,3 +1343,11 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 聊天写入保存 `sessionId` / `toolCallId` 来源，Surf 写入保存来源 URL，并将 `habitat:*` tags 一并带入同一条 Nocturne 记忆；记忆页新增审计摘要与回到原会话入口。
 - 新增 `GET /api/memory/audit` 与 `probe:memory-core3`；mock MCP 真实闭环 **15/15**，两端 typecheck、前端 build、diff check 通过；未部署 VPS，Core-3 到此停止。
 - 参考 [Nocturne](https://github.com/Dataojitori/nocturne_memory) 的原生 Memory Explorer / Review & Audit / Boot URI 交互，Habitat 继续只提供生活化摘要，深度编辑 / 回滚进入同一受保护 Dashboard。
+
+### 2026-09-29 · T-146 · Core-4 Eventide / Desire 状态与动机影子层（本地）
+
+- Eventide 状态页改用共享 payload 可读化：常见身体 / 情绪字段生活化展示，未知字段安全回退，嵌套对象不再渲染为 `[object Object]`；逐快照 / 按天趋势、最近变化与 raw 高级视图继续只消费真实快照。
+- 新增 Desire shadow engine 与 SQLite `desire_state` / `desire_audit`：聊天、通话、Eventide 事件只进入结构化 signal，八维倾向随时间衰减，闪念可形成执念，候选意图受 fatigue / stress 阻断并可审计。
+- Wake / Solitude 只有真实完成结果才 satisfy；失败、取消、阻断、权限拒绝和 no-op 不伪装成满足。Desire 不注入 Chat、不调用 LLM、不直接执行行动。
+- 新增 `/api/desire`、`POST /api/desire/tick`、Life Runtime / Eventide shadow 视图与 `probe:desire-core4` **11/11**；两端 typecheck、前端 build、diff check 通过，尚未部署 VPS。
+- 参考 [Drivesoid](https://github.com/A1batr055/Drivesoid) 的事件驱动连续维度和 [jiwen](https://github.com/ClaraShafiq/jiwen) 的确定性 tick / 候选意图；不替换 Eventide，不复制外部项目真相源。

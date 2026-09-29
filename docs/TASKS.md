@@ -3806,3 +3806,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`probe:memory-core3` **15/15**（mock MCP 实际 `breath` / `trace` / `hold`）、两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；生产 Nocturne 真实写入仍需在 VPS 使用同一探针做一次受控验收，未将 mock 结果冒充生产通过。
 
 **明确延期**：Nocturne 原生编辑 / 删除 / 合并 / 迁移代理、URI 级权限、Eventide / Desire、Core-5 Chat → 状态 → 记忆生产联调；下一步只进入 Core-4。
+
+### T-146 · 2026-09-29 · Core-4 · Eventide / Desire 状态与动机影子层 —— **完成（本地，未部署）**
+
+**范围**：完成状态可读化与 Desire 影子动机层；不替换 Eventide、不把 Desire 注入 Chat、不让候选直接执行行动，不进入 Core-5 生产联调。
+
+| 交付 | 说明 |
+| --- | --- |
+| Eventide 可读化 | 共享 `describePayload` 统一处理动态 payload；常见身体 / 情绪字段有生活化标签，未知键安全回退；嵌套对象不再出现 `[object Object]`；状态页保留当前摘要、逐快照 / 按天趋势、最近变化与 raw 高级视图。 |
+| Desire 状态 | 新增服务端 SQLite `desire_state` 单行快照与 `desire_audit` 审计；八维基线、时间衰减、闪念 / 执念、候选意图、疲劳 / 紧绷阻断均为结构化数据。 |
+| 事件接入 | 聊天用户 / 助手回合、应用内通话开始 / 结束 / 逐句轮次、Eventide 调度输入进入 Desire；只保存 signal / delta，不保存原始正文。 |
+| 行动边界 | 候选只展示为 shadow；Wake / Solitude 的真实 `completed` 结果才允许 satisfy；失败、取消、阻断、权限拒绝与 no-op 都只记 skipped。 |
+| 页面 / API | `/api/desire`、`POST /api/desire/tick`；Life Runtime 与 `/life/eventide` 显示 shadow 摘要、候选与审计快照，明确“不直接执行”。 |
+| 参考取舍 | 实查 [Drivesoid](https://github.com/A1batr055/Drivesoid) 的连续维度 / 事件输入 / 衰减，以及 [jiwen](https://github.com/ClaraShafiq/jiwen) 的确定性 tick / 候选行动 / 回放思路；不搬其阈值、随机行为、外部 JSON 真相源或替代 Eventide。 |
+
+**验收**：`probe:desire-core4` **11/11**；两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过。生产 Eventide payload 与真实历史回放尚未在 VPS 运行，Core-5 再做受控联调与观察期，不将本地探针冒充生产验收。
+
+**明确延期**：Desire 从 shadow 升级为影响 Chat 语气 / Wake 候选、真实 Eventide payload 长期回放校准、候选的用户可视化决策面、PSTN / 原生通话与其它 Home / Life 大模块；下一步只进入 Core-5。

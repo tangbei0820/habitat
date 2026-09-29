@@ -116,6 +116,17 @@ export interface StateSummary {
   settledAt: number | null
 }
 
+/** payload → 页面字段；与 describeState 共用同一套标签和对象格式化。 */
+export function describePayload(payload: Record<string, unknown>): StateFieldView[] {
+  return Object.keys(payload ?? {})
+    .slice(0, FIELD_LIMIT)
+    .map((key) => ({
+      key,
+      label: FIELD_LABELS[key] ?? key,
+      value: describeValue(payload[key]),
+    }))
+}
+
 /** 没状态时的统一答复 —— 与 `available: false` 配套，避免各调用点各写一份文案。 */
 function emptySummary(headline: string): StateSummary {
   return { available: false, headline, text: headline, fields: [], settledAt: null }
@@ -129,13 +140,7 @@ function emptySummary(headline: string): StateSummary {
 export function describeState(snapshot: BodyStateSnapshot | null): StateSummary {
   if (snapshot === null) return emptySummary('当前没有可用状态（Eventide 未配置或尚未建立状态）')
 
-  const fields: StateFieldView[] = Object.keys(snapshot.state ?? {})
-    .slice(0, FIELD_LIMIT)
-    .map((key) => ({
-      key,
-      label: FIELD_LABELS[key] ?? key,
-      value: describeValue((snapshot.state as Record<string, unknown>)[key]),
-    }))
+  const fields = describePayload(snapshot.state ?? {})
 
   const card = snapshot.stateCard?.trim() ?? ''
   const cardFirstLine = card.split(/\r?\n/).map((line) => line.trim()).find((line) => line !== '') ?? ''

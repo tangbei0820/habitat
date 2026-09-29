@@ -28,6 +28,7 @@ export const RUNTIME_RULES_TEXT = `# 运行环境
 - 需要用到某项能力时**直接发起调用**，不要只用文字说「我这就去查」而实际什么都没调。
 - 长期记忆不是活动流水：只有你判断值得留下时才调用 \`memory_write\`，不值得记时就 no-op；不要为了“看起来有行动”而每轮写入。
 - \`memory_write\` 会自动保留聊天 / 独处等来源并做重复检测；需要修正旧记忆时使用 \`mode=correction\`，不要声称已经原地编辑或删除 Nocturne 记忆。
+- Desire 当前只在影子模式记录结构化倾向与候选意图；它不会授权行动，也不会替代 Eventide、BudgetGuard 或 Quiet Hours。
 
 ## 公开思绪与正文
 

@@ -7,6 +7,7 @@ import { publishCallEvent, subscribeAllCalls, subscribeCall } from '../services/
 import { sendWebPush } from '../services/push.js'
 import { notificationDeliveryAllowed } from '../db/notification-preferences.js'
 import { getRelationshipSnapshot } from '../db/relationship.js'
+import type { DesireEngine } from '../services/desire.js'
 
 type IdParams = { id: string }
 type ChatQuery = { chatSessionId?: string }
@@ -65,12 +66,13 @@ function recordCallEnd(call: CallSessionRecord): void {
   appendEventLog('call.ended', { callId: call.id, chatSessionId: call.chatSessionId, direction: call.direction, status: call.status, durationMs: call.durationMs }, call.id, call.endedAt ?? Date.now())
 }
 
-export function registerCallRoutes(app: FastifyInstance): void {
+export function registerCallRoutes(app: FastifyInstance, desire?: DesireEngine): void {
   app.post('/api/calls', async (request, reply) => {
     if (getRelationshipSnapshot().state.status === 'paused') throw new RequestError('BAD_REQUEST', '关系暂停期间不能发起通话')
     const body = bodyObject(request.body)
     const chatSessionId = requiredId(body.chatSessionId, 'chatSessionId')
     const call = publishState(createCall(chatSessionId, 'user'))
+    try { desire?.observe({ source: 'call', signal: 'call.started', refId: call.id }) } catch (error) { app.log.warn({ err: error }, 'Desire 通话输入记录失败') }
     return reply.status(201).send({ call })
   })
 
@@ -80,6 +82,7 @@ export function registerCallRoutes(app: FastifyInstance): void {
     const body = bodyObject(request.body)
     const chatSessionId = requiredId(body.chatSessionId, 'chatSessionId')
     const call = createCall(chatSessionId, 'companion')
+    try { desire?.observe({ source: 'call', signal: 'call.started', refId: call.id }) } catch (error) { app.log.warn({ err: error }, 'Desire 来电输入记录失败') }
     if (notificationDeliveryAllowed('call').allowed) publishState(call)
     const notice = createNotification('proactive', '小栖来电', '小栖正在邀请你接听通话', { callId: call.id, chatSessionId, category: 'call' })
     void sendWebPush(notice).catch((error: unknown) => app.log.warn({ err: error }, '来电 Web Push 发送失败，站内通知已保留'))
@@ -122,6 +125,7 @@ export function registerCallRoutes(app: FastifyInstance): void {
     const call = finishCall(id, 'rejected')
     if (call === null) throw new RequestError('BAD_REQUEST', '通话状态不允许拒绝')
     if (before.status === 'ringing') recordCallEnd(call)
+    try { desire?.observe({ source: 'call', signal: 'call.ended', refId: call.id }) } catch (error) { app.log.warn({ err: error }, 'Desire 通话结束记录失败') }
     return reply.send({ call: publishState(call) })
   })
 
@@ -134,6 +138,7 @@ export function registerCallRoutes(app: FastifyInstance): void {
     const call = finishCall(id, status)
     if (call === null) throw new RequestError('BAD_REQUEST', '通话状态不允许结束')
     if (before.status === 'ringing' || before.status === 'active') recordCallEnd(call)
+    try { desire?.observe({ source: 'call', signal: 'call.ended', refId: call.id }) } catch (error) { app.log.warn({ err: error }, 'Desire 通话结束记录失败') }
     return reply.send({ call: publishState(call) })
   })
 
@@ -146,6 +151,7 @@ export function registerCallRoutes(app: FastifyInstance): void {
     if (text === '' || text.length > 8_000) throw new RequestError('BAD_REQUEST', '通话内容不能为空且不能超过 8000 字')
     const turn = appendCallTurn(id, speaker, text)
     if (turn === null) throw new RequestError('BAD_REQUEST', '通话已经结束，无法追加内容')
+    try { desire?.observe({ source: 'call', speaker, text, refId: id }) } catch (error) { app.log.warn({ err: error }, 'Desire 通话轮次记录失败') }
     publishCallEvent({ type: 'turn', callId: id, turn })
     return reply.status(201).send({ turn })
   })
