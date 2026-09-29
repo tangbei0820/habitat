@@ -348,7 +348,7 @@ MCP 连接由服务端 SQLite 管理；浏览器不参与协议握手，也不�
 
 `stickerCatalog` 是浏览器本地图库的轻量元数据快照（最多 100 项，只含 id / 名称 / 分类 / 标签），用于让本轮模型在需要时选择表情包；图片 data URL、图库数据库和用户文件不会上传或由服务端保存。缺省或为空时，本轮不绑定 `sticker.search` / `sticker.send`。工具成功后只回传被选中的 `stickerId`，前端再从本地图库解析并按发送时快照落一条独立 `sticker` 消息。
 
-`readingCatalog` 是浏览器本地共读书架的轻量窗口（最多 8 本；每本只含当前段落附近最多 80 段、最近批注与最近生词），服务端只在本轮绑定 `reading_context` / `reading_read` / `reading_advance` / `reading_annotate` / `reading_vocabulary`，不保存书籍正文。`reading_read` 只能读取窗口内的全局段落序号；`reading_advance` 只能移动到窗口内段落；`reading_annotate` 与 `reading_vocabulary` 成功后回传原书 id、段落序号和经原文校验的结果，浏览器复用既有 `ReadingNote.metadata.reader` 写回本地书架，并追加共读 Life 事实。相同批注、生词或本轮重复翻页在服务端与浏览器本地均会被抑制。
+`readingCatalog` 是浏览器本地共读书架的轻量窗口（最多 8 本；每本只含当前段落附近最多 80 段、最近批注与最近生词），服务端只在本轮绑定 `reading_context` / `reading_read` / `reading_advance` / `reading_annotate` / `reading_vocabulary` / `reading_activity`，不保存书籍正文。`reading_read` 只能读取窗口内的全局段落序号；`reading_advance` 只能移动到窗口内段落；`reading_annotate` 与 `reading_vocabulary` 成功后回传原书 id、段落序号和经原文校验的结果，浏览器复用既有 `ReadingNote.metadata.reader` 写回本地书架，并追加共读 Life 事实；`reading_activity` 只返回本轮目录里的有限近况，不冒充完整历史。相同批注、生词或本轮重复翻页在服务端与浏览器本地均会被抑制。
 
 ### `POST /api/chat/compact`（上下文摘要）
 

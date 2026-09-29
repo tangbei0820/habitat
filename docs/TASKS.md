@@ -3604,3 +3604,18 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：服务端 `npm run probe:reading-tools` **9/9**；两端 `npm run typecheck`、前端生产构建、`git diff --check` 通过。未新增 schema / 备份版本，未部署 VPS。
 
 **明确延期**：Tasogare 风格全文 MCP / recent activity、PDF 原版页渲染与 OCR、EPUB 图片 / CSS 精排、批注收藏、跨设备同步；本批不提前施工。
+
+### T-134 · 2026-09-29 · V2-D · 共读最近活动工具—— **完成（本地，未部署）**
+
+**范围**：在 T-132 / T-133 的本地书架临时窗口上补齐“Companion 可查看最近共读活动”的最小真实闭环；不新增服务端活动表，不把临时窗口冒充完整历史。
+
+| 交付 | 说明 |
+| --- | --- |
+| Runtime | 新增 `reading_activity`，按 `createdAt` 倒序汇总本轮目录中的批注与生词，并提供条数上限。 |
+| 边界 | 没有书架或没有近况时返回可读空结果；正文继续只由 `reading_read` 读取，近况结果明确注明仅覆盖本轮目录。 |
+| 数据复用 | 继续复用 `ReadingNote.metadata.reader` 的 `annotations` / `vocabulary` 快照，不新增 Dexie、备份或服务端 schema。 |
+| 参考取舍 | 继续借 [Tasogare](https://github.com/EnhydrInk/tasogare) 的 `recent_activity` / `reading_status` 工具边界；不搬入其独立书库、账号和远程同步层。 |
+
+**验收**：`npm run typecheck`、`npm run build`、`PROBE_SERVER=http://127.0.0.1:3000 npm --prefix server run probe:reading-tools` **10/10**、`git diff --check` 通过；未部署 VPS。
+
+**明确延期**：Tasogare 风格全文 MCP、PDF 原版分页 / OCR、EPUB 精确排版与图片、批注收藏、跨设备同步；本批不提前施工。

@@ -74,6 +74,7 @@ export type CapabilityId =
   | 'reading.advance'
   | 'reading.annotate'
   | 'reading.vocabulary'
+  | 'reading.activity'
   /* —— 聊天表情包（图库来自本轮前端，不把图片原文塞进模型上下文） —— */
   | 'sticker.search'
   | 'sticker.send'
@@ -640,6 +641,25 @@ export const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
           note: { type: 'string', description: '词义、例句或小栖的解释，不超过 1000 字' },
         },
         required: ['bookId', 'term'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    id: 'reading.activity',
+    module: 'reading',
+    label: '查看共读近况',
+    summary: '查看本轮目录里的最近批注与生词',
+    modelHint: '需要了解最近一起读留下了什么时调用；只包含浏览器本轮提供的近期批注与生词，不代表完整历史。没有需要时不要调用。',
+    autonomy: 'autonomous',
+    tool: {
+      name: 'reading_activity',
+      description: '查看本轮共读目录中的最近批注与生词，按时间倒序返回有限条目。它不是完整历史；没有近况时可以不调用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: { type: 'number', description: '最多返回的近况条数，默认 8，最多 20' },
+        },
         additionalProperties: false,
       },
     },

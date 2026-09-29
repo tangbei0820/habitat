@@ -1,4 +1,4 @@
-/** V2-D 共读 Runtime 工具探针：验证书架窗口、段落读取与 Companion 批注闭环。 */
+/** V2-D 共读 Runtime 工具探针：验证书架窗口、段落读取、近况与 Companion 批注闭环。 */
 import { CAPABILITY_DEFINITIONS, type CapabilitySnapshot } from '@shared/capabilities'
 import type { ChatReadingBookItem } from '@shared/events'
 import { buildBoundTools, executeTool, type ToolRuntime } from '../src/capabilities/tools.js'
@@ -55,7 +55,7 @@ async function call(name: string, args: Record<string, unknown>) {
 }
 
 console.log('\n=== Reading Runtime tools probe ===')
-check('五项共读能力都绑定为模型工具', ['reading_context', 'reading_read', 'reading_annotate', 'reading_advance', 'reading_vocabulary'].every((name) => tools.some((tool) => tool.name === name)))
+check('六项共读能力都绑定为模型工具', ['reading_context', 'reading_read', 'reading_annotate', 'reading_advance', 'reading_vocabulary', 'reading_activity'].every((name) => tools.some((tool) => tool.name === name)))
 
 const context = await call('reading_context', {})
 check('reading_context 返回书架与进度', context.ok && context.text.includes('探针之书') && context.text.includes('第 2/3 段'))
@@ -80,6 +80,11 @@ check('reading_vocabulary 返回浏览器写回所需的生词', vocabulary.ok &
 
 const duplicateVocabulary = await call('reading_vocabulary', { bookId: book.id, paragraphIndex: 1, term: '灯', note: '夜里照亮方向的东西。' })
 check('相同生词在同一轮内不会重复写入', duplicateVocabulary.ok && duplicateVocabulary.readingVocabulary === undefined && duplicateVocabulary.summary.includes('相同'))
+
+book.annotations.push({ id: 'probe-annotation', paragraphIndex: 0, text: '第一段。', note: '旧批注', author: 'user', createdAt: 1 })
+book.vocabulary.push({ id: 'probe-vocabulary', paragraphIndex: 1, term: '灯', note: '夜里照亮方向的东西。', createdAt: 2 })
+const activity = await call('reading_activity', { limit: 5 })
+check('reading_activity 返回最近批注与生词', activity.ok && activity.text.includes('旧批注') && activity.text.includes('灯'))
 
 console.log(`\nReading Runtime probe: ${passed} passed, ${failed} failed`)
 if (failed > 0) process.exitCode = 1

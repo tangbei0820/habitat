@@ -696,6 +696,27 @@ export async function executeTool(tool: BoundTool, call: LlmToolCall, runtime: T
         }
       }
 
+      case 'reading.activity': {
+        const books = runtime.readingCatalog ?? []
+        if (books.length === 0) return { ok: true, text: '(本轮没有提供共读书架)', summary: '本轮没有可用共读近况' }
+        const limit = Math.min(Math.max(Math.round(normalizeLimit(value.limit) ?? 8), 1), 20)
+        const activities = books.flatMap((book) => [
+          ...book.annotations.map((annotation) => ({
+            createdAt: annotation.createdAt,
+            text: `- 《${book.title}》第 ${annotation.paragraphIndex + 1} 段 · ${annotation.author === 'companion' ? '小栖' : '北北'}批注：${clip(annotation.note || annotation.text, 500)}`,
+          })),
+          ...book.vocabulary.map((word) => ({
+            createdAt: word.createdAt,
+            text: `- 《${book.title}》第 ${word.paragraphIndex + 1} 段 · 生词「${word.term}」${word.note === '' ? '' : `：${clip(word.note, 500)}`}`,
+          })),
+        ])
+          .sort((left, right) => right.createdAt - left.createdAt)
+          .slice(0, limit)
+        if (activities.length === 0) return { ok: true, text: '(本轮没有可见的共读近况)', summary: '暂无共读近况' }
+        const text = `# 本轮共读近况\n\n${activities.map((activity) => activity.text).join('\n')}\n\n仅包含浏览器本轮目录提供的最近批注与生词，不代表完整历史。`
+        return { ok: true, text: clip(text, TOOL_TEXT_LIMIT), summary: `已读取 ${activities.length} 条共读近况`, detail: clip(text, DETAIL_LIMIT) }
+      }
+
       case 'sticker.search': {
         const query = typeof value.query === 'string' ? value.query.trim().toLocaleLowerCase() : ''
         if (query === '') return failure(tool, '缺少必填参数 query')
