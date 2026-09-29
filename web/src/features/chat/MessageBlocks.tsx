@@ -187,12 +187,16 @@ function ToolResultBlockView({ payload }: { payload: ToolResultBlock['payload'] 
 }
 
 function HtmlBlockView({ payload }: { payload: HtmlBlock['payload'] }) {
-  const srcDoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'"><style>html{color-scheme:light dark}body{margin:8px;font:14px/1.5 system-ui;overflow-wrap:anywhere}</style></head><body>${payload.html}</body></html>`
+  // 富内容永远运行在无 origin 的 iframe 内；CSP 再做一层明确拒绝，避免未来有人放宽
+  // sandbox 属性时意外恢复脚本、网络、表单或嵌套页面能力。
+  const srcDoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; media-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'; navigate-to 'none'"><style>html{color-scheme:light dark}body{margin:8px;font:14px/1.5 system-ui;overflow-wrap:anywhere}</style></head><body>${payload.html}</body></html>`
   return (
     <iframe
       title="富内容预览"
+      data-testid="chat-rich-html"
       sandbox=""
       srcDoc={srcDoc}
+      referrerPolicy="no-referrer"
       className="h-48 w-full min-w-[16rem] rounded-lg border bg-white"
       style={{ borderColor: 'var(--border-soft)' }}
     />
@@ -215,6 +219,7 @@ function LeafBlockView({ block }: { block: LeafMessageBlock }) {
     case 'image': return <ImageBlockView payload={block.payload} />
     case 'audio': return <AudioBlockView payload={block.payload} />
     case 'file': return <FileBlockView payload={block.payload} />
+    case 'sticker': return <StickerBlockView payload={block.payload} />
     case 'tool-result': return <ToolResultBlockView payload={block.payload} />
     case 'widget': return <WidgetBlockView payload={block.payload} />
   }

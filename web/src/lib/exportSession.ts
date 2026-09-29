@@ -118,6 +118,25 @@ export interface SessionExportResult {
   messageCount: number
 }
 
+/**
+ * 导出是用户可带走、可分享的内容，不是诊断转储。
+ * 公开思绪与 Provider 原生 reasoning 只在聊天界面按权限展示，不能随 JSON 备份泄出；
+ * 其余来源元数据继续保留，收藏 / 作品等跨模块快照也不受影响。
+ */
+function sanitizeExportMessage(message: ChatMessage): ChatMessage {
+  if (message.metadata === undefined) return message
+  const metadata = { ...message.metadata }
+  delete metadata.publicThought
+  delete metadata.providerReasoning
+  delete metadata.reasoning
+  const { metadata: _originalMetadata, ...rest } = message
+  if (Object.keys(metadata).length === 0) return rest
+  return {
+    ...rest,
+    metadata,
+  }
+}
+
 async function load(sessionId: string): Promise<{ session: ChatSession; messages: ChatMessage[] }> {
   const session = await getSession(sessionId)
   if (session === null) throw new Error('这个会话已经不在了')
@@ -139,7 +158,13 @@ export async function exportSessionMarkdown(sessionId: string): Promise<SessionE
 export async function exportSessionJson(sessionId: string): Promise<SessionExportResult> {
   const { session, messages } = await load(sessionId)
   const title = displayTitle(session)
-  const payload: SessionExport = { format: 'habitat-session', version: 1, exportedAt: Date.now(), session, messages }
+  const payload: SessionExport = {
+    format: 'habitat-session',
+    version: 1,
+    exportedAt: Date.now(),
+    session,
+    messages: messages.map(sanitizeExportMessage),
+  }
   download(`${safeName(title)}.json`, JSON.stringify(payload, null, 2), 'application/json')
   return { title, messageCount: messages.length }
 }

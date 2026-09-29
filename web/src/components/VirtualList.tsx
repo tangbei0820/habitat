@@ -37,6 +37,10 @@ export interface VirtualListProps<T> {
   onReachTop?: () => void
   /** 距顶部小于该像素值即触发 onReachTop */
   reachTopThreshold?: number
+  /** 向历史消息定位后，滚到底部附近时加载定位窗口之后的消息。 */
+  onReachBottom?: () => void
+  /** 距底部小于该像素值即触发 onReachBottom */
+  reachBottomThreshold?: number
   /** 定位到指定项。项出现后只应用一次，仍由虚拟列表负责实际渲染窗口。 */
   scrollToKey?: string | null
   className?: string
@@ -94,6 +98,8 @@ export function VirtualList<T>({
   stickThreshold = 48,
   onReachTop,
   reachTopThreshold = 24,
+  onReachBottom,
+  reachBottomThreshold = 24,
   scrollToKey = null,
   className,
 }: VirtualListProps<T>) {
@@ -104,6 +110,7 @@ export function VirtualList<T>({
   const scrollTargetAppliedRef = useRef<string | null>(null)
   /** 回调放 ref：塞进 handleScroll 的依赖会让 onScroll 每次渲染都换新函数 */
   const onReachTopRef = useRef(onReachTop)
+  const onReachBottomRef = useRef(onReachBottom)
 
   const [revision, setRevision] = useState(0)
   const [scrollTop, setScrollTop] = useState(0)
@@ -203,6 +210,7 @@ export function VirtualList<T>({
     // 贴底判定要同步做，不能等 rAF —— 否则用户刚往上滚一点就被认成「仍在底部」
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= stickThreshold
     if (el.scrollTop <= reachTopThreshold) onReachTopRef.current?.()
+    if (el.scrollHeight - el.scrollTop - el.clientHeight <= reachBottomThreshold) onReachBottomRef.current?.()
     if (rafRef.current !== 0) return
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = 0
@@ -214,6 +222,10 @@ export function VirtualList<T>({
   useLayoutEffect(() => {
     onReachTopRef.current = onReachTop
   }, [onReachTop])
+
+  useLayoutEffect(() => {
+    onReachBottomRef.current = onReachBottom
+  }, [onReachBottom])
 
   useLayoutEffect(() => {
     if (scrollToKey === null) {

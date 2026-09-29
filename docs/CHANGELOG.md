@@ -1320,3 +1320,11 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 修正 `AI_RUNTIME.md` / `API.md` 中已经过期的“记忆只读 / `memory.write` 未接入”描述：当前由 `memory_write` 进入确认收件箱，批准后调用 Nocturne `hold`；前端 HTTP 仍只读。
 - 记录通话当前仍是应用内逐句半双工，Core-2 的完成口径为流式队列、打断、重连和历史一致性，不把 PSTN / CallKit / 原生系统电话纳入 Web 完成标准。
 - 两端 typecheck、前端 build、Codex Adapter 5/5、Provider fallback 9/9 与 diff check 通过；本轮未新增业务代码或部署生产。
+
+### 2026-09-29 · T-143 · Core-1 Chat 完整消息空间（本地）
+
+- 历史定位改为围绕目标消息的有限窗口加载，支持复合游标向上 / 向下继续分页；长会话不再因搜索跳转全量读入。
+- 聊天搜索结果增加命中高亮，日期导航补充今天 / 昨天 / 月级入口；原有跨会话、当前会话与媒体 / 工具摘要检索边界保持不变。
+- 单会话 JSON 与全量备份导出剥离 `publicThought`、`providerReasoning` 和旧 `reasoning` 字段，避免诊断信息随可携带内容泄露。
+- HTML 富内容 iframe 增强 CSP 拒绝策略与无 referrer，tab-group 内表情包补齐渲染；未知块继续显式降级。
+- 两端 typecheck、前端 build、`probe:chat-compact` 5/5、diff check 与本地 PWA targeted 回归通过；未部署 VPS，未进入 Core-2。

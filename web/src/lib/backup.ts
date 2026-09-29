@@ -105,6 +105,17 @@ export interface BackupCounts {
   legacyMoments: number
 }
 
+/** 备份是可携带数据，不包含聊天界面专用的公开思绪 / Provider reasoning。 */
+function sanitizeChatMessage(message: ChatMessage): ChatMessage {
+  if (message.metadata === undefined) return message
+  const metadata = { ...message.metadata }
+  delete metadata.publicThought
+  delete metadata.providerReasoning
+  delete metadata.reasoning
+  const { metadata: _originalMetadata, ...rest } = message
+  return Object.keys(metadata).length === 0 ? rest : { ...rest, metadata }
+}
+
 export async function exportAll(): Promise<HabitatBackup> {
   const [sessions, sessionGroups, messages, wishlist, countdowns, bookmarks, bookmarkCategories, artworks, photos, photoCollections, readingNotes, dailyReadings, musicTracks, studyRecords, studyCards, studyMaterials, homeWidgets, listenSessions, studyTasks, stickers] = await Promise.all([
     db.sessions.toArray(),
@@ -134,7 +145,7 @@ export async function exportAll(): Promise<HabitatBackup> {
     exportedAt: Date.now(),
     sessions,
     sessionGroups,
-    messages,
+    messages: messages.map(sanitizeChatMessage),
     wishlist,
     countdowns,
     bookmarks,

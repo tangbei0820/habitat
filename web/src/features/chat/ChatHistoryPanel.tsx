@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { formatDayLabel } from '../../lib/format'
-import { listMessageDays, searchMessages, type ChatDaySummary, type ChatSearchResult } from '../../db/chat'
+import { listMessageDays, listMessageMonths, searchMessages, type ChatDaySummary, type ChatMonthSummary, type ChatSearchResult } from '../../db/chat'
 
 interface Props {
   scope: 'all' | 'session'
@@ -19,10 +19,32 @@ function dayLabel(item: ChatDaySummary): string {
   return formatDayLabel(date.getTime())
 }
 
+function localDayKey(timestamp: number): string {
+  const date = new Date(timestamp)
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function monthLabel(item: ChatMonthSummary): string {
+  const [year, month] = item.monthKey.split('-')
+  return `${year} 年 ${Number(month)} 月`
+}
+
+function highlightSnippet(text: string, query: string): ReactNode {
+  const normalized = query.trim()
+  if (normalized === '') return text
+  const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = text.split(new RegExp(`(${escaped})`, 'ig'))
+  return parts.map((part, index) => index % 2 === 1
+    ? <mark key={`${part}:${index}`} style={{ backgroundColor: 'var(--accent-soft)', color: 'inherit' }}>{part}</mark>
+    : <span key={`${part}:${index}`}>{part}</span>)
+}
+
 export function ChatHistoryPanel({ scope, sessionId, onClose, onNavigate }: Props) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<ChatSearchResult[]>([])
   const [days, setDays] = useState<ChatDaySummary[]>([])
+  const [months, setMonths] = useState<ChatMonthSummary[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
@@ -30,8 +52,13 @@ export function ChatHistoryPanel({ scope, sessionId, onClose, onNavigate }: Prop
   useEffect(() => {
     if (scope !== 'session' || sessionId === undefined) return
     let cancelled = false
-    void listMessageDays(sessionId)
-      .then((next) => { if (!cancelled) setDays(next) })
+    void Promise.all([listMessageDays(sessionId), listMessageMonths(sessionId)])
+      .then(([nextDays, nextMonths]) => {
+        if (!cancelled) {
+          setDays(nextDays)
+          setMonths(nextMonths)
+        }
+      })
       .catch((err: unknown) => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)) })
     return () => { cancelled = true }
   }, [scope, sessionId])
@@ -95,6 +122,41 @@ export function ChatHistoryPanel({ scope, sessionId, onClose, onNavigate }: Prop
       {scope === 'session' && days.length > 0 && (
         <div className="mt-3" data-testid="chat-timeline">
           <div className="mb-2 text-xs" style={{ color: 'var(--text-secondary)' }}>按日期跳转</div>
+          <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+            {(['今天', '昨天'] as const).map((label, index) => {
+              const targetKey = localDayKey(Date.now() - index * 86_400_000)
+              const item = days.find((day) => day.dayKey === targetKey)
+              if (item === undefined) return null
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  data-testid={`chat-day-shortcut-${index === 0 ? 'today' : 'yesterday'}`}
+                  onClick={() => onNavigate(sessionId ?? '', item.firstMessageId)}
+                  className="shrink-0 rounded-full border px-3 py-1.5 text-xs"
+                  style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}
+                >
+                  {label} · {item.count} 条
+                </button>
+              )
+            })}
+          </div>
+          {months.length > 0 && (
+            <div className="mb-2 flex gap-2 overflow-x-auto pb-1" data-testid="chat-month-timeline">
+              {months.map((item) => (
+                <button
+                  key={item.monthKey}
+                  type="button"
+                  data-testid={`chat-month-${item.monthKey}`}
+                  onClick={() => onNavigate(sessionId ?? '', item.firstMessageId)}
+                  className="shrink-0 rounded-full border px-3 py-1.5 text-xs"
+                  style={{ borderColor: 'var(--border-soft)', color: 'var(--text-secondary)' }}
+                >
+                  {monthLabel(item)} · {item.dayCount} 天
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2 overflow-x-auto pb-1">
             {days.map((item) => (
               <button
@@ -131,7 +193,7 @@ export function ChatHistoryPanel({ scope, sessionId, onClose, onNavigate }: Prop
                 <strong className="truncate" style={{ color: 'var(--text-primary)' }}>{scope === 'all' ? result.session.title : result.message.role === 'user' ? '你' : '小栖'}</strong>
                 <span className="shrink-0">{timeLabel(result.message.createdAt)}</span>
               </div>
-              <p className="mt-1 line-clamp-2 text-sm leading-5" style={{ color: 'var(--text-secondary)' }}>{result.snippet}</p>
+              <p className="mt-1 line-clamp-2 text-sm leading-5" style={{ color: 'var(--text-secondary)' }}>{highlightSnippet(result.snippet, query)}</p>
             </button>
           ))}
         </div>

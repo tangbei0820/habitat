@@ -46,7 +46,9 @@ import {
   getContextCompression,
   getSession,
   listMessages,
+  listMessagesAround,
   listMessagesPage,
+  listMessagesPageAfter,
   messageText,
   newMessage,
   recallMessage,
@@ -263,7 +265,9 @@ export function ChatWindowPage() {
   const [errorText, setErrorText] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [hasMore, setHasMore] = useState(false)
+  const [hasMoreLater, setHasMoreLater] = useState(false)
   const [loadingEarlier, setLoadingEarlier] = useState(false)
+  const [loadingLater, setLoadingLater] = useState(false)
   /**
    * 「刚打开这个会话」的入场窗口（`--dur-card` 300ms + 余量）。
    *
@@ -311,6 +315,7 @@ export function ChatWindowPage() {
    * 只靠 state 拦不住重复请求。
    */
   const loadingEarlierRef = useRef(false)
+  const loadingLaterRef = useRef(false)
   /** 供回调读最新消息列表，避免闭包读到旧数组 */
   const messagesRef = useRef<ChatMessage[]>([])
   const toastTimerRef = useRef<number | null>(null)
@@ -386,6 +391,8 @@ export function ChatWindowPage() {
     setCallHistoryOpen(false)
     setContextMessageCount(0)
     setContextCharacterCount(0)
+    setHasMore(false)
+    setHasMoreLater(false)
     setHistoryOpen(false)
     setHighlightedMessageId(null)
     if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current)
@@ -393,9 +400,10 @@ export function ChatWindowPage() {
     void (async () => {
       try {
         const loaded = await getSession(sessionId)
-        const page = focusMessageId === null
-          ? await listMessagesPage(sessionId, PAGE_SIZE)
-          : await listMessages(sessionId)
+        const focusWindow = focusMessageId === null
+          ? null
+          : await listMessagesAround(sessionId, focusMessageId, PAGE_SIZE)
+        const page = focusWindow?.messages ?? await listMessagesPage(sessionId, PAGE_SIZE)
         if (cancelled) return
         setSession(loaded)
         void countMessages(sessionId).then((count) => {
@@ -419,12 +427,13 @@ export function ChatWindowPage() {
         } else {
           setMessages(page)
         }
-        // 聚焦历史消息时取全量数据，但正文仍由 VirtualList 只渲染可视窗口。
-        setHasMore(focusMessageId === null && page.length === PAGE_SIZE)
+        // 普通打开从尾部向前翻；历史定位只取目标附近窗口，再按上下游标继续翻，避免全量加载。
+        setHasMore(focusWindow?.hasEarlier ?? (focusMessageId === null && page.length === PAGE_SIZE))
+        setHasMoreLater(focusWindow?.hasLater ?? false)
         if (focusMessageId !== null) {
           const target = page.find((message) => message.id === focusMessageId)
           if (target === undefined) {
-            setErrorText('原消息已删除，无法定位')
+            setErrorText(focusWindow === null ? '原消息已删除，无法定位' : '原消息不属于这个会话，无法定位')
           } else {
             setHighlightedMessageId(target.id)
             highlightTimerRef.current = window.setTimeout(() => setHighlightedMessageId(null), 2600)
@@ -493,6 +502,25 @@ export function ChatWindowPage() {
     } finally {
       loadingEarlierRef.current = false
       setLoadingEarlier(false)
+    }
+  }
+
+  /** 历史定位窗口向下继续加载；普通尾部首屏没有后续页。 */
+  async function loadLater(): Promise<void> {
+    if (sessionId === undefined || loadingLaterRef.current || !hasMoreLater) return
+    const newest = messagesRef.current[messagesRef.current.length - 1]
+    if (newest === undefined) return
+    loadingLaterRef.current = true
+    setLoadingLater(true)
+    try {
+      const later = await listMessagesPageAfter(sessionId, PAGE_SIZE, { createdAt: newest.createdAt, id: newest.id })
+      if (later.length > 0) setMessages((prev) => [...prev, ...later])
+      setHasMoreLater(later.length === PAGE_SIZE)
+    } catch (err) {
+      log.error('加载较新的消息失败', err)
+    } finally {
+      loadingLaterRef.current = false
+      setLoadingLater(false)
     }
   }
 
@@ -1793,13 +1821,14 @@ export function ChatWindowPage() {
           // 估值贴近真实高度能少几次「滚起来忽长忽短」的抖动
           estimateHeight={96}
           onReachTop={() => void loadEarlier()}
+          onReachBottom={() => void loadLater()}
           className={`chat-scroll is-virtual h-full${entering ? ' is-entering' : ''}`}
         />
-        {loadingEarlier && (
+        {(loadingEarlier || loadingLater) && (
           <div
             className="chip pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 text-xs"
           >
-            正在加载更早的消息…
+            {loadingEarlier ? '正在加载更早的消息…' : '正在加载较新的消息…'}
           </div>
         )}
       </div>

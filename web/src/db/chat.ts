@@ -149,6 +149,13 @@ export interface ChatDaySummary {
   latestAt: number
 }
 
+export interface ChatMonthSummary {
+  monthKey: string
+  firstMessageId: string
+  dayCount: number
+  messageCount: number
+}
+
 function localDayKey(timestamp: number): string {
   const date = new Date(timestamp)
   const pad = (value: number): string => String(value).padStart(2, '0')
@@ -207,6 +214,29 @@ export async function listMessageDays(sessionId: string): Promise<ChatDaySummary
     }
   }
   return [...byDay.values()].sort((a, b) => b.dayKey.localeCompare(a.dayKey))
+}
+
+/** 月级导航摘要：沿用自然日规则，仍只读消息表，不引入额外索引或模型。 */
+export async function listMessageMonths(sessionId: string): Promise<ChatMonthSummary[]> {
+  const days = await listMessageDays(sessionId)
+  const byMonth = new Map<string, ChatMonthSummary>()
+  for (const day of days) {
+    const monthKey = day.dayKey.slice(0, 7)
+    const existing = byMonth.get(monthKey)
+    if (existing === undefined) {
+      byMonth.set(monthKey, {
+        monthKey,
+        firstMessageId: day.firstMessageId,
+        dayCount: 1,
+        messageCount: day.count,
+      })
+    } else {
+      existing.dayCount += 1
+      existing.messageCount += day.count
+      // days 已按最近到最早排列，首次出现的那天就是该月可定位的最近入口。
+    }
+  }
+  return [...byMonth.values()]
 }
 
 export async function listSessions(): Promise<ChatSession[]> {
@@ -548,6 +578,58 @@ export async function listMessagesPage(
     .limit(limit)
     .toArray()
   return rows.reverse()
+}
+
+/** 取游标之后的一页，供从搜索 / 时间线定位到历史消息时继续向下翻页。 */
+export async function listMessagesPageAfter(
+  sessionId: string,
+  limit: number,
+  after: MessagePageCursor,
+): Promise<ChatMessage[]> {
+  return db.messages
+    .where('[sessionId+createdAt+id]')
+    .between([sessionId, after.createdAt, after.id], [sessionId, TIME_MAX, ID_MAX], false, true)
+    .limit(limit)
+    .toArray()
+}
+
+export interface MessageWindow {
+  messages: ChatMessage[]
+  hasEarlier: boolean
+  hasLater: boolean
+}
+
+/**
+ * 围绕一条消息取一个有限窗口，不因历史定位把整段长会话搬进内存。
+ * 前后游标由页面继续按复合索引分页，刷新与搜索定位都保持可恢复。
+ */
+export async function listMessagesAround(
+  sessionId: string,
+  messageId: string,
+  limit: number,
+): Promise<MessageWindow | null> {
+  const target = await db.messages.get(messageId)
+  if (target === undefined || target.sessionId !== sessionId) return null
+  const safeLimit = Math.max(3, Math.min(limit, 200))
+  const beforeLimit = Math.floor((safeLimit - 1) / 2)
+  const afterLimit = safeLimit - beforeLimit - 1
+  const key: [string, number, string] = [sessionId, target.createdAt, target.id]
+  const before = await db.messages
+    .where('[sessionId+createdAt+id]')
+    .between([sessionId, TIME_MIN, ''], key, true, false)
+    .reverse()
+    .limit(beforeLimit)
+    .toArray()
+  const after = await db.messages
+    .where('[sessionId+createdAt+id]')
+    .between(key, [sessionId, TIME_MAX, ID_MAX], false, true)
+    .limit(afterLimit)
+    .toArray()
+  return {
+    messages: [...before.reverse(), target, ...after],
+    hasEarlier: before.length === beforeLimit,
+    hasLater: after.length === afterLimit,
+  }
 }
 
 export async function appendMessage(message: ChatMessage): Promise<void> {

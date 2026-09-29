@@ -3749,3 +3749,21 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：两端 `npm run typecheck` 通过；前端 `npm run build` 通过（仅保留既有 chunk size warning）；`probe:codex-adapter` **5/5**；`probe:provider-fallback` **9/9**；`git diff --check` 通过。组合式 P1 shell 探针未运行，原因是当前 Windows 环境无 `/bin/bash`，不将其冒充为通过。
 
 **停止边界**：Core-0 已完成；下一步只进入 Core-1 Chat，不能顺带施工通话、记忆或 Home / Life。
+
+### T-143 · 2026-09-29 · Core-1 · Chat 完整消息空间 —— **完成（本地，未部署）**
+
+**范围**：只收口 Chat 的长期消息空间；不改通话、Nocturne、Eventide / Desire 或 Home / Life。
+
+| 交付 | 结果 |
+| --- | --- |
+| 长会话定位 | 搜索命中 / 日期定位不再把整段会话搬进页面；以复合游标围绕目标消息取有限窗口，支持继续向上、向下分页；VirtualList 增加底部加载回调。 |
+| 检索体验 | 保留跨会话 / 当前会话边界，继续覆盖文本、图片描述、真实语音转写、工具摘要与组件声明；结果补命中高亮，时间线增加今天 / 昨天 / 月级快捷入口。撤回正文、隐藏 reasoning、未转写音频仍不进入搜索。 |
+| 三路思绪隐私 | `publicThought`、正文、`providerReasoning` 的现有存储 / 流式 / 折叠显示保持分离；单会话 JSON 与全量备份导出会剥离公开思绪、Provider reasoning 及旧 `reasoning` 字段，收藏 / 作品快照继续只保留用户可读消息摘要。 |
+| 富内容安全 | HTML iframe 增加明确的 `script / connect / object / frame / media / navigate` 拒绝策略、无 referrer 与稳定验收标记；tab-group 内叶子表情包补齐渲染；未知块仍明确降级，不执行任意 HTML。 |
+| Provider / 交互回归 | 保留首个 SSE 内容前回退、已开始输出不重放的边界；消息操作、长按、气泡模式、头像 / 昵称 / 背景 / 关系暂停等既有能力未改语义。 |
+
+**参考取舍**：实查 [chatnest](https://github.com/ugui3u/chatnest) 的前端 / 全栈分层、思绪与工具状态呈现，借鉴“状态可见但不混进正文”；实查 [Pando](https://github.com/Eloise-Aspen/pando-bridge) 的可恢复会话与断线续接思路，映射为 Habitat 现有 Dexie 复合游标 + SSE，不引入 Claude CLI、WebSocket 或新的远程会话模型。
+
+**验收**：两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；本地 mock Provider 的 `probe:chat-compact` **5/5**；本地 PWA targeted 回归确认真实流式回复、搜索结果命中高亮、今天 / 月级导航均可见。`probe:chat-context` 未作为本批通过项（探针要求 Eventide sidecar 注入，当前 Core-1 隔离环境未配置），不将其冒充 Chat 通过。
+
+**明确延期**：完整浏览器自动化脚本仍依赖带 WebSocket 的 CDP runner（当前 Node 20 环境直接运行脚本缺少该全局对象）；HTML / tab-group 的生成协议、跨设备实时推送与 Core-2 的通话状态机不在本批新增。Core-1 完成后停止，下一阶段为 Core-2 应用内通话。
