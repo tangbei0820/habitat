@@ -7,13 +7,19 @@
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface, type Interface } from 'node:readline'
-import type { LLMProvider, LlmChatMessage, LlmStreamChunk, StreamChatOptions } from '@shared/providers.js'
+import type { LLMProvider, LlmChatMessage, LlmStreamChunk, LlmUsage, StreamChatOptions } from '@shared/providers.js'
 import type { ApiProfile } from '@shared/types.js'
 import { ErrorCodes } from '@shared/errors.js'
 import { ProviderError } from './errors.js'
 
 type Json = Record<string, unknown>
 type Pending = { resolve: (value: Json) => void; reject: (error: Error) => void }
+type TurnQueue = {
+  values: Json[]
+  waiters: Array<(value: Json | null) => void>
+  closed: boolean
+  error: Error | null
+}
 
 function asRecord(value: unknown): Json | null {
   return typeof value === 'object' && value !== null ? value as Json : null
@@ -27,6 +33,30 @@ function stringAt(value: unknown, ...keys: string[]): string | undefined {
     current = record[key]
   }
   return typeof current === 'string' && current !== '' ? current : undefined
+}
+
+function numberAt(value: unknown, ...keys: string[]): number | undefined {
+  let current: unknown = value
+  for (const key of keys) {
+    const record = asRecord(current)
+    if (record === null) return undefined
+    current = record[key]
+  }
+  return typeof current === 'number' && Number.isFinite(current) ? current : undefined
+}
+
+/** app-server 在不同版本里把用量叫 usage / tokenUsage，且 token 字段也有两套命名。 */
+function usageAt(value: unknown): LlmUsage | null {
+  const record = asRecord(value)
+  if (record === null) return null
+  const source = asRecord(record.usage) ?? asRecord(record.tokenUsage) ?? record
+  const promptTokens = numberAt(source, 'promptTokens') ?? numberAt(source, 'inputTokens') ?? numberAt(source, 'input')
+  const completionTokens = numberAt(source, 'completionTokens') ?? numberAt(source, 'outputTokens') ?? numberAt(source, 'output')
+  const totalTokens = numberAt(source, 'totalTokens') ?? numberAt(source, 'total')
+  if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined) return null
+  const prompt = promptTokens ?? 0
+  const completion = completionTokens ?? 0
+  return { promptTokens: prompt, completionTokens: completion, totalTokens: totalTokens ?? prompt + completion }
 }
 
 function commandParts(raw: string): { command: string; args: string[] } {
@@ -45,7 +75,8 @@ export class CodexAppServerProvider implements LLMProvider {
   private readonly pending = new Map<number, Pending>()
   private initialized: Promise<void> | null = null
   private readonly threads = new Map<string, string>()
-  private activeQueue: { values: Json[]; waiters: Array<(value: Json | null) => void> } | null = null
+  /** 每个 turn 独立排队；不能再用一个全局 activeQueue 串错两个聊天会话。 */
+  private readonly turnQueues = new Map<string, TurnQueue>()
 
   constructor(profile: ApiProfile) {
     this.profileId = profile.id
@@ -65,6 +96,8 @@ export class CodexAppServerProvider implements LLMProvider {
       if (chunk.toString().trim() !== '') process.emitWarning(`Codex app-server: ${chunk.toString().trim()}`)
     })
     child.on('exit', () => {
+      // dispose() 后旧进程可能晚一步触发 exit；不能清掉已经懒重建的新进程。
+      if (this.child !== child) return
       for (const pending of this.pending.values()) pending.reject(new Error('Codex app-server 已退出'))
       this.pending.clear()
       this.child = null
@@ -72,22 +105,27 @@ export class CodexAppServerProvider implements LLMProvider {
       this.lines = null
       this.initialized = null
       this.threads.clear()
-      const queue = this.activeQueue
-      if (queue !== null) {
-        const waiter = queue.waiters.shift()
-        if (waiter !== undefined) waiter(null)
-      }
+      this.closeAllTurns(new Error('Codex app-server 已退出'))
     })
     child.on('error', (error) => {
+      if (this.child !== child) return
       for (const pending of this.pending.values()) pending.reject(error)
       this.pending.clear()
-      const queue = this.activeQueue
-      if (queue !== null) {
-        const waiter = queue.waiters.shift()
-        if (waiter !== undefined) waiter(null)
-      }
+      this.closeAllTurns(error)
     })
     return child
+  }
+
+  private closeTurn(queue: TurnQueue, error: Error | null): void {
+    if (queue.closed) return
+    queue.closed = true
+    queue.error = error
+    for (const waiter of queue.waiters.splice(0)) waiter(null)
+  }
+
+  private closeAllTurns(error: Error): void {
+    for (const queue of this.turnQueues.values()) this.closeTurn(queue, error)
+    this.turnQueues.clear()
   }
 
   private handleLine(line: string): void {
@@ -103,8 +141,11 @@ export class CodexAppServerProvider implements LLMProvider {
       else pending.resolve(message)
       return
     }
-    const queue = this.activeQueue
-    if (queue === null) return
+    const params = asRecord(message.params)
+    const turnId = stringAt(params, 'turnId') ?? stringAt(params, 'turn', 'id') ?? stringAt(params, 'item', 'turnId')
+    const queue = turnId === undefined ? null : this.turnQueues.get(turnId)
+    if (queue === null || queue === undefined) return
+    if (queue.closed) return
     const waiter = queue.waiters.shift()
     if (waiter !== undefined) waiter(message)
     else queue.values.push(message)
@@ -159,38 +200,89 @@ export class CodexAppServerProvider implements LLMProvider {
     return threadId
   }
 
+  private async cancelTurn(threadId: string, turnId: string): Promise<void> {
+    try {
+      await this.request('turn/cancel', { threadId, turnId }, 5_000)
+    } catch {
+      // 旧版 app-server 可能没有 turn/cancel；本地队列仍会结束，不能因为取消再污染下一轮。
+    }
+  }
+
+  /** 进程关闭 / 配置热切换时调用；不会把 Codex 作为第二套常驻 Runtime 留在后台。 */
+  async dispose(): Promise<void> {
+    this.closeAllTurns(new Error('Codex app-server 已关闭'))
+    this.lines?.close()
+    this.lines = null
+    const child = this.child
+    this.child = null
+    this.initialized = null
+    this.threads.clear()
+    child?.kill()
+  }
+
   async *streamChat(messages: LlmChatMessage[], opts: StreamChatOptions = {}): AsyncIterable<LlmStreamChunk> {
     await this.initialize()
+    const isAborted = (): boolean => opts.signal?.aborted === true
+    if (isAborted()) throw new ProviderError(ErrorCodes.ProviderUpstreamError, 'Codex 聊天已取消')
     const conversationId = opts.conversationId ?? '__default__'
     const threadId = await this.threadFor(conversationId)
     const input = messages.map((message) => `[${message.role}]\n${message.content}`).join('\n\n')
-    const queue = { values: [] as Json[], waiters: [] as Array<(value: Json | null) => void> }
-    this.activeQueue = queue
-    const requestId = this.nextId++
-    this.send({
-      jsonrpc: '2.0',
-      id: requestId,
-      method: 'turn/start',
-      params: { threadId, model: opts.model ?? this.defaultModel, input: [{ type: 'text', text: input }] },
+    const queue: TurnQueue = { values: [], waiters: [], closed: false, error: null }
+    const started = await this.request('turn/start', {
+      threadId,
+      model: opts.model ?? this.defaultModel,
+      input: [{ type: 'text', text: input }],
     })
+    if (isAborted()) {
+      const startedTurnId = stringAt(started, 'result', 'turn', 'id') ?? stringAt(started, 'result', 'turnId') ?? stringAt(started, 'result', 'id')
+      if (startedTurnId !== undefined) await this.cancelTurn(threadId, startedTurnId)
+      throw new ProviderError(ErrorCodes.ProviderUpstreamError, 'Codex 聊天已取消')
+    }
+    const turnId = stringAt(started, 'result', 'turn', 'id') ?? stringAt(started, 'result', 'turnId') ?? stringAt(started, 'result', 'id')
+    if (turnId === undefined) throw new ProviderError(ErrorCodes.ProviderUpstreamError, 'Codex app-server 未返回 turn id')
+    this.turnQueues.set(turnId, queue)
+    let cancelled = false
+    let cancelRequested = false
+    const onAbort = (): void => {
+      if (cancelled) return
+      cancelled = true
+      cancelRequested = true
+      this.closeTurn(queue, new Error('Codex 聊天已取消'))
+      void this.cancelTurn(threadId, turnId)
+    }
+    opts.signal?.addEventListener('abort', onAbort, { once: true })
     let done = false
+    let usageSent = false
     try {
       while (!done) {
-        const message = queue.values.shift() ?? await new Promise<Json | null>((resolve) => queue.waiters.push(resolve))
-        if (message === null) throw new ProviderError(ErrorCodes.ProviderUpstreamError, 'Codex app-server 连接中断')
+        const message = queue.values.shift() ?? (queue.closed ? null : await new Promise<Json | null>((resolve) => queue.waiters.push(resolve)))
+        if (message === null) {
+          if (queue.error !== null) throw new ProviderError(ErrorCodes.ProviderUpstreamError, queue.error.message)
+          throw new ProviderError(ErrorCodes.ProviderUpstreamError, 'Codex app-server 连接中断')
+        }
         const method = typeof message.method === 'string' ? message.method : ''
         const params = asRecord(message.params)
         const text = stringAt(params, 'delta') ?? stringAt(params, 'text') ?? stringAt(params, 'item', 'text') ?? stringAt(params, 'item', 'content')
         if (text !== undefined && (method.includes('agentMessage') || method.includes('delta') || method.includes('message'))) {
           yield { type: 'delta', delta: { content: text } }
         }
-        if (method.includes('turn/completed') || method.includes('turn/failed') || method.includes('turn/cancelled')) {
+        const usage = usageAt(params)
+        if (!usageSent && usage !== null) {
+          usageSent = true
+          yield { type: 'usage', usage }
+        }
+        if (method.includes('turn/failed')) {
+          throw new ProviderError(ErrorCodes.ProviderUpstreamError, stringAt(params, 'error', 'message') ?? 'Codex turn 执行失败')
+        }
+        if (method.includes('turn/completed') || method.includes('turn/cancelled')) {
           done = true
         }
       }
       yield { type: 'done', finishReason: 'stop' }
     } finally {
-      if (this.activeQueue === queue) this.activeQueue = null
+      opts.signal?.removeEventListener('abort', onAbort)
+      this.turnQueues.delete(turnId)
+      if (cancelled && !done && !cancelRequested) await this.cancelTurn(threadId, turnId)
     }
   }
 

@@ -156,7 +156,7 @@ Provider Profile 仍由 `/api/providers` 管理；以下接口只管理“哪个
 使用未保存草稿代请求上游 `/models`。请求可传 `profileId` 复用现有连接，也可传 `baseUrl / apiKey / headers / streamOptions` 覆盖；
 也可传 `provider: "elevenlabs"` 或 `provider: "codex-subscription"`；Codex 方案使用 `baseUrl: "codex://local"`，不需要 API Key，
 只通过 `HABITAT_CODEX_APP_SERVER_COMMAND`（默认 `codex app-server --stdio`）启动官方 app-server。该适配器是实验性能力，
-app-server 不可用时返回结构化失败，不会伪装成 OpenAI-compatible。返回 `{ ok, latencyMs, models, errorCategory, error }`，失败分类包括
+每个 Habitat 会话绑定独立 Codex thread，并按 turn 隔离流事件；客户端断开会请求 `turn/cancel`，app-server 进程重启后会懒重建并重新绑定，usage 事件会映射到统一用量契约。app-server 不可用时返回结构化失败，不会伪装成 OpenAI-compatible。返回 `{ ok, latencyMs, models, errorCategory, error }`，失败分类包括
 `authentication / network / timeout / protocol / unsupported / empty-models / empty-voices / unknown`。
 
 ### `POST /api/providers/draft/voices`

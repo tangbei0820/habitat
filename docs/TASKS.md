@@ -3666,3 +3666,19 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm --prefix server run probe:reading-tools` **15/15**、两端 `npm run typecheck`、前端 `npm run build`、`git diff --check` 通过；未部署 VPS。
 
 **明确延期**：Tasogare 风格全文 MCP、PDF 原版分页 / OCR、EPUB 精确排版与图片、跨设备同步；本批不提前施工。
+
+### T-138 · 2026-09-29 · V2-A · Codex Subscription Adapter 生命周期收口 —— **完成（本地，未部署）**
+
+**范围**：在 T-124 的实验性 Codex app-server 适配器上补齐并发事件隔离、取消、usage 与进程重启恢复；Codex 继续只作为 Habitat 的模型后端，不新增第二套 Agent Runtime。
+
+| 交付 | 说明 |
+| --- | --- |
+| Thread / turn 隔离 | 每个 Habitat 会话复用稳定 thread，每个 turn 建立独立事件队列；多个聊天可并发流式，不会互相消费通知。 |
+| 流式与用量 | 识别 agent message delta、completed / failed / cancelled；兼容多种 usage 字段命名并映射到统一 `LlmUsage`。 |
+| 取消 | `AbortSignal` 触发 `turn/cancel`，本地队列立即结束；旧版 app-server 不支持取消时也不阻塞下一轮。 |
+| 重启恢复 | 进程退出会清理失效 thread；旧进程的延迟 exit 事件不会清掉新进程，下一次请求自动懒启动并重新绑定。 |
+| 安全边界 | 不抓网页 Cookie、不伪造 OpenAI 凭据、不让 Codex 绕过 Habitat 的人格 / 记忆 / 工具 / 权限 Runtime。 |
+
+**验收**：`npm --prefix server run probe:codex-adapter` **5/5**、服务端 typecheck、前端 typecheck、前端 build、`git diff --check` 通过；未部署 VPS。
+
+**明确延期**：Codex 工具调用的原生事件映射、多线程持久化、Provider Center 可视化回退策略、凭据轮换与 VPS 真机登录仍留在后续 Provider 阶段。

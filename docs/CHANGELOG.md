@@ -11,6 +11,15 @@
 - 浏览器继续复用 `ReadingBookState.vocabulary` 写回原书；更新保留原生词 id，追加既有 `reading.vocabulary` Life 事实，不新增 Dexie / 备份 / 服务端书库。
 - 明确窗口边界、精确词面 / id 校验、重复更新幂等与失败反馈；探针扩展至 15/15。未部署 VPS。
 
+## 2026-09-29 · V2-A · Codex Provider 生命周期
+
+### T-138 · Codex Subscription Adapter 生命周期收口
+
+- Codex app-server 适配器改为按 `turnId` 分发事件，各 Habitat 会话可并发流式而不会串消息；`turn/start`、`turn/completed`、`turn/failed` 与 usage 事件统一映射到现有 Provider 契约。
+- 客户端断开会请求 `turn/cancel` 并立即结束本地流；旧 app-server 进程退出不会清掉已经重建的新进程，下一次请求会自动懒启动并重新建立 thread。
+- 增加 `dispose()` 作为配置热切换 / 进程关闭边界；不读取 Cookie、不伪造 API Key、不接管 Habitat Runtime 工具。
+- `probe:codex-adapter` **5/5**；未新增 schema / Provider API，未部署 VPS。
+
 ## 2026-09-29 · V2-D · 共读近况
 
 ### T-134 · 共读最近活动工具
