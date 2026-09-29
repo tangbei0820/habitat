@@ -363,7 +363,7 @@ habitat/
 
 0. ✅ **T-077 本地 V2-B 第五切片：表情图库与手动表情消息已完成**：本地导入 / 搜索 / 去重图库、独立 `sticker` 消息块、发送时图片快照与备份 v12 / Dexie v14 已落地；AI 自主工具已由 T-078 接上。生产仍停在 T-072，本批未部署。
 
-1. ✅ **V2-A Provider 基座（T-058 / T-059 / T-060 / T-079 / T-080 / T-138）**：Provider Center 四通道、MCP Manager 基础闭环、Nocturne 原生 Dashboard 受保护入口、ElevenLabs 原生 TTS / 声音参数与 Codex app-server 生命周期基础已独立验收；MCP 连接配置与 Dashboard 目标均由服务端持有，浏览器不接触 MCP token。Nocturne 原生页面仍由上游负责认证与权限，Habitat 只提供受保护入口与 iframe / 新窗口回退；Codex 原生工具映射与多线程持久化仍属后续切片，未冒充完成。
+1. ✅ **V2-A Provider 基座（T-058 / T-059 / T-060 / T-079 / T-080 / T-138 / T-139）**：Provider Center 四通道、MCP Manager 基础闭环、Nocturne 原生 Dashboard 受保护入口、ElevenLabs 原生 TTS / 声音参数、Codex app-server 生命周期与聊天失败可视化备用链已独立验收；MCP 连接配置与 Dashboard 目标均由服务端持有，浏览器不接触 MCP token。Nocturne 原生页面仍由上游负责认证与权限，Habitat 只提供受保护入口与 iframe / 新窗口回退；Codex 原生工具映射与多线程持久化仍属后续切片，未冒充完成。
 
 1. ✅ **T-076 本地 V2-B 第四切片：聊天显式联网搜索已完成**：更多功能入口以 `webSearch.query` 逐次授权，服务端只读公开搜索结果并回灌同轮模型，工具卡 / 失败状态 / 原问题均留痕。生产仍停在 T-072，本批未部署。
 2. ✅ **T-075 本地 V2-B 第三切片：上下文压缩基础闭环已完成**：聊天设置支持显式压缩较早消息、编辑 / 停用 / 恢复摘要版本；摘要存会话元数据，原消息不删，后续请求明确注入摘要与最近原文。生产仍停在 T-072，本批未部署。
@@ -425,4 +425,5 @@ habitat/
 - ✅ **T-136 共读状态工具**：新增 `reading_status`，返回本轮进度、书签、累计阅读时长、批注 / 生词数量和窗口边界；探针 11/11、两端 typecheck 与前端 build 通过，未部署 VPS。
 - ✅ **T-137 共读窗口搜索与生词解释工具**：新增 `reading_search`、`reading_vocab`、`reading_annotate_vocab`，限定当前浏览器窗口并复用本地生词本更新；探针 15/15、两端 typecheck 与前端 build 通过，未部署 VPS。
 - ✅ **T-138 Codex Subscription Adapter 生命周期收口**：按 turn 隔离并发事件，补齐 usage、取消、旧进程退出保护与懒重启恢复；`probe:codex-adapter` 5/5，服务端 / 前端 typecheck 与 build 通过，未部署 VPS。
+- ✅ **T-139 Provider Center 可视化聊天回退策略**：设置页支持最多 3 个有序备用连接、启停、保存与恢复；服务端复用 `app_kv`，首个 SSE 内容前按序回退，删除被备用链引用的连接会被阻止；`probe:provider-fallback` 9/9、两端 typecheck 与 build 通过，未部署 VPS。
 - 共读仍明确缺 Tasogare 风格全文 MCP、PDF 原版分页 / OCR、EPUB 精确排版与图片、跨设备同步。

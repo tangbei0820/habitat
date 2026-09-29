@@ -10,6 +10,7 @@ import type {
   ApiProfileCreateInput,
   ApiProfilePublic,
   ApiProfileUpdateInput,
+  ChatFallbackConfig,
   LlmProbeResult,
   ProviderCapabilityBinding,
   ProviderCenterState,
@@ -89,6 +90,12 @@ export function testProvider(id: string): Promise<LlmProbeResult> {
 
 export function getProviderCenter(): Promise<ProviderCenterState> {
   return fetchJson<ProviderCenterState>('/api/provider-center')
+}
+
+export function saveChatFallback(input: Pick<ChatFallbackConfig, 'enabled' | 'profileIds'>): Promise<ChatFallbackConfig> {
+  return fetchJson<ChatFallbackConfig>('/api/provider-center/chat-fallback', {
+    method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify(input),
+  })
 }
 
 export function pullDraftModels(input: ProviderDraftInput): Promise<ProviderDraftModelsResult> {

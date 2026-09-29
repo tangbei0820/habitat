@@ -365,6 +365,7 @@ Node 收到完整成功响应后才覆盖这行。sidecar 重启不会丢周期�
 | `event_log` | 状态 / 主动行为事实 | Phase 4 统计只聚合此表，不反查聊天库 |
 | `notification` | 主动唤醒与系统通知 | 主动消息先进收件箱，不直接写前端 Dexie |
 | `app_kv:notification.preferences` | 通知总开关、分类开关、Quiet Hours | 只影响 Push / 主动打扰；不删除、不覆盖 `notification` 事实 |
+| `app_kv:provider.chat.fallback` | 主聊天首包失败时的有序备用 Provider id、启用状态与更新时间 | 只保存策略，不复制密钥；最多 3 个连接；设置页保存后覆盖旧环境变量回退 |
 | `solitude_entry` | AI 私有独处记录与梦卡 | 与通知、用户日记分库；梦卡用 metadata 标识 |
 | `wallet` | 当前余额缓存 | 只能与流水在同一事务更新，余额不得小于 0 |
 | `wallet_transaction` | 不可变钱包流水 | 每次变化保留 delta、变化后余额、原因与可选来源引用 |

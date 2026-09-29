@@ -148,8 +148,13 @@ Provider Profile 仍由 `/api/providers` 管理；以下接口只管理“哪个
 
 ### `GET /api/provider-center`
 
-返回当前 `bindings` 与命名 `schemes`。老库首次访问时，会从原 active profile 中为**真实配置过模型**的槽位补种绑定；
-没有模型的能力保持未配置，不伪造默认值。
+返回当前 `bindings`、命名 `schemes` 与 `chatFallback`。老库首次访问时，会从原 active profile 中为**真实配置过模型**的槽位补种绑定；
+没有模型的能力保持未配置，不伪造默认值。`chatFallback` 是首个 SSE 内容前的有序备用连接，最多 3 个，来源会标记为 `saved`、兼容旧环境变量的 `environment` 或 `none`。
+
+### `PUT /api/provider-center/chat-fallback`
+
+保存聊天失败回退策略：`{ enabled, profileIds: string[] }`。连接必须存在且能提供聊天模型（Codex Subscription 也可）；重复 id 会被去重，最多 3 个。
+只有主聊天 Provider 尚未吐出任何 SSE 内容时才按顺序尝试，流中失败不会切换或重放。保存后服务端配置优先于旧的 `HABITAT_CHAT_FALLBACK_PROFILE_ID` 环境变量；密钥仍不会下发。
 
 ### `POST /api/providers/draft/models`
 

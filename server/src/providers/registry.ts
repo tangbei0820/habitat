@@ -22,6 +22,7 @@ import type {
   ProviderCapabilityBinding,
 } from '@shared/types.js'
 import { getCapabilityBinding, seedCapabilityBindings } from '../db/provider-center.js'
+import { getChatFallbackConfig } from '../db/provider-fallback.js'
 import { getProfile, getSecret, listProfiles } from '../db/profiles.js'
 import { ProviderError } from './errors.js'
 import { ElevenLabsProvider } from './elevenlabs.js'
@@ -213,12 +214,21 @@ export class LlmRegistry {
   }
 
   /** 仅用于首个 chunk 之前的自动回退；一旦 SSE 已开始，调用方不得切换上下文。 */
-  fallbackChat(primaryId: string): { profile: ApiProfilePublic; provider: LLMProvider } | null {
-    const fallbackId = this.env.HABITAT_CHAT_FALLBACK_PROFILE_ID
-    if (fallbackId === undefined || fallbackId.trim() === '' || fallbackId === primaryId) return null
-    const profile = this.require(fallbackId.trim())
-    if (profile.provider !== 'codex-subscription' && profile.modelMap.chat === undefined) return null
-    return { profile: this.toPublic(profile), provider: this.adapter(profile, this.resolveKey(profile).key) }
+  fallbackChat(primaryId: string): Array<{ profile: ApiProfilePublic; provider: LLMProvider }> {
+    const config = getChatFallbackConfig(this.env)
+    if (!config.enabled) return []
+    const candidates: Array<{ profile: ApiProfilePublic; provider: LLMProvider }> = []
+    for (const id of config.profileIds) {
+      if (id === primaryId) continue
+      try {
+        const profile = this.require(id)
+        if (profile.provider !== 'codex-subscription' && profile.modelMap.chat === undefined) continue
+        candidates.push({ profile: this.toPublic(profile), provider: this.adapter(profile, this.resolveKey(profile).key) })
+      } catch {
+        // UI 保存时会校验连接；旧环境变量或删除后的历史配置则安全跳过。
+      }
+    }
+    return candidates
   }
 
   /** Phase 5 媒体能力与聊天共用同一方案 / 凭据，但拿到完整兼容适配器。 */

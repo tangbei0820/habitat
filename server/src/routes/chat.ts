@@ -505,29 +505,34 @@ export function registerChatRoutes(
     let conversation = authorizedConversation
     let iterator = provider.streamChat(conversation, { ...streamOptions, conversationId: body.sessionId })[Symbol.asyncIterator]()
 
-    let step: IteratorResult<LlmStreamChunk>
+    let step!: IteratorResult<LlmStreamChunk>
     try {
       step = await iterator.next()
     } catch (err) {
       // 只在首个 chunk 之前回退，避免一条回复中途切换 Provider 造成重复或乱序。
-      const fallback = body.profileId === undefined ? registry.fallbackChat(profile.id) : null
-      if (fallback !== null) {
+      const fallbacks = body.profileId === undefined ? registry.fallbackChat(profile.id) : []
+      let recovered = false
+      let lastError: unknown = err
+      for (const fallback of fallbacks) {
         try {
+          request.log.warn({ fromProfileId: profile.id, toProfileId: fallback.profile.id }, '主聊天首包失败，切换备用 Provider')
           profile = fallback.profile
           provider = fallback.provider
           model = body.model ?? provider.defaultModel
           streamOptions.model = model
           iterator = provider.streamChat(conversation, { ...streamOptions, conversationId: body.sessionId })[Symbol.asyncIterator]()
           step = await iterator.next()
+          recovered = true
+          break
         } catch (fallbackError) {
-          finishAutomationRun(chatRunId, 'failed', fallbackError instanceof Error ? fallbackError.message : String(fallbackError), null)
-          if (fallbackError instanceof ProviderError) throw fallbackError
-          throw new ProviderError(ErrorCodes.Internal, fallbackError instanceof Error ? fallbackError.message : String(fallbackError))
+          lastError = fallbackError
+          request.log.warn({ profileId: fallback.profile.id, error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError) }, '备用 Provider 也失败')
         }
-      } else {
-      finishAutomationRun(chatRunId, 'failed', err instanceof Error ? err.message : String(err), null)
-      if (err instanceof ProviderError) throw err
-      throw new ProviderError(ErrorCodes.Internal, err instanceof Error ? err.message : String(err))
+      }
+      if (!recovered) {
+        finishAutomationRun(chatRunId, 'failed', lastError instanceof Error ? lastError.message : String(lastError), null)
+        if (lastError instanceof ProviderError) throw lastError
+        throw new ProviderError(ErrorCodes.Internal, lastError instanceof Error ? lastError.message : String(lastError))
       }
     }
 

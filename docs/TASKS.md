@@ -3682,3 +3682,20 @@ DNS 子域 + certbot 证书、`/srv/habitat` 拉代码装依赖、systemd/nginx 
 **验收**：`npm --prefix server run probe:codex-adapter` **5/5**、服务端 typecheck、前端 typecheck、前端 build、`git diff --check` 通过；未部署 VPS。
 
 **明确延期**：Codex 工具调用的原生事件映射、多线程持久化、Provider Center 可视化回退策略、凭据轮换与 VPS 真机登录仍留在后续 Provider 阶段。
+
+### T-139 · 2026-09-29 · V2-A · Provider Center 可视化聊天回退策略 —— **完成（本地，未部署）**
+
+**范围**：把 T-124 遗留的环境变量级聊天回退收口为 Provider Center 内可查看、可排序、可启停、可保存的备用链；不引入权重路由、第二套 Agent Runtime 或媒体能力回退。
+
+| 交付 | 说明 |
+| --- | --- |
+| 策略存储 | 复用服务端 `app_kv:provider.chat.fallback` 保存启用状态与最多 3 个 Provider id；首次未保存时兼容读取 `HABITAT_CHAT_FALLBACK_PROFILE_ID`。 |
+| 设置页 | Provider Center 新增“聊天失败回退”面板，显示当前主聊天、备用 1–3 顺序、环境变量兼容来源、启停与恢复已保存；只允许选择可提供聊天模型的连接。 |
+| 运行链路 | 主 Provider 在首个 SSE 内容前失败时，按配置顺序逐个尝试；任一备用成功即继续原对话，全部失败才返回最后错误；流已开始后不切换、不重放。 |
+| 安全边界 | 删除被备用链引用的 Provider 会被阻止；密钥仍只在服务端使用；Codex 仅作为聊天后端。 |
+
+**参考取舍**：实查 [OmniRouter](https://github.com/OmniDimen/OmniRouter) 的 Provider 分组、失败自动切换与可见诊断，借鉴“有序备用链 / 状态可见”；实查 [VCPToolBox](https://github.com/lioensky/VCPToolBox) 的网关统一配置诊断，借鉴“策略由宿主统一掌管”。不搬入权重路由、自动禁用模型或独立 Agent 编排。
+
+**验收**：`probe:provider-fallback` **9/9**、两端 `npm run typecheck`、`npm run build`、`git diff --check` 通过；未部署 VPS。
+
+**明确延期**：按失败次数自动熔断 / 冷却、模型级权重路由、Provider 密钥加密与轮换、Codex 原生工具事件映射、多线程持久化仍留在后续 Provider 阶段。

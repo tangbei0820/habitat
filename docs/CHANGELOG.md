@@ -1300,3 +1300,10 @@ Home 主屏从「纯功能入口列表」开始长出展示层：留言板与倒
 - 本地提交 `202ef7a` 已部署到 `https://habitat.beiyan.cc`，生产 `.env` / SQLite 未覆盖，重启前备份为 `habitat.db.bak-20260928-202ef7a`。
 - `habitat-server` active；服务器本机与服务器自检公网 `/api/health` 均返回 `{"ok":true}`；线上 bundle `assets/index-DvBxPobU.js` 已检出每日品读双方批注、批注收藏、首页 Widget 与 `/api/reading/daily/comment` 标记。
 - 无 Provider 的评论请求按预期返回 400；`reading.daily.comment` Life 事件返回 201，验收用 `ref_id=deploy-reading-202ef7a` 已精确删除并复查为 0；阶段到此停止。
+
+### 2026-09-29 · T-139 · Provider Center 可视化聊天回退策略（本地）
+
+- Provider Center 新增聊天失败回退面板，支持最多 3 个有序备用连接、启停、保存与恢复。
+- 服务端复用 `app_kv` 持久化策略，兼容读取旧 `HABITAT_CHAT_FALLBACK_PROFILE_ID` 环境变量；设置保存后由服务端策略接管。
+- 聊天首个 SSE 内容前按顺序尝试备用 Provider，流式开始后不切换、不重放；删除被备用链引用的连接会被阻止。
+- 延期自动熔断 / 冷却、模型级权重路由、密钥加密轮换与 Codex 原生工具事件映射。

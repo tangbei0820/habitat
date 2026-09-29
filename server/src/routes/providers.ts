@@ -39,6 +39,7 @@ import {
   saveCapabilityBinding,
   seedCapabilityBindings,
 } from '../db/provider-center.js'
+import { getChatFallbackConfig, saveChatFallbackConfig } from '../db/provider-fallback.js'
 import { createProfile, clearSecret, setSecret, updateProfile } from '../db/profiles.js'
 import { activateProfile, deleteProfile } from '../db/profiles.js'
 import { ProviderError } from '../providers/errors.js'
@@ -368,7 +369,20 @@ export function registerProviderRoutes(app: FastifyInstance, registry: LlmRegist
   app.get('/api/provider-center', async (): Promise<ProviderCenterState> => {
     const active = registry.active()
     seedCapabilityBindings(active === null ? null : registry.require(active.id))
-    return { bindings: listCapabilityBindings(), schemes: listProviderSchemes() }
+    return { bindings: listCapabilityBindings(), schemes: listProviderSchemes(), chatFallback: getChatFallbackConfig() }
+  })
+
+  app.put('/api/provider-center/chat-fallback', async (request): Promise<ProviderCenterState['chatFallback']> => {
+    const raw = requireRecord(request.body)
+    if (typeof raw.enabled !== 'boolean') throw new ProviderError(ErrorCodes.BadRequest, 'enabled 必须是布尔值')
+    if (!Array.isArray(raw.profileIds) || raw.profileIds.some((value) => typeof value !== 'string')) {
+      throw new ProviderError(ErrorCodes.BadRequest, 'profileIds 必须是连接 id 数组')
+    }
+    try {
+      return saveChatFallbackConfig({ enabled: raw.enabled, profileIds: raw.profileIds as string[] })
+    } catch (err) {
+      throw new ProviderError(ErrorCodes.BadRequest, errorMessage(err))
+    }
   })
 
   /* ---------- 未保存草稿：拉模型 / 真实能力测试 ---------- */

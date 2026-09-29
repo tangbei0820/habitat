@@ -17,6 +17,7 @@ import {
   type ProviderCapabilityBindingRow,
   type ProviderSchemeRow,
 } from './schema.js'
+import { chatFallbackReferences } from './provider-fallback.js'
 
 const CAPABILITIES: readonly ProviderCapability[] = ['chat', 'voice', 'vision', 'image']
 
@@ -217,5 +218,6 @@ export function profileBindingReferences(profileId: string): string[] {
   const schemes = listProviderSchemes()
     .filter((scheme) => Object.values(scheme.bindings).some((binding) => binding?.profileId === profileId))
     .map((scheme) => `方案「${scheme.name}」`)
+  if (chatFallbackReferences(profileId)) direct.push('主聊天备用链')
   return [...direct, ...schemes]
 }

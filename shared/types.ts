@@ -804,9 +804,19 @@ export interface ProviderScheme {
   updatedAt: number
 }
 
+/** 主聊天首包失败时的有序备用连接。只保存 profile id，不复制密钥。 */
+export interface ChatFallbackConfig {
+  enabled: boolean
+  profileIds: string[]
+  updatedAt: number | null
+  /** saved = 服务端保存；environment = 兼容旧环境变量；none = 未配置 */
+  source: 'saved' | 'environment' | 'none'
+}
+
 export interface ProviderCenterState {
   bindings: ProviderCapabilityBinding[]
   schemes: ProviderScheme[]
+  chatFallback: ChatFallbackConfig
 }
 
 export type ProviderDraftErrorCategory =

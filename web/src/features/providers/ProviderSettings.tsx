@@ -183,15 +183,24 @@ export function ProviderSettings() {
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
-  const [center, setCenter] = useState<ProviderCenterState>({ bindings: [], schemes: [] })
+  const [center, setCenter] = useState<ProviderCenterState>({ bindings: [], schemes: [], chatFallback: { enabled: false, profileIds: [], updatedAt: null, source: 'none' } })
   const [centerLoading, setCenterLoading] = useState(true)
   const [centerError, setCenterError] = useState<string | null>(null)
   const [schemeName, setSchemeName] = useState('')
+  const [fallbackEnabled, setFallbackEnabled] = useState(false)
+  const [fallbackIds, setFallbackIds] = useState<string[]>([])
+  const [fallbackSaving, setFallbackSaving] = useState(false)
+  const [fallbackMessage, setFallbackMessage] = useState<string | null>(null)
 
   const reloadCenter = useCallback(() => {
     setCenterLoading(true)
     api.getProviderCenter()
-      .then((value) => { setCenter(value); setCenterError(null) })
+      .then((value) => {
+        setCenter(value)
+        setFallbackEnabled(value.chatFallback.enabled)
+        setFallbackIds(value.chatFallback.profileIds)
+        setCenterError(null)
+      })
       .catch((error: unknown) => setCenterError(error instanceof ApiRequestError ? error.message : String(error)))
       .finally(() => setCenterLoading(false))
   }, [])
@@ -202,6 +211,25 @@ export function ProviderSettings() {
     ctrl.reload()
     reloadCenter()
   }
+
+  async function saveFallback(): Promise<void> {
+    setFallbackSaving(true)
+    setFallbackMessage(null)
+    try {
+      const saved = await api.saveChatFallback({ enabled: fallbackEnabled, profileIds: fallbackIds.filter((id) => id !== '') })
+      setFallbackEnabled(saved.enabled)
+      setFallbackIds(saved.profileIds)
+      setFallbackMessage(saved.enabled ? '备用链已保存：仅首个 SSE 内容前失败时切换。' : '备用链已关闭。')
+      reloadCenter()
+    } catch (error) {
+      setFallbackMessage(error instanceof ApiRequestError ? error.message : String(error))
+    } finally {
+      setFallbackSaving(false)
+    }
+  }
+
+  const chatProfiles = ctrl.profiles.filter((profile) => profile.provider === 'codex-subscription' || profile.modelMap.chat !== undefined)
+  const primaryChatProfileId = center.bindings.find((item) => item.capability === 'chat')?.profileId ?? null
 
   async function createScheme(): Promise<void> {
     if (schemeName.trim() === '') return
@@ -232,6 +260,51 @@ export function ProviderSettings() {
             onChanged={changed}
           />
         ))}
+      </section>
+
+      <section className="mt-3 rounded-lg border p-4" style={SECTION_STYLE} data-testid="provider-chat-fallback">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">聊天失败回退</h3>
+            <p className="mt-1 text-xs" style={LABEL_STYLE}>主聊天首个内容到达前失败时，按顺序尝试备用连接；流式开始后不会中途切换。</p>
+          </div>
+          <label className="flex shrink-0 items-center gap-2 text-xs">
+            <input type="checkbox" checked={fallbackEnabled} onChange={(event) => setFallbackEnabled(event.target.checked)} />启用
+          </label>
+        </div>
+        {center.chatFallback.source === 'environment' && <p className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>当前沿用环境变量备用连接；保存此处后改由设置页接管。</p>}
+        {center.chatFallback.source === 'none' && <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>尚未配置备用连接。没有备用时，主连接失败会直接反馈错误。</p>}
+        {primaryChatProfileId !== null && <p className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>当前主聊天：{ctrl.profiles.find((profile) => profile.id === primaryChatProfileId)?.name ?? primaryChatProfileId}</p>}
+        <div className="mt-3 flex flex-col gap-2">
+          {[0, 1, 2].map((index) => (
+            <label key={index} className="text-xs">
+              <span className="mb-1 block" style={{ color: 'var(--text-secondary)' }}>备用 {index + 1}</span>
+              <select
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                style={{ borderColor: 'var(--border-soft)', background: 'var(--bg-base)' }}
+                value={fallbackIds[index] ?? ''}
+                onChange={(event) => {
+                  const next = [...fallbackIds]
+                  while (next.length <= index) next.push('')
+                  next[index] = event.target.value
+                  setFallbackIds(next.slice(0, 3))
+                }}
+                disabled={fallbackSaving}
+                data-testid={`provider-fallback-${index + 1}`}
+              >
+                <option value="">不设置</option>
+                {chatProfiles.filter((profile) => profile.id !== primaryChatProfileId && !fallbackIds.some((id, itemIndex) => itemIndex !== index && id === profile.id)).map((profile) => (
+                  <option key={profile.id} value={profile.id}>{profile.name} · {profile.provider}</option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+        {fallbackMessage !== null && <p className="mt-2 text-xs" style={{ color: fallbackMessage.includes('已保存') || fallbackMessage.includes('已关闭') ? 'var(--accent-strong)' : 'var(--danger)' }}>{fallbackMessage}</p>}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" className="rounded-md px-3 py-1.5 text-xs" style={{ background: 'var(--accent-strong)', color: 'var(--accent-on-strong)', opacity: fallbackSaving ? 0.6 : 1 }} disabled={fallbackSaving} onClick={() => void saveFallback()}>{fallbackSaving ? '保存中…' : '保存回退策略'}</button>
+          <button type="button" className="rounded-md border px-3 py-1.5 text-xs" disabled={fallbackSaving} onClick={() => { setFallbackEnabled(center.chatFallback.enabled); setFallbackIds(center.chatFallback.profileIds); setFallbackMessage(null) }}>恢复已保存</button>
+        </div>
       </section>
 
       <section className="mt-3 rounded-lg border p-4" style={SECTION_STYLE} data-testid="provider-schemes">
